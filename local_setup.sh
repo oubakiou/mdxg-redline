@@ -39,6 +39,10 @@ gh skill install oubakiou/skills guarded-websearch-codex --agent claude-code --s
 # npm にインストールされた vite-plus の vp をグローバル参照できるようにする
 echo "npm 管理の vite-plus(vp) を設定します"
 VP_BIN="$(cd "$(dirname "$0")" && pwd)/node_modules/.bin/vp"
+if [ ! -x "$VP_BIN" ]; then
+  echo "vp が見つかりません。npm install に失敗している可能性があります: $VP_BIN"
+  exit 1
+fi
 sudo ln -sf "$VP_BIN" /usr/local/bin/vp
 
 # git 設定
