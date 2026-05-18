@@ -71,7 +71,7 @@ npx mdxg-redline <markdown-file>
 
 - `--help`
 - `--browser`
-- `--print-path`（生成した一時 HTML の出力先確認用）
+- `--temp-path`（生成した一時 HTML の出力先確認用）
 - `--watch <dir>` などの高度な連携
 
 ## 7. パッケージ構成の変更案
