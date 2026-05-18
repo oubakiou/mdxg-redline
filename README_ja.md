@@ -67,18 +67,18 @@
 
 [Markdown Experience Guidelines (MDXG)](https://github.com/vercel-labs/mdxg) は現在プレビュー版で、仕様は今後変更される可能性があります。本ツールではレビュワー観点機能を段階的に取り込み中です。
 
-| MDXG セクション | 必須レベル | 現状 |
-| --- | --- | --- |
-| §1 Theming | MUST (Viewer) | 部分（DADS テーマ。host theme 追従は未実装） |
-| §2 Code Block Rendering | MUST (Viewer) | 部分（コピー button・シンタックスハイライト未実装） |
-| §3 Task Lists | MUST (Viewer) | marked デフォルトで対応 |
-| §4 Images / §5 Tables | MUST (Viewer) | marked デフォルトで対応 |
-| §6 Virtual Pages | MUST (Viewer) | 未対応（コメントモデルとの統合設計が必要） |
-| §7 Page Navigation | MUST (Viewer) | 未対応 |
-| §8 Page Outline | MUST (Viewer) | 未対応 |
-| §9 Sequential Navigation | MUST (Viewer) | 未対応 |
-| §10 Search | MUST (Viewer) | 未対応 |
-| §13 Keyboard Navigation | MUST (Viewer) | 部分対応 |
+| MDXG セクション          | 必須レベル    | 現状                                                |
+| ------------------------ | ------------- | --------------------------------------------------- |
+| §1 Theming               | MUST (Viewer) | 部分（DADS テーマ。host theme 追従は未実装）        |
+| §2 Code Block Rendering  | MUST (Viewer) | 部分（コピー button・シンタックスハイライト未実装） |
+| §3 Task Lists            | MUST (Viewer) | marked デフォルトで対応                             |
+| §4 Images / §5 Tables    | MUST (Viewer) | marked デフォルトで対応                             |
+| §6 Virtual Pages         | MUST (Viewer) | 未対応（コメントモデルとの統合設計が必要）          |
+| §7 Page Navigation       | MUST (Viewer) | 未対応                                              |
+| §8 Page Outline          | MUST (Viewer) | 未対応                                              |
+| §9 Sequential Navigation | MUST (Viewer) | 未対応                                              |
+| §10 Search               | MUST (Viewer) | 未対応                                              |
+| §13 Keyboard Navigation  | MUST (Viewer) | 部分対応                                            |
 
 今後のロードマップは [docs/DESIGN.md §13](docs/DESIGN.md) を参照。
 
