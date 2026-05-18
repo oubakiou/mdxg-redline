@@ -1,0 +1,20 @@
+{
+  "env": {
+    "DISABLE_AUTOUPDATER": "1"
+  },
+  "permissions": {
+    "allow": ["Edit(docs/**)", "MultiEdit(docs/**)", "Write(docs/**)", "Bash(vp check *)"],
+    "deny": ["Read(**.archive.md)", "Edit(**.archive.md)"]
+  },
+  "enableAllProjectMcpServers": true,
+  "statusLine": {
+    "type": "command",
+    "command": ".claude/statusline.ts"
+  },
+  "enabledPlugins": {
+    "codex@openai-codex": true,
+    "typescript-lsp@claude-plugins-official": true
+  },
+  "language": "japanese",
+  "autoMemoryEnabled": false
+}

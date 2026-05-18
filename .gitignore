@@ -1,0 +1,17 @@
+node_modules/
+.DS_Store
+*.log
+.vite/
+coverage/
+
+# 個人設定
+.claude/settings.local.json
+CLAUDE.local.md
+
+.claude/skills/
+.agents/skills
+skills-lock.json
+
+# .tempディレクトリは維持するが中身は管理しない
+.temp/*
+!.temp/.gitkeep

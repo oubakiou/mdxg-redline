@@ -1,0 +1,15 @@
+{
+  "editor.defaultFormatter": "oxc.oxc-vscode",
+  "editor.formatOnSave": true,
+  "editor.formatOnSaveMode": "file",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.oxc": "explicit"
+  },
+  "js/ts.tsdk.path": "node_modules/typescript/lib",
+  "oxc.path.oxlint": "/home/vscode/.vite-plus/current/node_modules/.bin/oxlint",
+  "oxc.path.oxfmt": "/home/vscode/.vite-plus/current/node_modules/.bin/oxfmt",
+  "oxc.fmt.configPath": "./vite.config.ts",
+  "oxc.typeAware": true,
+  "markdown.styles": [".vscode/markdown.css"],
+  "html.validate.scripts": false
+}

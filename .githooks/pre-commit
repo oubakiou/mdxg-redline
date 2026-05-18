@@ -1,0 +1,8 @@
+vp check --fix
+
+# --fixによる変更がステージされていないファイルに残っている場合、再ステージして含める
+git diff --name-only --diff-filter=M | while IFS= read -r file; do
+  git add "$file"
+done
+
+vp test

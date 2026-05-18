@@ -1,0 +1,10 @@
+{
+  "typescript": {
+    "command": "./node_modules/.bin/typescript-language-server",
+    "args": ["--stdio"],
+    "extensionToLanguage": {
+      ".ts": "typescript",
+      ".tsx": "typescript"
+    }
+  }
+}

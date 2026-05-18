@@ -1,0 +1,30 @@
+{
+  "name": "mdxg-redline devcontainer",
+  // https://hub.docker.com/r/microsoft/devcontainers-base
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    // https://github.com/devcontainers/features/tree/main/src/node
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "latest"
+    },
+    // https://github.com/devcontainers/features/tree/main/src/github-cli
+    "ghcr.io/devcontainers/features/github-cli:1": {
+      "version": "2.90.0"
+    }
+  },
+  "runArgs": ["--name", "${localEnv:USER}-mdxg-redline"],
+  "postCreateCommand": "./local_setup.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-vscode.live-server", "VoidZero.vite-plus-extension-pack"],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.profiles.linux": {
+          "zsh": {
+            "path": "/bin/zsh"
+          }
+        }
+      }
+    }
+  }
+}

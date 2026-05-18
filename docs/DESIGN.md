@@ -1,0 +1,556 @@
+# mdxg-redline 設計ドキュメント
+
+このドキュメントは `mdxg-redline` の設計意図・構成・割り切りを記録する。仕様変更・監査・他実装との比較検討時の参照資料とする。
+
+## 目次
+
+1. [概要](#1-概要)
+2. [制約](#2-制約)
+3. [ユーザーフロー](#3-ユーザーフロー)
+4. [アーキテクチャ](#4-アーキテクチャ)
+5. [データモデル](#5-データモデル)
+6. [コメントのアンカリング](#6-コメントのアンカリング)
+7. [永続化レイヤー](#7-永続化レイヤー)
+8. [ワークスペースプロトコル](#8-ワークスペースプロトコル)
+9. [起動シーケンス](#9-起動シーケンス)
+10. [ブラウザ互換性](#10-ブラウザ互換性)
+11. [セキュリティとプライバシー](#11-セキュリティとプライバシー)
+12. [既知の制約](#12-既知の制約)
+13. [MDXG 準拠ロードマップ・今後の拡張](#13-mdxg-準拠ロードマップ今後の拡張)
+14. [ビルドパイプライン](#14-ビルドパイプライン)
+15. [ファイル構成](#15-ファイル構成)
+
+## 1. 概要
+
+`mdxg-redline` は、レビュワー（人間）がブラウザで以下を行うためのツール：
+
+1. markdown 文書をブラウザに読み込む
+2. 任意のテキスト範囲をハイライトしてコメントを付ける
+3. 結果を構造化 JSON として出力し、LLM エージェントに渡す
+
+エンドユーザーには **単一 HTML ファイル**（`dist/review.html`）を配布するだけで動く。サーバー不要・別ファイル不要・追加インストール不要。
+
+開発時のみ TypeScript ソースと Vite ツールチェーン（`npm run build`）を使い、CSS/JS をすべて inline した単一 HTML にビルドする。エンドユーザーには TS/Vite の存在は見えない。詳細は §14。
+
+長文を生成する LLM と、それをレビューする人間との間に立ち、「markdown をチャットに貼って、散文のフィードバックを受け取る」という曖昧なループを、**位置情報付きの構造化フィードバック成果物** に置き換えることを目的とする。
+
+### 想定ユーザー
+
+- LLM エージェントで文書・仕様書・記事を反復的に作成する個人
+- 人間レビューを挟むエージェントパイプラインを構築する開発者
+- 普通のファイルでレビュー成果物を共有するチーム
+
+### スコープ外
+
+- 複数ユーザーのリアルタイム共同編集
+- 汎用 markdown エディタ（レンダリングは読み取り専用、ソースは改変しない）
+- ソースコードの git / PR レビューの代替
+
+---
+
+## 2. 制約
+
+| 制約                                                                                | 影響                                                                                                          |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| ブラウザのみ、バックエンドなし                                                      | 状態はすべてブラウザストレージかローカルファイル                                                              |
+| エンドユーザーには単一 HTML ファイルとして配布                                      | CSS / JS / npm 依存（`marked`）をすべて Vite が bundle・inline。CDN 参照なしで完全オフライン動作              |
+| `file://` と各種 `https://` の両方で動作                                            | ストレージ層が透過的にフォールバック                                                                          |
+| LLM がコンテンツ事前読み込みで起動できること                                        | 複数の注入経路（埋め込み・URL ハッシュ・ファイル監視）。URL ハッシュは Base64URL を推奨                       |
+| フィードバックは機械可読                                                            | 位置情報を持つ安定参照を含む JSON 出力                                                                        |
+| レビュー対象 markdown は信頼済みとは限らない                                        | markdown 内の raw HTML は実行せず、文字として escape 表示する                                                 |
+| 開発時のみ Vite+ (vp) ツールチェーンを使用（`vite-plugin-singlefile` で 1 HTML 化） | TypeScript + 外部 CSS で開発、`vp build` で `dist/review.html` を再生成。配布時は JS / CSS とも inline される |
+
+---
+
+## 3. ユーザーフロー
+
+markdown をページに入れる方法が 4 つ、フィードバックを取り出す方法が 3 つあり、自由に組み合わせ可能。
+
+### 入力
+
+1. **ファイル選択** — `Open file` ボタンでローカルファイルを選択
+2. **埋め込み** — 配布者が HTML 内の `<script id="embedded-md" type="text/markdown">` ブロックに markdown を直接記述してから共有
+3. **URL ハッシュ** — `#md=...` に Base64URL エンコードした markdown を乗せてリンク共有
+4. **ワークスペース監視** — ローカルディレクトリの `review.md` をポーリング（Chromium 系のみ）
+
+### 出力
+
+1. **Copy as JSON** — クリップボードへコピー、チャットへの貼り付け用（`Comments ▾` メニュー内）
+2. **Export as JSON** — ファイルダウンロード、チャット添付やアーカイブ用（`Comments ▾` メニュー内）
+3. **Submit review** — 監視中のワークスペースに `feedback.json` を書き込む（プライマリボタン、Watch folder 接続中のみ表示）
+
+### 標準ループ（ワークスペースモード）
+
+```
+┌─────────────┐   review.md    ┌──────────────┐
+│ エージェント ├───────────────►│  ブラウザ    │
+│  (LLM)      │                │ (mdxg-redline)│
+│             │◄───────────────┤              │
+└─────────────┘  feedback.json └──────────────┘
+       ▲                              │
+       └─── 共有ワークスペース ───────┘
+```
+
+---
+
+## 4. アーキテクチャ
+
+3 層の関心事を持つ単一 HTML ドキュメント（ランタイム）。ビルド側の構成は §14 を参照。
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│  プレゼンテーション層 (CSS + DOM)                              │
+│    - GitHub Primer 風 chrome (header / sidebar / toolbar)      │
+│    - DADS (Digital Agency Design System) テーマの本文プレビュー │
+│    - 本文とサイドバーは独立スクロール                         │
+│    - 選択時に出現する floater (＋ Comment)                     │
+│    - コメント入力モーダル / Comments アクションメニュー        │
+├───────────────────────────────────────────────────────────────┤
+│  ドメインロジック (TypeScript → Vite + Rolldown で JS bundle、 │
+│   CSS は src/review.css を Vite が CSS bundle 化)              │
+│    - markdown レンダリング (marked、raw HTML は escape)         │
+│    - コメントアンカリング (block id + テキストオフセット)      │
+│    - 選択範囲 → Range → オフセット変換                         │
+│    - 再描画後の <mark> 再適用                                  │
+│    - 固定 duration smooth scroll (距離非依存)                  │
+├───────────────────────────────────────────────────────────────┤
+│  永続化層                                                      │
+│    - Store (IndexedDB ベース)                                  │
+│    - Workspace (File System Access API)                       │
+└───────────────────────────────────────────────────────────────┘
+```
+
+ランタイム外部依存：**なし**。配布物は CDN 参照を持たず、ネットワーク到達性ゼロで動作する。
+
+bundle される npm 依存（ビルド時に `<script>` として inline）：
+
+- **marked**（markdown → HTML）
+
+スタイリングは `src/review.css` に集約し、レイアウト用の意味的クラスとコンポーネントクラスを自前で定義する。フォントは OS のシステムフォント（`-apple-system, BlinkMacSystemFont, 'Segoe UI', ui-monospace, …`）を参照し、Web フォントは使用しない。
+
+開発時依存（エンドユーザーには無関係）：
+
+- **TypeScript**（ソース言語）
+- **Vite+ (vp)**（Vite 8 + Rolldown + vitest を統合した CLI ツールチェーン、グローバルに `vp` コマンドを提供）
+- **vite-plugin-singlefile**（bundle 結果を単一 HTML に inline するプラグイン）
+- **vitest**（in-source testing）
+
+---
+
+## 5. データモデル
+
+### コメント
+
+```ts
+{
+  id: string // 8 文字のランダム ID
+  blockId: string // 例: "b003" — レンダリング時に付与
+  quote: string // 選択されたテキスト原文（人間の参照用）
+  comment: string // ユーザーのコメント
+  startOffset: number // ブロックのフラットテキスト内の開始位置
+  endOffset: number // ブロックのフラットテキスト内の終了位置
+  created: string // ISO 8601
+}
+```
+
+### ドキュメント状態（メモリ内）
+
+```ts
+{
+  docHash:           string             // SHA-256(markdown) の先頭 8 バイト（16 桁 hex）
+  docName:           string             // ファイル名または "review.md"
+  markdown:          string             // 原文
+  comments:          Comment[]
+  blockOriginalHTML: Map<blockId, string>  // 再レンダリング用の元 HTML
+}
+```
+
+### 永続化レコード（ドキュメントごと）
+
+ストレージキー `doc:<docHash>` の下に保存：
+
+```ts
+{
+  name:     string
+  markdown: string
+  comments: Comment[]
+  updated:  string  // ISO 8601
+}
+```
+
+### エクスポートされるフィードバック（JSON）
+
+```jsonc
+{
+  "document": "spec.md",
+  "docHash": "a1b2c3d4e5f6a7b8", // SHA-256(markdown) の先頭 8 バイト hex（16 桁）
+  "exportedAt": "2026-05-15T10:30:00.000Z",
+  "comments": [
+    {
+      "id": "a1b2c3d4",
+      "quote": "選択された箇所",
+      "comment": "ここは X を前提にしているが定義がない",
+      "created": "2026-05-15T10:28:11.000Z",
+      "headingPath": ["## 3. 入力経路と出力経路", "### 3.2 ファイル選択"],
+      "sourceLine": 42,
+    },
+  ],
+}
+```
+
+LLM が解釈できない UI 内部 anchor（`blockId` / `startOffset` / `endOffset`）は export に含めず、markdown ソース上で位置を特定できる形に揃える。
+
+- `headingPath` … コメントが属するブロックの祖先見出しを浅い順に並べた配列。各要素は raw markdown 形式（`## ` プレフィックス込み）。見出しがない、または最初の見出しより前のブロックの場合は `[]`
+- `sourceLine` … コメントが属するトップレベルブロックの markdown ソース上の開始行（1-origin）
+- `docHash` … レビュー時点の本文識別子。`shasum -a 256 review.md | cut -c1-16` で再計算可能。並行編集を検出した場合は行番号を信頼せず、`quote` を grep して位置特定にフォールバックする
+
+---
+
+## 6. コメントのアンカリング
+
+採用方式は **ブロック ID + そのブロックのフラット化テキスト上のオフセット**。再レンダリングや軽微な装飾変更で壊れない位置参照を、ソースを汚さず細粒度に保つ。
+
+代替方式との比較：
+
+| 方式                                 | 長所                       | 短所                                           |
+| ------------------------------------ | -------------------------- | ---------------------------------------------- |
+| ブロック単位コメント                 | 実装が容易                 | 粒度が粗く、特定のフレーズを指せない           |
+| XPath / CSS セレクタ                 | 標準ベース                 | 再レンダリングで壊れやすい、ソース編集にも弱い |
+| **ブロック ID + テキストオフセット** | 安定、細粒度、再適用に強い | 原文の編集には追随できない                     |
+
+### 仕組み
+
+1. `marked.parse` の後、ドキュメントコンテナの直下の各子要素に連番の `data-block-id`（`b001`, `b002`, …）を付与
+2. 各ブロックの `<mark>` ラッパなしの元 `innerHTML` を `state.blockOriginalHTML` にキャッシュ
+3. ユーザーが範囲選択すると、次の形に正規化：
+   - `blockId`：`data-block-id` を持つ最も近い祖先
+   - `startOffset` / `endOffset`：ブロックのフラットテキスト内の位置（テキストノード平坦化と Range boundary で算出）
+4. ハイライトを描画するときは、各ブロックを元 HTML にリセットし、コメントを **startOffset の降順** で適用（後方を先に変更することで前方のオフセットを保持）
+5. 各コメントは対象範囲を包む `<mark class="cmt" data-comment-id="…">` になる
+
+### 複数テキストノードにまたがる範囲
+
+インライン書式の境界をまたぐ選択（例えば `Lorem **ipsum** dolor` を「Lorem ipsum dolor」として選択）は複数のテキストノードに分かれる。範囲が単一テキストノード内なら `Range.surroundContents()`、複数ノードにまたがる場合は `extractContents` + `insertNode` でフォールバックする。ブロック境界をまたぐ選択は無視される（フローター自体が表示されない）。
+
+### 原文編集で壊れる理由（許容している）
+
+原文 markdown が編集されると、ブロック ID とオフセットが合わなくなる。これは許容する：
+
+- ツールは原文に対して読み取り専用
+- エージェントループは各ラウンドで原文を丸ごと差し替えるので、前バージョンのコメントは設計上破棄されるべき（`docHash` が変われば新しいコメントセットになる）
+
+---
+
+## 7. 永続化レイヤー
+
+2 つの永続化メカニズムを優先順で使い分け：
+
+### a. IndexedDB
+
+`Store` 抽象がブラウザ標準の IndexedDB（`margin-notes` DB、`kv` ストア）を使う。`doc:<hash>` レコードと `workspace-handle` の両方を同じキースペースに格納する。`file://` でも各種 `https://` でも同じように動作する。
+
+### b. File System Access API（ワークスペースモード）
+
+ファイル監視プロトコル用。`showDirectoryPicker()` が返す `FileSystemDirectoryHandle` 自体を IndexedDB に保存（JSON と違い、ハンドルは IDB に直接シリアライズ可能）。再読み込み時：
+
+1. ハンドルを取得
+2. `handle.queryPermission({ mode: 'readwrite' })` で権限を確認
+3. `granted` → ポーリングを静かに再開
+4. `prompt` → ツールバーに `Reconnect · フォルダ名` と表示、ユーザー操作を待って再要求
+
+---
+
+## 8. ワークスペースプロトコル
+
+ワークスペースモード時の、ブラウザとエージェント間の契約：
+
+| ファイル                    | 方向                | 書き手              | 読み手                           |
+| --------------------------- | ------------------- | ------------------- | -------------------------------- |
+| `<workspace>/review.md`     | エージェント → 人間 | エージェント        | ブラウザ（2 秒ごとにポーリング） |
+| `<workspace>/feedback.json` | 人間 → エージェント | ブラウザ（Send 時） | エージェント                     |
+
+ワークスペースディレクトリの場所はユーザーが任意に決めてよい。例えば `~/reviews/` でも `./tmp/` でも構わない。
+
+### ライフサイクル
+
+1. ユーザーが `Watch folder` でワークスペースディレクトリを選択（一度きりの操作、永続化される）
+2. ブラウザが `review.md` の 2 秒間隔ポーリングを開始
+3. エージェントが `review.md` を書き込む
+4. ブラウザが SHA-256 ハッシュの変化を検知し、新しいドキュメントをレンダリング。**古いコメントは画面から消える**（前の `docHash` の下に保存はされ続けるが、画面には出ない）
+5. ユーザーがインラインコメントを追加
+6. ユーザーが `Submit review` をクリック → `feedback.json` が書き込まれる
+7. エージェントが `feedback.json` を読み、処理し、必要に応じて改訂版 `review.md` を書く → ループ継続
+
+### 安全装置
+
+- **未送信作業の保護**：現在のバージョンにコメントが付いている状態で `review.md` が更新されると、確認ダイアログで読み込むか確認。同じ内容 hash を一度拒否した場合は再確認せず、別 hash になった時だけ再確認
+- **初回ロードはスキップ**：初回の `wsLastHash === null` ではこのチェックを通過
+- **権限の失効**：ポーリングで `NotAllowedError` が出た場合、監視ループを停止し、UI を「Reconnect」状態へ戻す
+- **ファイル未存在**：`NotFoundError` は静かに無視、ループは継続
+
+### 設定値
+
+定数は一箇所にまとまっている：
+
+```ts
+const WS = {
+  INPUT_FILE: 'review.md',
+  OUTPUT_FILE: 'feedback.json',
+  POLL_MS: 2000,
+}
+```
+
+---
+
+## 9. 起動シーケンス
+
+ページロード時に以下の優先順チェーンを実行。ワークスペース復元は先に試すが、`review.md` の読み込みはポーリングで遅延することがあるため、それだけでは後続の入力経路を止めない。埋め込み・URL hash・既存 state・直近セッション復元のいずれかで本文が確定した時点で終了する。
+
+```
+1. IndexedDB から過去のワークスペースハンドルをサイレント復元
+   └─ 権限が残っていればポーリング開始
+      └─ review.md が存在すれば最初のポーリングでロード
+
+2. 埋め込み markdown (<script id="embedded-md">)
+   └─ ロード。<script id="embedded-feedback"> があれば併せて適用
+
+3. URL ハッシュ (#md=<base64url>&name=<optional>)
+   └─ デコードしてロード
+
+4. ステップ 1 でワークスペースが何かロード済みならここで終了
+
+5. Store から最終更新のドキュメントを復元
+   └─ 「タブを閉じて再度開く」用途
+
+6. 空状態を表示してファイル選択を待つ
+```
+
+---
+
+## 10. ブラウザ互換性
+
+| 機能                                                | 必須                     | 対応ブラウザ                                   |
+| --------------------------------------------------- | ------------------------ | ---------------------------------------------- |
+| 基本レンダリング、コメント、コピー / エクスポート   | 必須                     | すべてのモダンブラウザ                         |
+| IndexedDB                                           | 推奨                     | すべてのモダンブラウザ                         |
+| `navigator.clipboard.writeText`                     | 推奨                     | すべてのモダンブラウザ（HTTPS または file://） |
+| `showDirectoryPicker` + `FileSystemDirectoryHandle` | ワークスペースモードのみ | Chromium 系（Chrome, Edge, Arc, Brave, Opera） |
+
+Safari と Firefox はファイル選択・埋め込み・URL ハッシュ・コピー / エクスポートのフローは使えるが、**ワークスペースモードは利用不可**。
+
+---
+
+## 11. セキュリティとプライバシー
+
+- ネットワーク通信は発生しない。すべての依存（`marked`、スタイル、フォント指定）が単一 HTML 内に inline / システムフォント参照されており、起動後の外部リクエストはゼロ
+- markdown 内の raw HTML は renderer 層で escape し、`<script>` や event handler を DOM として実行しない。フェンス付きコードブロック内の HTML 例は通常どおりコードとして表示する
+- embedded feedback の `comments[]` は型ガードを通し、不正なコメント要素は除外する
+- markdown の内容は、ユーザーが明示的に `Export as JSON` / `Copy as JSON` / `Submit review` のいずれかを押さない限りブラウザ外に出ない
+- ワークスペース権限は選択したディレクトリにスコープされる。ページが任意のディスクの場所にアクセスすることはない
+- IndexedDB はオリジン単位。別のパスやオリジンで開けば新しい状態になる
+- ビルドパイプラインは開発者ローカルでのみ動作。配布物 `dist/review.html` 自体はビルド成果物としてリポジトリにコミットされており、エンドユーザー環境にはツールチェーンを持ち込まない
+
+---
+
+## 12. 既知の制約
+
+| 制約                                                  | 備考                                                |
+| ----------------------------------------------------- | --------------------------------------------------- |
+| 原文編集でコメントが残らない                          | 仕様。新しい `docHash` は新しいセットとして扱う     |
+| ブロックをまたぐ選択は不可                            | 選択フローター自体が表示されない                    |
+| 2 秒のポーリング                                      | ブラウザにファイル監視 API がないためのトレードオフ |
+| ディレクトリ削除で監視ハンドルが失効                  | 再度フォルダ選択が必要                              |
+| 埋め込み markdown 内の `</script>` がタグを終了させる | `<\/script>` とエスケープする必要あり               |
+| 同時に 1 ワークスペースのみ                           | 切り替えるには再接続                                |
+| raw HTML はレンダリングされない                       | セキュリティ優先。HTML 例はコードブロックに書く     |
+
+---
+
+## 13. MDXG 準拠ロードマップ・今後の拡張
+
+### MDXG 準拠
+
+[Markdown Experience Guidelines (MDXG)](https://github.com/vercel-labs/mdxg) のレビュワー観点機能を段階的に取り込む。現状の準拠状況：
+
+| MDXG セクション          | 必須レベル    | 現状                                                |
+| ------------------------ | ------------- | --------------------------------------------------- |
+| §1 Theming               | MUST (Viewer) | 部分（DADS テーマ。host theme 追従は未実装）        |
+| §2 Code Block Rendering  | MUST (Viewer) | 部分（コピー button・シンタックスハイライト未実装） |
+| §3 Task Lists            | MUST (Viewer) | marked デフォルト                                   |
+| §4 Images / §5 Tables    | MUST (Viewer) | marked デフォルト                                   |
+| §6 Virtual Pages         | MUST (Viewer) | 未対応（コメントモデルとの統合設計が必要）          |
+| §7 Page Navigation       | MUST (Viewer) | 未対応                                              |
+| §8 Page Outline          | MUST (Viewer) | 未対応                                              |
+| §9 Sequential Navigation | MUST (Viewer) | 未対応                                              |
+| §10 Search               | MUST (Viewer) | 未対応                                              |
+| §13 Keyboard Navigation  | MUST (Viewer) | 部分                                                |
+
+優先順序：
+
+1. **§2 コピー button + シンタックスハイライト** — 既存 renderer の差し替えで対応可能
+2. **§1 host theme adaptation** — `prefers-color-scheme` 対応とトークン整理
+3. **§13 キーボードナビゲーション補強**
+4. **§6 / §7 / §8 / §9 Virtual Pages 系** — UI モデルの根本見直し。インラインコメントとの統合設計が前提
+5. **§10 Search** — Virtual Pages 統合後
+
+### その他の拡張候補
+
+- **型境界の共有強化**：`feedback.ts` の外部 JSON ガードと各 UI モジュールのローカル DOM 型を保ちつつ、将来は共通型の重複を減らす
+- **複数ブロック選択への対応**：ブロック境界をまたぐコメント（ブロックごとに切り出して各部分を包む）
+- **コメントのスレッド化**：返信、解決済み状態
+- **注釈付き markdown エクスポート**：JSON より散文を好むエージェント向けに、本文中に `> 💬` 形式で埋め込む代替出力
+- **差分ビュー**：連続する `review.md` バージョン間の変更を表示
+- **UI からファイル名を設定**：コード定数ではなく
+- **ネイティブなファイル変更通知**：オプションの CLI コンパニオン（30 行程度の Node WebSocket サーバーなど）で重ワークフロー時のサブ秒応答
+- **`npx` でブラウザ自動起動 (`file://` 直接オープン方式)**：起動 UX を `npx mdxg-redline` 一発に短縮する。バックエンド不要・依存最小の構成として `file://` 直接オープンを採用する。
+  - `package.json` に `bin: { "mdxg-redline": "./dist/cli/index.js" }` を追加し、`files` に `dist/cli/` を含める
+  - CLI エントリ `dist/cli/index.js` は shebang `#!/usr/bin/env node` で Node 実行、引数パースは `commander` 等の軽量 CLI フレームワーク（依存を増やしたくなければ `process.argv` 直読みでも可）
+  - ブラウザ起動は npm の [`open`](https://github.com/sindresorhus/open) パッケージで `open('file:///<abs>/dist/review.html')` のみ。macOS は `open`、Linux は `xdg-open`、Windows は `start` に内部でディスパッチされる
+  - `--no-open` フラグで起動抑止（CI / 既存タブ流用）、`--workspace <dir>` で既存ディレクトリを Watch 対象として案内するメッセージ表示などの拡張余地あり
+  - npm publish 時の追加成果物は `dist/cli/index.js` の数十行と `open` への依存のみ。配布物 `dist/review.html` 側には影響しない
+
+---
+
+## 14. ビルドパイプライン
+
+エンドユーザーには単一 HTML を配布するが、開発者は TypeScript で書く。両者の橋渡しが [Vite+ (vp)](https://viteplus.dev/) ベースのビルドパイプライン。vp は Vite 8 + Rolldown + vitest を統合し、`vp build` / `vp dev` / `vp test` の単一 CLI として提供する。
+
+### 全体像
+
+```
+[ 開発者ローカル ]                                          [ 配布 ]
+
+src/*.ts (TypeScript) ───────┐
+                              │
+src/review.css (Stylesheet) ──┤
+                              │
+src/review.html (Vite エントリ) ─┼─►  vp build  ─►  dist/review.html
+                              │    (= vite build       (単一 HTML、
+vite.config.ts ───────────────┘    + Rolldown          CSS/JS inline)
+                                   + viteSingleFile)
+```
+
+### ビルドの責務分担
+
+| レイヤー                    | ツール                 | 役割                                                                                                                                                                                         |
+| --------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TypeScript 型チェック・変換 | `tsc`（vite 経由）     | TS → JS 変換、型エラー検出                                                                                                                                                                   |
+| バンドル                    | Rolldown（Vite 内蔵）  | `src/review.ts` を入口に `boot` / `workspace` / `markdown` / `feedback` / `selection` / `sidebar` / `toolbar` / `review-export` 等のグラフ + npm 依存（`marked`）を 1 つの JS チャンクに統合 |
+| HTML 処理                   | Vite                   | `<script type="module" src="./review.ts">` および `<link rel="stylesheet" href="./review.css">`（src 内相対）を bundle 結果への参照に書き換え                                                |
+| CSS bundle                  | Vite                   | `src/review.css` を CSS チャンクに統合                                                                                                                                                       |
+| inline 化                   | vite-plugin-singlefile | bundle された JS チャンク・CSS を `<script>` / `<style>` として HTML 内に inline                                                                                                             |
+
+ランタイムは Vite / Rolldown を一切知らない。出力 HTML は通常の `<script>` を含むだけ。
+
+### コマンド
+
+devcontainer または `./local_setup.sh` が `npm install` と `vp` のインストールを行う。手元で個別に揃える場合は [vp 公式手順](https://viteplus.dev/guide/#install-vp) を参照。
+
+```bash
+# 1 回ビルド（commit 前に必ず叩く）
+npm run build       # = vp build
+
+# ファイル変更で自動再ビルド
+npm run build:watch # = vp build --watch
+
+# HMR 付き dev サーバー（編集体験を上げたい時のみ）
+npm run dev         # = vp dev
+
+# テスト実行
+npm test            # = vp test
+```
+
+`npm run build` 後に `dist/review.html` が再生成される。ソースと生成物の同期は人手 + 任意で pre-commit hook で担保する。
+
+### テスト
+
+主要な TypeScript ソースは in-source testing を使い、`vite.config.ts` の `test.includeSource` に登録する。`npm test`（= `vp test`）で実行される。
+
+現在の主な対象：
+
+- `review.ts`：state 依存の小さな helper とコメント生成
+- `boot.ts`：起動 helper、Base64URL 復号、URL hash 読み込み
+- `feedback.ts`：外部 JSON / pending selection の型ガード
+- `markdown.ts`：raw HTML escape とコードブロック維持
+- `review-export.ts`：feedback JSON payload / ファイル名 / 件数表示
+- `selection.ts`：保存 offset とテキストセグメントの対応
+- `sidebar.ts`：コメントカード HTML と DOM 順ソート
+- `toolbar.ts`：ファイル選択 helper
+- `workspace.ts`：reload 確認、polling 多重防止、`feedback.json` 書き出し
+- `scroll.ts`：固定 duration scroll の easing
+
+### `vite-plugin-singlefile` の挙動
+
+- emit された JS バンドル（自前コード + `marked`）と CSS は `<script>` / `<style>` として HTML 内に inline
+- HTML 内に直接書かれた `<script id="embedded-md" type="text/markdown">` や `<script id="embedded-feedback" type="application/json">` は **触られない**（`type` がモジュールではないため Vite の処理対象外）
+- `src/review.html` には外部 CDN への `<link>` / `<script src="https://...">` を含まない。`<head>` の `<link rel="stylesheet" href="./review.css">` も bundle 結果に inline される
+- 配布物 `dist/review.html` は **起動に必要なものをすべて内包し、外部依存ゼロ** で動作する
+
+### 開発者の責務
+
+1. ソースは `src/` 配下（`*.ts` / `review.css` / `review.html`）のみを編集する
+2. ビルド出力（`dist/review.html`）は **手で編集しない**（次の `vp build` で上書きされる）
+3. commit 前に `vp build` を実行し、ソースと出力の両方をコミットする
+4. 設計変更を伴う場合は本ドキュメント（§4 / §14 / §15）も更新する
+
+### エンドユーザーの責務
+
+なし。`dist/review.html` をブラウザで開くだけ。
+
+---
+
+## 15. ファイル構成
+
+ソース（`src/`）と生成物（`dist/`）を明確に分離している。`src/` 配下を編集し、`npm run build` で `dist/review.html` を再生成する。
+
+```
+mdxg-redline/
+├── README.md                エンドユーザー向けの概要・インストール・使い方
+├── LICENSE                  MIT
+├── package.json             name / deps / scripts / files
+├── tsconfig.json            TypeScript 設定 (DOM lib 追加)
+├── vite.config.ts           Vite 設定 (root: 'src', outDir: '../dist', vite-plugin-singlefile, test.includeSource)
+├── .gitignore
+├── src/                     ─── ソース（編集対象） ──────────────────────
+│   ├── review.html          Vite エントリ HTML
+│   │   ├── <head>
+│   │   │   └── <link rel="stylesheet" href="./review.css">  ← Vite が bundle して inline
+│   │   └── <body>
+│   │       ├── <script id="embedded-md">         注入ポイント（markdown）
+│   │       ├── <script id="embedded-feedback">   注入ポイント（JSON）
+│   │       ├── <header>                          ツールバー + 状態表示
+│   │       ├── <main>
+│   │       │   ├── #doc-wrap     空状態
+│   │       │   ├── #doc          レンダリング済み markdown
+│   │       │   └── aside.sidebar コメント一覧 (Conversation)
+│   │       ├── #floater                          「＋ Comment」ボタン
+│   │       ├── #modal                            コメント入力ダイアログ
+│   │       ├── #toast                            一時的なステータス通知
+│   │       └── <script type="module" src="./review.ts">  ← Vite が bundle して inline
+│   ├── review.css           スタイル定義
+│   ├── review.ts            DOM エントリ、state、文書描画、モーダル、各モジュール配線
+│   ├── markdown.ts          marked renderer。raw HTML を escape し、コードブロックは維持
+│   ├── feedback.ts          feedback / embedded / pending selection の型ガード
+│   ├── selection.ts         選択範囲 → blockId / text offsets / DOM Range
+│   ├── sidebar.ts           コメント一覧、カード描画、mark / card のアクティブ状態
+│   ├── toolbar.ts           Open / Export / Copy / Clear の toolbar 配線
+│   ├── review-export.ts     feedback JSON payload、件数表示、export ファイル名
+│   ├── workspace.ts         File System Access API 連携、ポーリング、feedback.json 書き出し
+│   ├── boot.ts              起動順序（workspace / embedded / URL hash / restore）
+│   ├── storage.ts           Store / IndexedDB 抽象
+│   ├── dialog.ts            確認・通知モーダル
+│   ├── scroll.ts            固定 duration smooth scroll
+│   └── types.ts             モジュール間で共有する JSON / コメント型
+├── dist/                    ─── 生成物（commit 対象、編集禁止） ──────────
+│   └── review.html          ★ `npm run build` の出力。JS / CSS / npm 依存（marked）
+│                             がすべて inline。外部依存ゼロのエンドユーザー配布物
+└── docs/
+    └── DESIGN.md            本ドキュメント
+```
+
+ソース（`src/review.html` + `src/review.css` + `src/*.ts` + `vite.config.ts`）と出力（`dist/review.html`）はいずれも commit 対象。生成物を commit するのは、clone 直後の利用者が `vp build` を実行せずにそのままブラウザで開けるようにし、npm publish 時にも `dist/` が必ず含まれるようにするため。
+
+### 編集ルール
+
+- 編集対象は `src/` 配下のみ（`review.html` / `review.css` / `*.ts`）。`dist/review.html` は `vp build` で都度上書きされるため手で直さない
+- ソースの編集後は `vp build` でビルドし、両ファイルを commit する

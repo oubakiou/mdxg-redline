@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Markdown Review — Inline Comments for Agents</title>
+    <link rel="stylesheet" href="./review.css" />
+  </head>
+  <body>
+    <!-- ============================================================================
+     EMBEDDED CONTENT (LLM injection point)
+     ----------------------------------------------------------------------------
+     To launch this HTML with markdown pre-loaded, the LLM (or you) just edits
+     the <script id="embedded-md"> block below. Leave it empty to use the file
+     picker as normal.
+
+     - Set the data-name attribute to give the document a name.
+     - Paste raw markdown between the script tags. No escaping needed EXCEPT
+       any literal "</script>" inside the markdown must be written as
+       "<\/script>".
+     - Optionally pre-populate comments via <script id="embedded-feedback">
+       (paste the same JSON shape that Export comments produces).
+     ============================================================================ -->
+    <script id="embedded-md" type="text/markdown" data-name="document.md"></script>
+    <script id="embedded-feedback" type="application/json"></script>
+
+    <header class="app-header">
+      <div class="app-brand">
+        <div class="app-brand-title">Redline</div>
+        <div class="label">/ markdown review</div>
+      </div>
+      <div class="toolbar-actions">
+        <span id="status" class="label toolbar-status">No file</span>
+        <span
+          id="ws-status"
+          class="label toolbar-status toolbar-status-accent"
+          style="display: none"
+        ></span>
+        <button class="btn" id="btn-load">Open file</button>
+        <button class="btn" id="btn-watch">Watch folder</button>
+        <button class="btn btn-primary" id="btn-send" style="display: none">Submit review</button>
+      </div>
+    </header>
+
+    <input type="file" id="file-md" accept=".md,.markdown,text/markdown,text/plain" hidden />
+
+    <main class="layout">
+      <section class="doc-pane">
+        <div id="doc-wrap">
+          <div class="empty-state">
+            <div class="empty-state-title">No file loaded</div>
+            <div class="label empty-state-hint">Open a markdown file to start reviewing</div>
+            <button class="btn btn-primary" onclick="document.getElementById('btn-load').click()">
+              Choose file
+            </button>
+          </div>
+        </div>
+        <div id="doc"></div>
+      </section>
+
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-title">Conversation</div>
+          <div class="menu-wrap">
+            <button
+              class="btn btn-ghost"
+              id="btn-comments-menu"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              <span id="cmt-count">0</span> comments<span class="menu-caret">▾</span>
+            </button>
+            <div class="menu" id="menu-comments" role="menu">
+              <button class="menu-item" id="btn-copy" role="menuitem">Copy as JSON</button>
+              <button class="menu-item" id="btn-export" role="menuitem">Export as JSON</button>
+              <div class="menu-divider"></div>
+              <button class="menu-item menu-item-danger" id="btn-clear" role="menuitem">
+                Discard all
+              </button>
+            </div>
+          </div>
+        </div>
+        <div id="cmt-list">
+          <div class="label sidebar-hint">Select text in the file to add a review comment.</div>
+        </div>
+      </aside>
+    </main>
+
+    <div id="floater">＋ Comment</div>
+
+    <div class="modal-backdrop" id="modal">
+      <div class="modal">
+        <div class="label modal-label">Selected text</div>
+        <div id="modal-quote" class="cmt-quote modal-quote"></div>
+        <div class="label modal-label">Add a review comment</div>
+        <textarea id="modal-input" rows="4" placeholder="Leave a comment"></textarea>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
+          <button class="btn btn-primary" id="modal-save">Comment</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script type="module" src="./review.ts"></script>
+  </body>
+</html>

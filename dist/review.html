@@ -1,0 +1,4316 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Markdown Review — Inline Comments for Agents</title>
+    <script type="module" crossorigin>
+      ;(function () {
+        let e = document.createElement(`link`).relList
+        if (e && e.supports && e.supports(`modulepreload`)) return
+        for (let e of document.querySelectorAll(`link[rel="modulepreload"]`)) n(e)
+        new MutationObserver((e) => {
+          for (let t of e)
+            if (t.type === `childList`)
+              for (let e of t.addedNodes) e.tagName === `LINK` && e.rel === `modulepreload` && n(e)
+        }).observe(document, { childList: !0, subtree: !0 })
+        function t(e) {
+          let t = {}
+          return (
+            e.integrity && (t.integrity = e.integrity),
+            e.referrerPolicy && (t.referrerPolicy = e.referrerPolicy),
+            e.crossOrigin === `use-credentials`
+              ? (t.credentials = `include`)
+              : e.crossOrigin === `anonymous`
+                ? (t.credentials = `omit`)
+                : (t.credentials = `same-origin`),
+            t
+          )
+        }
+        function n(e) {
+          if (e.ep) return
+          e.ep = !0
+          let n = t(e)
+          fetch(e.href, n)
+        }
+      })()
+      function e() {
+        return {
+          async: !1,
+          breaks: !1,
+          extensions: null,
+          gfm: !0,
+          hooks: null,
+          pedantic: !1,
+          renderer: null,
+          silent: !1,
+          tokenizer: null,
+          walkTokens: null,
+        }
+      }
+      var t = e()
+      function n(e) {
+        t = e
+      }
+      var r = /[&<>"']/,
+        i = new RegExp(r.source, `g`),
+        a = /[<>"']|&(?!(#\d{1,7}|#[Xx][a-fA-F0-9]{1,6}|\w+);)/,
+        o = new RegExp(a.source, `g`),
+        s = { '&': `&amp;`, '<': `&lt;`, '>': `&gt;`, '"': `&quot;`, "'": `&#39;` },
+        c = (e) => s[e]
+      function l(e, t) {
+        if (t) {
+          if (r.test(e)) return e.replace(i, c)
+        } else if (a.test(e)) return e.replace(o, c)
+        return e
+      }
+      var u = /&(#(?:\d+)|(?:#x[0-9A-Fa-f]+)|(?:\w+));?/gi
+      function d(e) {
+        return e.replace(
+          u,
+          (e, t) => (
+            (t = t.toLowerCase()),
+            t === `colon`
+              ? `:`
+              : t.charAt(0) === `#`
+                ? t.charAt(1) === `x`
+                  ? String.fromCharCode(parseInt(t.substring(2), 16))
+                  : String.fromCharCode(+t.substring(1))
+                : ``
+          )
+        )
+      }
+      var f = /(^|[^\[])\^/g
+      function p(e, t) {
+        let n = typeof e == `string` ? e : e.source
+        t ||= ``
+        let r = {
+          replace: (e, t) => {
+            let i = typeof t == `string` ? t : t.source
+            return ((i = i.replace(f, `$1`)), (n = n.replace(e, i)), r)
+          },
+          getRegex: () => new RegExp(n, t),
+        }
+        return r
+      }
+      function ee(e) {
+        try {
+          e = encodeURI(e).replace(/%25/g, `%`)
+        } catch {
+          return null
+        }
+        return e
+      }
+      var m = { exec: () => null }
+      function te(e, t) {
+        let n = e
+            .replace(/\|/g, (e, t, n) => {
+              let r = !1,
+                i = t
+              for (; --i >= 0 && n[i] === `\\`; ) r = !r
+              return r ? `|` : ` |`
+            })
+            .split(/ \|/),
+          r = 0
+        if ((n[0].trim() || n.shift(), n.length > 0 && !n[n.length - 1].trim() && n.pop(), t))
+          if (n.length > t) n.splice(t)
+          else for (; n.length < t; ) n.push(``)
+        for (; r < n.length; r++) n[r] = n[r].trim().replace(/\\\|/g, `|`)
+        return n
+      }
+      function ne(e, t, n) {
+        let r = e.length
+        if (r === 0) return ``
+        let i = 0
+        for (; i < r; ) {
+          let a = e.charAt(r - i - 1)
+          if (a === t && !n) i++
+          else if (a !== t && n) i++
+          else break
+        }
+        return e.slice(0, r - i)
+      }
+      function re(e, t) {
+        if (e.indexOf(t[1]) === -1) return -1
+        let n = 0
+        for (let r = 0; r < e.length; r++)
+          if (e[r] === `\\`) r++
+          else if (e[r] === t[0]) n++
+          else if (e[r] === t[1] && (n--, n < 0)) return r
+        return -1
+      }
+      function ie(e, t, n, r) {
+        let i = t.href,
+          a = t.title ? l(t.title) : null,
+          o = e[1].replace(/\\([\[\]])/g, `$1`)
+        if (e[0].charAt(0) !== `!`) {
+          r.state.inLink = !0
+          let e = { type: `link`, raw: n, href: i, title: a, text: o, tokens: r.inlineTokens(o) }
+          return ((r.state.inLink = !1), e)
+        }
+        return { type: `image`, raw: n, href: i, title: a, text: l(o) }
+      }
+      function ae(e, t) {
+        let n = e.match(/^(\s+)(?:```)/)
+        if (n === null) return t
+        let r = n[1]
+        return t
+          .split(
+            `
+`
+          )
+          .map((e) => {
+            let t = e.match(/^\s+/)
+            if (t === null) return e
+            let [n] = t
+            return n.length >= r.length ? e.slice(r.length) : e
+          }).join(`
+`)
+      }
+      var h = class {
+          options
+          rules
+          lexer
+          constructor(e) {
+            this.options = e || t
+          }
+          space(e) {
+            let t = this.rules.block.newline.exec(e)
+            if (t && t[0].length > 0) return { type: `space`, raw: t[0] }
+          }
+          code(e) {
+            let t = this.rules.block.code.exec(e)
+            if (t) {
+              let e = t[0].replace(/^ {1,4}/gm, ``)
+              return {
+                type: `code`,
+                raw: t[0],
+                codeBlockStyle: `indented`,
+                text: this.options.pedantic
+                  ? e
+                  : ne(
+                      e,
+                      `
+`
+                    ),
+              }
+            }
+          }
+          fences(e) {
+            let t = this.rules.block.fences.exec(e)
+            if (t) {
+              let e = t[0],
+                n = ae(e, t[3] || ``)
+              return {
+                type: `code`,
+                raw: e,
+                lang: t[2] ? t[2].trim().replace(this.rules.inline.anyPunctuation, `$1`) : t[2],
+                text: n,
+              }
+            }
+          }
+          heading(e) {
+            let t = this.rules.block.heading.exec(e)
+            if (t) {
+              let e = t[2].trim()
+              if (/#$/.test(e)) {
+                let t = ne(e, `#`)
+                ;(this.options.pedantic || !t || / $/.test(t)) && (e = t.trim())
+              }
+              return {
+                type: `heading`,
+                raw: t[0],
+                depth: t[1].length,
+                text: e,
+                tokens: this.lexer.inline(e),
+              }
+            }
+          }
+          hr(e) {
+            let t = this.rules.block.hr.exec(e)
+            if (t) return { type: `hr`, raw: t[0] }
+          }
+          blockquote(e) {
+            let t = this.rules.block.blockquote.exec(e)
+            if (t) {
+              let e = t[0].replace(
+                /\n {0,3}((?:=+|-+) *)(?=\n|$)/g,
+                `
+    $1`
+              )
+              e = ne(
+                e.replace(/^ *>[ \t]?/gm, ``),
+                `
+`
+              )
+              let n = this.lexer.state.top
+              this.lexer.state.top = !0
+              let r = this.lexer.blockTokens(e)
+              return (
+                (this.lexer.state.top = n),
+                { type: `blockquote`, raw: t[0], tokens: r, text: e }
+              )
+            }
+          }
+          list(e) {
+            let t = this.rules.block.list.exec(e)
+            if (t) {
+              let n = t[1].trim(),
+                r = n.length > 1,
+                i = {
+                  type: `list`,
+                  raw: ``,
+                  ordered: r,
+                  start: r ? +n.slice(0, -1) : ``,
+                  loose: !1,
+                  items: [],
+                }
+              ;((n = r ? `\\d{1,9}\\${n.slice(-1)}` : `\\${n}`),
+                this.options.pedantic && (n = r ? n : `[*+-]`))
+              let a = RegExp(`^( {0,3}${n})((?:[\t ][^\\n]*)?(?:\\n|$))`),
+                o = ``,
+                s = ``,
+                c = !1
+              for (; e; ) {
+                let n = !1
+                if (!(t = a.exec(e)) || this.rules.block.hr.test(e)) break
+                ;((o = t[0]), (e = e.substring(o.length)))
+                let r = t[2]
+                    .split(
+                      `
+`,
+                      1
+                    )[0]
+                    .replace(/^\t+/, (e) => ` `.repeat(3 * e.length)),
+                  l = e.split(
+                    `
+`,
+                    1
+                  )[0],
+                  u = 0
+                this.options.pedantic
+                  ? ((u = 2), (s = r.trimStart()))
+                  : ((u = t[2].search(/[^ ]/)),
+                    (u = u > 4 ? 1 : u),
+                    (s = r.slice(u)),
+                    (u += t[1].length))
+                let d = !1
+                if (
+                  (!r &&
+                    /^ *$/.test(l) &&
+                    ((o +=
+                      l +
+                      `
+`),
+                    (e = e.substring(l.length + 1)),
+                    (n = !0)),
+                  !n)
+                ) {
+                  let t = RegExp(
+                      `^ {0,${Math.min(3, u - 1)}}(?:[*+-]|\\d{1,9}[.)])((?:[ \t][^\\n]*)?(?:\\n|$))`
+                    ),
+                    n = RegExp(
+                      `^ {0,${Math.min(3, u - 1)}}((?:- *){3,}|(?:_ *){3,}|(?:\\* *){3,})(?:\\n+|$)`
+                    ),
+                    i = RegExp(`^ {0,${Math.min(3, u - 1)}}(?:\`\`\`|~~~)`),
+                    a = RegExp(`^ {0,${Math.min(3, u - 1)}}#`)
+                  for (; e; ) {
+                    let c = e.split(
+                      `
+`,
+                      1
+                    )[0]
+                    if (
+                      ((l = c),
+                      this.options.pedantic && (l = l.replace(/^ {1,4}(?=( {4})*[^ ])/g, `  `)),
+                      i.test(l) || a.test(l) || t.test(l) || n.test(e))
+                    )
+                      break
+                    if (l.search(/[^ ]/) >= u || !l.trim())
+                      s +=
+                        `
+` + l.slice(u)
+                    else {
+                      if (d || r.search(/[^ ]/) >= 4 || i.test(r) || a.test(r) || n.test(r)) break
+                      s +=
+                        `
+` + l
+                    }
+                    ;(!d && !l.trim() && (d = !0),
+                      (o +=
+                        c +
+                        `
+`),
+                      (e = e.substring(c.length + 1)),
+                      (r = l.slice(u)))
+                  }
+                }
+                i.loose || (c ? (i.loose = !0) : /\n *\n *$/.test(o) && (c = !0))
+                let f = null,
+                  p
+                ;(this.options.gfm &&
+                  ((f = /^\[[ xX]\] /.exec(s)),
+                  f && ((p = f[0] !== `[ ] `), (s = s.replace(/^\[[ xX]\] +/, ``)))),
+                  i.items.push({
+                    type: `list_item`,
+                    raw: o,
+                    task: !!f,
+                    checked: p,
+                    loose: !1,
+                    text: s,
+                    tokens: [],
+                  }),
+                  (i.raw += o))
+              }
+              ;((i.items[i.items.length - 1].raw = o.trimEnd()),
+                (i.items[i.items.length - 1].text = s.trimEnd()),
+                (i.raw = i.raw.trimEnd()))
+              for (let e = 0; e < i.items.length; e++)
+                if (
+                  ((this.lexer.state.top = !1),
+                  (i.items[e].tokens = this.lexer.blockTokens(i.items[e].text, [])),
+                  !i.loose)
+                ) {
+                  let t = i.items[e].tokens.filter((e) => e.type === `space`)
+                  i.loose = t.length > 0 && t.some((e) => /\n.*\n/.test(e.raw))
+                }
+              if (i.loose) for (let e = 0; e < i.items.length; e++) i.items[e].loose = !0
+              return i
+            }
+          }
+          html(e) {
+            let t = this.rules.block.html.exec(e)
+            if (t)
+              return {
+                type: `html`,
+                block: !0,
+                raw: t[0],
+                pre: t[1] === `pre` || t[1] === `script` || t[1] === `style`,
+                text: t[0],
+              }
+          }
+          def(e) {
+            let t = this.rules.block.def.exec(e)
+            if (t) {
+              let e = t[1].toLowerCase().replace(/\s+/g, ` `),
+                n = t[2]
+                  ? t[2].replace(/^<(.*)>$/, `$1`).replace(this.rules.inline.anyPunctuation, `$1`)
+                  : ``,
+                r = t[3]
+                  ? t[3]
+                      .substring(1, t[3].length - 1)
+                      .replace(this.rules.inline.anyPunctuation, `$1`)
+                  : t[3]
+              return { type: `def`, tag: e, raw: t[0], href: n, title: r }
+            }
+          }
+          table(e) {
+            let t = this.rules.block.table.exec(e)
+            if (!t || !/[:|]/.test(t[2])) return
+            let n = te(t[1]),
+              r = t[2].replace(/^\||\| *$/g, ``).split(`|`),
+              i =
+                t[3] && t[3].trim()
+                  ? t[3].replace(/\n[ \t]*$/, ``).split(`
+`)
+                  : [],
+              a = { type: `table`, raw: t[0], header: [], align: [], rows: [] }
+            if (n.length === r.length) {
+              for (let e of r)
+                /^ *-+: *$/.test(e)
+                  ? a.align.push(`right`)
+                  : /^ *:-+: *$/.test(e)
+                    ? a.align.push(`center`)
+                    : /^ *:-+ *$/.test(e)
+                      ? a.align.push(`left`)
+                      : a.align.push(null)
+              for (let e of n) a.header.push({ text: e, tokens: this.lexer.inline(e) })
+              for (let e of i)
+                a.rows.push(
+                  te(e, a.header.length).map((e) => ({ text: e, tokens: this.lexer.inline(e) }))
+                )
+              return a
+            }
+          }
+          lheading(e) {
+            let t = this.rules.block.lheading.exec(e)
+            if (t)
+              return {
+                type: `heading`,
+                raw: t[0],
+                depth: t[2].charAt(0) === `=` ? 1 : 2,
+                text: t[1],
+                tokens: this.lexer.inline(t[1]),
+              }
+          }
+          paragraph(e) {
+            let t = this.rules.block.paragraph.exec(e)
+            if (t) {
+              let e =
+                t[1].charAt(t[1].length - 1) ===
+                `
+`
+                  ? t[1].slice(0, -1)
+                  : t[1]
+              return { type: `paragraph`, raw: t[0], text: e, tokens: this.lexer.inline(e) }
+            }
+          }
+          text(e) {
+            let t = this.rules.block.text.exec(e)
+            if (t) return { type: `text`, raw: t[0], text: t[0], tokens: this.lexer.inline(t[0]) }
+          }
+          escape(e) {
+            let t = this.rules.inline.escape.exec(e)
+            if (t) return { type: `escape`, raw: t[0], text: l(t[1]) }
+          }
+          tag(e) {
+            let t = this.rules.inline.tag.exec(e)
+            if (t)
+              return (
+                !this.lexer.state.inLink && /^<a /i.test(t[0])
+                  ? (this.lexer.state.inLink = !0)
+                  : this.lexer.state.inLink &&
+                    /^<\/a>/i.test(t[0]) &&
+                    (this.lexer.state.inLink = !1),
+                !this.lexer.state.inRawBlock && /^<(pre|code|kbd|script)(\s|>)/i.test(t[0])
+                  ? (this.lexer.state.inRawBlock = !0)
+                  : this.lexer.state.inRawBlock &&
+                    /^<\/(pre|code|kbd|script)(\s|>)/i.test(t[0]) &&
+                    (this.lexer.state.inRawBlock = !1),
+                {
+                  type: `html`,
+                  raw: t[0],
+                  inLink: this.lexer.state.inLink,
+                  inRawBlock: this.lexer.state.inRawBlock,
+                  block: !1,
+                  text: t[0],
+                }
+              )
+          }
+          link(e) {
+            let t = this.rules.inline.link.exec(e)
+            if (t) {
+              let e = t[2].trim()
+              if (!this.options.pedantic && /^</.test(e)) {
+                if (!/>$/.test(e)) return
+                let t = ne(e.slice(0, -1), `\\`)
+                if ((e.length - t.length) % 2 == 0) return
+              } else {
+                let e = re(t[2], `()`)
+                if (e > -1) {
+                  let n = (t[0].indexOf(`!`) === 0 ? 5 : 4) + t[1].length + e
+                  ;((t[2] = t[2].substring(0, e)),
+                    (t[0] = t[0].substring(0, n).trim()),
+                    (t[3] = ``))
+                }
+              }
+              let n = t[2],
+                r = ``
+              if (this.options.pedantic) {
+                let e = /^([^'"]*[^\s])\s+(['"])(.*)\2/.exec(n)
+                e && ((n = e[1]), (r = e[3]))
+              } else r = t[3] ? t[3].slice(1, -1) : ``
+              return (
+                (n = n.trim()),
+                /^</.test(n) &&
+                  (n = this.options.pedantic && !/>$/.test(e) ? n.slice(1) : n.slice(1, -1)),
+                ie(
+                  t,
+                  {
+                    href: n && n.replace(this.rules.inline.anyPunctuation, `$1`),
+                    title: r && r.replace(this.rules.inline.anyPunctuation, `$1`),
+                  },
+                  t[0],
+                  this.lexer
+                )
+              )
+            }
+          }
+          reflink(e, t) {
+            let n
+            if ((n = this.rules.inline.reflink.exec(e)) || (n = this.rules.inline.nolink.exec(e))) {
+              let e = t[(n[2] || n[1]).replace(/\s+/g, ` `).toLowerCase()]
+              if (!e) {
+                let e = n[0].charAt(0)
+                return { type: `text`, raw: e, text: e }
+              }
+              return ie(n, e, n[0], this.lexer)
+            }
+          }
+          emStrong(e, t, n = ``) {
+            let r = this.rules.inline.emStrongLDelim.exec(e)
+            if (
+              r &&
+              !(r[3] && n.match(/[\p{L}\p{N}]/u)) &&
+              (!(r[1] || r[2]) || !n || this.rules.inline.punctuation.exec(n))
+            ) {
+              let n = [...r[0]].length - 1,
+                i,
+                a,
+                o = n,
+                s = 0,
+                c =
+                  r[0][0] === `*`
+                    ? this.rules.inline.emStrongRDelimAst
+                    : this.rules.inline.emStrongRDelimUnd
+              for (c.lastIndex = 0, t = t.slice(-1 * e.length + n); (r = c.exec(t)) != null; ) {
+                if (((i = r[1] || r[2] || r[3] || r[4] || r[5] || r[6]), !i)) continue
+                if (((a = [...i].length), r[3] || r[4])) {
+                  o += a
+                  continue
+                } else if ((r[5] || r[6]) && n % 3 && !((n + a) % 3)) {
+                  s += a
+                  continue
+                }
+                if (((o -= a), o > 0)) continue
+                a = Math.min(a, a + o + s)
+                let t = [...r[0]][0].length,
+                  c = e.slice(0, n + r.index + t + a)
+                if (Math.min(n, a) % 2) {
+                  let e = c.slice(1, -1)
+                  return { type: `em`, raw: c, text: e, tokens: this.lexer.inlineTokens(e) }
+                }
+                let l = c.slice(2, -2)
+                return { type: `strong`, raw: c, text: l, tokens: this.lexer.inlineTokens(l) }
+              }
+            }
+          }
+          codespan(e) {
+            let t = this.rules.inline.code.exec(e)
+            if (t) {
+              let e = t[2].replace(/\n/g, ` `),
+                n = /[^ ]/.test(e),
+                r = /^ /.test(e) && / $/.test(e)
+              return (
+                n && r && (e = e.substring(1, e.length - 1)),
+                (e = l(e, !0)),
+                { type: `codespan`, raw: t[0], text: e }
+              )
+            }
+          }
+          br(e) {
+            let t = this.rules.inline.br.exec(e)
+            if (t) return { type: `br`, raw: t[0] }
+          }
+          del(e) {
+            let t = this.rules.inline.del.exec(e)
+            if (t)
+              return { type: `del`, raw: t[0], text: t[2], tokens: this.lexer.inlineTokens(t[2]) }
+          }
+          autolink(e) {
+            let t = this.rules.inline.autolink.exec(e)
+            if (t) {
+              let e, n
+              return (
+                t[2] === `@` ? ((e = l(t[1])), (n = `mailto:` + e)) : ((e = l(t[1])), (n = e)),
+                {
+                  type: `link`,
+                  raw: t[0],
+                  text: e,
+                  href: n,
+                  tokens: [{ type: `text`, raw: e, text: e }],
+                }
+              )
+            }
+          }
+          url(e) {
+            let t
+            if ((t = this.rules.inline.url.exec(e))) {
+              let e, n
+              if (t[2] === `@`) ((e = l(t[0])), (n = `mailto:` + e))
+              else {
+                let r
+                do ((r = t[0]), (t[0] = this.rules.inline._backpedal.exec(t[0])?.[0] ?? ``))
+                while (r !== t[0])
+                ;((e = l(t[0])), (n = t[1] === `www.` ? `http://` + t[0] : t[0]))
+              }
+              return {
+                type: `link`,
+                raw: t[0],
+                text: e,
+                href: n,
+                tokens: [{ type: `text`, raw: e, text: e }],
+              }
+            }
+          }
+          inlineText(e) {
+            let t = this.rules.inline.text.exec(e)
+            if (t) {
+              let e
+              return (
+                (e = this.lexer.state.inRawBlock ? t[0] : l(t[0])),
+                { type: `text`, raw: t[0], text: e }
+              )
+            }
+          }
+        },
+        oe = /^(?: *(?:\n|$))+/,
+        se = /^( {4}[^\n]+(?:\n(?: *(?:\n|$))*)?)+/,
+        ce =
+          /^ {0,3}(`{3,}(?=[^`\n]*(?:\n|$))|~{3,})([^\n]*)(?:\n|$)(?:|([\s\S]*?)(?:\n|$))(?: {0,3}\1[~`]* *(?=\n|$)|$)/,
+        g = /^ {0,3}((?:-[\t ]*){3,}|(?:_[ \t]*){3,}|(?:\*[ \t]*){3,})(?:\n+|$)/,
+        le = /^ {0,3}(#{1,6})(?=\s|$)(.*)(?:\n+|$)/,
+        ue = /(?:[*+-]|\d{1,9}[.)])/,
+        de = p(
+          /^(?!bull |blockCode|fences|blockquote|heading|html)((?:.|\n(?!\s*?\n|bull |blockCode|fences|blockquote|heading|html))+?)\n {0,3}(=+|-+) *(?:\n+|$)/
+        )
+          .replace(/bull/g, ue)
+          .replace(/blockCode/g, / {4}/)
+          .replace(/fences/g, / {0,3}(?:`{3,}|~{3,})/)
+          .replace(/blockquote/g, / {0,3}>/)
+          .replace(/heading/g, / {0,3}#{1,6}/)
+          .replace(/html/g, / {0,3}<[^\n>]+>\n/)
+          .getRegex(),
+        fe = /^([^\n]+(?:\n(?!hr|heading|lheading|blockquote|fences|list|html|table| +\n)[^\n]+)*)/,
+        pe = /^[^\n]+/,
+        me = /(?!\s*\])(?:\\.|[^\[\]\\])+/,
+        he = p(
+          /^ {0,3}\[(label)\]: *(?:\n *)?([^<\s][^\s]*|<.*?>)(?:(?: +(?:\n *)?| *\n *)(title))? *(?:\n+|$)/
+        )
+          .replace(`label`, me)
+          .replace(`title`, /(?:"(?:\\"?|[^"\\])*"|'[^'\n]*(?:\n[^'\n]+)*\n?'|\([^()]*\))/)
+          .getRegex(),
+        ge = p(/^( {0,3}bull)([ \t][^\n]+?)?(?:\n|$)/)
+          .replace(/bull/g, ue)
+          .getRegex(),
+        _e = `address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|meta|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul`,
+        ve = /\x3C!--(?:-?>|[\s\S]*?(?:-->|$))/,
+        ye = p(
+          `^ {0,3}(?:<(script|pre|style|textarea)[\\s>][\\s\\S]*?(?:</\\1>[^\\n]*\\n+|$)|comment[^\\n]*(\\n+|$)|<\\?[\\s\\S]*?(?:\\?>\\n*|$)|<![A-Z][\\s\\S]*?(?:>\\n*|$)|<!\\[CDATA\\[[\\s\\S]*?(?:\\]\\]>\\n*|$)|</?(tag)(?: +|\\n|/?>)[\\s\\S]*?(?:(?:\\n *)+\\n|$)|<(?!script|pre|style|textarea)([a-z][\\w-]*)(?:attribute)*? */?>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n *)+\\n|$)|</(?!script|pre|style|textarea)[a-z][\\w-]*\\s*>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n *)+\\n|$))`,
+          `i`
+        )
+          .replace(`comment`, ve)
+          .replace(`tag`, _e)
+          .replace(
+            `attribute`,
+            / +[a-zA-Z:_][\w.:-]*(?: *= *"[^"\n]*"| *= *'[^'\n]*'| *= *[^\s"'=<>`]+)?/
+          )
+          .getRegex(),
+        be = p(fe)
+          .replace(`hr`, g)
+          .replace(`heading`, ` {0,3}#{1,6}(?:\\s|$)`)
+          .replace(`|lheading`, ``)
+          .replace(`|table`, ``)
+          .replace(`blockquote`, ` {0,3}>`)
+          .replace(`fences`, ' {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n')
+          .replace(`list`, ` {0,3}(?:[*+-]|1[.)]) `)
+          .replace(`html`, `</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)`)
+          .replace(`tag`, _e)
+          .getRegex(),
+        xe = {
+          blockquote: p(/^( {0,3}> ?(paragraph|[^\n]*)(?:\n|$))+/)
+            .replace(`paragraph`, be)
+            .getRegex(),
+          code: se,
+          def: he,
+          fences: ce,
+          heading: le,
+          hr: g,
+          html: ye,
+          lheading: de,
+          list: ge,
+          newline: oe,
+          paragraph: be,
+          table: m,
+          text: pe,
+        },
+        Se = p(
+          `^ *([^\\n ].*)\\n {0,3}((?:\\| *)?:?-+:? *(?:\\| *:?-+:? *)*(?:\\| *)?)(?:\\n((?:(?! *\\n|hr|heading|blockquote|code|fences|list|html).*(?:\\n|$))*)\\n*|$)`
+        )
+          .replace(`hr`, g)
+          .replace(`heading`, ` {0,3}#{1,6}(?:\\s|$)`)
+          .replace(`blockquote`, ` {0,3}>`)
+          .replace(`code`, ` {4}[^\\n]`)
+          .replace(`fences`, ' {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n')
+          .replace(`list`, ` {0,3}(?:[*+-]|1[.)]) `)
+          .replace(`html`, `</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)`)
+          .replace(`tag`, _e)
+          .getRegex(),
+        Ce = {
+          ...xe,
+          table: Se,
+          paragraph: p(fe)
+            .replace(`hr`, g)
+            .replace(`heading`, ` {0,3}#{1,6}(?:\\s|$)`)
+            .replace(`|lheading`, ``)
+            .replace(`table`, Se)
+            .replace(`blockquote`, ` {0,3}>`)
+            .replace(`fences`, ' {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n')
+            .replace(`list`, ` {0,3}(?:[*+-]|1[.)]) `)
+            .replace(`html`, `</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)`)
+            .replace(`tag`, _e)
+            .getRegex(),
+        },
+        we = {
+          ...xe,
+          html: p(
+            `^ *(?:comment *(?:\\n|\\s*$)|<(tag)[\\s\\S]+?</\\1> *(?:\\n{2,}|\\s*$)|<tag(?:"[^"]*"|'[^']*'|\\s[^'"/>\\s]*)*?/?> *(?:\\n{2,}|\\s*$))`
+          )
+            .replace(`comment`, ve)
+            .replace(
+              /tag/g,
+              `(?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\\b)\\w+(?!:|[^\\w\\s@]*@)\\b`
+            )
+            .getRegex(),
+          def: /^ *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +(["(][^\n]+[")]))? *(?:\n+|$)/,
+          heading: /^(#{1,6})(.*)(?:\n+|$)/,
+          fences: m,
+          lheading: /^(.+?)\n {0,3}(=+|-+) *(?:\n+|$)/,
+          paragraph: p(fe)
+            .replace(`hr`, g)
+            .replace(
+              `heading`,
+              ` *#{1,6} *[^
+]`
+            )
+            .replace(`lheading`, de)
+            .replace(`|table`, ``)
+            .replace(`blockquote`, ` {0,3}>`)
+            .replace(`|fences`, ``)
+            .replace(`|list`, ``)
+            .replace(`|html`, ``)
+            .replace(`|tag`, ``)
+            .getRegex(),
+        },
+        Te = /^\\([!"#$%&'()*+,\-./:;<=>?@\[\]\\^_`{|}~])/,
+        Ee = /^(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/,
+        De = /^( {2,}|\\)\n(?!\s*$)/,
+        Oe = /^(`+|[^`])(?:(?= {2,}\n)|[\s\S]*?(?:(?=[\\<!\[`*_]|\b_|$)|[^ ](?= {2,}\n)))/,
+        _ = `\\p{P}\\p{S}`,
+        ke = p(/^((?![*_])[\spunctuation])/, `u`)
+          .replace(/punctuation/g, _)
+          .getRegex(),
+        Ae = /\[[^[\]]*?\]\([^\(\)]*?\)|`[^`]*?`|<[^<>]*?>/g,
+        je = p(/^(?:\*+(?:((?!\*)[punct])|[^\s*]))|^_+(?:((?!_)[punct])|([^\s_]))/, `u`)
+          .replace(/punct/g, _)
+          .getRegex(),
+        Me = p(
+          `^[^_*]*?__[^_*]*?\\*[^_*]*?(?=__)|[^*]+(?=[^*])|(?!\\*)[punct](\\*+)(?=[\\s]|$)|[^punct\\s](\\*+)(?!\\*)(?=[punct\\s]|$)|(?!\\*)[punct\\s](\\*+)(?=[^punct\\s])|[\\s](\\*+)(?!\\*)(?=[punct])|(?!\\*)[punct](\\*+)(?!\\*)(?=[punct])|[^punct\\s](\\*+)(?=[^punct\\s])`,
+          `gu`
+        )
+          .replace(/punct/g, _)
+          .getRegex(),
+        Ne = p(
+          `^[^_*]*?\\*\\*[^_*]*?_[^_*]*?(?=\\*\\*)|[^_]+(?=[^_])|(?!_)[punct](_+)(?=[\\s]|$)|[^punct\\s](_+)(?!_)(?=[punct\\s]|$)|(?!_)[punct\\s](_+)(?=[^punct\\s])|[\\s](_+)(?!_)(?=[punct])|(?!_)[punct](_+)(?!_)(?=[punct])`,
+          `gu`
+        )
+          .replace(/punct/g, _)
+          .getRegex(),
+        Pe = p(/\\([punct])/, `gu`)
+          .replace(/punct/g, _)
+          .getRegex(),
+        Fe = p(/^<(scheme:[^\s\x00-\x1f<>]*|email)>/)
+          .replace(`scheme`, /[a-zA-Z][a-zA-Z0-9+.-]{1,31}/)
+          .replace(
+            `email`,
+            /[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+(@)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+(?![-_])/
+          )
+          .getRegex(),
+        Ie = p(ve).replace(`(?:-->|$)`, `-->`).getRegex(),
+        Le = p(
+          `^comment|^</[a-zA-Z][\\w:-]*\\s*>|^<[a-zA-Z][\\w-]*(?:attribute)*?\\s*/?>|^<\\?[\\s\\S]*?\\?>|^<![a-zA-Z]+\\s[\\s\\S]*?>|^<!\\[CDATA\\[[\\s\\S]*?\\]\\]>`
+        )
+          .replace(`comment`, Ie)
+          .replace(
+            `attribute`,
+            /\s+[a-zA-Z:_][\w.:-]*(?:\s*=\s*"[^"]*"|\s*=\s*'[^']*'|\s*=\s*[^\s"'=<>`]+)?/
+          )
+          .getRegex(),
+        v = /(?:\[(?:\\.|[^\[\]\\])*\]|\\.|`[^`]*`|[^\[\]\\`])*?/,
+        Re = p(/^!?\[(label)\]\(\s*(href)(?:\s+(title))?\s*\)/)
+          .replace(`label`, v)
+          .replace(`href`, /<(?:\\.|[^\n<>\\])+>|[^\s\x00-\x1f]*/)
+          .replace(`title`, /"(?:\\"?|[^"\\])*"|'(?:\\'?|[^'\\])*'|\((?:\\\)?|[^)\\])*\)/)
+          .getRegex(),
+        ze = p(/^!?\[(label)\]\[(ref)\]/)
+          .replace(`label`, v)
+          .replace(`ref`, me)
+          .getRegex(),
+        Be = p(/^!?\[(ref)\](?:\[\])?/)
+          .replace(`ref`, me)
+          .getRegex(),
+        Ve = {
+          _backpedal: m,
+          anyPunctuation: Pe,
+          autolink: Fe,
+          blockSkip: Ae,
+          br: De,
+          code: Ee,
+          del: m,
+          emStrongLDelim: je,
+          emStrongRDelimAst: Me,
+          emStrongRDelimUnd: Ne,
+          escape: Te,
+          link: Re,
+          nolink: Be,
+          punctuation: ke,
+          reflink: ze,
+          reflinkSearch: p(`reflink|nolink(?!\\()`, `g`)
+            .replace(`reflink`, ze)
+            .replace(`nolink`, Be)
+            .getRegex(),
+          tag: Le,
+          text: Oe,
+          url: m,
+        },
+        He = {
+          ...Ve,
+          link: p(/^!?\[(label)\]\((.*?)\)/)
+            .replace(`label`, v)
+            .getRegex(),
+          reflink: p(/^!?\[(label)\]\s*\[([^\]]*)\]/)
+            .replace(`label`, v)
+            .getRegex(),
+        },
+        Ue = {
+          ...Ve,
+          escape: p(Te).replace(`])`, `~|])`).getRegex(),
+          url: p(/^((?:ftp|https?):\/\/|www\.)(?:[a-zA-Z0-9\-]+\.?)+[^\s<]*|^email/, `i`)
+            .replace(
+              `email`,
+              /[A-Za-z0-9._+-]+(@)[a-zA-Z0-9-_]+(?:\.[a-zA-Z0-9-_]*[a-zA-Z0-9])+(?![-_])/
+            )
+            .getRegex(),
+          _backpedal: /(?:[^?!.,:;*_'"~()&]+|\([^)]*\)|&(?![a-zA-Z0-9]+;$)|[?!.,:;*_'"~)]+(?!$))+/,
+          del: /^(~~?)(?=[^\s~])([\s\S]*?[^\s~])\1(?=[^~]|$)/,
+          text: /^([`~]+|[^`~])(?:(?= {2,}\n)|(?=[a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-]+@)|[\s\S]*?(?:(?=[\\<!\[`*~_]|\b_|https?:\/\/|ftp:\/\/|www\.|$)|[^ ](?= {2,}\n)|[^a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-](?=[a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-]+@)))/,
+        },
+        We = {
+          ...Ue,
+          br: p(De).replace(`{2,}`, `*`).getRegex(),
+          text: p(Ue.text)
+            .replace(`\\b_`, `\\b_| {2,}\\n`)
+            .replace(/\{2,\}/g, `*`)
+            .getRegex(),
+        },
+        y = { normal: xe, gfm: Ce, pedantic: we },
+        b = { normal: Ve, gfm: Ue, breaks: We, pedantic: He },
+        x = class e {
+          tokens
+          options
+          state
+          tokenizer
+          inlineQueue
+          constructor(e) {
+            ;((this.tokens = []),
+              (this.tokens.links = Object.create(null)),
+              (this.options = e || t),
+              (this.options.tokenizer = this.options.tokenizer || new h()),
+              (this.tokenizer = this.options.tokenizer),
+              (this.tokenizer.options = this.options),
+              (this.tokenizer.lexer = this),
+              (this.inlineQueue = []),
+              (this.state = { inLink: !1, inRawBlock: !1, top: !0 }))
+            let n = { block: y.normal, inline: b.normal }
+            ;(this.options.pedantic
+              ? ((n.block = y.pedantic), (n.inline = b.pedantic))
+              : this.options.gfm &&
+                ((n.block = y.gfm),
+                this.options.breaks ? (n.inline = b.breaks) : (n.inline = b.gfm)),
+              (this.tokenizer.rules = n))
+          }
+          static get rules() {
+            return { block: y, inline: b }
+          }
+          static lex(t, n) {
+            return new e(n).lex(t)
+          }
+          static lexInline(t, n) {
+            return new e(n).inlineTokens(t)
+          }
+          lex(e) {
+            ;((e = e.replace(
+              /\r\n|\r/g,
+              `
+`
+            )),
+              this.blockTokens(e, this.tokens))
+            for (let e = 0; e < this.inlineQueue.length; e++) {
+              let t = this.inlineQueue[e]
+              this.inlineTokens(t.src, t.tokens)
+            }
+            return ((this.inlineQueue = []), this.tokens)
+          }
+          blockTokens(e, t = []) {
+            e = this.options.pedantic
+              ? e.replace(/\t/g, `    `).replace(/^ +$/gm, ``)
+              : e.replace(/^( *)(\t+)/gm, (e, t, n) => t + `    `.repeat(n.length))
+            let n, r, i, a
+            for (; e; )
+              if (
+                !(
+                  this.options.extensions &&
+                  this.options.extensions.block &&
+                  this.options.extensions.block.some((r) =>
+                    (n = r.call({ lexer: this }, e, t))
+                      ? ((e = e.substring(n.raw.length)), t.push(n), !0)
+                      : !1
+                  )
+                )
+              ) {
+                if ((n = this.tokenizer.space(e))) {
+                  ;((e = e.substring(n.raw.length)),
+                    n.raw.length === 1 && t.length > 0
+                      ? (t[t.length - 1].raw += `
+`)
+                      : t.push(n))
+                  continue
+                }
+                if ((n = this.tokenizer.code(e))) {
+                  ;((e = e.substring(n.raw.length)),
+                    (r = t[t.length - 1]),
+                    r && (r.type === `paragraph` || r.type === `text`)
+                      ? ((r.raw +=
+                          `
+` + n.raw),
+                        (r.text +=
+                          `
+` + n.text),
+                        (this.inlineQueue[this.inlineQueue.length - 1].src = r.text))
+                      : t.push(n))
+                  continue
+                }
+                if ((n = this.tokenizer.fences(e))) {
+                  ;((e = e.substring(n.raw.length)), t.push(n))
+                  continue
+                }
+                if ((n = this.tokenizer.heading(e))) {
+                  ;((e = e.substring(n.raw.length)), t.push(n))
+                  continue
+                }
+                if ((n = this.tokenizer.hr(e))) {
+                  ;((e = e.substring(n.raw.length)), t.push(n))
+                  continue
+                }
+                if ((n = this.tokenizer.blockquote(e))) {
+                  ;((e = e.substring(n.raw.length)), t.push(n))
+                  continue
+                }
+                if ((n = this.tokenizer.list(e))) {
+                  ;((e = e.substring(n.raw.length)), t.push(n))
+                  continue
+                }
+                if ((n = this.tokenizer.html(e))) {
+                  ;((e = e.substring(n.raw.length)), t.push(n))
+                  continue
+                }
+                if ((n = this.tokenizer.def(e))) {
+                  ;((e = e.substring(n.raw.length)),
+                    (r = t[t.length - 1]),
+                    r && (r.type === `paragraph` || r.type === `text`)
+                      ? ((r.raw +=
+                          `
+` + n.raw),
+                        (r.text +=
+                          `
+` + n.raw),
+                        (this.inlineQueue[this.inlineQueue.length - 1].src = r.text))
+                      : this.tokens.links[n.tag] ||
+                        (this.tokens.links[n.tag] = { href: n.href, title: n.title }))
+                  continue
+                }
+                if ((n = this.tokenizer.table(e))) {
+                  ;((e = e.substring(n.raw.length)), t.push(n))
+                  continue
+                }
+                if ((n = this.tokenizer.lheading(e))) {
+                  ;((e = e.substring(n.raw.length)), t.push(n))
+                  continue
+                }
+                if (((i = e), this.options.extensions && this.options.extensions.startBlock)) {
+                  let t = 1 / 0,
+                    n = e.slice(1),
+                    r
+                  ;(this.options.extensions.startBlock.forEach((e) => {
+                    ;((r = e.call({ lexer: this }, n)),
+                      typeof r == `number` && r >= 0 && (t = Math.min(t, r)))
+                  }),
+                    t < 1 / 0 && t >= 0 && (i = e.substring(0, t + 1)))
+                }
+                if (this.state.top && (n = this.tokenizer.paragraph(i))) {
+                  ;((r = t[t.length - 1]),
+                    a && r.type === `paragraph`
+                      ? ((r.raw +=
+                          `
+` + n.raw),
+                        (r.text +=
+                          `
+` + n.text),
+                        this.inlineQueue.pop(),
+                        (this.inlineQueue[this.inlineQueue.length - 1].src = r.text))
+                      : t.push(n),
+                    (a = i.length !== e.length),
+                    (e = e.substring(n.raw.length)))
+                  continue
+                }
+                if ((n = this.tokenizer.text(e))) {
+                  ;((e = e.substring(n.raw.length)),
+                    (r = t[t.length - 1]),
+                    r && r.type === `text`
+                      ? ((r.raw +=
+                          `
+` + n.raw),
+                        (r.text +=
+                          `
+` + n.text),
+                        this.inlineQueue.pop(),
+                        (this.inlineQueue[this.inlineQueue.length - 1].src = r.text))
+                      : t.push(n))
+                  continue
+                }
+                if (e) {
+                  let t = `Infinite loop on byte: ` + e.charCodeAt(0)
+                  if (this.options.silent) {
+                    console.error(t)
+                    break
+                  } else throw Error(t)
+                }
+              }
+            return ((this.state.top = !0), t)
+          }
+          inline(e, t = []) {
+            return (this.inlineQueue.push({ src: e, tokens: t }), t)
+          }
+          inlineTokens(e, t = []) {
+            let n,
+              r,
+              i,
+              a = e,
+              o,
+              s,
+              c
+            if (this.tokens.links) {
+              let e = Object.keys(this.tokens.links)
+              if (e.length > 0)
+                for (; (o = this.tokenizer.rules.inline.reflinkSearch.exec(a)) != null; )
+                  e.includes(o[0].slice(o[0].lastIndexOf(`[`) + 1, -1)) &&
+                    (a =
+                      a.slice(0, o.index) +
+                      `[` +
+                      `a`.repeat(o[0].length - 2) +
+                      `]` +
+                      a.slice(this.tokenizer.rules.inline.reflinkSearch.lastIndex))
+            }
+            for (; (o = this.tokenizer.rules.inline.blockSkip.exec(a)) != null; )
+              a =
+                a.slice(0, o.index) +
+                `[` +
+                `a`.repeat(o[0].length - 2) +
+                `]` +
+                a.slice(this.tokenizer.rules.inline.blockSkip.lastIndex)
+            for (; (o = this.tokenizer.rules.inline.anyPunctuation.exec(a)) != null; )
+              a =
+                a.slice(0, o.index) +
+                `++` +
+                a.slice(this.tokenizer.rules.inline.anyPunctuation.lastIndex)
+            for (; e; )
+              if (
+                (s || (c = ``),
+                (s = !1),
+                !(
+                  this.options.extensions &&
+                  this.options.extensions.inline &&
+                  this.options.extensions.inline.some((r) =>
+                    (n = r.call({ lexer: this }, e, t))
+                      ? ((e = e.substring(n.raw.length)), t.push(n), !0)
+                      : !1
+                  )
+                ))
+              ) {
+                if ((n = this.tokenizer.escape(e))) {
+                  ;((e = e.substring(n.raw.length)), t.push(n))
+                  continue
+                }
+                if ((n = this.tokenizer.tag(e))) {
+                  ;((e = e.substring(n.raw.length)),
+                    (r = t[t.length - 1]),
+                    r && n.type === `text` && r.type === `text`
+                      ? ((r.raw += n.raw), (r.text += n.text))
+                      : t.push(n))
+                  continue
+                }
+                if ((n = this.tokenizer.link(e))) {
+                  ;((e = e.substring(n.raw.length)), t.push(n))
+                  continue
+                }
+                if ((n = this.tokenizer.reflink(e, this.tokens.links))) {
+                  ;((e = e.substring(n.raw.length)),
+                    (r = t[t.length - 1]),
+                    r && n.type === `text` && r.type === `text`
+                      ? ((r.raw += n.raw), (r.text += n.text))
+                      : t.push(n))
+                  continue
+                }
+                if ((n = this.tokenizer.emStrong(e, a, c))) {
+                  ;((e = e.substring(n.raw.length)), t.push(n))
+                  continue
+                }
+                if ((n = this.tokenizer.codespan(e))) {
+                  ;((e = e.substring(n.raw.length)), t.push(n))
+                  continue
+                }
+                if ((n = this.tokenizer.br(e))) {
+                  ;((e = e.substring(n.raw.length)), t.push(n))
+                  continue
+                }
+                if ((n = this.tokenizer.del(e))) {
+                  ;((e = e.substring(n.raw.length)), t.push(n))
+                  continue
+                }
+                if ((n = this.tokenizer.autolink(e))) {
+                  ;((e = e.substring(n.raw.length)), t.push(n))
+                  continue
+                }
+                if (!this.state.inLink && (n = this.tokenizer.url(e))) {
+                  ;((e = e.substring(n.raw.length)), t.push(n))
+                  continue
+                }
+                if (((i = e), this.options.extensions && this.options.extensions.startInline)) {
+                  let t = 1 / 0,
+                    n = e.slice(1),
+                    r
+                  ;(this.options.extensions.startInline.forEach((e) => {
+                    ;((r = e.call({ lexer: this }, n)),
+                      typeof r == `number` && r >= 0 && (t = Math.min(t, r)))
+                  }),
+                    t < 1 / 0 && t >= 0 && (i = e.substring(0, t + 1)))
+                }
+                if ((n = this.tokenizer.inlineText(i))) {
+                  ;((e = e.substring(n.raw.length)),
+                    n.raw.slice(-1) !== `_` && (c = n.raw.slice(-1)),
+                    (s = !0),
+                    (r = t[t.length - 1]),
+                    r && r.type === `text` ? ((r.raw += n.raw), (r.text += n.text)) : t.push(n))
+                  continue
+                }
+                if (e) {
+                  let t = `Infinite loop on byte: ` + e.charCodeAt(0)
+                  if (this.options.silent) {
+                    console.error(t)
+                    break
+                  } else throw Error(t)
+                }
+              }
+            return t
+          }
+        },
+        S = class {
+          options
+          constructor(e) {
+            this.options = e || t
+          }
+          code(e, t, n) {
+            let r = (t || ``).match(/^\S*/)?.[0]
+            return (
+              (e =
+                e.replace(/\n$/, ``) +
+                `
+`),
+              r
+                ? `<pre><code class="language-` +
+                  l(r) +
+                  `">` +
+                  (n ? e : l(e, !0)) +
+                  `</code></pre>
+`
+                : `<pre><code>` +
+                  (n ? e : l(e, !0)) +
+                  `</code></pre>
+`
+            )
+          }
+          blockquote(e) {
+            return `<blockquote>\n${e}</blockquote>\n`
+          }
+          html(e, t) {
+            return e
+          }
+          heading(e, t, n) {
+            return `<h${t}>${e}</h${t}>\n`
+          }
+          hr() {
+            return `<hr>
+`
+          }
+          list(e, t, n) {
+            let r = t ? `ol` : `ul`,
+              i = t && n !== 1 ? ` start="` + n + `"` : ``
+            return (
+              `<` +
+              r +
+              i +
+              `>
+` +
+              e +
+              `</` +
+              r +
+              `>
+`
+            )
+          }
+          listitem(e, t, n) {
+            return `<li>${e}</li>\n`
+          }
+          checkbox(e) {
+            return `<input ` + (e ? `checked="" ` : ``) + `disabled="" type="checkbox">`
+          }
+          paragraph(e) {
+            return `<p>${e}</p>\n`
+          }
+          table(e, t) {
+            return (
+              (t &&= `<tbody>${t}</tbody>`),
+              `<table>
+<thead>
+` +
+                e +
+                `</thead>
+` +
+                t +
+                `</table>
+`
+            )
+          }
+          tablerow(e) {
+            return `<tr>\n${e}</tr>\n`
+          }
+          tablecell(e, t) {
+            let n = t.header ? `th` : `td`
+            return (t.align ? `<${n} align="${t.align}">` : `<${n}>`) + e + `</${n}>\n`
+          }
+          strong(e) {
+            return `<strong>${e}</strong>`
+          }
+          em(e) {
+            return `<em>${e}</em>`
+          }
+          codespan(e) {
+            return `<code>${e}</code>`
+          }
+          br() {
+            return `<br>`
+          }
+          del(e) {
+            return `<del>${e}</del>`
+          }
+          link(e, t, n) {
+            let r = ee(e)
+            if (r === null) return n
+            e = r
+            let i = `<a href="` + e + `"`
+            return (t && (i += ` title="` + t + `"`), (i += `>` + n + `</a>`), i)
+          }
+          image(e, t, n) {
+            let r = ee(e)
+            if (r === null) return n
+            e = r
+            let i = `<img src="${e}" alt="${n}"`
+            return (t && (i += ` title="${t}"`), (i += `>`), i)
+          }
+          text(e) {
+            return e
+          }
+        },
+        Ge = class {
+          strong(e) {
+            return e
+          }
+          em(e) {
+            return e
+          }
+          codespan(e) {
+            return e
+          }
+          del(e) {
+            return e
+          }
+          html(e) {
+            return e
+          }
+          text(e) {
+            return e
+          }
+          link(e, t, n) {
+            return `` + n
+          }
+          image(e, t, n) {
+            return `` + n
+          }
+          br() {
+            return ``
+          }
+        },
+        C = class e {
+          options
+          renderer
+          textRenderer
+          constructor(e) {
+            ;((this.options = e || t),
+              (this.options.renderer = this.options.renderer || new S()),
+              (this.renderer = this.options.renderer),
+              (this.renderer.options = this.options),
+              (this.textRenderer = new Ge()))
+          }
+          static parse(t, n) {
+            return new e(n).parse(t)
+          }
+          static parseInline(t, n) {
+            return new e(n).parseInline(t)
+          }
+          parse(e, t = !0) {
+            let n = ``
+            for (let r = 0; r < e.length; r++) {
+              let i = e[r]
+              if (
+                this.options.extensions &&
+                this.options.extensions.renderers &&
+                this.options.extensions.renderers[i.type]
+              ) {
+                let e = i,
+                  t = this.options.extensions.renderers[e.type].call({ parser: this }, e)
+                if (
+                  t !== !1 ||
+                  ![
+                    `space`,
+                    `hr`,
+                    `heading`,
+                    `code`,
+                    `table`,
+                    `blockquote`,
+                    `list`,
+                    `html`,
+                    `paragraph`,
+                    `text`,
+                  ].includes(e.type)
+                ) {
+                  n += t || ``
+                  continue
+                }
+              }
+              switch (i.type) {
+                case `space`:
+                  continue
+                case `hr`:
+                  n += this.renderer.hr()
+                  continue
+                case `heading`: {
+                  let e = i
+                  n += this.renderer.heading(
+                    this.parseInline(e.tokens),
+                    e.depth,
+                    d(this.parseInline(e.tokens, this.textRenderer))
+                  )
+                  continue
+                }
+                case `code`: {
+                  let e = i
+                  n += this.renderer.code(e.text, e.lang, !!e.escaped)
+                  continue
+                }
+                case `table`: {
+                  let e = i,
+                    t = ``,
+                    r = ``
+                  for (let t = 0; t < e.header.length; t++)
+                    r += this.renderer.tablecell(this.parseInline(e.header[t].tokens), {
+                      header: !0,
+                      align: e.align[t],
+                    })
+                  t += this.renderer.tablerow(r)
+                  let a = ``
+                  for (let t = 0; t < e.rows.length; t++) {
+                    let n = e.rows[t]
+                    r = ``
+                    for (let t = 0; t < n.length; t++)
+                      r += this.renderer.tablecell(this.parseInline(n[t].tokens), {
+                        header: !1,
+                        align: e.align[t],
+                      })
+                    a += this.renderer.tablerow(r)
+                  }
+                  n += this.renderer.table(t, a)
+                  continue
+                }
+                case `blockquote`: {
+                  let e = i,
+                    t = this.parse(e.tokens)
+                  n += this.renderer.blockquote(t)
+                  continue
+                }
+                case `list`: {
+                  let e = i,
+                    t = e.ordered,
+                    r = e.start,
+                    a = e.loose,
+                    o = ``
+                  for (let t = 0; t < e.items.length; t++) {
+                    let n = e.items[t],
+                      r = n.checked,
+                      i = n.task,
+                      s = ``
+                    if (n.task) {
+                      let e = this.renderer.checkbox(!!r)
+                      a
+                        ? n.tokens.length > 0 && n.tokens[0].type === `paragraph`
+                          ? ((n.tokens[0].text = e + ` ` + n.tokens[0].text),
+                            n.tokens[0].tokens &&
+                              n.tokens[0].tokens.length > 0 &&
+                              n.tokens[0].tokens[0].type === `text` &&
+                              (n.tokens[0].tokens[0].text = e + ` ` + n.tokens[0].tokens[0].text))
+                          : n.tokens.unshift({ type: `text`, text: e + ` ` })
+                        : (s += e + ` `)
+                    }
+                    ;((s += this.parse(n.tokens, a)), (o += this.renderer.listitem(s, i, !!r)))
+                  }
+                  n += this.renderer.list(o, t, r)
+                  continue
+                }
+                case `html`: {
+                  let e = i
+                  n += this.renderer.html(e.text, e.block)
+                  continue
+                }
+                case `paragraph`: {
+                  let e = i
+                  n += this.renderer.paragraph(this.parseInline(e.tokens))
+                  continue
+                }
+                case `text`: {
+                  let a = i,
+                    o = a.tokens ? this.parseInline(a.tokens) : a.text
+                  for (; r + 1 < e.length && e[r + 1].type === `text`; )
+                    ((a = e[++r]),
+                      (o +=
+                        `
+` + (a.tokens ? this.parseInline(a.tokens) : a.text)))
+                  n += t ? this.renderer.paragraph(o) : o
+                  continue
+                }
+                default: {
+                  let e = `Token with "` + i.type + `" type was not found.`
+                  if (this.options.silent) return (console.error(e), ``)
+                  throw Error(e)
+                }
+              }
+            }
+            return n
+          }
+          parseInline(e, t) {
+            t ||= this.renderer
+            let n = ``
+            for (let r = 0; r < e.length; r++) {
+              let i = e[r]
+              if (
+                this.options.extensions &&
+                this.options.extensions.renderers &&
+                this.options.extensions.renderers[i.type]
+              ) {
+                let e = this.options.extensions.renderers[i.type].call({ parser: this }, i)
+                if (
+                  e !== !1 ||
+                  ![
+                    `escape`,
+                    `html`,
+                    `link`,
+                    `image`,
+                    `strong`,
+                    `em`,
+                    `codespan`,
+                    `br`,
+                    `del`,
+                    `text`,
+                  ].includes(i.type)
+                ) {
+                  n += e || ``
+                  continue
+                }
+              }
+              switch (i.type) {
+                case `escape`: {
+                  let e = i
+                  n += t.text(e.text)
+                  break
+                }
+                case `html`: {
+                  let e = i
+                  n += t.html(e.text)
+                  break
+                }
+                case `link`: {
+                  let e = i
+                  n += t.link(e.href, e.title, this.parseInline(e.tokens, t))
+                  break
+                }
+                case `image`: {
+                  let e = i
+                  n += t.image(e.href, e.title, e.text)
+                  break
+                }
+                case `strong`: {
+                  let e = i
+                  n += t.strong(this.parseInline(e.tokens, t))
+                  break
+                }
+                case `em`: {
+                  let e = i
+                  n += t.em(this.parseInline(e.tokens, t))
+                  break
+                }
+                case `codespan`: {
+                  let e = i
+                  n += t.codespan(e.text)
+                  break
+                }
+                case `br`:
+                  n += t.br()
+                  break
+                case `del`: {
+                  let e = i
+                  n += t.del(this.parseInline(e.tokens, t))
+                  break
+                }
+                case `text`: {
+                  let e = i
+                  n += t.text(e.text)
+                  break
+                }
+                default: {
+                  let e = `Token with "` + i.type + `" type was not found.`
+                  if (this.options.silent) return (console.error(e), ``)
+                  throw Error(e)
+                }
+              }
+            }
+            return n
+          }
+        },
+        Ke = class {
+          options
+          constructor(e) {
+            this.options = e || t
+          }
+          static passThroughHooks = new Set([`preprocess`, `postprocess`, `processAllTokens`])
+          preprocess(e) {
+            return e
+          }
+          postprocess(e) {
+            return e
+          }
+          processAllTokens(e) {
+            return e
+          }
+        },
+        w = new (class {
+          defaults = e()
+          options = this.setOptions
+          parse = this.#e(x.lex, C.parse)
+          parseInline = this.#e(x.lexInline, C.parseInline)
+          Parser = C
+          Renderer = S
+          TextRenderer = Ge
+          Lexer = x
+          Tokenizer = h
+          Hooks = Ke
+          constructor(...e) {
+            this.use(...e)
+          }
+          walkTokens(e, t) {
+            let n = []
+            for (let r of e)
+              switch (((n = n.concat(t.call(this, r))), r.type)) {
+                case `table`: {
+                  let e = r
+                  for (let r of e.header) n = n.concat(this.walkTokens(r.tokens, t))
+                  for (let r of e.rows) for (let e of r) n = n.concat(this.walkTokens(e.tokens, t))
+                  break
+                }
+                case `list`: {
+                  let e = r
+                  n = n.concat(this.walkTokens(e.items, t))
+                  break
+                }
+                default: {
+                  let e = r
+                  this.defaults.extensions?.childTokens?.[e.type]
+                    ? this.defaults.extensions.childTokens[e.type].forEach((r) => {
+                        let i = e[r].flat(1 / 0)
+                        n = n.concat(this.walkTokens(i, t))
+                      })
+                    : e.tokens && (n = n.concat(this.walkTokens(e.tokens, t)))
+                }
+              }
+            return n
+          }
+          use(...e) {
+            let t = this.defaults.extensions || { renderers: {}, childTokens: {} }
+            return (
+              e.forEach((e) => {
+                let n = { ...e }
+                if (
+                  ((n.async = this.defaults.async || n.async || !1),
+                  e.extensions &&
+                    (e.extensions.forEach((e) => {
+                      if (!e.name) throw Error(`extension name required`)
+                      if (`renderer` in e) {
+                        let n = t.renderers[e.name]
+                        n
+                          ? (t.renderers[e.name] = function (...t) {
+                              let r = e.renderer.apply(this, t)
+                              return (r === !1 && (r = n.apply(this, t)), r)
+                            })
+                          : (t.renderers[e.name] = e.renderer)
+                      }
+                      if (`tokenizer` in e) {
+                        if (!e.level || (e.level !== `block` && e.level !== `inline`))
+                          throw Error(`extension level must be 'block' or 'inline'`)
+                        let n = t[e.level]
+                        ;(n ? n.unshift(e.tokenizer) : (t[e.level] = [e.tokenizer]),
+                          e.start &&
+                            (e.level === `block`
+                              ? t.startBlock
+                                ? t.startBlock.push(e.start)
+                                : (t.startBlock = [e.start])
+                              : e.level === `inline` &&
+                                (t.startInline
+                                  ? t.startInline.push(e.start)
+                                  : (t.startInline = [e.start]))))
+                      }
+                      ;`childTokens` in e &&
+                        e.childTokens &&
+                        (t.childTokens[e.name] = e.childTokens)
+                    }),
+                    (n.extensions = t)),
+                  e.renderer)
+                ) {
+                  let t = this.defaults.renderer || new S(this.defaults)
+                  for (let n in e.renderer) {
+                    if (!(n in t)) throw Error(`renderer '${n}' does not exist`)
+                    if (n === `options`) continue
+                    let r = n,
+                      i = e.renderer[r],
+                      a = t[r]
+                    t[r] = (...e) => {
+                      let n = i.apply(t, e)
+                      return (n === !1 && (n = a.apply(t, e)), n || ``)
+                    }
+                  }
+                  n.renderer = t
+                }
+                if (e.tokenizer) {
+                  let t = this.defaults.tokenizer || new h(this.defaults)
+                  for (let n in e.tokenizer) {
+                    if (!(n in t)) throw Error(`tokenizer '${n}' does not exist`)
+                    if ([`options`, `rules`, `lexer`].includes(n)) continue
+                    let r = n,
+                      i = e.tokenizer[r],
+                      a = t[r]
+                    t[r] = (...e) => {
+                      let n = i.apply(t, e)
+                      return (n === !1 && (n = a.apply(t, e)), n)
+                    }
+                  }
+                  n.tokenizer = t
+                }
+                if (e.hooks) {
+                  let t = this.defaults.hooks || new Ke()
+                  for (let n in e.hooks) {
+                    if (!(n in t)) throw Error(`hook '${n}' does not exist`)
+                    if (n === `options`) continue
+                    let r = n,
+                      i = e.hooks[r],
+                      a = t[r]
+                    Ke.passThroughHooks.has(n)
+                      ? (t[r] = (e) => {
+                          if (this.defaults.async)
+                            return Promise.resolve(i.call(t, e)).then((e) => a.call(t, e))
+                          let n = i.call(t, e)
+                          return a.call(t, n)
+                        })
+                      : (t[r] = (...e) => {
+                          let n = i.apply(t, e)
+                          return (n === !1 && (n = a.apply(t, e)), n)
+                        })
+                  }
+                  n.hooks = t
+                }
+                if (e.walkTokens) {
+                  let t = this.defaults.walkTokens,
+                    r = e.walkTokens
+                  n.walkTokens = function (e) {
+                    let n = []
+                    return (n.push(r.call(this, e)), t && (n = n.concat(t.call(this, e))), n)
+                  }
+                }
+                this.defaults = { ...this.defaults, ...n }
+              }),
+              this
+            )
+          }
+          setOptions(e) {
+            return ((this.defaults = { ...this.defaults, ...e }), this)
+          }
+          lexer(e, t) {
+            return x.lex(e, t ?? this.defaults)
+          }
+          parser(e, t) {
+            return C.parse(e, t ?? this.defaults)
+          }
+          #e(e, t) {
+            return (n, r) => {
+              let i = { ...r },
+                a = { ...this.defaults, ...i }
+              this.defaults.async === !0 &&
+                i.async === !1 &&
+                (a.silent ||
+                  console.warn(
+                    `marked(): The async option was set to true by an extension. The async: false option sent to parse will be ignored.`
+                  ),
+                (a.async = !0))
+              let o = this.#t(!!a.silent, !!a.async)
+              if (n == null) return o(Error(`marked(): input parameter is undefined or null`))
+              if (typeof n != `string`)
+                return o(
+                  Error(
+                    `marked(): input parameter is of type ` +
+                      Object.prototype.toString.call(n) +
+                      `, string expected`
+                  )
+                )
+              if ((a.hooks && (a.hooks.options = a), a.async))
+                return Promise.resolve(a.hooks ? a.hooks.preprocess(n) : n)
+                  .then((t) => e(t, a))
+                  .then((e) => (a.hooks ? a.hooks.processAllTokens(e) : e))
+                  .then((e) =>
+                    a.walkTokens ? Promise.all(this.walkTokens(e, a.walkTokens)).then(() => e) : e
+                  )
+                  .then((e) => t(e, a))
+                  .then((e) => (a.hooks ? a.hooks.postprocess(e) : e))
+                  .catch(o)
+              try {
+                a.hooks && (n = a.hooks.preprocess(n))
+                let r = e(n, a)
+                ;(a.hooks && (r = a.hooks.processAllTokens(r)),
+                  a.walkTokens && this.walkTokens(r, a.walkTokens))
+                let i = t(r, a)
+                return (a.hooks && (i = a.hooks.postprocess(i)), i)
+              } catch (e) {
+                return o(e)
+              }
+            }
+          }
+          #t(e, t) {
+            return (n) => {
+              if (
+                ((n.message += `
+Please report this to https://github.com/markedjs/marked.`),
+                e)
+              ) {
+                let e = `<p>An error occurred:</p><pre>` + l(n.message + ``, !0) + `</pre>`
+                return t ? Promise.resolve(e) : e
+              }
+              if (t) return Promise.reject(n)
+              throw n
+            }
+          }
+        })()
+      function T(e, t) {
+        return w.parse(e, t)
+      }
+      ;((T.options = T.setOptions =
+        function (e) {
+          return (w.setOptions(e), (T.defaults = w.defaults), n(T.defaults), T)
+        }),
+        (T.getDefaults = e),
+        (T.defaults = t),
+        (T.use = function (...e) {
+          return (w.use(...e), (T.defaults = w.defaults), n(T.defaults), T)
+        }),
+        (T.walkTokens = function (e, t) {
+          return w.walkTokens(e, t)
+        }),
+        (T.parseInline = w.parseInline),
+        (T.Parser = C),
+        (T.parser = C.parse),
+        (T.Renderer = S),
+        (T.TextRenderer = Ge),
+        (T.Lexer = x),
+        (T.lexer = x.lex),
+        (T.Tokenizer = h),
+        (T.Hooks = Ke),
+        (T.parse = T),
+        T.options,
+        T.setOptions,
+        T.use,
+        T.walkTokens,
+        T.parseInline,
+        C.parse,
+        x.lex)
+      var E = (e) => {
+          let t = { '"': `&quot;`, '&': `&amp;`, "'": `&#39;`, '<': `&lt;`, '>': `&gt;` }
+          return e.replace(/[&<>"']/g, (e) => t[e] || e)
+        },
+        qe = new S()
+      qe.html = (e) => E(e)
+      var Je = (e) => {
+          let t = T.parse(e, { breaks: !1, gfm: !0, renderer: qe })
+          return typeof t == `string` ? t : ``
+        },
+        Ye = (e) => (e.match(/\n/g) || []).length,
+        Xe = (e) => `b${String(e).padStart(3, `0`)}`,
+        D = (e) => {
+          let t = T.lexer(e),
+            n = new Map(),
+            r = [],
+            i = 1,
+            a = 0
+          for (let e of t) {
+            if (e.type === `space`) {
+              i += Ye(e.raw)
+              continue
+            }
+            a += 1
+            let t = Xe(a),
+              o = e.type === `heading`
+            if (o) {
+              let t = e.depth
+              for (; r.length > 0 && (r[r.length - 1]?.level ?? 0) >= t; ) r.pop()
+            }
+            if ((n.set(t, { headingPath: r.map((e) => e.raw), sourceLine: i }), o)) {
+              let t = e.depth
+              r.push({ level: t, raw: e.raw.replace(/\n+$/, ``) })
+            }
+            i += Ye(e.raw)
+          }
+          return n
+        }
+      if (import.meta.vitest) {
+        let { describe: e, expect: t, it: n } = import.meta.vitest
+        ;(e(`escapeHTML`, () => {
+          ;(n(`プレーンテキストはそのまま返す`, () => {
+            t(E(`plain text`)).toBe(`plain text`)
+          }),
+            n(`HTML に意味を持つ文字を全てエスケープする`, () => {
+              t(E(`<a href="x">'&'</a>`)).toBe(
+                `&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;`
+              )
+            }))
+        }),
+          e(`renderMarkdown`, () => {
+            ;(n(`raw HTML is escaped instead of emitted as executable markup`, () => {
+              let e = Je(`<script>alert(1)<\/script>
+
+<img src=x onerror="alert(1)">`)
+              ;(t(e).not.toContain(`<script>`),
+                t(e).not.toContain(`<img src=x`),
+                t(e).toContain(`&lt;script&gt;alert(1)&lt;/script&gt;`),
+                t(e).toContain(`&lt;img src=x onerror=&quot;alert(1)&quot;&gt;`))
+            }),
+              n(`HTML examples inside fenced code blocks remain code`, () => {
+                let e = Je('```html\n<div onclick="alert(1)">x</div>\n```')
+                ;(t(e).toContain(`<pre><code class="language-html">`),
+                  t(e).toContain(`&lt;div onclick=&quot;alert(1)&quot;&gt;x&lt;/div&gt;`))
+              }))
+          }),
+          e(`buildBlockAnchors`, () => {
+            ;(n(`連続するブロックに 1-origin の開始行を振る`, () => {
+              let e = D(`# H1
+
+Para1
+
+Para2
+`)
+              ;(t(e.get(`b001`)?.sourceLine).toBe(1),
+                t(e.get(`b002`)?.sourceLine).toBe(3),
+                t(e.get(`b003`)?.sourceLine).toBe(5))
+            }),
+              n(`heading 自身のブロックの headingPath は祖先のみ（自分は含めない）`, () => {
+                let e = D(`# Root
+
+## Sub
+
+Body
+`)
+                ;(t(e.get(`b001`)?.headingPath).toEqual([]),
+                  t(e.get(`b002`)?.headingPath).toEqual([`# Root`]),
+                  t(e.get(`b003`)?.headingPath).toEqual([`# Root`, `## Sub`]))
+              }),
+              n(`同じ深さの heading が来たら祖先を pop して差し替える`, () => {
+                let e = D(`# A
+
+P1
+
+# B
+
+P2
+`)
+                ;(t(e.get(`b002`)?.headingPath).toEqual([`# A`]),
+                  t(e.get(`b003`)?.headingPath).toEqual([]),
+                  t(e.get(`b004`)?.headingPath).toEqual([`# B`]))
+              }),
+              n(`浅い heading が来たら深い heading をすべて閉じる`, () => {
+                t(
+                  D(`# A
+
+## A.1
+
+### A.1.1
+
+## A.2
+
+body
+`).get(`b005`)?.headingPath
+                ).toEqual([`# A`, `## A.2`])
+              }),
+              n(`見出しがない markdown では headingPath が空配列になる`, () => {
+                let e = D(`Para1
+
+Para2
+`)
+                ;(t(e.get(`b001`)?.headingPath).toEqual([]),
+                  t(e.get(`b002`)?.headingPath).toEqual([]))
+              }),
+              n(`コードブロック等の複数行ブロックは raw の改行数で次の行カーソルを進める`, () => {
+                let e = D(`# H1
+
+\`\`\`js
+const x=1;
+const y=2;
+\`\`\`
+
+After
+`)
+                ;(t(e.get(`b002`)?.sourceLine).toBe(3), t(e.get(`b003`)?.sourceLine).toBe(8))
+              }))
+          }))
+      }
+      var Ze = (e) => {
+          let t = [],
+            n = (e) => {
+              if (e instanceof Text) {
+                let n = t.at(-1),
+                  r = (n && n.end) || 0
+                t.push({ end: r + (e.textContent || ``).length, node: e, start: r })
+                return
+              }
+              for (let t of e.childNodes) n(t)
+            }
+          return (n(e), t)
+        },
+        Qe = (e, t, n) => {
+          let r = e.findIndex((e) => e.end > t),
+            i = e.findIndex((e) => e.end >= n)
+          return r === -1 || i === -1
+            ? null
+            : { endIndex: i, endOff: n - e[i].start, startIndex: r, startOff: t - e[r].start }
+        },
+        $e = (e, t, n) => {
+          let r = Ze(e),
+            i = Qe(r, t, n)
+          if (!i) return null
+          let a = r[i.startIndex]
+          return {
+            endNode: r[i.endIndex].node,
+            endOff: i.endOff,
+            startNode: a.node,
+            startOff: i.startOff,
+          }
+        },
+        et = (e, t) => {
+          let n = $e(e, t.startOffset, t.endOffset)
+          if (!n) return null
+          let { endNode: r, endOff: i, startNode: a, startOff: o } = n,
+            s = document.createRange()
+          try {
+            ;(s.setStart(a, o), s.setEnd(r, i))
+          } catch {
+            return null
+          }
+          return { endNode: r, range: s, startNode: a }
+        },
+        tt = (e, t, n) => {
+          let r = Ze(e).find(({ node: e }) => e === t)
+          return r ? r.start + n : null
+        },
+        nt = (e, t, n) => {
+          if (!(t instanceof Element) || !e.contains(t)) return null
+          let r = Math.max(0, Math.min(n, t.childNodes.length)),
+            i = document.createRange()
+          return (i.selectNodeContents(e), i.setEnd(t, r), i.toString().length)
+        },
+        rt = (e, t, n) => {
+          let r = tt(e, t, n)
+          if (r !== null) return r
+          let i = nt(e, t, n)
+          return i === null ? -1 : i
+        },
+        it = () => {
+          let e = globalThis.getSelection()
+          if (!e || e.rangeCount === 0 || e.isCollapsed) return null
+          let t = e.getRangeAt(0)
+          return e.toString().trim() ? { range: t, sel: e } : null
+        },
+        at = (e) => {
+          let t = e.commonAncestorContainer
+          return t.nodeType === Node.TEXT_NODE ? t.parentElement : t
+        },
+        ot = (e) => {
+          let t = at(e)
+          if (t instanceof Element) {
+            let e = t.closest(`[data-block-id]`)
+            if (e instanceof HTMLElement) return e
+          }
+          return null
+        },
+        st = (e, t) => {
+          let n = rt(e, t.startContainer, t.startOffset),
+            r = rt(e, t.endContainer, t.endOffset)
+          return n < 0 || r < 0 || r <= n ? null : { endOff: r, startOff: n }
+        },
+        ct = (e, t, n) => {
+          let { range: r, sel: i } = e,
+            { endOff: a, startOff: o } = n
+          return {
+            blockId: t.dataset.blockId || ``,
+            endOffset: a,
+            quote: i.toString(),
+            rect: r.getBoundingClientRect(),
+            startOffset: o,
+          }
+        },
+        lt = () => {
+          let e = it()
+          if (!e) return null
+          let t = ot(e.range)
+          if (!t) return null
+          let n = st(t, e.range)
+          return n ? ct(e, t, n) : null
+        }
+      if (import.meta.vitest) {
+        let { describe: e, expect: t, it: n } = import.meta.vitest
+        e(`resolveSegmentOffsets`, () => {
+          ;(n(`複数セグメントをまたぐ保存 offset をノード内 offset に変換する`, () => {
+            t(
+              Qe(
+                [
+                  { end: 2, start: 0 },
+                  { end: 5, start: 2 },
+                ],
+                1,
+                4
+              )
+            ).toEqual({ endIndex: 1, endOff: 2, startIndex: 0, startOff: 1 })
+          }),
+            n(`終端 offset はセグメント末尾と等しい位置を有効にする`, () => {
+              t(
+                Qe(
+                  [
+                    { end: 2, start: 0 },
+                    { end: 5, start: 2 },
+                  ],
+                  0,
+                  2
+                )
+              ).toEqual({ endIndex: 0, endOff: 2, startIndex: 0, startOff: 0 })
+            }),
+            n(`範囲外 offset は null`, () => {
+              t(Qe([{ end: 2, start: 0 }], 5, 6)).toBeNull()
+            }))
+        })
+      }
+      var ut = { headingPath: [], sourceLine: 0 },
+        dt = (e, t) => {
+          let n = t.get(e.blockId) ?? ut
+          return {
+            comment: e.comment,
+            created: e.created,
+            headingPath: n.headingPath,
+            id: e.id,
+            quote: e.quote,
+            sourceLine: n.sourceLine,
+          }
+        },
+        ft = (e) => ({
+          comments: e.comments.map((t) => dt(t, e.blockAnchors)),
+          docHash: e.docHash ?? ``,
+          document: e.docName,
+          exportedAt: new Date().toISOString(),
+        }),
+        O = (e) => (e ? e.replace(/\.[^.]+$/, ``) : `review`),
+        pt = (e) => (e === 1 ? `${e} comment` : `${e} comments`),
+        mt = (e) => ({
+          blockId: ``,
+          comment: ``,
+          created: ``,
+          endOffset: 1,
+          id: e,
+          quote: ``,
+          startOffset: 0,
+        })
+      if (import.meta.vitest) {
+        let { describe: e, expect: t, it: n } = import.meta.vitest
+        ;(e(`exportBaseName`, () => {
+          ;(n(`docName から拡張子を除いた名前を返す`, () => {
+            t(O(`notes.md`)).toBe(`notes`)
+          }),
+            n(`複数ドットがある場合は最後の拡張子のみ除去`, () => {
+              t(O(`foo.bar.md`)).toBe(`foo.bar`)
+            }),
+            n(`docName 未設定なら "review"`, () => {
+              t(O(null)).toBe(`review`)
+            }))
+        }),
+          e(`commentCountLabel`, () => {
+            ;(n(`1 件のときは単数形`, () => {
+              t(pt(1)).toBe(`1 comment`)
+            }),
+              n(`0 件のときは複数形 (i18n 非対応の既知挙動)`, () => {
+                t(pt(0)).toBe(`0 comments`)
+              }),
+              n(`2 件以上のときは複数形`, () => {
+                t(pt(3)).toBe(`3 comments`)
+              }))
+          }),
+          e(`buildReviewExportPayload`, () => {
+            ;(n(`state から export payload を構築する`, () => {
+              let e = mt(`a`),
+                n = mt(`b`),
+                r = ft({
+                  blockAnchors: new Map(),
+                  comments: [e, n],
+                  docHash: `a1b2c3d4e5f6a7b8`,
+                  docName: `review.md`,
+                })
+              ;(t(r.comments).toHaveLength(2),
+                t(r.comments[0]).toMatchObject({ headingPath: [], id: `a`, sourceLine: 0 }),
+                t(r.comments[1]).toMatchObject({ headingPath: [], id: `b`, sourceLine: 0 }),
+                t(r.docHash).toBe(`a1b2c3d4e5f6a7b8`),
+                t(r.document).toBe(`review.md`),
+                t(r.exportedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/))
+            }),
+              n(`blockAnchors から headingPath と sourceLine を引いて埋める`, () => {
+                let e = { ...mt(`c1`), blockId: `b002` }
+                t(
+                  ft({
+                    blockAnchors: new Map([[`b002`, { headingPath: [`# Root`], sourceLine: 42 }]]),
+                    comments: [e],
+                    docHash: `h`,
+                    docName: `r.md`,
+                  }).comments[0]
+                ).toMatchObject({ headingPath: [`# Root`], sourceLine: 42 })
+              }),
+              n(`docHash が null なら空文字に正規化する`, () => {
+                t(
+                  ft({ blockAnchors: new Map(), comments: [], docHash: null, docName: null })
+                    .docHash
+                ).toBe(``)
+              }))
+          }))
+      }
+      var k = (e) => typeof e == `object` && !!e,
+        A = (e) => typeof e == `number` && Number.isFinite(e),
+        j = (e) => typeof e == `string` && e.length > 0,
+        ht = (e) => {
+          try {
+            return JSON.parse(e)
+          } catch {
+            return null
+          }
+        },
+        gt = (e) => {
+          if (!k(e)) return !1
+          let {
+            blockId: t,
+            comment: n,
+            created: r,
+            endOffset: i,
+            id: a,
+            quote: o,
+            startOffset: s,
+          } = e
+          return (
+            j(a) &&
+            j(t) &&
+            typeof o == `string` &&
+            typeof n == `string` &&
+            j(r) &&
+            A(s) &&
+            A(i) &&
+            s >= 0 &&
+            i > s
+          )
+        },
+        M = (e) => (Array.isArray(e) ? e.filter(gt) : []),
+        _t = (e) => (k(e) ? typeof e.markdown == `string` : !1),
+        vt = (e) => (_t(e) ? M(e.comments) : []),
+        yt = (e) => (k(e) ? M(e.comments) : []),
+        N = (e) => {
+          let t = ht(e)
+          if (!k(t)) return null
+          let { blockId: n, endOffset: r, quote: i, startOffset: a } = t
+          return !j(n) || !A(r) || typeof i != `string` || !A(a) || a < 0 || r <= a
+            ? null
+            : { blockId: n, endOffset: r, quote: i, startOffset: a }
+        },
+        bt = () => ({
+          blockId: `b001`,
+          comment: `fix this`,
+          created: `2026-05-17T00:00:00.000Z`,
+          endOffset: 4,
+          id: `abc123`,
+          quote: `text`,
+          startOffset: 0,
+        })
+      if (import.meta.vitest) {
+        let { describe: e, expect: t, it: n } = import.meta.vitest
+        ;(e(`commentsFromUnknown`, () => {
+          ;(n(`valid comments only are retained`, () => {
+            let e = bt()
+            t(M([e, { ...e, id: `` }, { ...e, startOffset: `0` }, { ...e, endOffset: 0 }])).toEqual(
+              [e]
+            )
+          }),
+            n(`non-array values become an empty list`, () => {
+              t(M({ comments: [] })).toEqual([])
+            }))
+        }),
+          e(`parsePendingSelection`, () => {
+            ;(n(`parses a valid pending selection`, () => {
+              t(
+                N(JSON.stringify({ blockId: `b001`, endOffset: 4, quote: `text`, startOffset: 0 }))
+              ).toEqual({ blockId: `b001`, endOffset: 4, quote: `text`, startOffset: 0 })
+            }),
+              n(`returns null for invalid JSON or invalid offsets`, () => {
+                ;(t(N(`{`)).toBeNull(),
+                  t(
+                    N(
+                      JSON.stringify({
+                        blockId: `b001`,
+                        endOffset: 0,
+                        quote: `text`,
+                        startOffset: 0,
+                      })
+                    )
+                  ).toBeNull())
+              }))
+          }))
+      }
+      var xt = (e, t) => {
+          let n = document.createElement(`button`)
+          return ((n.className = t), (n.type = `button`), (n.textContent = e), n)
+        },
+        St = () => {
+          let e = document.createElement(`div`)
+          return ((e.className = `modal-backdrop open`), e)
+        },
+        Ct = () => {
+          let e = document.createElement(`div`)
+          return (
+            (e.className = `modal`),
+            e.setAttribute(`role`, `dialog`),
+            e.setAttribute(`aria-modal`, `true`),
+            e
+          )
+        },
+        wt = (e) => {
+          let t = document.createElement(`p`)
+          return ((t.className = `modal-quote`), (t.textContent = e), t)
+        },
+        Tt = () => {
+          let e = document.createElement(`div`)
+          return ((e.className = `modal-actions`), e)
+        },
+        Et = (e) => {
+          let t = St(),
+            n = Ct(),
+            r = wt(e),
+            i = Tt()
+          return (n.append(r, i), t.appendChild(n), { actions: i, overlay: t })
+        },
+        Dt = (e, t) => {
+          let n = xt(`Cancel`, `btn btn-ghost`)
+          ;(n.addEventListener(`click`, () => t(!1)), e.appendChild(n))
+        },
+        Ot = ({ cleanup: e, confirmButton: t, onKeydown: n, overlay: r }) => {
+          ;(document.addEventListener(`keydown`, n),
+            r.addEventListener(`click`, (t) => {
+              t.target === r && e(!1)
+            }),
+            t.addEventListener(`click`, () => e(!0)),
+            setTimeout(() => t.focus(), 0))
+        },
+        kt = async (e, t = !1) =>
+          new Promise((n) => {
+            let { actions: r, overlay: i } = Et(e),
+              a = xt(`OK`, `btn btn-primary`),
+              o = { onKeydown: () => {} },
+              s = (e) => {
+                ;(document.removeEventListener(`keydown`, o.onKeydown), i.remove(), n(e))
+              }
+            ;((o.onKeydown = (e) => {
+              e.key === `Escape` && s(!1)
+            }),
+              t && Dt(r, s),
+              r.appendChild(a),
+              document.body.appendChild(i),
+              Ot({ cleanup: s, confirmButton: a, onKeydown: o.onKeydown, overlay: i }))
+          }),
+        At = async (e) => kt(e, !0),
+        jt = async (e) => kt(e),
+        P = {
+          _db: null,
+          async _open() {
+            return this._db
+              ? this._db
+              : new Promise((e, t) => {
+                  let n = indexedDB.open(`margin-notes`, 1)
+                  ;((n.onupgradeneeded = () => n.result.createObjectStore(`kv`)),
+                    (n.onsuccess = () => {
+                      ;((this._db = n.result), e(n.result))
+                    }),
+                    n.addEventListener(`error`, () => t(n.error)))
+                })
+          },
+          async del(e) {
+            let t = await this._open()
+            return new Promise((n, r) => {
+              let i = t.transaction(`kv`, `readwrite`).objectStore(`kv`).delete(e)
+              ;((i.onsuccess = () => n()), i.addEventListener(`error`, () => r(i.error)))
+            })
+          },
+          async get(e) {
+            let t = await this._open()
+            return new Promise((n, r) => {
+              let i = t.transaction(`kv`).objectStore(`kv`).get(e)
+              ;((i.onsuccess = () => n(i.result)), i.addEventListener(`error`, () => r(i.error)))
+            })
+          },
+          async keys(e) {
+            let t = await this._open()
+            return new Promise((n, r) => {
+              let i = [],
+                a = t.transaction(`kv`).objectStore(`kv`).openKeyCursor()
+              ;((a.onsuccess = () => {
+                let t = a.result
+                if (!t) return n(i)
+                if (typeof t.key != `string`) {
+                  t.continue()
+                  return
+                }
+                let { key: r } = t
+                ;((!e || r.startsWith(e)) && i.push(r), t.continue())
+              }),
+                a.addEventListener(`error`, () => r(a.error)))
+            })
+          },
+          async set(e, t) {
+            let n = await this._open()
+            return new Promise((r, i) => {
+              let a = n.transaction(`kv`, `readwrite`).objectStore(`kv`).put(t, e)
+              ;((a.onsuccess = () => r()), a.addEventListener(`error`, () => i(a.error)))
+            })
+          },
+        },
+        F = globalThis.storage,
+        I = F !== void 0 && typeof F.get == `function`,
+        Mt = async (e) => {
+          if (!F) return null
+          try {
+            let t = await F.get(e)
+            return t ? JSON.parse(t.value) : null
+          } catch {
+            return null
+          }
+        },
+        Nt = async (e) => {
+          try {
+            let t = await P.get(`store:${e}`)
+            return typeof t == `string` ? JSON.parse(t) : null
+          } catch {
+            return null
+          }
+        },
+        Pt = {
+          async del(e) {
+            if (I && F)
+              try {
+                await F.delete(e)
+                return
+              } catch {}
+            try {
+              await P.del(`store:${e}`)
+            } catch {}
+          },
+          async get(e) {
+            return I ? Mt(e) : Nt(e)
+          },
+          async listKeys(e) {
+            if (I && F)
+              try {
+                let t = await F.list(e)
+                return (t && t.keys) || []
+              } catch {
+                return []
+              }
+            try {
+              return (await P.keys(`store:${e}`)).map((e) => e.slice(6))
+            } catch {
+              return []
+            }
+          },
+          async set(e, t) {
+            if (I && F)
+              try {
+                await F.set(e, JSON.stringify(t))
+                return
+              } catch {}
+            try {
+              await P.set(`store:${e}`, JSON.stringify(t))
+            } catch {}
+          },
+        },
+        Ft = { current: null },
+        L = (e) => {
+          Ft.current = e
+        },
+        R = () => {
+          if (!Ft.current) throw Error(`Workspace runtime is not configured`)
+          return Ft.current
+        },
+        z = { INPUT_FILE: `review.md`, OUTPUT_FILE: `feedback.json`, POLL_MS: 2e3 },
+        B = { declinedHash: null, handle: null, lastHash: null, polling: !1, timer: null },
+        It = () => typeof globalThis.showDirectoryPicker == `function`,
+        Lt = () => ({
+          sendBtn: R().qs(`#btn-send`),
+          status: R().qs(`#ws-status`),
+          watchBtn: R().qs(`#btn-watch`),
+        }),
+        Rt = (e, t) => {
+          ;((e.watchBtn.textContent = `Watching · ${t.name}`),
+            e.watchBtn.classList.add(`btn-primary`),
+            (e.sendBtn.style.display = ``),
+            (e.status.style.display = ``),
+            (e.status.textContent = `● ${z.INPUT_FILE} → ${z.OUTPUT_FILE}`))
+        },
+        zt = (e, t) => {
+          ;((e.watchBtn.textContent = `Reconnect · ${t.name}`),
+            e.watchBtn.classList.remove(`btn-primary`),
+            (e.sendBtn.style.display = `none`),
+            (e.status.style.display = `none`))
+        },
+        Bt = (e) => {
+          ;((e.watchBtn.textContent = `Watch folder`),
+            e.watchBtn.classList.remove(`btn-primary`),
+            (e.sendBtn.style.display = `none`),
+            (e.status.style.display = `none`))
+        },
+        V = () => {
+          let e = Lt(),
+            { handle: t, timer: n } = B
+          if (t && n) {
+            Rt(e, t)
+            return
+          }
+          if (t) {
+            zt(e, t)
+            return
+          }
+          Bt(e)
+        },
+        H = () => {
+          let { timer: e } = B
+          e && (clearInterval(e), (B.timer = null))
+        },
+        Vt = async (e) => {
+          let t = await (
+            await (await e.getFileHandle(z.INPUT_FILE, { create: !1 })).getFile()
+          ).text()
+          return { hash: await R().hashStr(t), text: t }
+        },
+        Ht = async (e) =>
+          B.lastHash === null || R().state.comments.length === 0
+            ? Promise.resolve(!0)
+            : e === B.declinedHash
+              ? Promise.resolve(!1)
+              : At(
+                  `${z.INPUT_FILE} has been updated. Load the new version? Current comments will be archived under the previous version's hash.`
+                ),
+        Ut = async ({ hash: e, text: t }) => {
+          if (!(await Ht(e))) {
+            B.declinedHash = e
+            return
+          }
+          ;((B.declinedHash = null),
+            (B.lastHash = e),
+            await R().loadFromMarkdown(z.INPUT_FILE, t),
+            R().toast(`Loaded ${z.INPUT_FILE}`))
+        },
+        Wt = (e) => (e instanceof Error ? e.name : ``),
+        Gt = (e) => {
+          let t = Wt(e)
+          t !== `NotFoundError` &&
+            (H(), V(), t !== `NotAllowedError` && R().toast(`Workspace watch stopped`))
+        },
+        Kt = async (e) => {
+          let t = await Vt(e)
+          t.hash !== B.lastHash && (await Ut(t))
+        },
+        qt = async () => {
+          let { handle: e } = B
+          if (!(!e || B.polling)) {
+            B.polling = !0
+            try {
+              await Kt(e)
+            } catch (e) {
+              Gt(e)
+            } finally {
+              B.polling = !1
+            }
+          }
+        },
+        Jt = () => {
+          ;(H(),
+            qt().catch(() => R().toast(`Workspace watch failed`)),
+            (B.timer = setInterval(qt, z.POLL_MS)))
+        },
+        Yt = async (e) => {
+          try {
+            await P.set(`workspace-handle`, e)
+          } catch {}
+        },
+        Xt = (e) => {
+          ;((B.handle = e), Jt(), V())
+        },
+        Zt = async (e) => {
+          ;(await Yt(e), Xt(e), R().toast(`Connected · ${e.name}`))
+        },
+        Qt = async () => {
+          if (!It() || !globalThis.showDirectoryPicker) {
+            await jt(`This browser does not support the File System Access API.
+Use Chrome, Edge, or another Chromium-based browser.`)
+            return
+          }
+          try {
+            await Zt(await globalThis.showDirectoryPicker({ mode: `readwrite` }))
+          } catch (e) {
+            Wt(e) !== `AbortError` && R().toast(`Connect failed`)
+          }
+        },
+        $t = (e) =>
+          !e || typeof e != `object` ? !1 : `queryPermission` in e && `getFileHandle` in e,
+        en = async () => {
+          let e = await P.get(`workspace-handle`)
+          return $t(e) ? e : null
+        },
+        tn = (e, t) => (t === `granted` ? (Xt(e), !0) : ((B.handle = e), V(), !1)),
+        nn = async () => {
+          if (!It()) return !1
+          try {
+            let e = await en()
+            return e ? tn(e, await e.queryPermission({ mode: `readwrite` })) : !1
+          } catch {
+            return !1
+          }
+        },
+        rn = async () => {
+          let { handle: e } = B
+          if (!e) return !1
+          try {
+            return (await e.requestPermission({ mode: `readwrite` })) === `granted`
+              ? (Xt(e), !0)
+              : !1
+          } catch {
+            return !1
+          }
+        },
+        an = async (e) => {
+          let t = await (await e.getFileHandle(z.OUTPUT_FILE, { create: !0 })).createWritable()
+          ;(await t.write(JSON.stringify(R().buildExportPayload(), null, 2)), await t.close())
+        },
+        on = () => {
+          let e = R()
+          ;(e.toast(`Submitted · ${e.commentCountLabel()}`),
+            (e.qs(`#status`).textContent = `${e.state.docName} · submitted`))
+        },
+        sn = async () => {
+          let { handle: e } = B
+          if (e) {
+            if (!R().state.markdown) {
+              R().toast(`Nothing to submit`)
+              return
+            }
+            try {
+              ;(await an(e), on())
+            } catch {
+              R().toast(`Submit failed`)
+            }
+          }
+        },
+        cn = async () => {
+          try {
+            await P.del(`workspace-handle`)
+          } catch {}
+        },
+        ln = async () => {
+          ;(await rn()) || (await Qt())
+        },
+        un = async (e) => {
+          ;(await At(`Stop watching ${e.name}/?`)) &&
+            (H(),
+            (B.declinedHash = null),
+            (B.handle = null),
+            (B.lastHash = null),
+            await cn(),
+            V(),
+            R().toast(`Disconnected`))
+        },
+        dn = async () => {
+          let { handle: e, timer: t } = B
+          if (e && !t) {
+            await ln()
+            return
+          }
+          if (e && t) {
+            await un(e)
+            return
+          }
+          await Qt()
+        },
+        fn = (e) => ({
+          blockId: `b001`,
+          comment: `body`,
+          created: `2026-05-17T00:00:00.000Z`,
+          endOffset: 4,
+          id: e,
+          quote: `text`,
+          startOffset: 0,
+        }),
+        U = (
+          e = {
+            comments: [],
+            docHash: `testhash00000000`,
+            docName: `review.md`,
+            markdown: `# Review`,
+          }
+        ) => ({
+          buildExportPayload: () => ({
+            comments: e.comments.map((e) => ({
+              comment: e.comment,
+              created: e.created,
+              headingPath: [],
+              id: e.id,
+              quote: e.quote,
+              sourceLine: 0,
+            })),
+            docHash: e.docHash ?? ``,
+            document: e.docName,
+            exportedAt: `2026-05-17T00:00:00.000Z`,
+          }),
+          commentCountLabel: () => `${e.comments.length} comments`,
+          hashStr: async (e) => Promise.resolve(`hash:${e.length}`),
+          loadFromMarkdown: async (t, n) => ((e.markdown = n), Promise.resolve()),
+          qs: (e) => {
+            throw Error(`Unexpected selector in workspace test: ${e}`)
+          },
+          state: e,
+          toast: (e) => {},
+        }),
+        pn = () => {
+          ;(H(),
+            (B.declinedHash = null),
+            (B.handle = null),
+            (B.lastHash = null),
+            (B.polling = !1),
+            (B.timer = null))
+        },
+        mn = () => ({
+          createWritable: async () => Promise.reject(Error(`not expected`)),
+          getFile: async () => Promise.reject(Error(`not expected`)),
+        })
+      if (import.meta.vitest) {
+        let { afterEach: e, beforeEach: t, describe: n, expect: r, it: i } = import.meta.vitest
+        ;(t(() => {
+          pn()
+        }),
+          e(() => {
+            pn()
+          }),
+          n(`confirmWorkspaceReload`, () => {
+            ;(i(`初回読み込みは確認なしで許可する`, async () => {
+              ;(L(
+                U({
+                  comments: [fn(`c1`)],
+                  docHash: `testhash00000000`,
+                  docName: `review.md`,
+                  markdown: `# Review`,
+                })
+              ),
+                await r(Ht(`new-hash`)).resolves.toBe(!0))
+            }),
+              i(`コメントがなければ確認なしで許可する`, async () => {
+                ;(L(U()), (B.lastHash = `old-hash`), await r(Ht(`new-hash`)).resolves.toBe(!0))
+              }),
+              i(`拒否済み hash は再確認せず拒否する`, async () => {
+                ;(L(
+                  U({
+                    comments: [fn(`c1`)],
+                    docHash: `testhash00000000`,
+                    docName: `review.md`,
+                    markdown: `# Review`,
+                  })
+                ),
+                  (B.lastHash = `old-hash`),
+                  (B.declinedHash = `new-hash`),
+                  await r(Ht(`new-hash`)).resolves.toBe(!1))
+              }))
+          }),
+          n(`wsPollOnce`, () => {
+            i(`既に polling 中ならファイルを読みに行かない`, async () => {
+              let e = 0
+              ;(L(U()),
+                (B.handle = {
+                  getFileHandle: async () => ((e += 1), Promise.resolve(mn())),
+                  name: `workspace`,
+                  queryPermission: async () => Promise.resolve(`granted`),
+                  requestPermission: async () => Promise.resolve(`granted`),
+                }),
+                (B.polling = !0),
+                await qt(),
+                r(e).toBe(0))
+            })
+          }),
+          n(`writeWorkspaceFeedback`, () => {
+            i(`feedback.json に export payload を JSON として書き出す`, async () => {
+              let e = ``,
+                t = !1
+              ;(L(
+                U({
+                  comments: [fn(`c1`)],
+                  docHash: `testhash00000000`,
+                  docName: `review.md`,
+                  markdown: `# Review`,
+                })
+              ),
+                await an({
+                  getFileHandle: async (n, i) => (
+                    r(n).toBe(z.OUTPUT_FILE),
+                    r(i).toEqual({ create: !0 }),
+                    Promise.resolve({
+                      createWritable: async () =>
+                        Promise.resolve({
+                          close: async () => ((t = !0), Promise.resolve()),
+                          write: async (t) => ((e = t), Promise.resolve()),
+                        }),
+                      getFile: async () => Promise.reject(Error(`not expected`)),
+                    })
+                  ),
+                  name: `workspace`,
+                  queryPermission: async () => Promise.resolve(`granted`),
+                  requestPermission: async () => Promise.resolve(`granted`),
+                }),
+                r(JSON.parse(e)).toEqual(R().buildExportPayload()),
+                r(t).toBe(!0))
+            })
+          }))
+      }
+      var W = (e) => (e && e.textContent ? e.textContent.trim() : ``),
+        hn = (e) => typeof e == `object` && !!e,
+        gn = async (e, t) => {
+          ;((e.state.comments = t), await e.save(), e.reapplyAllMarks(), e.renderSidebar())
+        },
+        _n = async (e, t) => {
+          if (t)
+            try {
+              let n = yt(JSON.parse(t))
+              n.length > 0 && (await gn(e, n))
+            } catch {}
+        },
+        vn = async (e) => {
+          let t = document.getElementById(`embedded-md`),
+            n = W(t)
+          if (!n || !(t instanceof HTMLElement)) return !1
+          let r = t.dataset.name || `document.md`
+          return (
+            await e.loadFromMarkdown(r, n),
+            await _n(e, W(document.getElementById(`embedded-feedback`))),
+            !0
+          )
+        },
+        yn = () => (location.hash.length <= 1 ? null : new URLSearchParams(location.hash.slice(1))),
+        bn = (e) => {
+          let t = e.replace(/ /g, `+`).replace(/-/g, `+`).replace(/_/g, `/`),
+            n = (4 - (t.length % 4)) % 4
+          return `${t}${`=`.repeat(n)}`
+        },
+        xn = (e) => {
+          let t = atob(bn(e)),
+            n = Uint8Array.from(t, (e) => e.charCodeAt(0))
+          return new TextDecoder().decode(n)
+        },
+        Sn = async (e, t) => {
+          let n = t.get(`md`)
+          if (n === null) return !1
+          let r = xn(n),
+            i = t.get(`name`) || `shared.md`
+          return (await e.loadFromMarkdown(i, r), !0)
+        },
+        Cn = async (e) => {
+          try {
+            let t = yn()
+            return t ? await Sn(e, t) : !1
+          } catch {
+            return !1
+          }
+        },
+        wn = (e) =>
+          e.reduce((e, t) => (t && (!e || (t.updated || ``) > (e.updated || ``)) ? t : e), null),
+        Tn = async (e) => {
+          try {
+            let t = await e.store.listKeys(`doc:`)
+            if (t.length === 0) return
+            let n = wn((await Promise.all(t.map(async (t) => e.store.get(t)))).filter((e) => hn(e)))
+            n &&
+              n.name &&
+              n.markdown &&
+              (await e.loadFromMarkdown(n.name, n.markdown), e.toast(`Restored last session`))
+          } catch {}
+        },
+        En = async (e) => {
+          ;(await nn(), !(await vn(e)) && ((await Cn(e)) || e.state.markdown || (await Tn(e))))
+        },
+        Dn = (e) => {
+          let t = [...new TextEncoder().encode(e)].map((e) => String.fromCharCode(e)).join(``)
+          return btoa(t).replace(/\+/g, `-`).replace(/\//g, `_`).replace(/=+$/, ``)
+        },
+        On = (e = []) => ({
+          loadFromMarkdown: async (t, n) => (e.push({ name: t, text: n }), Promise.resolve()),
+          reapplyAllMarks: () => {},
+          renderSidebar: () => {},
+          save: async () => Promise.resolve(),
+          state: { comments: [], markdown: `` },
+          store: {
+            get: async () => Promise.resolve(null),
+            listKeys: async () => Promise.resolve([]),
+          },
+          toast: () => {},
+        })
+      if (import.meta.vitest) {
+        let { describe: e, expect: t, it: n } = import.meta.vitest
+        ;(e(`elementText`, () => {
+          ;(n(`null を渡すと空文字を返す`, () => {
+            t(W(null)).toBe(``)
+          }),
+            n(`textContent を trim して返す`, () => {
+              t(
+                W({
+                  textContent: `  hello
+`,
+                })
+              ).toBe(`hello`)
+            }),
+            n(`textContent が空ならフォールバックで空文字`, () => {
+              t(W({ textContent: `` })).toBe(``)
+            }))
+        }),
+          e(`latestDocument`, () => {
+            ;(n(`updated が最も新しいドキュメントを返す`, () => {
+              let e = [
+                { name: `a`, updated: `2024-01-01T00:00:00Z` },
+                { name: `b`, updated: `2024-03-01T00:00:00Z` },
+                { name: `c`, updated: `2024-02-01T00:00:00Z` },
+              ]
+              t(wn(e)).toEqual(e[1])
+            }),
+              n(`空配列なら null`, () => {
+                t(wn([])).toBeNull()
+              }),
+              n(`null エントリを無視して最新を返す`, () => {
+                t(wn([null, { name: `x`, updated: `2024-01-01` }, null])).toEqual({
+                  name: `x`,
+                  updated: `2024-01-01`,
+                })
+              }))
+          }),
+          e(`decodeBase64Utf8`, () => {
+            ;(n(`Base64URL の markdown を UTF-8 として復号する`, () => {
+              t(xn(Dn(`# 見出し`))).toBe(`# 見出し`)
+            }),
+              n(`URLSearchParams で空白化した + を標準 Base64 として復元する`, () => {
+                t(xn(`77 9`)).toBe(`�`)
+              }))
+          }),
+          e(`loadFromHashParams`, () => {
+            ;(n(`md と name を hash params から取り込む`, async () => {
+              let e = []
+              ;(await t(
+                Sn(On(e), new URLSearchParams({ md: Dn(`# Review`), name: `request.md` }))
+              ).resolves.toBe(!0),
+                t(e).toEqual([{ name: `request.md`, text: `# Review` }]))
+            }),
+              n(`md がなければ false を返す`, async () => {
+                await t(Sn(On(), new URLSearchParams())).resolves.toBe(!1)
+              }))
+          }))
+      }
+      var kn = 350,
+        An = (e) => {
+          if (!e) return document.scrollingElement || document.documentElement
+          let t = getComputedStyle(e).overflowY
+          return (t === `auto` || t === `scroll`) && e.scrollHeight > e.clientHeight
+            ? e
+            : An(e.parentElement)
+        },
+        jn = (e) => An(e.parentElement),
+        G = (e) => (e < 0.5 ? 4 * e * e * e : 1 - (-2 * e + 2) ** 3 / 2),
+        Mn = (e) => {
+          let t = jn(e),
+            n = t.getBoundingClientRect(),
+            r = e.getBoundingClientRect(),
+            i = r.top + r.height / 2 - (n.top + n.height / 2),
+            a = t.scrollTop,
+            o = t.scrollHeight - t.clientHeight
+          return { end: Math.max(0, Math.min(a + i, o)), scroller: t, start: a }
+        },
+        Nn = (e, t = kn) => {
+          let { end: n, scroller: r, start: i } = Mn(e)
+          if (Math.abs(n - i) < 1) return
+          let a = performance.now(),
+            o = (e) => {
+              let s = Math.min((e - a) / t, 1)
+              ;((r.scrollTop = i + (n - i) * G(s)), s < 1 && requestAnimationFrame(o))
+            }
+          requestAnimationFrame(o)
+        }
+      if (import.meta.vitest) {
+        let { describe: e, it: t, expect: n } = import.meta.vitest
+        e(`easeInOutCubic`, () => {
+          ;(t(`0 を渡すと 0 を返す`, () => {
+            n(G(0)).toBe(0)
+          }),
+            t(`1 を渡すと 1 を返す`, () => {
+              n(G(1)).toBe(1)
+            }),
+            t(`0.5 を渡すと 0.5 を返す (中点で対称)`, () => {
+              n(G(0.5)).toBeCloseTo(0.5, 10)
+            }),
+            t(`進行率に対して単調増加する`, () => {
+              let e = [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1].map(G)
+              for (let t = 1; t < e.length; t += 1) n(e[t]).toBeGreaterThanOrEqual(e[t - 1])
+            }))
+        })
+      }
+      var Pn = () => {
+          for (let e of document.querySelectorAll(`mark.cmt.active, .cmt-card.active`))
+            e.classList.remove(`active`)
+        },
+        Fn = () => {
+          let e = new Map(),
+            t = [...document.querySelectorAll(`mark.cmt`)]
+          for (let [n, r] of t.entries()) {
+            let t = r.dataset.commentId
+            t && e.set(t, n)
+          }
+          return e
+        },
+        In = (e) => {
+          let t = Fn()
+          return [...e].toSorted((e, n) => (t.get(e.id) ?? 999) - (t.get(n.id) ?? 999))
+        },
+        Ln = (e, t) => {
+          let n = document.querySelector(`mark.cmt[data-comment-id="${t.id}"]`)
+          n && (Pn(), n.classList.add(`active`), e.classList.add(`active`), Nn(n))
+        },
+        Rn = (e) => `
+  <div class="cmt-quote">“${E(e.quote)}”</div>
+  <div class="cmt-body">${E(e.comment)}</div>
+  <div class="cmt-meta">
+    <span>${e.blockId} · ${new Date(e.created).toLocaleString()}</span>
+    <button class="cmt-del" data-del="${e.id}">Delete</button>
+  </div>`,
+        zn = async (e, t) => {
+          ;((e.state.comments = e.state.comments.filter((e) => e.id !== t.id)),
+            await e.save(),
+            e.reapplyAllMarks())
+        },
+        Bn = ({ card: e, comment: t, onDeleted: n, runtime: r }) => {
+          e.addEventListener(`click`, (n) => {
+            let { target: r } = n
+            ;(r instanceof HTMLElement && r.dataset.del) || Ln(e, t)
+          })
+          let i = e.querySelector(`[data-del]`)
+          i &&
+            i.addEventListener(`click`, async (e) => {
+              ;(e.stopPropagation(), await zn(r, t), n(), r.toast(`Comment deleted`))
+            })
+        },
+        Vn = (e, t, n) => {
+          let r = document.createElement(`div`)
+          return (
+            (r.className = `cmt-card`),
+            (r.dataset.id = t.id),
+            (r.innerHTML = Rn(t)),
+            Bn({ card: r, comment: t, onDeleted: n, runtime: e }),
+            r
+          )
+        },
+        Hn = (e) => {
+          e.innerHTML = `<div class="label" style="color: var(--ink-faint);">Select text in the file to add a review comment.</div>`
+        },
+        Un = (e) => {
+          let t = () => {
+            let n = e.qs(`#cmt-list`)
+            if (
+              ((e.qs(`#cmt-count`).textContent = String(e.state.comments.length)),
+              e.state.comments.length === 0)
+            ) {
+              Hn(n)
+              return
+            }
+            n.innerHTML = ``
+            for (let r of In(e.state.comments)) n.appendChild(Vn(e, r, t))
+          }
+          return {
+            activateMark: (e) => {
+              let t = e.dataset.commentId
+              ;(Pn(), e.classList.add(`active`))
+              let n = document.querySelector(`.cmt-card[data-id="${t}"]`)
+              n && (n.classList.add(`active`), Nn(n))
+            },
+            render: t,
+          }
+        },
+        K = (e) => ({
+          blockId: `b001`,
+          comment: `body`,
+          created: `2026-05-17T00:00:00.000Z`,
+          endOffset: 4,
+          id: e,
+          quote: `text`,
+          startOffset: 0,
+        })
+      if (import.meta.vitest) {
+        let { afterEach: e, describe: t, expect: n, it: r, vi: i } = import.meta.vitest
+        ;(e(() => {
+          i.unstubAllGlobals()
+        }),
+          t(`commentCardHTML`, () => {
+            r(`quote と comment を HTML エスケープして描画する`, () => {
+              let e = Rn({
+                ...K(`c1`),
+                comment: `<script>alert(1)<\/script>`,
+                quote: `"quoted" & raw`,
+              })
+              ;(n(e).toContain(`&quot;quoted&quot; &amp; raw`),
+                n(e).toContain(`&lt;script&gt;alert(1)&lt;/script&gt;`),
+                n(e).not.toContain(`<script>`))
+            })
+          }),
+          t(`orderedComments`, () => {
+            ;(r(`本文 mark の DOM 順にコメントを並べる`, () => {
+              ;(i.stubGlobal(`document`, {
+                querySelectorAll: () => [
+                  { dataset: { commentId: `second` } },
+                  { dataset: { commentId: `first` } },
+                ],
+              }),
+                n(In([K(`first`), K(`second`)]).map((e) => e.id)).toEqual([`second`, `first`]))
+            }),
+              r(`mark が存在しないコメントは末尾に寄せる`, () => {
+                i.stubGlobal(`document`, {
+                  querySelectorAll: () => [{ dataset: { commentId: `known` } }],
+                })
+                let e = K(`known`)
+                n(In([K(`missing`), e]).map((e) => e.id)).toEqual([`known`, `missing`])
+              }))
+          }))
+      }
+      var Wn = (e) => (!e || e.length === 0 ? null : e[0] || null),
+        Gn = (e) => {
+          let t = e.currentTarget
+          return !(t instanceof HTMLInputElement) || !t.files ? null : Wn(t.files)
+        },
+        Kn = (e) => {
+          let t = e.currentTarget
+          t instanceof HTMLInputElement && (t.value = ``)
+        },
+        qn = (e, t) => {
+          let n = new Blob([JSON.stringify(t, null, 2)], { type: `application/json` }),
+            r = URL.createObjectURL(n),
+            i = document.createElement(`a`)
+          ;((i.href = r),
+            (i.download = `${O(e.state.docName)}.feedback.json`),
+            i.click(),
+            URL.revokeObjectURL(r))
+        },
+        Jn = (e) => {
+          let t = document.createElement(`textarea`)
+          return ((t.value = e), (t.style.position = `fixed`), (t.style.left = `-9999px`), t)
+        },
+        Yn = () => {
+          try {
+            return document.execCommand(`copy`)
+          } catch {
+            return !1
+          }
+        },
+        Xn = (e, t) => {
+          let n = Jn(t)
+          ;(document.body.appendChild(n),
+            n.select(),
+            Yn() ? e.toast(`Copied`) : e.toast(`Copy failed`),
+            document.body.removeChild(n))
+        },
+        Zn = async (e) => {
+          ;((e.state.comments = []),
+            await e.save(),
+            e.reapplyAllMarks(),
+            e.renderSidebar(),
+            e.toast(`Comments discarded`))
+        },
+        Qn = (e) => {
+          ;(e.qs(`#btn-load`).addEventListener(`click`, () => e.qsInput(`#file-md`).click()),
+            e.qsInput(`#file-md`).addEventListener(`change`, async (t) => {
+              let n = Gn(t)
+              if (!n) return
+              let r = await n.text()
+              ;(await e.loadFromMarkdown(n.name, r), Kn(t))
+            }))
+        },
+        $n = (e) => {
+          e.qs(`#btn-export`).addEventListener(`click`, () => {
+            if (!e.state.markdown) {
+              e.toast(`Nothing to export`)
+              return
+            }
+            ;(qn(e, e.buildExportPayload()), e.toast(`Exported`))
+          })
+        },
+        er = (e) => {
+          e.qs(`#btn-copy`).addEventListener(`click`, async () => {
+            if (!e.state.markdown) {
+              e.toast(`Nothing to copy`)
+              return
+            }
+            let t = JSON.stringify(e.buildExportPayload(), null, 2)
+            try {
+              ;(await navigator.clipboard.writeText(t),
+                e.toast(`Copied · ${e.commentCountLabel()}`))
+            } catch {
+              Xn(e, t)
+            }
+          })
+        },
+        tr = (e) => {
+          e.qs(`#btn-clear`).addEventListener(`click`, async () => {
+            if (!e.state.comments.length) {
+              e.toast(`No comments to clear`)
+              return
+            }
+            ;(await At(`Delete all ${e.state.comments.length} comments for this file?`)) &&
+              (await Zn(e))
+          })
+        },
+        nr = (e) => {
+          ;(Qn(e), $n(e), er(e), tr(e))
+        }
+      if (import.meta.vitest) {
+        let { describe: e, expect: t, it: n } = import.meta.vitest
+        e(`firstFileFromList`, () => {
+          ;(n(`先頭の File を返す`, () => {
+            let e = new File([`# Review`], `review.md`, { type: `text/markdown` })
+            t(Wn([e])).toBe(e)
+          }),
+            n(`空なら null`, () => {
+              ;(t(Wn([])).toBeNull(), t(Wn(null)).toBeNull())
+            }))
+        })
+      }
+      var q = {
+          blockAnchors: new Map(),
+          blockOriginalHTML: new Map(),
+          comments: [],
+          docHash: null,
+          docName: null,
+          markdown: ``,
+        },
+        J = (e) => {
+          let t = document.querySelector(e)
+          if (!t) throw Error(`Element not found: ${e}`)
+          return t
+        },
+        rr = (e) => {
+          let t = J(e)
+          if (!(t instanceof HTMLInputElement) && !(t instanceof HTMLTextAreaElement))
+            throw Error(`Element ${e} is not an input or textarea`)
+          return t
+        },
+        ir = () => Math.random().toString(36).slice(2, 10),
+        ar = async (e) => {
+          let t = new TextEncoder().encode(e),
+            n = await crypto.subtle.digest(`SHA-256`, t)
+          return [...new Uint8Array(n)]
+            .slice(0, 8)
+            .map((e) => e.toString(16).padStart(2, `0`))
+            .join(``)
+        },
+        or = null,
+        Y = (e) => {
+          let t = J(`#toast`)
+          ;((t.textContent = e),
+            t.classList.add(`show`),
+            or !== null && clearTimeout(or),
+            (or = setTimeout(() => t.classList.remove(`show`), 1800)))
+        },
+        sr = (e, t) => {
+          let { endNode: n, range: r, startNode: i } = e,
+            a = document.createElement(`mark`)
+          ;((a.className = `cmt`), (a.dataset.commentId = t))
+          try {
+            if (i === n) r.surroundContents(a)
+            else {
+              let e = r.extractContents()
+              ;(a.appendChild(e), r.insertNode(a))
+            }
+          } catch {}
+        },
+        cr = (e, t) => {
+          let n = et(e, t)
+          n && sr(n, t.id)
+        },
+        lr = () => {
+          let e = new Map()
+          for (let t of q.comments) {
+            let n = e.get(t.blockId)
+            n ? n.push(t) : e.set(t.blockId, [t])
+          }
+          return e
+        },
+        ur = (e, t) => [...(e.get(t) || [])].toSorted((e, t) => t.startOffset - e.startOffset),
+        dr = ({ blockId: e, byBlock: t, doc: n, original: r }) => {
+          let i = n.querySelector(`[data-block-id="${e}"]`)
+          if (i) {
+            i.innerHTML = r
+            for (let n of ur(t, e)) cr(i, n)
+          }
+        },
+        X = () => {
+          let e = J(`#doc`),
+            t = lr()
+          for (let [n, r] of q.blockOriginalHTML)
+            dr({ blockId: n, byBlock: t, doc: e, original: r })
+        },
+        fr = (e, t) => {
+          ;((e.innerHTML = ``), (t.style.display = `block`))
+        },
+        pr = (e) => {
+          q.blockOriginalHTML.clear()
+          for (let [t, n] of [...e.children].entries())
+            if (n instanceof HTMLElement) {
+              let e = `b${String(t + 1).padStart(3, `0`)}`
+              ;((n.dataset.blockId = e), q.blockOriginalHTML.set(e, n.innerHTML))
+            }
+        },
+        mr = (e, t) => {
+          ;((t.style.display = `none`),
+            (e.innerHTML = Je(q.markdown)),
+            pr(e),
+            (q.blockAnchors = D(q.markdown)))
+        },
+        hr = () => {
+          let e = J(`#doc`),
+            t = J(`#doc-wrap`)
+          if (!q.markdown) {
+            ;(q.blockAnchors.clear(), fr(e, t))
+            return
+          }
+          ;(mr(e, t), X())
+        },
+        gr = (e) =>
+          JSON.stringify({
+            blockId: e.blockId,
+            endOffset: e.endOffset,
+            quote: e.quote,
+            startOffset: e.startOffset,
+          }),
+        _r = (e, t) => {
+          let n = t.top - 42,
+            r = t.left + t.width / 2 - e.offsetWidth / 2
+          ;((e.style.top = `${n}px`), (e.style.left = `${Math.max(8, r)}px`))
+        },
+        vr = () => {
+          let e = lt(),
+            t = J(`#floater`)
+          if (!e) {
+            t.style.display = `none`
+            return
+          }
+          ;((t.style.display = `block`), _r(t, e.rect), (t.dataset.payload = gr(e)))
+        },
+        yr = () => {
+          setTimeout(vr, 10)
+        }
+      import.meta.vitest ||
+        (document.addEventListener(`mouseup`, yr), document.addEventListener(`keyup`, yr))
+      var br = { pendingSelection: null },
+        xr = (e) => {
+          ;((br.pendingSelection = e),
+            (J(`#modal-quote`).textContent = `“${e.quote}”`),
+            (rr(`#modal-input`).value = ``),
+            J(`#modal`).classList.add(`open`),
+            setTimeout(() => rr(`#modal-input`).focus(), 50))
+        },
+        Sr = () => {
+          ;(J(`#modal`).classList.remove(`open`), (br.pendingSelection = null))
+        },
+        Cr = () => {
+          ;(J(`#menu-comments`).classList.add(`open`),
+            J(`#btn-comments-menu`).setAttribute(`aria-expanded`, `true`))
+        },
+        wr = () => {
+          ;(J(`#menu-comments`).classList.remove(`open`),
+            J(`#btn-comments-menu`).setAttribute(`aria-expanded`, `false`))
+        },
+        Tr = async () => {
+          if (!q.docHash) return
+          let e = {
+            comments: q.comments,
+            markdown: q.markdown,
+            name: q.docName,
+            updated: new Date().toISOString(),
+          }
+          ;(await Pt.set(`doc:${q.docHash}`, e),
+            (J(`#status`).textContent = `${q.docName} · saved`))
+        },
+        Er = Un({ qs: J, reapplyAllMarks: X, save: Tr, state: q, toast: Y }),
+        Z = () => Er.render(),
+        Dr = () => (q.comments.length > 0 ? `restored` : `loaded`),
+        Or = async (e, t) => {
+          ;((q.docName = e),
+            (q.markdown = t),
+            (q.docHash = await ar(t)),
+            (q.comments = vt(await Pt.get(`doc:${q.docHash}`))),
+            hr(),
+            Z(),
+            (J(`#status`).textContent = `${e} · ${Dr()}`))
+        },
+        kr = (e, t) => ({
+          blockId: e.blockId,
+          comment: t,
+          created: new Date().toISOString(),
+          endOffset: e.endOffset,
+          id: ir(),
+          quote: e.quote,
+          startOffset: e.startOffset,
+        }),
+        Ar = async () => {
+          let e = rr(`#modal-input`).value.trim(),
+            t = br.pendingSelection
+          !e || !t || (q.comments.push(kr(t, e)), await Tr(), X(), Z(), Sr(), Y(`Comment added`))
+        }
+      import.meta.vitest ||
+        (J(`#floater`).addEventListener(`mousedown`, (e) => {
+          e.preventDefault()
+          let t = J(`#floater`),
+            { payload: n } = t.dataset
+          if (!n) return
+          let r = N(n)
+          r && (xr(r), (t.style.display = `none`))
+        }),
+        J(`#modal-cancel`).addEventListener(`click`, Sr),
+        J(`#modal`).addEventListener(`click`, (e) => {
+          let { target: t } = e
+          t instanceof HTMLElement && t.id === `modal` && Sr()
+        }),
+        J(`#modal-save`).addEventListener(`click`, async () => Ar()),
+        document.addEventListener(`keydown`, (e) => {
+          ;(e.key === `Escape` && (Sr(), wr()),
+            e.key === `Enter` &&
+              (e.metaKey || e.ctrlKey) &&
+              J(`#modal`).classList.contains(`open`) &&
+              J(`#modal-save`).click())
+        }),
+        J(`#btn-comments-menu`).addEventListener(`click`, (e) => {
+          ;(e.stopPropagation(), J(`#menu-comments`).classList.contains(`open`) ? wr() : Cr())
+        }),
+        J(`#menu-comments`).addEventListener(
+          `click`,
+          (e) => {
+            let { target: t } = e
+            t instanceof Element && t.closest(`.menu-item`) && wr()
+          },
+          !0
+        ),
+        document.addEventListener(`click`, (e) => {
+          if (!J(`#menu-comments`).classList.contains(`open`)) return
+          let { target: t } = e
+          ;(t instanceof Element &&
+            (t.closest(`#menu-comments`) || t.closest(`#btn-comments-menu`))) ||
+            wr()
+        }))
+      var jr = (e) => Er.activateMark(e)
+      import.meta.vitest ||
+        document.addEventListener(`click`, (e) => {
+          let { target: t } = e
+          if (!(t instanceof Element)) return
+          let n = t.closest(`mark.cmt`)
+          n instanceof HTMLElement && jr(n)
+        })
+      var Mr = () => ft(q),
+        Q = () => pt(q.comments.length)
+      ;(import.meta.vitest ||
+        nr({
+          buildExportPayload: Mr,
+          commentCountLabel: Q,
+          loadFromMarkdown: Or,
+          qs: J,
+          qsInput: rr,
+          reapplyAllMarks: X,
+          renderSidebar: Z,
+          save: Tr,
+          state: q,
+          toast: Y,
+        }),
+        L({
+          buildExportPayload: Mr,
+          commentCountLabel: Q,
+          hashStr: ar,
+          loadFromMarkdown: Or,
+          qs: J,
+          state: q,
+          toast: Y,
+        }),
+        import.meta.vitest ||
+          (J(`#btn-watch`).addEventListener(`click`, async () => dn()),
+          J(`#btn-send`).addEventListener(`click`, sn)),
+        import.meta.vitest ||
+          En({
+            loadFromMarkdown: Or,
+            reapplyAllMarks: X,
+            renderSidebar: Z,
+            save: Tr,
+            state: q,
+            store: Pt,
+            toast: Y,
+          }).catch(() => Y(`Startup failed`)))
+      var $ = (e) => ({
+        blockId: ``,
+        comment: ``,
+        created: ``,
+        endOffset: 0,
+        id: e,
+        quote: ``,
+        startOffset: 0,
+      })
+      if (import.meta.vitest) {
+        let { describe: e, it: t, expect: n } = import.meta.vitest
+        ;(e(`loadStatusLabel (state 依存)`, () => {
+          ;(t(`コメント 0 件なら loaded`, () => {
+            let e = q.comments
+            q.comments = []
+            try {
+              n(Dr()).toBe(`loaded`)
+            } finally {
+              q.comments = e
+            }
+          }),
+            t(`コメント 1 件以上なら restored`, () => {
+              let e = q.comments
+              q.comments = [$(`x`)]
+              try {
+                n(Dr()).toBe(`restored`)
+              } finally {
+                q.comments = e
+              }
+            }))
+        }),
+          e(`commentCountLabel (state 依存)`, () => {
+            ;(t(`1 件のときは単数形`, () => {
+              let e = q.comments
+              q.comments = [$(`x`)]
+              try {
+                n(Q()).toBe(`1 comment`)
+              } finally {
+                q.comments = e
+              }
+            }),
+              t(`0 件のときは複数形 (i18n 非対応の既知挙動)`, () => {
+                let e = q.comments
+                q.comments = []
+                try {
+                  n(Q()).toBe(`0 comments`)
+                } finally {
+                  q.comments = e
+                }
+              }),
+              t(`2 件以上のときは複数形`, () => {
+                let e = q.comments
+                q.comments = [$(`a`), $(`b`), $(`c`)]
+                try {
+                  n(Q()).toBe(`3 comments`)
+                } finally {
+                  q.comments = e
+                }
+              }))
+          }),
+          e(`commentFromSelection`, () => {
+            ;(t(`選択範囲と本文から正しいコメントを組み立てる`, () => {
+              let e = kr(
+                { blockId: `b001`, endOffset: 20, quote: `引用テキスト`, startOffset: 10 },
+                `コメント本文`
+              )
+              ;(n(e.blockId).toBe(`b001`),
+                n(e.startOffset).toBe(10),
+                n(e.endOffset).toBe(20),
+                n(e.quote).toBe(`引用テキスト`),
+                n(e.comment).toBe(`コメント本文`),
+                n(typeof e.id).toBe(`string`),
+                n(e.id.length).toBeGreaterThan(0),
+                n(e.created).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/))
+            }),
+              t(`id は呼び出しごとに異なる`, () => {
+                let e = { blockId: `b`, endOffset: 1, quote: `q`, startOffset: 0 },
+                  t = kr(e, `x`),
+                  r = kr(e, `x`)
+                n(t.id).not.toBe(r.id)
+              }))
+          }))
+      }
+    </script>
+    <style rel="stylesheet" crossorigin>
+      :root {
+        --paper: #fff;
+        --paper-edge: #f6f8fa;
+        --ink: #1f2328;
+        --ink-soft: #656d76;
+        --ink-faint: #8c959f;
+        --accent: #0969da;
+        --accent-soft: #ddf4ff;
+        --highlight: #fae17d;
+        --highlight-soft: #fff8c5;
+        --rule: #d0d7de;
+        --rule-muted: #d8dee4;
+        --success: #1f883d;
+        --success-hover: #1a7f37;
+        --danger: #cf222e;
+        --shadow-small: 0 1px 0 #1f23280a;
+        --shadow-medium: 0 3px 6px #8c959f26;
+        --shadow-large: 0 8px 24px #8c959f33;
+        --font-system:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif,
+          'Apple Color Emoji', 'Segoe UI Emoji';
+        --font-mono:
+          ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        background: var(--paper);
+        color: var(--ink);
+        font-family: var(--font-system);
+        flex-direction: column;
+        font-size: 14px;
+        line-height: 1.5;
+        display: flex;
+        overflow: hidden;
+      }
+      body > header {
+        flex-shrink: 0;
+      }
+      body > main.layout {
+        flex: 1;
+        min-height: 0;
+      }
+      body > main.layout > section,
+      body > main.layout > aside.sidebar {
+        min-height: 0;
+        overflow-y: auto;
+      }
+      .layout {
+        grid-template-columns: minmax(0, 1fr) 360px;
+        display: grid;
+      }
+      .doc-pane {
+        padding: 40px;
+      }
+      @media (width>=1024px) {
+        .doc-pane {
+          padding: 48px 64px;
+        }
+      }
+      .sidebar {
+        background: var(--paper-edge);
+        border-left: 1px solid var(--rule);
+        padding: 32px 24px;
+      }
+      .sidebar-header {
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+        display: flex;
+      }
+      .sidebar-title {
+        font-family: var(--font-system);
+        letter-spacing: -0.005em;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .sidebar-header .btn {
+        color: var(--ink-soft);
+        border: 1px solid var(--rule-muted);
+        background: var(--paper);
+        padding: 2px 8px;
+        font-size: 13px;
+        font-weight: 400;
+      }
+      .sidebar-header .btn:hover {
+        color: var(--ink);
+        background: var(--paper-edge);
+        border-color: var(--rule);
+      }
+      .sidebar-header .menu-caret {
+        color: var(--ink-soft);
+        margin-left: 6px;
+      }
+      .sidebar-hint {
+        color: var(--ink-faint);
+      }
+      .label {
+        font-family: var(--font-system);
+        letter-spacing: 0;
+        text-transform: none;
+        color: var(--ink-soft);
+        font-size: 12px;
+        font-weight: 400;
+      }
+      .app-header {
+        border-bottom: 1px solid var(--rule);
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        padding: 16px 24px;
+        display: flex;
+      }
+      .app-brand {
+        align-items: baseline;
+        gap: 12px;
+        display: flex;
+      }
+      .app-brand-title {
+        font-family: var(--font-system);
+        letter-spacing: -0.005em;
+        font-size: 18px;
+        font-weight: 600;
+        line-height: 1;
+      }
+      .toolbar-actions {
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        display: flex;
+      }
+      .toolbar-status {
+        margin-right: 8px;
+      }
+      .toolbar-status-accent {
+        color: var(--accent);
+      }
+      .btn {
+        font-family: var(--font-system);
+        letter-spacing: 0;
+        text-transform: none;
+        border: 1px solid var(--rule);
+        background: var(--paper-edge);
+        color: var(--ink);
+        cursor: pointer;
+        box-shadow: var(--shadow-small);
+        border-radius: 6px;
+        padding: 5px 16px;
+        font-size: 14px;
+        font-weight: 500;
+        line-height: 20px;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
+      }
+      .btn:hover {
+        color: var(--ink);
+        background: #f3f4f6;
+        border-color: #1f232826;
+      }
+      .btn-primary {
+        background: var(--success);
+        color: #fff;
+        box-shadow:
+          var(--shadow-small),
+          inset 0 1px 0 #ffffff08;
+        border-color: #1f232826;
+      }
+      .btn-primary:hover {
+        background: var(--success-hover);
+        color: #fff;
+        border-color: #1f232826;
+      }
+      .btn-ghost {
+        box-shadow: none;
+        background: 0 0;
+        border-color: #0000;
+      }
+      .btn-ghost:hover {
+        background: var(--paper-edge);
+        color: var(--ink);
+        border-color: #0000;
+      }
+      .menu-wrap {
+        display: inline-block;
+        position: relative;
+      }
+      .menu-caret {
+        color: var(--ink-soft);
+        margin-left: 4px;
+        font-size: 10px;
+      }
+      .menu {
+        z-index: 60;
+        background: var(--paper);
+        border: 1px solid var(--rule);
+        min-width: 200px;
+        box-shadow: var(--shadow-large);
+        border-radius: 12px;
+        padding: 4px;
+        display: none;
+        position: absolute;
+        top: calc(100% + 4px);
+        right: 0;
+      }
+      .menu.open {
+        display: block;
+      }
+      .menu-item {
+        text-align: left;
+        width: 100%;
+        font-family: var(--font-system);
+        letter-spacing: 0;
+        text-transform: none;
+        color: var(--ink);
+        cursor: pointer;
+        background: 0 0;
+        border: none;
+        border-radius: 6px;
+        padding: 6px 12px;
+        font-size: 14px;
+        font-weight: 400;
+        line-height: 20px;
+        display: block;
+      }
+      .menu-item:hover,
+      .menu-item:focus-visible {
+        background: var(--paper-edge);
+        outline: none;
+      }
+      .menu-item-danger {
+        color: var(--danger);
+      }
+      .menu-item-danger:hover,
+      .menu-item-danger:focus-visible {
+        background: #cf222e1a;
+      }
+      .menu-divider {
+        background: var(--rule-muted);
+        height: 1px;
+        margin: 4px;
+      }
+      #doc {
+        font-family: var(--font-system);
+        letter-spacing: 0.02em;
+        color: #1a1a1a;
+        border: 1px solid var(--rule);
+        background-color: #fff;
+        border-radius: 6px;
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 2rem;
+        font-size: 1.125rem;
+        font-weight: 400;
+        line-height: 1.7;
+      }
+      #doc h1,
+      #doc h2,
+      #doc h3,
+      #doc h4,
+      #doc h5,
+      #doc h6 {
+        font-family: var(--font-system);
+        color: #1a1a1a;
+        margin-top: 1.5em;
+        margin-bottom: 0.5em;
+        font-weight: 700;
+      }
+      #doc h1 {
+        letter-spacing: 0.01em;
+        border-bottom: 1px solid #e6e6e6;
+        padding-bottom: 0.3em;
+        font-size: 2.375rem;
+        line-height: 1.4;
+      }
+      #doc h2 {
+        letter-spacing: 0.01em;
+        border-bottom: 1px solid #e6e6e6;
+        padding-bottom: 0.25em;
+        font-size: 1.875rem;
+        line-height: 1.5;
+      }
+      #doc h3 {
+        letter-spacing: 0.02em;
+        font-size: 1.625rem;
+        line-height: 1.5;
+      }
+      #doc h4 {
+        letter-spacing: 0.02em;
+        font-size: 1.375rem;
+        line-height: 1.6;
+      }
+      #doc h5 {
+        letter-spacing: 0.02em;
+        font-size: 1.25rem;
+        line-height: 1.6;
+      }
+      #doc h6 {
+        letter-spacing: 0.02em;
+        color: #4d4d4d;
+        font-size: 1.125rem;
+        line-height: 1.7;
+      }
+      #doc p {
+        margin-top: 0;
+        margin-bottom: 1rem;
+      }
+      #doc strong {
+        font-weight: 700;
+      }
+      #doc a {
+        color: #0031d8;
+        text-decoration: underline;
+      }
+      #doc a:hover {
+        color: #002db6;
+      }
+      #doc ul,
+      #doc ol {
+        margin-top: 0;
+        margin-bottom: 1rem;
+        padding-left: 2rem;
+      }
+      #doc li {
+        margin-bottom: 0.25rem;
+      }
+      #doc li > ul,
+      #doc li > ol {
+        margin-top: 0.25rem;
+        margin-bottom: 0;
+      }
+      #doc blockquote {
+        color: #4d4d4d;
+        background-color: #f2f2f2;
+        border-left: 4px solid #ccc;
+        border-radius: 0.25rem;
+        margin: 0 0 1rem;
+        padding: 0.5rem 1rem;
+      }
+      #doc blockquote > p:last-child {
+        margin-bottom: 0;
+      }
+      #doc code {
+        font-family: var(--font-mono);
+        background-color: #f2f2f2;
+        border: 1px solid #e6e6e6;
+        border-radius: 0.25rem;
+        padding: 0.125rem 0.375rem;
+        font-size: 0.875rem;
+        line-height: 1.5;
+      }
+      #doc pre {
+        background-color: #1e1e1e;
+        border: 1px solid #333;
+        border-radius: 0.5rem;
+        margin-top: 0;
+        margin-bottom: 1rem;
+        padding: 1rem;
+        overflow-x: auto;
+      }
+      #doc pre code {
+        font-family: var(--font-mono);
+        letter-spacing: 0;
+        color: #d4d4d4;
+        background-color: #0000;
+        border: none;
+        border-radius: 0;
+        padding: 0;
+        font-size: 1rem;
+      }
+      #doc table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-top: 0;
+        margin-bottom: 1rem;
+        font-size: 1rem;
+        line-height: 1.5;
+      }
+      #doc thead {
+        background-color: #f2f2f2;
+      }
+      #doc th {
+        text-align: left;
+        border: 1px solid #e6e6e6;
+        padding: 0.5rem 0.75rem;
+        font-weight: 700;
+      }
+      #doc td {
+        border: 1px solid #e6e6e6;
+        padding: 0.5rem 0.75rem;
+      }
+      #doc hr {
+        border: none;
+        border-top: 1px solid #e6e6e6;
+        margin: 2rem 0;
+      }
+      #doc img {
+        border-radius: 0.5rem;
+        max-width: 100%;
+        height: auto;
+      }
+      #doc input[type='checkbox'] {
+        accent-color: #0031d8;
+        margin-right: 0.5rem;
+      }
+      [data-block-id] {
+        position: relative;
+      }
+      [data-block-id]:hover:before {
+        content: attr(data-block-id);
+        font-family: var(--font-mono);
+        color: var(--ink-faint);
+        letter-spacing: 0;
+        font-size: 11px;
+        position: absolute;
+        top: 0.5em;
+        left: -68px;
+      }
+      mark.cmt {
+        background: var(--highlight-soft);
+        border-bottom: 2px solid var(--accent);
+        cursor: pointer;
+        padding: 0 1px;
+        transition: background 0.15s;
+      }
+      mark.cmt:hover,
+      mark.cmt.active {
+        background: var(--highlight);
+      }
+      #floater {
+        z-index: 50;
+        background: var(--ink);
+        color: #fff;
+        font-family: var(--font-system);
+        letter-spacing: 0;
+        text-transform: none;
+        cursor: pointer;
+        box-shadow: var(--shadow-large);
+        -webkit-user-select: none;
+        user-select: none;
+        border-radius: 6px;
+        padding: 6px 12px;
+        font-size: 12px;
+        font-weight: 500;
+        display: none;
+        position: fixed;
+      }
+      #floater:after {
+        content: '';
+        border-left: 5px solid #0000;
+        border-right: 5px solid #0000;
+        border-top: 5px solid var(--ink);
+        width: 0;
+        height: 0;
+        position: absolute;
+        bottom: -5px;
+        left: 50%;
+        transform: translate(-50%);
+      }
+      .cmt-card {
+        border: 1px solid var(--rule);
+        cursor: pointer;
+        background: #fff;
+        border-radius: 6px;
+        margin-bottom: 8px;
+        padding: 10px 12px;
+        transition:
+          border-color 0.15s,
+          box-shadow 0.15s;
+      }
+      .cmt-card:hover,
+      .cmt-card.active {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 1px var(--accent);
+      }
+      .cmt-quote {
+        color: var(--ink-soft);
+        border-left: 2px solid var(--rule);
+        background: var(--paper-edge);
+        border-radius: 0 4px 4px 0;
+        margin-bottom: 8px;
+        padding: 4px 8px;
+        font-size: 12px;
+        font-style: normal;
+        line-height: 1.5;
+      }
+      .cmt-body {
+        color: var(--ink);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .cmt-meta {
+        font-family: var(--font-system);
+        letter-spacing: 0;
+        color: var(--ink-faint);
+        text-transform: none;
+        border-top: 1px solid var(--rule-muted);
+        justify-content: space-between;
+        margin-top: 8px;
+        padding-top: 6px;
+        font-size: 11px;
+        display: flex;
+      }
+      .cmt-del {
+        color: var(--ink-faint);
+        cursor: pointer;
+        font-family: var(--font-system);
+        letter-spacing: 0;
+        background: 0 0;
+        border: none;
+        padding: 0;
+        font-size: 11px;
+      }
+      .cmt-del:hover {
+        color: var(--danger);
+      }
+      .modal-backdrop {
+        z-index: 100;
+        background: #1f232880;
+        justify-content: center;
+        align-items: center;
+        display: none;
+        position: fixed;
+        inset: 0;
+      }
+      .modal-backdrop.open {
+        display: flex;
+      }
+      .modal {
+        background: var(--paper);
+        border: 1px solid var(--rule);
+        width: min(560px, 92vw);
+        box-shadow: var(--shadow-large);
+        border-radius: 12px;
+        padding: 20px 24px;
+      }
+      .modal textarea {
+        box-sizing: border-box;
+        border: 1px solid var(--rule);
+        background: var(--paper);
+        width: 100%;
+        font-family: var(--font-system);
+        resize: vertical;
+        color: var(--ink);
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .modal textarea:focus {
+        border-color: var(--accent);
+        outline: none;
+        box-shadow: 0 0 0 3px #0969da4d;
+      }
+      .modal-label {
+        margin-bottom: 8px;
+      }
+      .modal-quote {
+        border-left-width: 3px;
+        border-left-color: var(--accent);
+        margin-bottom: 16px;
+        padding: 8px 12px;
+        font-size: 13px;
+      }
+      .modal-actions {
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 16px;
+        display: flex;
+      }
+      .empty-state {
+        border: 1px dashed var(--rule);
+        text-align: center;
+        color: var(--ink-soft);
+        background: var(--paper-edge);
+        border-radius: 6px;
+        padding: 48px 32px;
+      }
+      .empty-state-title {
+        font-family: var(--font-system);
+        letter-spacing: -0.005em;
+        margin-bottom: 8px;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .empty-state-hint {
+        margin-bottom: 16px;
+      }
+      #toast {
+        background: var(--ink);
+        color: #fff;
+        font-family: var(--font-system);
+        letter-spacing: 0;
+        text-transform: none;
+        box-shadow: var(--shadow-large);
+        z-index: 200;
+        opacity: 0;
+        pointer-events: none;
+        border-radius: 6px;
+        padding: 8px 14px;
+        font-size: 13px;
+        transition: opacity 0.2s;
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translate(-50%);
+      }
+      #toast.show {
+        opacity: 1;
+      }
+      @media (width<=900px) {
+        body {
+          height: auto;
+          display: block;
+          overflow: auto;
+        }
+        body > main.layout {
+          flex: none;
+        }
+        body > main.layout > section,
+        body > main.layout > aside.sidebar {
+          overflow-y: visible;
+        }
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        .sidebar {
+          border-left: none;
+          border-top: 1px solid var(--rule);
+        }
+        [data-block-id]:hover:before {
+          display: none;
+        }
+      }
+      /*$vite$:1*/
+    </style>
+  </head>
+  <body>
+    <!-- ============================================================================
+     EMBEDDED CONTENT (LLM injection point)
+     ----------------------------------------------------------------------------
+     To launch this HTML with markdown pre-loaded, the LLM (or you) just edits
+     the <script id="embedded-md"> block below. Leave it empty to use the file
+     picker as normal.
+
+     - Set the data-name attribute to give the document a name.
+     - Paste raw markdown between the script tags. No escaping needed EXCEPT
+       any literal "</script>" inside the markdown must be written as
+       "<\/script>".
+     - Optionally pre-populate comments via <script id="embedded-feedback">
+       (paste the same JSON shape that Export comments produces).
+     ============================================================================ -->
+    <script id="embedded-md" type="text/markdown" data-name="document.md"></script>
+    <script id="embedded-feedback" type="application/json"></script>
+
+    <header class="app-header">
+      <div class="app-brand">
+        <div class="app-brand-title">Redline</div>
+        <div class="label">/ markdown review</div>
+      </div>
+      <div class="toolbar-actions">
+        <span id="status" class="label toolbar-status">No file</span>
+        <span
+          id="ws-status"
+          class="label toolbar-status toolbar-status-accent"
+          style="display: none"
+        ></span>
+        <button class="btn" id="btn-load">Open file</button>
+        <button class="btn" id="btn-watch">Watch folder</button>
+        <button class="btn btn-primary" id="btn-send" style="display: none">Submit review</button>
+      </div>
+    </header>
+
+    <input type="file" id="file-md" accept=".md,.markdown,text/markdown,text/plain" hidden />
+
+    <main class="layout">
+      <section class="doc-pane">
+        <div id="doc-wrap">
+          <div class="empty-state">
+            <div class="empty-state-title">No file loaded</div>
+            <div class="label empty-state-hint">Open a markdown file to start reviewing</div>
+            <button class="btn btn-primary" onclick="document.getElementById('btn-load').click()">
+              Choose file
+            </button>
+          </div>
+        </div>
+        <div id="doc"></div>
+      </section>
+
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-title">Conversation</div>
+          <div class="menu-wrap">
+            <button
+              class="btn btn-ghost"
+              id="btn-comments-menu"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              <span id="cmt-count">0</span> comments<span class="menu-caret">▾</span>
+            </button>
+            <div class="menu" id="menu-comments" role="menu">
+              <button class="menu-item" id="btn-copy" role="menuitem">Copy as JSON</button>
+              <button class="menu-item" id="btn-export" role="menuitem">Export as JSON</button>
+              <div class="menu-divider"></div>
+              <button class="menu-item menu-item-danger" id="btn-clear" role="menuitem">
+                Discard all
+              </button>
+            </div>
+          </div>
+        </div>
+        <div id="cmt-list">
+          <div class="label sidebar-hint">Select text in the file to add a review comment.</div>
+        </div>
+      </aside>
+    </main>
+
+    <div id="floater">＋ Comment</div>
+
+    <div class="modal-backdrop" id="modal">
+      <div class="modal">
+        <div class="label modal-label">Selected text</div>
+        <div id="modal-quote" class="cmt-quote modal-quote"></div>
+        <div class="label modal-label">Add a review comment</div>
+        <textarea id="modal-input" rows="4" placeholder="Leave a comment"></textarea>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
+          <button class="btn btn-primary" id="modal-save">Comment</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast"></div>
+  </body>
+</html>

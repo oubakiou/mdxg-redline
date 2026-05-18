@@ -1,0 +1,44 @@
+{
+  "name": "mdxg-redline",
+  "version": "0.1.0",
+  "description": "Inline review tool for MDXG markdown — capture highlighted comments and export them as structured JSON for LLM agents.",
+  "keywords": [
+    "annotations",
+    "feedback",
+    "human-in-the-loop",
+    "inline-comments",
+    "llm",
+    "markdown",
+    "markdown-review",
+    "mdxg",
+    "single-html"
+  ],
+  "license": "MIT",
+  "author": "oubakiou",
+  "files": [
+    "dist/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "scripts": {
+    "build": "vp build",
+    "build:watch": "vp build --watch",
+    "dev": "vp dev",
+    "test": "vp test",
+    "test:watch": "vp test --watch"
+  },
+  "dependencies": {
+    "marked": "^12.0.2"
+  },
+  "devDependencies": {
+    "@anthropic-ai/claude-code": "^2.1.80",
+    "@openai/codex": "0.x",
+    "@types/node": "^24.0.0",
+    "oxlint-tsgolint": "0.x",
+    "typescript": "^6.0.2",
+    "vite-plugin-singlefile": "^2.3.3",
+    "vitest": "^4.1.1"
+  }
+}

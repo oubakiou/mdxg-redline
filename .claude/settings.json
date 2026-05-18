@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/vp-check-fix.sh",
+            "statusMessage": "vp check --fix"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/vp-check-fix.sh",
+            "statusMessage": "vp check --fix"
+          }
+        ]
+      }
+    ]
+  }
+}
