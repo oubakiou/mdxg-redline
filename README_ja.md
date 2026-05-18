@@ -69,7 +69,7 @@
 
 ## 開発
 
-ビルドツールは [Vite+ (vp)](https://viteplus.dev/) を使用します。devcontainer / `local_setup.sh` がインストールを担当するので、ローカル開発時はそれらを利用するのが最短です。
+ビルドツールは [Vite+ (vp)](https://viteplus.dev/) を使用し、npm の devDependency（`vite-plus`）として導入しています。devcontainer / `local_setup.sh` がセットアップを担当するので、ローカル開発時はそれらを利用するのが最短です。
 
 ```bash
 npm install
@@ -79,7 +79,7 @@ npm run dev         # = vp dev          HMR 付き dev サーバー
 npm test            # = vp test         in-source tests を実行
 ```
 
-vp 単体を手動インストールする場合は [公式手順](https://viteplus.dev/guide/#install-vp) を参照。
+`npm install` で `vite-plus` 由来の `vp` がローカルに導入されます。
 
 ## ライセンス
 

@@ -69,7 +69,7 @@ The [Markdown Experience Guidelines (MDXG)](https://github.com/vercel-labs/mdxg)
 
 ## Development
 
-The build tool is [Vite+ (vp)](https://viteplus.dev/). The devcontainer and `local_setup.sh` handle installation, so using those is the fastest path for local development.
+The build tool is [Vite+ (vp)](https://viteplus.dev/), installed via npm (`vite-plus`) as a dev dependency. The devcontainer and `local_setup.sh` handle setup, so using those is the fastest path for local development.
 
 ```bash
 npm install
@@ -79,7 +79,7 @@ npm run dev         # = vp dev          dev server with HMR
 npm test            # = vp test         runs in-source tests
 ```
 
-To install vp manually, see the [official guide](https://viteplus.dev/guide/#install-vp).
+`npm install` will install `vp` locally from `vite-plus`.
 
 ## License
 
