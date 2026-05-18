@@ -24,24 +24,9 @@ declare global {
  * IDB 自体の生 API を Store / ワークスペースハンドル永続化の両方から使うため、独立した低レベル層として分離している。
  */
 export const IDB = {
-  _db: null as IDBDatabase | null,
-  /** DB を開いてキャッシュする。複数同時呼び出しはそれぞれ Promise を返すが、_db に最初のインスタンスが入れば以後はそれを使い回す */
-  async _open(): Promise<IDBDatabase> {
-    if (this._db) {
-      return this._db
-    }
-    return new Promise((resolve, reject): void => {
-      const req = indexedDB.open('margin-notes', 1)
-      req.onupgradeneeded = (): IDBObjectStore => req.result.createObjectStore('kv')
-      req.onsuccess = (): void => {
-        this._db = req.result
-        resolve(req.result)
-      }
-      req.addEventListener('error', (): void => reject(req.error))
-    })
-  },
+  dbCache: null as IDBDatabase | null,
   async del(key: string): Promise<void> {
-    const db = await this._open()
+    const db = await this.open()
     return new Promise((resolve, reject): void => {
       const req = db.transaction('kv', 'readwrite').objectStore('kv').delete(key)
       req.onsuccess = (): void => resolve()
@@ -49,7 +34,7 @@ export const IDB = {
     })
   },
   async get(key: string): Promise<unknown> {
-    const db = await this._open()
+    const db = await this.open()
     return new Promise((resolve, reject): void => {
       const req = db.transaction('kv').objectStore('kv').get(key)
       req.onsuccess = (): void => resolve(req.result)
@@ -57,7 +42,7 @@ export const IDB = {
     })
   },
   async keys(prefix: string): Promise<string[]> {
-    const db = await this._open()
+    const db = await this.open()
     return new Promise((resolve, reject): void => {
       const out: string[] = []
       const req = db.transaction('kv').objectStore('kv').openKeyCursor()
@@ -79,8 +64,23 @@ export const IDB = {
       req.addEventListener('error', (): void => reject(req.error))
     })
   },
+  /** DB を開いてキャッシュする。複数同時呼び出しはそれぞれ Promise を返すが、dbCache に最初のインスタンスが入れば以後はそれを使い回す */
+  async open(): Promise<IDBDatabase> {
+    if (this.dbCache) {
+      return this.dbCache
+    }
+    return new Promise((resolve, reject): void => {
+      const req = indexedDB.open('margin-notes', 1)
+      req.onupgradeneeded = (): IDBObjectStore => req.result.createObjectStore('kv')
+      req.onsuccess = (): void => {
+        this.dbCache = req.result
+        resolve(req.result)
+      }
+      req.addEventListener('error', (): void => reject(req.error))
+    })
+  },
   async set(key: string, value: unknown): Promise<void> {
-    const db = await this._open()
+    const db = await this.open()
     return new Promise((resolve, reject): void => {
       const req = db.transaction('kv', 'readwrite').objectStore('kv').put(value, key)
       req.onsuccess = (): void => resolve()
