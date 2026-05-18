@@ -36,12 +36,14 @@ gh auth login
 gh skill install oubakiou/skills guarded-webfetch-codex --agent claude-code --scope project
 gh skill install oubakiou/skills guarded-websearch-codex --agent claude-code --scope project
 
-# vite-plus のインストール
-# https://viteplus.dev/guide/#install-vp
-echo "vite-plus をインストールします"
-curl -fsSL https://vite.plus | bash
-# vp コマンドのシンボリックリンクを作成
-sudo ln -sf "$HOME/.vite-plus/bin/vp" /usr/local/bin/vp
+# npm にインストールされた vite-plus の vp をグローバル参照できるようにする
+echo "npm 管理の vite-plus(vp) を設定します"
+VP_BIN="$(cd "$(dirname "$0")" && pwd)/node_modules/.bin/vp"
+if [ ! -x "$VP_BIN" ]; then
+  echo "vp が見つかりません。npm install に失敗している可能性があります: $VP_BIN"
+  exit 1
+fi
+sudo ln -sf "$VP_BIN" /usr/local/bin/vp
 
 # git 設定
 git config --local core.hooksPath .githooks

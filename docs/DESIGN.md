@@ -444,7 +444,7 @@ vite.config.ts ───────────────┘    + Rolldown   
 
 ### コマンド
 
-devcontainer または `./local_setup.sh` が `npm install` と `vp` のインストールを行う。手元で個別に揃える場合は [vp 公式手順](https://viteplus.dev/guide/#install-vp) を参照。
+devcontainer または `./local_setup.sh` が `npm install` で `vite-plus`（`vp`）を導入し、`vp` コマンドを利用可能にする。
 
 ```bash
 # 1 回ビルド（commit 前に必ず叩く）
