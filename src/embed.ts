@@ -1,15 +1,22 @@
 #!/usr/bin/env node
 // embed-core の純粋ロジックに、Node 側の I/O (引数パース / ファイル読み書き) だけを付ける薄い CLI。
 // ビルド後は dist/embed.mjs として配布される。dist/review.html を同ディレクトリから読み込む。
+// 出力ファイル名は docs/DESIGN.md §8 のファイル命名規約に従い、入力 MD の basename と
+// 本文 SHA-256 から自動決定する。利用者は output ファイル名ではなくディレクトリだけ指定できる。
 
 import { basename, dirname, resolve } from 'node:path'
+import {
+  computeDocHash,
+  deriveReviewHtmlName,
+  rewriteReviewHtml,
+  stripMarkdownExt,
+} from './embed-core'
 import { readFile, writeFile } from 'node:fs/promises'
+
 import { fileURLToPath } from 'node:url'
 import process from 'node:process'
 
-import { rewriteReviewHtml } from './embed-core'
-
-const USAGE = 'Usage: embed <input.md> <output.html>'
+const USAGE = 'Usage: embed <input.md> [output-dir]'
 
 const errorMessage = (error: unknown): string => {
   if (error instanceof Error) {
@@ -19,7 +26,7 @@ const errorMessage = (error: unknown): string => {
 }
 
 // review.html は CLI から見て暗黙的な前提依存のため、未生成時は Node 既定の ENOENT より
-// 親切な案内に差し替える。input.md / output.html は利用者が指定したパスなので、
+// 親切な案内に差し替える。input.md は利用者が指定したパスなので、
 // 元の ENOENT メッセージのまま返した方が原因が分かりやすい。
 const readReviewHtml = async (path: string): Promise<string> => {
   try {
@@ -35,25 +42,46 @@ const readReviewHtml = async (path: string): Promise<string> => {
   }
 }
 
+interface EmbedContext {
+  docName: string
+  markdown: string
+  outputPath: string
+  reviewHtml: string
+}
+
+// 入力読み込みと出力パスの導出をまとめる。
+// main 側の statements を減らすために helper として分離している。
+const prepareEmbed = async (
+  inputPath: string,
+  outputDir: string | undefined
+): Promise<EmbedContext> => {
+  const scriptDir = dirname(fileURLToPath(import.meta.url))
+  const [markdown, reviewHtml] = await Promise.all([
+    readFile(inputPath, 'utf8'),
+    readReviewHtml(resolve(scriptDir, 'review.html')),
+  ])
+  const docName = basename(inputPath)
+  const docHash = await computeDocHash(markdown)
+  const targetDir = outputDir ?? dirname(inputPath)
+  const outputPath = resolve(targetDir, deriveReviewHtmlName(stripMarkdownExt(docName), docHash))
+  return { docName, markdown, outputPath, reviewHtml }
+}
+
+const runEmbed = async (inputPath: string, outputDir: string | undefined): Promise<void> => {
+  const ctx = await prepareEmbed(inputPath, outputDir)
+  const result = rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName)
+  await writeFile(ctx.outputPath, result, 'utf8')
+  // 生成先パスを stdout に出し、シェルスクリプト・エージェントが拾えるようにする。
+  process.stdout.write(`${ctx.outputPath}\n`)
+}
+
 const main = async (): Promise<void> => {
-  const [inputPath, outputPath] = process.argv.slice(2)
-  if (!inputPath || !outputPath) {
+  const [inputPath, outputDir] = process.argv.slice(2)
+  if (!inputPath) {
     process.stderr.write(`${USAGE}\n`)
     process.exit(1)
   }
-
-  // dist/embed.mjs と dist/review.html は同じディレクトリに配置される前提。
-  const scriptDir = dirname(fileURLToPath(import.meta.url))
-  const reviewHtmlPath = resolve(scriptDir, 'review.html')
-
-  const [markdown, reviewHtml] = await Promise.all([
-    readFile(inputPath, 'utf8'),
-    readReviewHtml(reviewHtmlPath),
-  ])
-
-  const docName = basename(inputPath)
-  const result = rewriteReviewHtml(reviewHtml, markdown, docName)
-  await writeFile(outputPath, result, 'utf8')
+  await runEmbed(inputPath, outputDir)
 }
 
 main().catch((error: unknown) => {

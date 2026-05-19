@@ -1,9 +1,10 @@
 // --- Workspace mode (file-watching protocol with Claude Code etc.) ----------
-// Protocol:
-//   <workspace>/review.md      ← agent writes this; we auto-load on change
-//   <workspace>/feedback.json  ← we write this when user clicks Send
+// Protocol (詳細は docs/DESIGN.md §8):
+//   <workspace>/<mdFileName>-<docHash>-review.md     ← agent writes this; we pick mtime-latest
+//   <workspace>/<mdFileName>-<docHash>-feedback.json ← we write this when user clicks Send
 
 import { confirmDialog, noticeDialog } from './dialog'
+import { deriveFeedbackJsonName, parseReviewMdFilename, stripMarkdownExt } from './embed-core'
 import { IDB } from './storage'
 
 // File System Access API の型は実装依存のため、利用箇所だけ narrow に定義する
@@ -25,8 +26,15 @@ interface FsWritableStream {
   close: () => Promise<void>
 }
 
+// values() が返すエントリの最低限の型。kind で file/directory を判定する
+interface FsEntry {
+  kind: 'file' | 'directory'
+  name: string
+}
+
 interface FsDirectoryHandle extends FsHandle {
   getFileHandle: (name: string, options?: { create?: boolean }) => Promise<FsFileHandle>
+  values: () => AsyncIterableIterator<FsEntry>
 }
 
 interface Comment {
@@ -93,29 +101,32 @@ declare global {
     | undefined
 }
 
-/** ワークスペース連携のプロトコル定数。エージェント側もこのファイル名を前提にしているため安易に変えない */
+/** ワークスペース連携のプロトコル定数。ファイル命名規約は docs/DESIGN.md §8 を参照 */
 const WS = {
-  INPUT_FILE: 'review.md',
-  OUTPUT_FILE: 'feedback.json',
+  OUTPUT_SUFFIX: '-feedback.json',
   POLL_MS: 2000,
 }
 
 /**
  * ワークスペース監視の実行時状態。
  * handle: ユーザーが選んだディレクトリの FileSystemDirectoryHandle（IndexedDB に永続化される）。
- * lastHash: 直近に読み込んだ review.md のハッシュ。差分検知に使う。
+ * lastHash: 直近に取り込んだ *-review.md のハッシュ。差分検知に使う。
+ * lastMdFileName: 直近に取り込んだファイルから抽出した mdFileName。
+ *   feedback.json 書き出し時に「同じレビュー対象に対するペア」を保つために使う。
  * timer: setInterval の ID。null なら監視停止中。
  */
 const wsState: {
   declinedHash: string | null
   handle: FsDirectoryHandle | null
   lastHash: string | null
+  lastMdFileName: string | null
   polling: boolean
   timer: ReturnType<typeof setInterval> | null
 } = {
   declinedHash: null,
   handle: null,
   lastHash: null,
+  lastMdFileName: null,
   polling: false,
   timer: null,
 }
@@ -136,8 +147,8 @@ const wsControls = (): WsControls => ({
 
 /** Watch folder ボタンを初期状態に戻す時の tooltip 文言。HTML 側の初期値と一致させる */
 const WATCH_BTN_INACTIVE_TITLE =
-  `Auto-load ${WS.INPUT_FILE} from a folder and write ${WS.OUTPUT_FILE} ` +
-  `there when you click “Write ${WS.OUTPUT_FILE}”`
+  'Auto-load the latest *-review.md from a folder and write the matching *-feedback.json ' +
+  'there when you click “Write feedback.json”'
 
 interface EmptyStateEls {
   defaultState: HTMLElement
@@ -228,20 +239,109 @@ const wsStopWatching = (): void => {
 
 interface WorkspaceInput {
   hash: string
+  mdFileName: string
   text: string
 }
 
-/** ワークスペースから review.md を読み、内容ハッシュも併せて返す（差分検知用） */
-const readWorkspaceInput = async (handle: FsDirectoryHandle): Promise<WorkspaceInput> => {
-  const fh = await handle.getFileHandle(WS.INPUT_FILE, { create: false })
-  const file = await fh.getFile()
-  const text = await file.text()
-  const hash = await runtime().hashStr(text)
-  return { hash, text }
+// File 全体は不要で、mtime 比較と本文取得しか使わない。
+// テスト時のモック生成しやすさのため、ここで意図的に narrow にしている。
+type ReviewMdFile = Pick<File, 'lastModified' | 'text'>
+
+interface ReviewMdCandidate {
+  docHash: string
+  file: ReviewMdFile
+  mdFileName: string
+  name: string
 }
 
 /**
- * 新版 review.md を取り込んでよいかユーザーに確認する。
+ * 新候補が現在の best を上回るか判定。
+ * mtime 最新を優先、同 mtime ならファイル名昇順で安定化（再現性のため）。
+ */
+const isNewerCandidate = (
+  candidate: ReviewMdCandidate,
+  current: ReviewMdCandidate | null
+): boolean => {
+  if (!current) {
+    return true
+  }
+  if (candidate.file.lastModified !== current.file.lastModified) {
+    return candidate.file.lastModified > current.file.lastModified
+  }
+  return candidate.name < current.name
+}
+
+/** unknown 値から name プロパティを取り出す。Error 以外は空文字フォールバック */
+const errorName = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.name
+  }
+  return ''
+}
+
+/** 列挙中のファイルが削除された場合 (NotFoundError) は null に丸める。他のエラーは伝播させる */
+const tryReadCandidateFile = async (
+  handle: FsDirectoryHandle,
+  name: string
+): Promise<File | null> => {
+  try {
+    const fh = await handle.getFileHandle(name, { create: false })
+    return await fh.getFile()
+  } catch (error) {
+    if (errorName(error) === 'NotFoundError') {
+      return null
+    }
+    throw error
+  }
+}
+
+/**
+ * 1 件のディレクトリエントリを ReviewMdCandidate に解決する。
+ * `*-<16桁hex>-review.md` パターンに一致しない場合や、列挙中の削除等で読み取り不能な場合は null。
+ */
+const resolveReviewMdCandidate = async (
+  handle: FsDirectoryHandle,
+  entry: FsEntry
+): Promise<ReviewMdCandidate | null> => {
+  if (entry.kind !== 'file') {
+    return null
+  }
+  const parsed = parseReviewMdFilename(entry.name)
+  if (!parsed) {
+    return null
+  }
+  const file = await tryReadCandidateFile(handle, entry.name)
+  if (!file) {
+    return null
+  }
+  return { ...parsed, file, name: entry.name }
+}
+
+/** Watch folder ディレクトリ内の `*-review.md` から mtime 最新のものを選ぶ。1 件も無ければ null */
+const findLatestReviewMd = async (handle: FsDirectoryHandle): Promise<ReviewMdCandidate | null> => {
+  let best: ReviewMdCandidate | null = null
+  for await (const entry of handle.values()) {
+    const candidate = await resolveReviewMdCandidate(handle, entry)
+    if (candidate && isNewerCandidate(candidate, best)) {
+      best = candidate
+    }
+  }
+  return best
+}
+
+/** ワークスペースから最新の *-review.md を読み、命名規約由来の mdFileName と本文ハッシュも返す */
+const readWorkspaceInput = async (handle: FsDirectoryHandle): Promise<WorkspaceInput | null> => {
+  const candidate = await findLatestReviewMd(handle)
+  if (!candidate) {
+    return null
+  }
+  const text = await candidate.file.text()
+  const hash = await runtime().hashStr(text)
+  return { hash, mdFileName: candidate.mdFileName, text }
+}
+
+/**
+ * 新版 *-review.md を取り込んでよいかユーザーに確認する。
  * 初回読み込み（lastHash 未設定）またはコメントが 1 件もない場合は無条件 true として、UI を阻害しない。
  * 既存コメントがある場合のみ確認ダイアログを出し、ユーザーが拒否したら現状を維持する。
  */
@@ -253,13 +353,13 @@ const confirmWorkspaceReload = async (hash: string): Promise<boolean> => {
     return Promise.resolve(false)
   }
   return confirmDialog(
-    `Load the new version of ${WS.INPUT_FILE}?`,
-    `${WS.INPUT_FILE} has been updated on disk. Existing comments stay attached to the previous version.`
+    'Load the new review version?',
+    'A newer *-review.md was found on disk. Existing comments stay attached to the previous version.'
   )
 }
 
-/** review.md の差分を検知した後の取り込みフロー。ユーザー拒否時は hash を控え、同じ内容では再確認しない */
-const loadWorkspaceInput = async ({ hash, text }: WorkspaceInput): Promise<void> => {
+/** 取り込み差分の確定フロー。拒否時は hash を控え、同じ内容では再確認しない */
+const loadWorkspaceInput = async ({ hash, mdFileName, text }: WorkspaceInput): Promise<void> => {
   const confirmed = await confirmWorkspaceReload(hash)
   if (!confirmed) {
     wsState.declinedHash = hash
@@ -267,39 +367,29 @@ const loadWorkspaceInput = async ({ hash, text }: WorkspaceInput): Promise<void>
   }
   wsState.declinedHash = null
   wsState.lastHash = hash
-  await runtime().loadFromMarkdown(WS.INPUT_FILE, text)
-  runtime().toast(`Loaded ${WS.INPUT_FILE}`)
+  wsState.lastMdFileName = mdFileName
+  const docName = `${mdFileName}.md`
+  await runtime().loadFromMarkdown(docName, text)
+  runtime().toast(`Loaded ${docName}`)
 }
 
 /**
  * ポーリング失敗時のエラー分岐。
- * - NotFoundError: review.md がまだ存在しない（エージェント側がこれから書き込む途中）→ 無視して継続。
  * - NotAllowedError: 権限剥奪 → 無音で停止（ユーザーには UI の Reconnect で気づかせる）。
  * - その他: 想定外なので監視を止めて通知する。
+ *   ※ NotFoundError 相当（ファイル無し）は readWorkspaceInput が null を返すので、ここには到達しない。
  */
-/** unknown 値から name プロパティを取り出す。Error 以外は空文字フォールバック */
-const errorName = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.name
-  }
-  return ''
-}
-
 const handleWsPollError = (error: unknown): void => {
-  const name = errorName(error)
-  if (name === 'NotFoundError') {
-    return
-  }
   wsStopWatching()
   updateWsUI()
-  if (name !== 'NotAllowedError') {
+  if (errorName(error) !== 'NotAllowedError') {
     runtime().toast('Workspace watch stopped')
   }
 }
 
 const pollWorkspaceInput = async (handle: FsDirectoryHandle): Promise<void> => {
   const input = await readWorkspaceInput(handle)
-  if (input.hash === wsState.lastHash) {
+  if (!input || input.hash === wsState.lastHash) {
     return
   }
   await loadWorkspaceInput(input)
@@ -449,19 +539,52 @@ const wsRequestPermission = async (): Promise<boolean> => {
   }
 }
 
-/** ワークスペースに feedback.json を書き出す。ファイルが無ければ作成、あれば上書き */
-const writeWorkspaceFeedback = async (handle: FsDirectoryHandle): Promise<void> => {
-  const fh = await handle.getFileHandle(WS.OUTPUT_FILE, { create: true })
+/**
+ * 現在の state からファイル命名規約 §8 に従う feedback.json のファイル名を導出する。
+ * docName から拡張子を除いて mdFileName とし、現在の docHash と組み合わせる。
+ * docName / docHash が未確定なら null（呼び出し側で抑止）。
+ */
+const resolveFeedbackFilename = (): string | null => {
+  const { state } = runtime()
+  if (!state.docName || !state.docHash) {
+    return null
+  }
+  return deriveFeedbackJsonName(stripMarkdownExt(state.docName), state.docHash)
+}
+
+/**
+ * ワークスペースに <mdFileName>-<docHash>-feedback.json を書き出す。
+ * ファイルが無ければ作成、あれば上書き。書き出したファイル名を返す（finishWsSend で表示に使う）。
+ */
+const writeWorkspaceFeedback = async (
+  handle: FsDirectoryHandle,
+  filename: string
+): Promise<void> => {
+  const fh = await handle.getFileHandle(filename, { create: true })
   const writable = await fh.createWritable()
   await writable.write(JSON.stringify(runtime().buildExportPayload(), null, 2))
   await writable.close()
 }
 
 /** Write 成功時のトーストとステータスバー更新 */
-const finishWsSend = (): void => {
+const finishWsSend = (filename: string): void => {
   const app = runtime()
-  app.toast(`Wrote ${WS.OUTPUT_FILE} · ${app.commentCountLabel()}`)
-  app.qs('#status').textContent = `${app.state.docName} · ${WS.OUTPUT_FILE} written`
+  app.toast(`Wrote ${filename} · ${app.commentCountLabel()}`)
+  app.qs('#status').textContent = `${app.state.docName} · ${filename} written`
+}
+
+/** wsSend の前段：本文・docHash 等の前提を確認し、書き出すべきファイル名を返す。前提不成立なら null */
+const wsSendFilename = (): string | null => {
+  if (!runtime().state.markdown) {
+    runtime().toast('Nothing to write')
+    return null
+  }
+  const filename = resolveFeedbackFilename()
+  if (!filename) {
+    runtime().toast('Nothing to write')
+    return null
+  }
+  return filename
 }
 
 /** Write ボタン押下時：ワークスペースに feedback.json を書き出す。ハンドル無し or 本文無しは無音で中止 */
@@ -470,13 +593,13 @@ export const wsSend = async (): Promise<void> => {
   if (!handle) {
     return
   }
-  if (!runtime().state.markdown) {
-    runtime().toast('Nothing to write')
+  const filename = wsSendFilename()
+  if (!filename) {
     return
   }
   try {
-    await writeWorkspaceFeedback(handle)
-    finishWsSend()
+    await writeWorkspaceFeedback(handle, filename)
+    finishWsSend(filename)
   } catch {
     runtime().toast('Write failed')
   }
@@ -499,6 +622,14 @@ const reconnectWorkspace = async (): Promise<void> => {
   }
 }
 
+/** wsState 上の切断時クリア対象をひとまとめにする。Watch folder 切断・テストリセット双方から呼ぶ */
+const clearWsState = (): void => {
+  wsState.declinedHash = null
+  wsState.handle = null
+  wsState.lastHash = null
+  wsState.lastMdFileName = null
+}
+
 /** 明示的に切断。確認ダイアログを挟み、その後ポーリング停止＋state クリア＋永続化削除を順に実施 */
 const disconnectWorkspace = async (handle: FsDirectoryHandle): Promise<void> => {
   const confirmed = await confirmDialog(
@@ -509,9 +640,7 @@ const disconnectWorkspace = async (handle: FsDirectoryHandle): Promise<void> => 
     return
   }
   wsStopWatching()
-  wsState.declinedHash = null
-  wsState.handle = null
-  wsState.lastHash = null
+  clearWsState()
   await forgetWorkspaceHandle()
   updateWsUI()
   runtime().toast('Disconnected')
@@ -586,9 +715,7 @@ const workspaceRuntimeForTest = (
 
 const resetWorkspaceForTest = (): void => {
   wsStopWatching()
-  wsState.declinedHash = null
-  wsState.handle = null
-  wsState.lastHash = null
+  clearWsState()
   wsState.polling = false
   wsState.timer = null
 }
@@ -596,6 +723,32 @@ const resetWorkspaceForTest = (): void => {
 const unwritableFileHandleForTest = (): FsFileHandle => ({
   createWritable: async (): Promise<FsWritableStream> => Promise.reject(new Error('not expected')),
   getFile: async (): Promise<File> => Promise.reject(new Error('not expected')),
+})
+
+// Generator body に少なくとも 1 つ yield を含めて require-yield をクリアしつつ、
+// 空配列で iterate するため実際には 1 度も yield されない（空 async iterator になる）。
+const asyncIterFromList = async function* asyncIterFromList<Item>(
+  items: Item[]
+): AsyncIterableIterator<Item> {
+  for (const item of items) {
+    yield item
+  }
+}
+
+const emptyEntriesForTest = (): AsyncIterableIterator<FsEntry> => asyncIterFromList<FsEntry>([])
+
+const makeReviewMdCandidateForTest = (
+  name: string,
+  lastModified: number,
+  docHash = 'a1b2c3d4e5f6a7b8'
+): ReviewMdCandidate => ({
+  docHash,
+  file: {
+    lastModified,
+    text: async (): Promise<string> => Promise.resolve(''),
+  },
+  mdFileName: name.replace(/-[0-9a-f]{16}-review\.md$/, ''),
+  name,
 })
 
 if (import.meta.vitest) {
@@ -657,6 +810,7 @@ if (import.meta.vitest) {
         name: 'workspace',
         queryPermission: async (): Promise<FsPermissionState> => Promise.resolve('granted'),
         requestPermission: async (): Promise<FsPermissionState> => Promise.resolve('granted'),
+        values: emptyEntriesForTest,
       }
 
       configureWorkspace(workspaceRuntimeForTest())
@@ -669,12 +823,15 @@ if (import.meta.vitest) {
   })
 
   describe('writeWorkspaceFeedback', () => {
-    it('feedback.json に export payload を JSON として書き出す', async () => {
+    // state.docName='review.md' + state.docHash='testhash00000000' → 命名規約の filename
+    const expectedFilename = 'review-testhash00000000-feedback.json'
+
+    it('<mdFileName>-<docHash>-feedback.json に export payload を JSON として書き出す', async () => {
       let written = ''
       let closed = false
       const handle: FsDirectoryHandle = {
         getFileHandle: async (name, options): Promise<FsFileHandle> => {
-          expect(name).toBe(WS.OUTPUT_FILE)
+          expect(name).toBe(expectedFilename)
           expect(options).toEqual({ create: true })
           return Promise.resolve({
             createWritable: async (): Promise<FsWritableStream> =>
@@ -694,6 +851,7 @@ if (import.meta.vitest) {
         name: 'workspace',
         queryPermission: async (): Promise<FsPermissionState> => Promise.resolve('granted'),
         requestPermission: async (): Promise<FsPermissionState> => Promise.resolve('granted'),
+        values: emptyEntriesForTest,
       }
 
       configureWorkspace(
@@ -705,9 +863,69 @@ if (import.meta.vitest) {
         })
       )
 
-      await writeWorkspaceFeedback(handle)
+      await writeWorkspaceFeedback(handle, expectedFilename)
       expect(JSON.parse(written)).toEqual(runtime().buildExportPayload())
       expect(closed).toBe(true)
+    })
+  })
+
+  describe('resolveFeedbackFilename', () => {
+    it('docName と docHash からファイル命名規約どおりの filename を組み立てる', () => {
+      configureWorkspace(
+        workspaceRuntimeForTest({
+          comments: [],
+          docHash: 'a1b2c3d4e5f6a7b8',
+          docName: 'spec.md',
+          markdown: '# Spec',
+        })
+      )
+      expect(resolveFeedbackFilename()).toBe('spec-a1b2c3d4e5f6a7b8-feedback.json')
+    })
+
+    it('docName が .markdown 拡張子でも除去して組み立てる', () => {
+      configureWorkspace(
+        workspaceRuntimeForTest({
+          comments: [],
+          docHash: 'a1b2c3d4e5f6a7b8',
+          docName: 'notes.markdown',
+          markdown: '# Notes',
+        })
+      )
+      expect(resolveFeedbackFilename()).toBe('notes-a1b2c3d4e5f6a7b8-feedback.json')
+    })
+
+    it('docHash 未確定なら null（書き出し抑止）', () => {
+      configureWorkspace(
+        workspaceRuntimeForTest({
+          comments: [],
+          docHash: null,
+          docName: 'spec.md',
+          markdown: '',
+        })
+      )
+      expect(resolveFeedbackFilename()).toBeNull()
+    })
+  })
+
+  describe('isNewerCandidate', () => {
+    it('current が null なら必ず新しい候補を採用', () => {
+      expect(
+        isNewerCandidate(makeReviewMdCandidateForTest('a-aaaaaaaaaaaaaaaa-review.md', 100), null)
+      ).toBe(true)
+    })
+
+    it('mtime が新しい候補を採用', () => {
+      const older = makeReviewMdCandidateForTest('a-aaaaaaaaaaaaaaaa-review.md', 100)
+      const newer = makeReviewMdCandidateForTest('a-bbbbbbbbbbbbbbbb-review.md', 200)
+      expect(isNewerCandidate(newer, older)).toBe(true)
+      expect(isNewerCandidate(older, newer)).toBe(false)
+    })
+
+    it('mtime が同じならファイル名昇順で安定化', () => {
+      const ahead = makeReviewMdCandidateForTest('aaa-aaaaaaaaaaaaaaaa-review.md', 100)
+      const behind = makeReviewMdCandidateForTest('bbb-bbbbbbbbbbbbbbbb-review.md', 100)
+      expect(isNewerCandidate(ahead, behind)).toBe(true)
+      expect(isNewerCandidate(behind, ahead)).toBe(false)
     })
   })
 }

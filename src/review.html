@@ -35,7 +35,7 @@
         <button
           class="btn tooltipped"
           id="btn-watch"
-          data-tooltip="Auto-load review.md from a folder and write feedback.json there when you click “Write feedback.json”"
+          data-tooltip="Auto-load the latest *-review.md from a folder and write the matching *-feedback.json there when you click “Write feedback.json”"
         >
           Watch folder
         </button>
@@ -63,16 +63,19 @@
               Choose file
             </button>
           </div>
-          <!-- Watch folder 接続中 + review.md 未読込のとき表示。
+          <!-- Watch folder 接続中 + *-review.md 未読込のとき表示。
                agent ⇄ 人間のループ運用での「次に何が起きるか」をユーザーに伝える -->
           <div class="empty-state" id="empty-state-watching" hidden>
             <div class="empty-state-title">
-              Waiting for review.md in <span id="empty-state-folder">""</span>
+              Waiting for &lt;name&gt;-&lt;hash&gt;-review.md in
+              <span id="empty-state-folder">""</span>
             </div>
             <div class="label empty-state-hint">
-              It will load automatically when an agent (or you) places review.md in this folder.
-              Inline comments you add here are written back to feedback.json in the same folder when
-              you click “Write feedback.json”.
+              It will load automatically when an agent (or you) places a
+              <code>&lt;name&gt;-&lt;hash&gt;-review.md</code> in this folder. Inline comments you
+              add here are written back to the matching
+              <code>&lt;name&gt;-&lt;hash&gt;-feedback.json</code> in the same folder when you click
+              “Write feedback.json”.
             </div>
           </div>
         </div>

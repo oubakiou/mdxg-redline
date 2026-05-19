@@ -21,4 +21,10 @@ export default defineConfig({
     ssr: 'src/embed.ts',
     target: 'node20',
   },
+  // in-source test (`if (import.meta.vitest) { ... }`) を production bundle から除去する。
+  // CLI として動かす分には import.meta.vitest が undefined で if が false になるため動作は変わらないが、
+  // 不要なコード・テストデータをバンドルから dead-code 除去する。
+  define: {
+    'import.meta.vitest': 'undefined',
+  },
 })

@@ -12,6 +12,13 @@ export default defineConfig({
       input: 'src/review.html',
     },
   },
+  // in-source test (`if (import.meta.vitest) { ... }`) を production bundle から除去する。
+  // 除去しないと bundle 内のテストデータ文字列（例: rewriteReviewHtml の baseHtml に含まれる
+  // `<script id="embedded-md" type="text/markdown">` リテラル）が本物の埋め込み script タグより
+  // 手前に出現し、embed CLI 側の正規表現が誤マッチを起こして埋め込みが壊れる。
+  define: {
+    'import.meta.vitest': 'undefined',
+  },
   fmt: {
     // ビルド成果物はフォーマット対象外。`vp build` で都度上書きされるため。
     ignorePatterns: ['dist/'],

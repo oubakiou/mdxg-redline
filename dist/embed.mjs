@@ -3,13 +3,26 @@ import { basename, dirname, resolve } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
-//#region \0@oxc-project+runtime@0.129.0/helpers/taggedTemplateLiteral.js
-function _taggedTemplateLiteral(e, t) {
-	return t || (t = e.slice(0)), Object.freeze(Object.defineProperties(e, { raw: { value: Object.freeze(t) } }));
-}
-//#endregion
 //#region src/embed-core.ts
-var _templateObject;
+/**
+* markdown 本文の SHA-256 を計算し、先頭 8 バイトを 16 文字の hex 文字列で返す。
+* docHash としてファイル命名規約 (`<mdFileName>-<docHash>-...`) や永続化キー (`doc:<docHash>`)、
+* Workspace の差分検知に使う。同一ロジックを review.ts でも `hashStr` として呼び出すため、
+* 文字列化アルゴリズムは両者で一致させる必要がある。
+*/
+var computeDocHash = async (markdown) => {
+	const buf = new TextEncoder().encode(markdown);
+	const hash = await crypto.subtle.digest("SHA-256", buf);
+	return [...new Uint8Array(hash)].slice(0, 8).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+};
+/**
+* MD ファイル名から `.md` / `.markdown` 拡張子を除いた basename を返す。
+* 大文字小文字無視。拡張子が無いファイル名はそのまま返す。
+* ファイル命名規約 §8 の `mdFileName` 部分を組み立てるベース。
+*/
+var stripMarkdownExt = (filename) => filename.replace(/\.(?:markdown|md)$/i, "");
+/** ファイル命名規約 §8 に従って配布用 HTML のファイル名を組み立てる */
+var deriveReviewHtmlName = (mdFileName, docHash) => `${mdFileName}-${docHash}-review.html`;
 /**
 * markdown 本文中の `<\/script>` を `<\/script>` に置換する。
 * script は raw text element のため、これだけで script タグの早期終了を回避できる。
@@ -40,93 +53,9 @@ var rewriteReviewHtml = (reviewHtml, markdown, docName) => {
 	const replaced = `${replaceDataName(openingTag, escapeHtmlAttribute(docName))}${escapeScriptContent(markdown)}${closingTag}`;
 	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
 };
-if (import.meta.vitest) {
-	const { describe, expect, it } = import.meta.vitest;
-	describe("escapeScriptContent", () => {
-		it("小文字の <\/script> をエスケープする", () => {
-			expect(escapeScriptContent("a <\/script> b")).toBe(String.raw`a <\/script> b`);
-		});
-		it("大文字混在 <\/Script> もエスケープする", () => {
-			expect(escapeScriptContent("x <\/Script>y<\/SCRIPT z")).toBe(String.raw`x <\/Script>y<\/SCRIPT z`);
-		});
-		it("他の文字 (<, &, \" など) はそのまま残す", () => {
-			expect(escapeScriptContent("a < b & c \" d")).toBe("a < b & c \" d");
-		});
-		it("<\/script> が無い markdown はそのまま返す", () => {
-			const md = "# hello\n\nworld";
-			expect(escapeScriptContent(md)).toBe(md);
-		});
-	});
-	describe("escapeHtmlAttribute", () => {
-		it("& \" < > ' を実体参照に置換する", () => {
-			expect(escapeHtmlAttribute(`& " < > '`)).toBe("&amp; &quot; &lt; &gt; &#39;");
-		});
-		it("& が他のエスケープ結果を二重エスケープしないよう先に処理されている", () => {
-			expect(escapeHtmlAttribute("A&B\"C")).toBe("A&amp;B&quot;C");
-		});
-		it("特殊文字を含まない値はそのまま返す", () => {
-			expect(escapeHtmlAttribute("spec.md")).toBe("spec.md");
-		});
-	});
-	describe("rewriteReviewHtml", () => {
-		const baseHtml = "<html><body><script id=\"embedded-md\" type=\"text/markdown\" data-name=\"document.md\"><\/script></body></html>";
-		it("既存テンプレートに markdown と data-name を埋め込める", () => {
-			const out = rewriteReviewHtml(baseHtml, "# hello", "spec.md");
-			expect(out).toContain("data-name=\"spec.md\"");
-			expect(out).toContain("># hello<\/script>");
-			expect(out).not.toContain("data-name=\"document.md\"");
-		});
-		it("markdown 中の <\/script> がエスケープされる", () => {
-			expect(rewriteReviewHtml(baseHtml, "before <\/script> after", "a.md")).toContain(String.raw(_templateObject || (_templateObject = _taggedTemplateLiteral(["before <\/script> after<\/script>"], ["before <\\/script> after<\/script>"]))));
-		});
-		it("data-name に含まれる \" や & がエスケープされる", () => {
-			expect(rewriteReviewHtml(baseHtml, "x", "My \"report\" & log.md")).toContain("data-name=\"My &quot;report&quot; &amp; log.md\"");
-		});
-		it("属性順が異なっても (data-name が先) 書き換えられる", () => {
-			const out = rewriteReviewHtml("<script data-name=\"old.md\" id=\"embedded-md\" type=\"text/markdown\"><\/script>", "body", "new.md");
-			expect(out).toContain("data-name=\"new.md\"");
-			expect(out).toContain("id=\"embedded-md\"");
-			expect(out).toContain(">body<\/script>");
-		});
-		it("data-name 属性が無い場合は補って挿入する", () => {
-			const out = rewriteReviewHtml("<script id=\"embedded-md\" type=\"text/markdown\"><\/script>", "body", "new.md");
-			expect(out).toContain("data-name=\"new.md\"");
-			expect(out).toContain(">body<\/script>");
-		});
-		it("既存コンテンツがあっても置き換える", () => {
-			const out = rewriteReviewHtml("<script id=\"embedded-md\" type=\"text/markdown\" data-name=\"x.md\">old body<\/script>", "new body", "y.md");
-			expect(out).toContain(">new body<\/script>");
-			expect(out).not.toContain("old body");
-		});
-		it("markdown に $ を含んでも replace の特殊置換扱いを受けない", () => {
-			expect(rewriteReviewHtml(baseHtml, "$1 $& $`", "a.md")).toContain(">$1 $& $`<\/script>");
-		});
-		it("元文字列を破壊しない", () => {
-			const html = baseHtml;
-			rewriteReviewHtml(html, "x", "y.md");
-			expect(html).toBe(baseHtml);
-		});
-	});
-	describe("rewriteReviewHtml: match scoping", () => {
-		it("embedded-md タグが無いと Error を投げる", () => {
-			expect(() => rewriteReviewHtml("<html></html>", "x", "a.md")).toThrow(/embedded-md/);
-		});
-		it("HTML コメント内の literal <script id=\"embedded-md\"> を無視する", () => {
-			const out = rewriteReviewHtml("<!-- the <script id=\"embedded-md\"> block --><script id=\"embedded-md\" type=\"text/markdown\" data-name=\"document.md\"><\/script>", "# body", "spec.md");
-			expect(out).toContain("<!-- the <script id=\"embedded-md\"> block -->");
-			expect(out).toContain("data-name=\"spec.md\"");
-			expect(out).toContain("># body<\/script>");
-			expect(out).not.toContain("data-name=\"document.md\"");
-		});
-		it("type=\"text/markdown\" が無い script タグは対象外", () => {
-			const html = "<script id=\"embedded-md\"><\/script>";
-			expect(() => rewriteReviewHtml(html, "x", "a.md")).toThrow(/embedded-md/);
-		});
-	});
-}
 //#endregion
 //#region src/embed.ts
-var USAGE = "Usage: embed <input.md> <output.html>";
+var USAGE = "Usage: embed <input.md> [output-dir]";
 var errorMessage = (error) => {
 	if (error instanceof Error) return error.message;
 	return String(error);
@@ -139,15 +68,31 @@ var readReviewHtml = async (path) => {
 		throw error;
 	}
 };
+var prepareEmbed = async (inputPath, outputDir) => {
+	const scriptDir = dirname(fileURLToPath(import.meta.url));
+	const [markdown, reviewHtml] = await Promise.all([readFile(inputPath, "utf8"), readReviewHtml(resolve(scriptDir, "review.html"))]);
+	const docName = basename(inputPath);
+	const docHash = await computeDocHash(markdown);
+	return {
+		docName,
+		markdown,
+		outputPath: resolve(outputDir ?? dirname(inputPath), deriveReviewHtmlName(stripMarkdownExt(docName), docHash)),
+		reviewHtml
+	};
+};
+var runEmbed = async (inputPath, outputDir) => {
+	const ctx = await prepareEmbed(inputPath, outputDir);
+	const result = rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName);
+	await writeFile(ctx.outputPath, result, "utf8");
+	process.stdout.write(`${ctx.outputPath}\n`);
+};
 var main = async () => {
-	const [inputPath, outputPath] = process.argv.slice(2);
-	if (!inputPath || !outputPath) {
+	const [inputPath, outputDir] = process.argv.slice(2);
+	if (!inputPath) {
 		process.stderr.write(`${USAGE}\n`);
 		process.exit(1);
 	}
-	const reviewHtmlPath = resolve(dirname(fileURLToPath(import.meta.url)), "review.html");
-	const [markdown, reviewHtml] = await Promise.all([readFile(inputPath, "utf8"), readReviewHtml(reviewHtmlPath)]);
-	await writeFile(outputPath, rewriteReviewHtml(reviewHtml, markdown, basename(inputPath)), "utf8");
+	await runEmbed(inputPath, outputDir);
 };
 main().catch((error) => {
 	process.stderr.write(`embed: ${errorMessage(error)}\n`);
