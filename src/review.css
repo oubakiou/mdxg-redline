@@ -129,6 +129,11 @@ body > main.layout > aside.sidebar {
   letter-spacing: -0.005em;
   font-size: 18px;
   line-height: 1;
+  color: var(--ink);
+  text-decoration: none;
+}
+.app-brand-title:hover {
+  text-decoration: underline;
 }
 .toolbar-actions {
   display: flex;
@@ -255,172 +260,6 @@ body > main.layout > aside.sidebar {
   height: 1px;
   background: var(--rule-muted);
   margin: 4px 4px;
-}
-
-/* Rendered markdown — DADS (Digital Agency Design System) theme
-   ported from .vscode/markdown.css. */
-#doc {
-  font-family: var(--font-system);
-  font-size: 1.125rem;
-  font-weight: 400;
-  line-height: 1.7;
-  letter-spacing: 0.02em;
-  color: #1a1a1a;
-  background-color: #ffffff;
-  max-width: 860px;
-  margin: 0 auto;
-  padding: 2rem;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-}
-#doc h1,
-#doc h2,
-#doc h3,
-#doc h4,
-#doc h5,
-#doc h6 {
-  font-family: var(--font-system);
-  font-weight: 700;
-  color: #1a1a1a;
-  margin-top: 1.5em;
-  margin-bottom: 0.5em;
-}
-#doc h1 {
-  font-size: 2.375rem;
-  line-height: 1.4;
-  letter-spacing: 0.01em;
-  padding-bottom: 0.3em;
-  border-bottom: 1px solid #e6e6e6;
-}
-#doc h2 {
-  font-size: 1.875rem;
-  line-height: 1.5;
-  letter-spacing: 0.01em;
-  padding-bottom: 0.25em;
-  border-bottom: 1px solid #e6e6e6;
-}
-#doc h3 {
-  font-size: 1.625rem;
-  line-height: 1.5;
-  letter-spacing: 0.02em;
-}
-#doc h4 {
-  font-size: 1.375rem;
-  line-height: 1.6;
-  letter-spacing: 0.02em;
-}
-#doc h5 {
-  font-size: 1.25rem;
-  line-height: 1.6;
-  letter-spacing: 0.02em;
-}
-#doc h6 {
-  font-size: 1.125rem;
-  line-height: 1.7;
-  letter-spacing: 0.02em;
-  color: #4d4d4d;
-}
-#doc p {
-  margin-top: 0;
-  margin-bottom: 1rem;
-}
-#doc strong {
-  font-weight: 700;
-}
-#doc a {
-  color: #0031d8;
-  text-decoration: underline;
-}
-#doc a:hover {
-  color: #002db6;
-}
-#doc ul,
-#doc ol {
-  margin-top: 0;
-  margin-bottom: 1rem;
-  padding-left: 2rem;
-}
-#doc li {
-  margin-bottom: 0.25rem;
-}
-#doc li > ul,
-#doc li > ol {
-  margin-top: 0.25rem;
-  margin-bottom: 0;
-}
-#doc blockquote {
-  margin: 0 0 1rem 0;
-  padding: 0.5rem 1rem;
-  border-left: 4px solid #cccccc;
-  color: #4d4d4d;
-  background-color: #f2f2f2;
-  border-radius: 0.25rem;
-}
-#doc blockquote > p:last-child {
-  margin-bottom: 0;
-}
-#doc code {
-  font-family: var(--font-mono);
-  font-size: 0.875rem;
-  line-height: 1.5;
-  padding: 0.125rem 0.375rem;
-  background-color: #f2f2f2;
-  border: 1px solid #e6e6e6;
-  border-radius: 0.25rem;
-}
-#doc pre {
-  margin-top: 0;
-  margin-bottom: 1rem;
-  padding: 1rem;
-  overflow-x: auto;
-  background-color: #1e1e1e;
-  border: 1px solid #333333;
-  border-radius: 0.5rem;
-}
-#doc pre code {
-  font-family: var(--font-mono);
-  font-size: 1rem;
-  letter-spacing: 0;
-  padding: 0;
-  color: #d4d4d4;
-  background-color: transparent;
-  border: none;
-  border-radius: 0;
-}
-#doc table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 0;
-  margin-bottom: 1rem;
-  font-size: 1rem;
-  line-height: 1.5;
-}
-#doc thead {
-  background-color: #f2f2f2;
-}
-#doc th {
-  font-weight: 700;
-  text-align: left;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #e6e6e6;
-}
-#doc td {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #e6e6e6;
-}
-#doc hr {
-  border: none;
-  border-top: 1px solid #e6e6e6;
-  margin: 2rem 0;
-}
-#doc img {
-  max-width: 100%;
-  height: auto;
-  border-radius: 0.5rem;
-}
-#doc input[type='checkbox'] {
-  margin-right: 0.5rem;
-  accent-color: #0031d8;
 }
 
 [data-block-id] {

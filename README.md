@@ -35,7 +35,7 @@ Open `review.html` in your browser, load markdown via `Open file`, select text โ
 
 For workflows where an agent and a reviewer iterate multiple times on the same machine.
 
-1. The agent writes `<name>-<hash>-review.md` into the workspace directory (where `<name>` is the basename with `.md` / `.markdown` extension stripped, and `<hash>` is the first 16 hex chars of SHA-256 over the markdown body)
+1. The agent writes `<name>-<hash>-review.md` into a workspace directory (e.g. `.temp/review-session/`), where `<name>` is the basename with `.md` / `.markdown` extension stripped, and `<hash>` is the first 16 hex chars of SHA-256 over the markdown body
 2. Open `review.html` in your browser and pick the directory via `Watch folder`
 3. The reviewer writes comments and clicks `Submit review`
 4. `<name>-<hash>-feedback.json` is written into the same directory (same `<name>` and `<hash>` as the source `review.md`)
@@ -87,14 +87,14 @@ For the roadmap ahead, see [docs/DESIGN.md ยง13](docs/DESIGN.md).
 The build tool is [Vite+ (vp)](https://viteplus.dev/), installed via npm (`vite-plus`) as a dev dependency. The devcontainer and `local_setup.sh` handle setup, so using those is the fastest path for local development.
 
 ```bash
-npm install
+npm ci
 npm run build       # = vp build       generates dist/review.html
 npm run build:watch # = vp build --watch rebuilds on file changes
 npm run dev         # = vp dev          dev server with HMR
 npm test            # = vp test         runs in-source tests
 ```
 
-`npm install` will install `vp` locally from `vite-plus`.
+`npm ci` will install `vp` locally from `vite-plus`.
 
 ## License
 

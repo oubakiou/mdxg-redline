@@ -35,7 +35,7 @@
 
 エージェントとレビュワーが同一マシンで複数往復するワークフロー用。
 
-1. エージェントが任意のワークスペースディレクトリに `<name>-<hash>-review.md` を書き出す（`<name>` は元 MD の basename から `.md` / `.markdown` 拡張子を除いたもの、`<hash>` は本文 SHA-256 の先頭 16 桁 hex）
+1. エージェントが任意のワークスペースディレクトリ（例: `.temp/review-session/`）に `<name>-<hash>-review.md` を書き出す（`<name>` は元 MD の basename から `.md` / `.markdown` 拡張子を除いたもの、`<hash>` は本文 SHA-256 の先頭 16 桁 hex）
 2. ブラウザで `review.html` を開き `Watch folder` でディレクトリを選択
 3. レビュワーがコメントを記入し `Submit review` をクリック
 4. 同じディレクトリに `<name>-<hash>-feedback.json` が書き出される（元の `review.md` と同じ `<name>` / `<hash>` を共有）
@@ -87,14 +87,14 @@
 ビルドツールは [Vite+ (vp)](https://viteplus.dev/) を使用し、npm の devDependency（`vite-plus`）として導入しています。devcontainer / `local_setup.sh` がセットアップを担当するので、ローカル開発時はそれらを利用するのが最短です。
 
 ```bash
-npm install
+npm ci
 npm run build       # = vp build       dist/review.html を生成
 npm run build:watch # = vp build --watch ファイル変更で自動再ビルド
 npm run dev         # = vp dev          HMR 付き dev サーバー
 npm test            # = vp test         in-source tests を実行
 ```
 
-`npm install` で `vite-plus` 由来の `vp` がローカルに導入されます。
+`npm ci` で `vite-plus` 由来の `vp` がローカルに導入されます。
 
 ## ライセンス
 
