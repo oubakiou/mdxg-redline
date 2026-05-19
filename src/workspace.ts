@@ -212,7 +212,8 @@ const confirmWorkspaceReload = async (hash: string): Promise<boolean> => {
     return Promise.resolve(false)
   }
   return confirmDialog(
-    `${WS.INPUT_FILE} has been updated. Load the new version? Current comments will be archived under the previous version's hash.`
+    `Load the new version of ${WS.INPUT_FILE}?`,
+    `${WS.INPUT_FILE} has been updated on disk. Existing comments stay attached to the previous version.`
   )
 }
 
@@ -319,7 +320,8 @@ const acceptPickedHandle = async (handle: FsDirectoryHandle): Promise<void> => {
 const wsConnect = async (): Promise<void> => {
   if (!wsSupported() || !globalThis.showDirectoryPicker) {
     await noticeDialog(
-      'This browser does not support the File System Access API.\nUse Chrome, Edge, or another Chromium-based browser.'
+      'File System Access API is not supported',
+      'Use Chrome, Edge, or another Chromium-based browser to enable folder watching.'
     )
     return
   }
@@ -458,7 +460,10 @@ const reconnectWorkspace = async (): Promise<void> => {
 
 /** 明示的に切断。確認ダイアログを挟み、その後ポーリング停止＋state クリア＋永続化削除を順に実施 */
 const disconnectWorkspace = async (handle: FsDirectoryHandle): Promise<void> => {
-  const confirmed = await confirmDialog(`Stop watching ${handle.name}/?`)
+  const confirmed = await confirmDialog(
+    `Stop watching “${handle.name}”?`,
+    'Comments stay in your browser. You can reconnect this folder anytime.'
+  )
   if (!confirmed) {
     return
   }

@@ -433,7 +433,7 @@ body > main.layout > aside.sidebar {
 
 mark.cmt {
   background: var(--highlight-soft);
-  border-bottom: 2px solid var(--accent);
+  border-bottom: 2px solid var(--danger);
   padding: 0 1px;
   cursor: pointer;
   transition: background 0.15s ease;
@@ -554,6 +554,26 @@ mark.cmt.active {
   width: min(560px, 92vw);
   box-shadow: var(--shadow-large);
 }
+/* confirm / notice dialog 専用 modifier。コメント入力モーダル (.modal 単独) は内側で
+   横並びの textarea + label を直接持つので modal 全体に padding がある方が都合がよく、
+   それを壊さないために modal-compact 時のみ padding を 0 にしてセクションが自前で持つ。 */
+.modal.modal-compact {
+  padding: 0;
+}
+.modal-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--rule);
+}
+.modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ink);
+}
+.modal-body {
+  padding: 16px 24px;
+}
 .modal textarea {
   width: 100%;
   box-sizing: border-box;
@@ -582,11 +602,33 @@ mark.cmt.active {
   border-left-width: 3px;
   border-left-color: var(--accent);
 }
+/* dialog body 内の補足説明文。タイトルが問いかけを担うため、本文は通常サイズの平文で
+   読み下しやすく扱う。複数行メッセージのために pre-line で `\n` を改行として保持する。 */
+.modal-message {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+  white-space: pre-line;
+}
+
+/* テキスト主体の confirm / notice ダイアログ用。コメント入力モーダル (textarea) と異なり
+   短い問いかけが多いので、デフォルトの 560px は広すぎてテキストが浮遊して見える。 */
+.modal-compact {
+  width: min(400px, 92vw);
+}
 .modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 16px;
+}
+/* dialog の footer は modal 全体の padding を持たない (modal-compact) 構造のため、
+   セクション自前で padding を持つ。Primer Dialog に倣い body との境界は divider ではなく
+   whitespace のみで示す（header は title を強調するため border-bottom を残す）。 */
+.modal.modal-compact > .modal-actions {
+  margin-top: 0;
+  padding: 12px 16px;
 }
 
 .empty-state {

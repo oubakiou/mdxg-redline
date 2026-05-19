@@ -159,7 +159,8 @@ const wireClear = (runtime: ToolbarRuntime): void => {
       return
     }
     const confirmed = await confirmDialog(
-      `Delete all ${runtime.state.comments.length} comments for this file?`
+      `Delete all ${runtime.state.comments.length} comments?`,
+      'This cannot be undone.'
     )
     if (!confirmed) {
       return
