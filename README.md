@@ -67,18 +67,18 @@ See [docs/DESIGN.md](docs/DESIGN.md) for details.
 
 The [Markdown Experience Guidelines (MDXG)](https://github.com/vercel-labs/mdxg) are currently a preview specification and may change. Reviewer-facing features are being adopted incrementally.
 
-| MDXG section | Required level | Current status |
-| --- | --- | --- |
-| §1 Theming | MUST (Viewer) | Partial (DADS theme; host theme adaptation is not implemented yet) |
-| §2 Code Block Rendering | MUST (Viewer) | Partial (copy button and syntax highlighting are not implemented yet) |
-| §3 Task Lists | MUST (Viewer) | Supported via marked defaults |
-| §4 Images / §5 Tables | MUST (Viewer) | Supported via marked defaults |
-| §6 Virtual Pages | MUST (Viewer) | Not supported yet (requires integration design with the comment model) |
-| §7 Page Navigation | MUST (Viewer) | Not supported yet |
-| §8 Page Outline | MUST (Viewer) | Not supported yet |
-| §9 Sequential Navigation | MUST (Viewer) | Not supported yet |
-| §10 Search | MUST (Viewer) | Not supported yet |
-| §13 Keyboard Navigation | MUST (Viewer) | Partial |
+| MDXG section             | Required level | Current status                                                         |
+| ------------------------ | -------------- | ---------------------------------------------------------------------- |
+| §1 Theming               | MUST (Viewer)  | Partial (DADS theme; host theme adaptation is not implemented yet)     |
+| §2 Code Block Rendering  | MUST (Viewer)  | Partial (copy button and syntax highlighting are not implemented yet)  |
+| §3 Task Lists            | MUST (Viewer)  | Supported via marked defaults                                          |
+| §4 Images / §5 Tables    | MUST (Viewer)  | Supported via marked defaults                                          |
+| §6 Virtual Pages         | MUST (Viewer)  | Not supported yet (requires integration design with the comment model) |
+| §7 Page Navigation       | MUST (Viewer)  | Not supported yet                                                      |
+| §8 Page Outline          | MUST (Viewer)  | Not supported yet                                                      |
+| §9 Sequential Navigation | MUST (Viewer)  | Not supported yet                                                      |
+| §10 Search               | MUST (Viewer)  | Not supported yet                                                      |
+| §13 Keyboard Navigation  | MUST (Viewer)  | Partial                                                                |
 
 For the roadmap ahead, see [docs/DESIGN.md §13](docs/DESIGN.md).
 

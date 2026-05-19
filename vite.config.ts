@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { defineConfig } from 'vite-plus'
 import { viteSingleFile } from 'vite-plugin-singlefile'
 
 // `root: 'src'` でソース一式 (review.html + review.ts + review.css) を src/ 配下に集約。
@@ -39,18 +39,6 @@ export default defineConfig({
   plugins: [viteSingleFile()],
   root: 'src',
   test: {
-    // 純粋関数のみ in-source testing で検証する。DOM 副作用は import.meta.vitest でガード。
-    includeSource: [
-      'src/boot.ts',
-      'src/feedback.ts',
-      'src/markdown.ts',
-      'src/review-export.ts',
-      'src/review.ts',
-      'src/scroll.ts',
-      'src/selection.ts',
-      'src/sidebar.ts',
-      'src/toolbar.ts',
-      'src/workspace.ts',
-    ],
+    includeSource: ['**/*.ts'],
   },
 })
