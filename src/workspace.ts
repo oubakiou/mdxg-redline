@@ -342,19 +342,27 @@ const readWorkspaceInput = async (handle: FsDirectoryHandle): Promise<WorkspaceI
 
 /**
  * 新版 *-review.md を取り込んでよいかユーザーに確認する。
- * 初回読み込み（lastHash 未設定）またはコメントが 1 件もない場合は無条件 true として、UI を阻害しない。
- * 既存コメントがある場合のみ確認ダイアログを出し、ユーザーが拒否したら現状を維持する。
+ * 取り込み対象の docHash と現在の state.docHash を比較して分岐する:
+ *   - 同じ docHash の再取り込み → 無音許可（差分なし）
+ *   - markdown 未ロード（初回） → 無音許可
+ *   - 別 docHash + ロード済み → 確認ダイアログ
+ * これにより、埋め込み HTML 等で先に markdown をロードした状態で別 hash の
+ * `*-review.md` が見つかったケース（古い .md による意図しない上書き）を防ぐ。
+ * declinedHash 一致は静かに却下し、同じ内容で繰り返し聞かない。
  */
 const confirmWorkspaceReload = async (hash: string): Promise<boolean> => {
-  if (wsState.lastHash === null || runtime().state.comments.length === 0) {
-    return Promise.resolve(true)
-  }
   if (hash === wsState.declinedHash) {
     return Promise.resolve(false)
   }
+  const { docHash, markdown } = runtime().state
+  if (!markdown || hash === docHash) {
+    return Promise.resolve(true)
+  }
   return confirmDialog(
     'Load the new review version?',
-    'A newer *-review.md was found on disk. Existing comments stay attached to the previous version.'
+    'A *-review.md with a different docHash was found in the watched folder. ' +
+      'The currently displayed content will be replaced. ' +
+      'Existing comments stay attached to the previous version.'
   )
 }
 
@@ -763,39 +771,44 @@ if (import.meta.vitest) {
   })
 
   describe('confirmWorkspaceReload', () => {
-    it('初回読み込みは確認なしで許可する', async () => {
+    it('markdown 未ロードの初回取り込みは確認なしで許可する', async () => {
+      configureWorkspace(
+        workspaceRuntimeForTest({
+          comments: [],
+          docHash: null,
+          docName: null,
+          markdown: '',
+        })
+      )
+
+      await expect(confirmWorkspaceReload('new-hash00000000')).resolves.toBe(true)
+    })
+
+    it('同じ docHash の再取り込みは確認なしで許可する', async () => {
       configureWorkspace(
         workspaceRuntimeForTest({
           comments: [workspaceCommentForTest('c1')],
-          docHash: 'testhash00000000',
+          docHash: 'samehash00000000',
           docName: 'review.md',
           markdown: '# Review',
         })
       )
 
-      await expect(confirmWorkspaceReload('new-hash')).resolves.toBe(true)
-    })
-
-    it('コメントがなければ確認なしで許可する', async () => {
-      configureWorkspace(workspaceRuntimeForTest())
-      wsState.lastHash = 'old-hash'
-
-      await expect(confirmWorkspaceReload('new-hash')).resolves.toBe(true)
+      await expect(confirmWorkspaceReload('samehash00000000')).resolves.toBe(true)
     })
 
     it('拒否済み hash は再確認せず拒否する', async () => {
       configureWorkspace(
         workspaceRuntimeForTest({
           comments: [workspaceCommentForTest('c1')],
-          docHash: 'testhash00000000',
+          docHash: 'currenthash00000',
           docName: 'review.md',
           markdown: '# Review',
         })
       )
-      wsState.lastHash = 'old-hash'
-      wsState.declinedHash = 'new-hash'
+      wsState.declinedHash = 'declinedhash0000'
 
-      await expect(confirmWorkspaceReload('new-hash')).resolves.toBe(false)
+      await expect(confirmWorkspaceReload('declinedhash0000')).resolves.toBe(false)
     })
   })
 
