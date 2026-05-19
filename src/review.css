@@ -186,6 +186,16 @@ body > main.layout > aside.sidebar {
   border-color: transparent;
   color: var(--ink);
 }
+.btn-watching::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  vertical-align: 1px;
+}
 
 /* Action menu (GitHub Primer ActionList style) */
 .menu-wrap {

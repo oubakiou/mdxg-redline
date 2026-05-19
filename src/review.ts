@@ -370,7 +370,7 @@ export const loadFromMarkdown = async (name: string, text: string): Promise<void
   state.comments = commentsFromStored(saved)
   renderDoc()
   renderSidebar()
-  qs('#status').textContent = `${name} · ${loadStatusLabel()}`
+  qs('#status').textContent = `${name} (${state.docHash}) · ${loadStatusLabel()}`
 }
 
 // --- Modal / Menu event listeners -------------------------------------------

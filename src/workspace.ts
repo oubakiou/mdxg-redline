@@ -186,7 +186,7 @@ const updateEmptyStateForWatching = (folderName: string | null): void => {
 /** ワークスペース監視中の UI 表示（接続済み・ポーリング中） */
 const showWsActive = (controls: WsControls, handle: FsDirectoryHandle): void => {
   controls.watchBtn.textContent = `Watching · ${handle.name}`
-  controls.watchBtn.classList.add('btn-primary')
+  controls.watchBtn.classList.add('btn-watching')
   controls.watchBtn.setAttribute('data-tooltip', `Click to stop watching “${handle.name}”`)
   controls.sendBtn.style.display = ''
   updateEmptyStateForWatching(handle.name)
@@ -195,7 +195,7 @@ const showWsActive = (controls: WsControls, handle: FsDirectoryHandle): void => 
 /** 過去にハンドルはあるが権限切れの状態。ユーザーが再許可するまで監視は止める */
 const showWsReconnect = (controls: WsControls, handle: FsDirectoryHandle): void => {
   controls.watchBtn.textContent = `Reconnect · ${handle.name}`
-  controls.watchBtn.classList.remove('btn-primary')
+  controls.watchBtn.classList.remove('btn-watching')
   controls.watchBtn.setAttribute(
     'data-tooltip',
     `Permission for “${handle.name}” has expired. Click to re-grant access`
@@ -207,7 +207,7 @@ const showWsReconnect = (controls: WsControls, handle: FsDirectoryHandle): void 
 /** ワークスペース未接続の初期状態 */
 const showWsInactive = (controls: WsControls): void => {
   controls.watchBtn.textContent = 'Watch folder'
-  controls.watchBtn.classList.remove('btn-primary')
+  controls.watchBtn.classList.remove('btn-watching')
   controls.watchBtn.setAttribute('data-tooltip', WATCH_BTN_INACTIVE_TITLE)
   controls.sendBtn.style.display = 'none'
   updateEmptyStateForWatching(null)
