@@ -35,13 +35,13 @@ Open `review.html` in your browser, load markdown via `Open file`, select text �
 
 For workflows where an agent and a reviewer iterate multiple times on the same machine.
 
-1. Place a `review.md` file in any workspace directory
+1. The agent writes `<name>-<hash>-review.md` into the workspace directory (where `<name>` is the basename with `.md` / `.markdown` extension stripped, and `<hash>` is the first 16 hex chars of SHA-256 over the markdown body)
 2. Open `review.html` in your browser and pick the directory via `Watch folder`
 3. The reviewer writes comments and clicks `Submit review`
-4. `feedback.json` is written into the same directory
-5. The agent reads `feedback.json` and writes back a revised `review.md` — repeat
+4. `<name>-<hash>-feedback.json` is written into the same directory (same `<name>` and `<hash>` as the source `review.md`)
+5. The agent reads the matching `feedback.json` and writes back a revised `<name>-<new-hash>-review.md` — repeat
 
-See [docs/DESIGN.md](docs/DESIGN.md) for details.
+See [the Workspace Protocol section in docs/DESIGN.md](docs/DESIGN.md#8-ワークスペースプロトコル) for the full file-naming protocol.
 
 ## Output JSON
 

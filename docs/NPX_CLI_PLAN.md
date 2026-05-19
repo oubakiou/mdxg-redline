@@ -2,15 +2,15 @@
 
 ## 0. 進捗ステータス
 
-| Phase                       | 内容                                                                                                                                 | 状態   |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------ |
-| **Phase 1: embedding core** | `</script>` / `data-name` のエスケープ、`<script id="embedded-md">` の rewrite、最小 CLI (2 引数: input.md + output.html)            | 実装済 |
-| **Phase 2: npx 起動 UX**    | `bin` エントリ追加、一時 HTML 生成、ブラウザ自動起動、stdin 対応、`--document-name` / `--print-temp-path` フラグ、TTL クリーンアップ | 未実装 |
+| Phase                       | 内容                                                                                                                                                         | 状態   |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| **Phase 1: embedding core** | `</script>` / `data-name` のエスケープ、`<script id="embedded-md">` の rewrite、最小 CLI (`input.md` + 任意 `output-dir`、§8 ファイル命名規約による自動命名) | 実装済 |
+| **Phase 2: npx 起動 UX**    | `bin` エントリ追加、一時 HTML 生成、ブラウザ自動起動、stdin 対応、`--document-name` / `--print-temp-path` フラグ、TTL クリーンアップ                         | 未実装 |
 
 Phase 1 の実体：
 
 - `src/embed-core.ts` … pure ロジック（Node / browser 両対応）。in-source test 16 件
-- `src/embed.ts` … Node CLI ラッパー（shebang 付き、引数 2 つ、ENOENT を親切なメッセージに差し替え）
+- `src/embed.ts` … Node CLI ラッパー（shebang 付き、`<input.md> [output-dir]` 引数、§8 ファイル命名規約に従って出力ファイル名を自動決定、ENOENT を親切なメッセージに差し替え）
 - `vite.embed.config.ts` … SSR mode で `dist/embed.mjs` を生成するビルド設定
 - `npm run build:embed` … embed CLI のみの差分ビルド、`npm run build` は review.html と一緒に再生成
 
@@ -30,7 +30,7 @@ Phase 1 の実体：
   - `Open file` によるローカルファイル選択
   - HTML への markdown 埋め込み（`<script id="embedded-md" type="text/markdown" data-name="...">` パターン。`src/boot.ts` の `loadEmbeddedMarkdown` で読み込まれる）
   - URL ハッシュ `#md=...&name=...`
-  - ワークスペース監視（`review.md` / `feedback.json`）
+  - ワークスペース監視（`<name>-<hash>-review.md` / `<name>-<hash>-feedback.json`、詳細は `docs/DESIGN.md §8`）
 - `package.json` には現時点で CLI 用の `bin` エントリがない
 - `package.json` は `"type": "module"` であり、追加実装は ESM 前提となる
 - 依存は `marked` 1 個のみのシンプルな構成
@@ -166,7 +166,7 @@ npx mdxg-redline <markdown-file> --print-temp-path
 凡例: [x] 実装済 / [部分] Phase 1 で一部実装、Phase 2 で拡張 / [ ] 未着手
 
 1. [部分] CLI エントリポイントを実装する（引数パース、`-`/stdin 対応、`--document-name` / `--print-temp-path` フラグ、エラー処理）
-   - Phase 1: 最小 2 引数 (`<input.md> <output.html>`) のみ。`src/embed.ts` として実装（当初の `src/cli.ts` という命名から変更）
+   - Phase 1: `<input.md> [output-dir]` の 1〜2 引数。出力ファイル名は §8 ファイル命名規約（`<mdFileName>-<docHash>-review.html`）で自動決定。`src/embed.ts` として実装（当初の `src/cli.ts` という命名から変更）
    - Phase 2: stdin、`--document-name`、`--print-temp-path` を追加
 2. [部分] 指定ファイル/stdin の読み込み、ファイル存在チェック、エラー処理を実装する
    - Phase 1: ファイル読み込みと ENOENT 処理（`dist/review.html` 欠落時は `npm run build` を案内する親切なメッセージに差し替え）
@@ -244,13 +244,21 @@ Phase 2 で追加予定：
 
 ### 10.2 手動 E2E
 
-Phase 1 で `node dist/embed.mjs` を直接叩いて確認済：
+Phase 1 で `node dist/embed.mjs` を直接叩いて確認済（命名規約導入前の `<input.md> <output.html>` 形式での記録）：
 
 - [x] 短い markdown で生成できること
 - [x] 日本語・絵文字・記号を含む markdown を壊さないこと（HTML エンティティ的な文字列も含む）
 - [x] markdown 本文中に `</script>` を含む場合でも壊れないこと
 - [x] `dist/review.html` 欠落時に親切なエラーメッセージで失敗すること
 - [x] 既存の `review.html` 単独利用フローを壊さないこと
+
+命名規約 (`<mdFileName>-<docHash>-review.html`) 対応の追加検証項目：
+
+- [ ] `<input.md>` 単独実行で入力 MD と同じディレクトリに `<mdFileName>-<docHash>-review.html` が出力されること
+- [ ] `<input.md> <output-dir>` 形式で指定ディレクトリに正しい命名で出力されること
+- [ ] 同じ MD を 2 回実行しても同じ出力ファイル名になること（hash 決定性）
+- [ ] 本文を 1 文字変えて実行すると別の出力ファイル名になること（hash の差分検知）
+- [ ] スペース・日本語を含む MD ファイル名でも正しく組み立てられること
 
 Phase 2 で追加確認：
 
@@ -267,4 +275,4 @@ Phase 2 で追加確認：
 `npx mdxg-redline <markdown-file>` の利用形態は **十分に実現可能** であり、既存実装との整合性を保ちながら進められる。
 最も自然でリスクが低いのは、**既存の `review.html` を活かしつつ、一時 HTML を生成して起動する薄い CLI を追加する方針** である。
 
-**Phase 1 で完了したのは、この CLI の中核である「embedding core（エスケープ + rewrite）+ 最小 2 引数 CLI」までで、`dist/embed.mjs` として配布できる状態になっている。**`npx mdxg-redline` 化（Phase 2）は §0 の進捗ステータス参照。
+**Phase 1 で完了したのは、この CLI の中核である「embedding core（エスケープ + rewrite）+ 最小 CLI」までで、`dist/embed.mjs` として配布できる状態になっている。** CLI のインターフェースは §8 ファイル命名規約の導入に合わせて `<input.md> [output-dir]` に変更され、出力ファイル名は規約から自動決定される。`npx mdxg-redline` 化（Phase 2）は §0 の進捗ステータス参照。

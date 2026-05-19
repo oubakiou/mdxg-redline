@@ -35,13 +35,13 @@
 
 エージェントとレビュワーが同一マシンで複数往復するワークフロー用。
 
-1. 任意のワークスペースディレクトリに `review.md` を配置
+1. エージェントが任意のワークスペースディレクトリに `<name>-<hash>-review.md` を書き出す（`<name>` は元 MD の basename から `.md` / `.markdown` 拡張子を除いたもの、`<hash>` は本文 SHA-256 の先頭 16 桁 hex）
 2. ブラウザで `review.html` を開き `Watch folder` でディレクトリを選択
 3. レビュワーがコメントを記入し `Submit review` をクリック
-4. 同じディレクトリに `feedback.json` が書き出される
-5. エージェントが `feedback.json` を読み、改訂版 `review.md` を書き戻すループ
+4. 同じディレクトリに `<name>-<hash>-feedback.json` が書き出される（元の `review.md` と同じ `<name>` / `<hash>` を共有）
+5. エージェントが対応する `feedback.json` を読み、改訂版 `<name>-<新hash>-review.md` を書き戻すループ
 
-詳細は [docs/DESIGN.md](docs/DESIGN.md) を参照。
+ファイル命名規約の詳細は [docs/DESIGN.md のワークスペースプロトコル](docs/DESIGN.md#8-ワークスペースプロトコル) を参照。
 
 ## 出力 JSON
 
