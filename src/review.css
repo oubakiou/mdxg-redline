@@ -73,6 +73,8 @@ body > main.layout > aside.sidebar {
   align-items: center;
   gap: 8px;
   margin-bottom: 16px;
+  /* btn-send 出現で行高が変わらないよう、primary btn の実高さ (line-height 20 + padding 5*2 + border 1*2 = 32px) を確保 */
+  min-height: 32px;
 }
 .sidebar-header .menu-wrap {
   margin-left: auto;
