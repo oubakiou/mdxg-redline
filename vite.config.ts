@@ -13,6 +13,8 @@ export default defineConfig({
     },
   },
   fmt: {
+    // ビルド成果物はフォーマット対象外。`vp build` で都度上書きされるため。
+    ignorePatterns: ['dist/'],
     semi: false,
     singleQuote: true,
     trailingComma: 'es5',
@@ -25,6 +27,8 @@ export default defineConfig({
       style: 'error',
       suspicious: 'error',
     },
+    // ビルド成果物はチェック対象外。`vp build` で都度上書きされるため。
+    ignorePatterns: ['dist/'],
     options: { typeAware: true, typeCheck: true },
     rules: {
       'capitalized-comments': 'off',

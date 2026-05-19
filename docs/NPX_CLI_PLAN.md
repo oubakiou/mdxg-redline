@@ -1,5 +1,21 @@
 # `npx mdxg-redline <markdown-file>` 対応計画
 
+## 0. 進捗ステータス
+
+| Phase                       | 内容                                                                                                                                 | 状態   |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| **Phase 1: embedding core** | `</script>` / `data-name` のエスケープ、`<script id="embedded-md">` の rewrite、最小 CLI (2 引数: input.md + output.html)            | 実装済 |
+| **Phase 2: npx 起動 UX**    | `bin` エントリ追加、一時 HTML 生成、ブラウザ自動起動、stdin 対応、`--document-name` / `--print-temp-path` フラグ、TTL クリーンアップ | 未実装 |
+
+Phase 1 の実体：
+
+- `src/embed-core.ts` … pure ロジック（Node / browser 両対応）。in-source test 16 件
+- `src/embed.ts` … Node CLI ラッパー（shebang 付き、引数 2 つ、ENOENT を親切なメッセージに差し替え）
+- `vite.embed.config.ts` … SSR mode で `dist/embed.mjs` を生成するビルド設定
+- `npm run build:embed` … embed CLI のみの差分ビルド、`npm run build` は review.html と一緒に再生成
+
+実装上の意思決定で本文と差分があるものは §5.1.1 / §10.1 の注記を参照。
+
 ## 1. 背景
 
 現状の `mdxg-redline` は、エンドユーザーに **単一 HTML ファイル**（`dist/review.html`）を配布し、ブラウザで開いて使う前提で設計されている。
@@ -56,6 +72,15 @@ Node 側の CLI で指定された markdown ファイルを読み込み、`dist/
 
 ビルドが将来 HTML minify を有効化して属性順や空白を変える場合、この方式は脆くなる。
 その場合は HTML minify を無効化する方針で対応する（CLI 側の保守を増やすより、ビルド設定で安定性を確保するほうが望ましい）。
+
+**実装注記（Phase 1）**: `dist/review.html` には説明用 HTML コメント内に literal `<script id="embedded-md">` というテキストが先行する。`id="embedded-md"` だけで正規表現マッチさせると、このコメント内テキストから本物の `</script>` までを丸ごと置換してしまい本文が破壊される。これを回避するため、`embed-core.ts` の `EMBEDDED_MD_RE` は **`id="embedded-md"` と `type="text/markdown"` の両方を lookahead で要求**する形にしている：
+
+```ts
+const EMBEDDED_MD_RE =
+  /(<script\b(?=[^>]*\bid="embedded-md")(?=[^>]*\btype="text\/markdown")[^>]*>)([\s\S]*?)(<\/script>)/i
+```
+
+`type="text/markdown"` 属性は本物の `<script>` タグだけが持つため、コメント内 literal は確実に弾ける。属性順は lookahead により非依存。
 
 #### 5.1.2 埋め込み時のエスケープ要件
 
@@ -134,19 +159,30 @@ npx mdxg-redline <markdown-file> --print-temp-path
 - CLI 用に Node 向け ESM ビルドのターゲットを追加する必要がある（tsc 直叩き、もしくは Vite の lib モード）
 - どちらにするかは実装段階で決める（依存追加の少ない tsc 直叩きが候補）
 
+**実装注記（Phase 1）**: Vite の SSR モードを別 config (`vite.embed.config.ts`) で運用する方式を採用した。Rolldown が `src/embed.ts` 冒頭の shebang を自動で保持し、`node:*` モジュールを external にするだけで Node 20+ で実行可能な ESM が出力される。`lib` モードは top-level side-effect しか持たない CLI エントリと相性が悪く、tree-shake で本体が空になる挙動が出たため SSR モードを選択した。
+
 ## 8. 実装ステップ案
 
-1. `src/cli.ts` で CLI エントリポイントを実装する（引数パース、`-`/stdin 対応、`--document-name` / `--print-temp-path` フラグ、エラー処理）
-2. 指定ファイル/stdin の読み込み、ファイル存在チェック、エラー処理を実装する
-3. document 名（basename / stdin デフォルト / `--document-name`）に §5.1.2 (b) の HTML 属性エスケープを適用する処理を実装する
-4. markdown 本文に §5.1.2 (a) の `</script>` エスケープを適用する処理を実装する
-5. `dist/review.html` を読み込み、`embedded-md` タグの中身と `data-name` 属性を書き換えて一時 HTML を生成する処理を実装する
-6. `os.tmpdir()/mdxg-redline/` 配下に一時 HTML を書き出し、起動時に同ディレクトリ内の TTL 7 日超ファイルをクリーンアップする処理を実装する
-7. プラットフォーム判定で `execFile` / `spawn` + 引数配列ベースでブラウザを起動する処理を実装する（`shell: true` 禁止、起動失敗時は一時 HTML パスを stdout に表示）
-8. CLI 向けの Node ESM ビルドを `package.json` の scripts に追加し、出力を `dist/` に配置する
-9. `package.json` の `bin` / `engines` を追加し、`files` の整合を確認する
-10. README に CLI 利用方法を追記する
-11. 正常系・異常系の確認を行う
+凡例: [x] 実装済 / [部分] Phase 1 で一部実装、Phase 2 で拡張 / [ ] 未着手
+
+1. [部分] CLI エントリポイントを実装する（引数パース、`-`/stdin 対応、`--document-name` / `--print-temp-path` フラグ、エラー処理）
+   - Phase 1: 最小 2 引数 (`<input.md> <output.html>`) のみ。`src/embed.ts` として実装（当初の `src/cli.ts` という命名から変更）
+   - Phase 2: stdin、`--document-name`、`--print-temp-path` を追加
+2. [部分] 指定ファイル/stdin の読み込み、ファイル存在チェック、エラー処理を実装する
+   - Phase 1: ファイル読み込みと ENOENT 処理（`dist/review.html` 欠落時は `npm run build` を案内する親切なメッセージに差し替え）
+   - Phase 2: stdin パイプ入力、EACCES / EISDIR の区別
+3. [x] document 名（basename）に §5.1.2 (b) の HTML 属性エスケープを適用する処理を実装する（`embed-core.ts` の `escapeHtmlAttribute`）
+   - Phase 2: stdin デフォルト名と `--document-name` 上書きの追加
+4. [x] markdown 本文に §5.1.2 (a) の `</script>` エスケープを適用する処理を実装する（`embed-core.ts` の `escapeScriptContent`）
+5. [x] `dist/review.html` を読み込み、`embedded-md` タグの中身と `data-name` 属性を書き換えて HTML を生成する処理を実装する（`embed-core.ts` の `rewriteReviewHtml`）
+6. [ ] `os.tmpdir()/mdxg-redline/` 配下に一時 HTML を書き出し、起動時に同ディレクトリ内の TTL 7 日超ファイルをクリーンアップする処理を実装する（Phase 2 で着手）
+7. [ ] プラットフォーム判定で `execFile` / `spawn` + 引数配列ベースでブラウザを起動する処理を実装する（`shell: true` 禁止、起動失敗時は一時 HTML パスを stdout に表示）（Phase 2 で着手）
+8. [x] CLI 向けの Node ESM ビルドを `package.json` の scripts に追加し、出力を `dist/` に配置する（`vite.embed.config.ts` + `npm run build:embed`）
+9. [ ] `package.json` の `bin` / `engines` を追加し、`files` の整合を確認する（Phase 2 で着手）
+10. [ ] README に CLI 利用方法を追記する（Phase 2 で着手）
+11. [部分] 正常系・異常系の確認を行う
+    - Phase 1: in-source test 16 件（escape / rewrite / コメント内 literal の無視 / `type="text/markdown"` 要件 など）+ 手動実行で `review.html` 欠落時のメッセージ確認
+    - Phase 2: §10.2 の E2E ケースを追加
 
 ## 9. リスクと検討事項
 
@@ -186,36 +222,49 @@ npx mdxg-redline <markdown-file> --print-temp-path
 ### 9.4 ビルドとの結合
 
 - `dist/review.html` の HTML minify は将来も無効のままにする（5.1.1 の正規表現マッチング前提を守るため）
-- CI で「ビルド後の `dist/review.html` に `id="embedded-md"` を含む script タグが含まれること」をスモークテストとして検査する
+- CI で「ビルド後の `dist/review.html` に `id="embedded-md"` **かつ** `type="text/markdown"` を併せ持つ script タグが含まれること」をスモークテストとして検査する（§5.1.1 の実装注記の通り、両属性を必須要件とするマッチング前提）
 
 ## 10. 検証観点
 
 ### 10.1 単体テスト（vitest）
 
-- `</script>` エスケープ関数（大文字小文字混在を含む）
-- `data-name` HTML 属性エスケープ関数（`"`, `&`, `<`, `>`, `'` を含む値）
-- `embedded-md` タグ書き換え関数（属性パターン違いを複数ケースで検証）
-- 引数パース（ファイルパス / `-` / `--document-name` / `--print-temp-path` / 不正引数）
-- document 名解決（basename / stdin デフォルト / `--document-name` 上書き）
-- TTL クリーンアップ関数（mtime が境界の前後でファイルを残す/消すケース）
-- プラットフォーム判定とブラウザ起動コマンド組み立て（引数配列の組み立てのみ検証、実起動はモック）
+Phase 1 実装済（`src/embed-core.ts` の in-source test、計 16 件）：
+
+- [x] `</script>` エスケープ関数（大文字小文字混在 / 原文 case 保持 / 出現なしのパススルー）
+- [x] `data-name` HTML 属性エスケープ関数（`"`, `&`, `<`, `>`, `'` を含む値、二重エスケープ防止）
+- [x] `embedded-md` タグ書き換え関数（属性順違い、`data-name` 欠落時の補完、コンテンツ置換、`$` を含む markdown の特殊置換扱いの回避、元文字列を破壊しないこと）
+- [x] マッチ対象判定（HTML コメント内の literal `<script id="embedded-md">` の無視、`type="text/markdown"` 欠落時のスキップ、タグ不在時の Error）
+
+Phase 2 で追加予定：
+
+- [ ] 引数パース（ファイルパス / `-` / `--document-name` / `--print-temp-path` / 不正引数）
+- [ ] document 名解決（basename / stdin デフォルト / `--document-name` 上書き）
+- [ ] TTL クリーンアップ関数（mtime が境界の前後でファイルを残す/消すケース）
+- [ ] プラットフォーム判定とブラウザ起動コマンド組み立て（引数配列の組み立てのみ検証、実起動はモック）
 
 ### 10.2 手動 E2E
 
-- 短い markdown で起動できること
-- 長い markdown でも起動できること
-- 日本語・絵文字・記号を含む markdown を壊さないこと（HTML エンティティ的な文字列も含む）
-- markdown 本文中に `</script>` を含む場合でも壊れないこと
-- ファイル名に `"`, `<`, `&`, スペース、日本語を含むケースで `data-name` が壊れないこと
-- パスに `&`, スペース、日本語を含むケースでブラウザ起動が壊れないこと（macOS / Linux / Windows それぞれ）
-- 存在しないファイル指定で適切に失敗すること
-- stdin パイプ入力で正常に起動できること
-- ブラウザ起動失敗環境（devcontainer 等）で一時 HTML パスが stdout に出ること
-- `--print-temp-path` でブラウザを起動せずパスのみ出力されること
-- 7 日超の一時ファイルが起動時にクリーンアップされること
-- 既存の `review.html` 単独利用フローを壊さないこと
+Phase 1 で `node dist/embed.mjs` を直接叩いて確認済：
+
+- [x] 短い markdown で生成できること
+- [x] 日本語・絵文字・記号を含む markdown を壊さないこと（HTML エンティティ的な文字列も含む）
+- [x] markdown 本文中に `</script>` を含む場合でも壊れないこと
+- [x] `dist/review.html` 欠落時に親切なエラーメッセージで失敗すること
+- [x] 既存の `review.html` 単独利用フローを壊さないこと
+
+Phase 2 で追加確認：
+
+- [ ] 長い markdown でも起動できること
+- [ ] ファイル名に `"`, `<`, `&`, スペース、日本語を含むケースで `data-name` が壊れないこと
+- [ ] パスに `&`, スペース、日本語を含むケースでブラウザ起動が壊れないこと（macOS / Linux / Windows それぞれ）
+- [ ] stdin パイプ入力で正常に起動できること
+- [ ] ブラウザ起動失敗環境（devcontainer 等）で一時 HTML パスが stdout に出ること
+- [ ] `--print-temp-path` でブラウザを起動せずパスのみ出力されること
+- [ ] 7 日超の一時ファイルが起動時にクリーンアップされること
 
 ## 11. 結論
 
 `npx mdxg-redline <markdown-file>` の利用形態は **十分に実現可能** であり、既存実装との整合性を保ちながら進められる。
 最も自然でリスクが低いのは、**既存の `review.html` を活かしつつ、一時 HTML を生成して起動する薄い CLI を追加する方針** である。
+
+**Phase 1 で完了したのは、この CLI の中核である「embedding core（エスケープ + rewrite）+ 最小 2 引数 CLI」までで、`dist/embed.mjs` として配布できる状態になっている。**`npx mdxg-redline` 化（Phase 2）は §0 の進捗ステータス参照。

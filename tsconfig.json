@@ -10,6 +10,12 @@
     "skipLibCheck": true,
     "types": ["node", "vite/client", "vitest/importMeta"]
   },
-  "include": ["src/**/*.ts", "vite.config.ts", ".claude/**/*", ".codex/**/*"],
+  "include": [
+    "src/**/*.ts",
+    "vite.config.ts",
+    "vite.embed.config.ts",
+    ".claude/**/*",
+    ".codex/**/*"
+  ],
   "exclude": ["dist", "node_modules"]
 }
