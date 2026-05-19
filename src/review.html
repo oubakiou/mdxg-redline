@@ -31,14 +31,22 @@
       </div>
       <div class="toolbar-actions">
         <span id="status" class="label toolbar-status">No file</span>
-        <span
-          id="ws-status"
-          class="label toolbar-status toolbar-status-accent"
-          style="display: none"
-        ></span>
         <button class="btn" id="btn-load">Open file</button>
-        <button class="btn" id="btn-watch">Watch folder</button>
-        <button class="btn btn-primary" id="btn-send" style="display: none">Submit review</button>
+        <button
+          class="btn tooltipped"
+          id="btn-watch"
+          data-tooltip="Auto-load review.md from a folder and write feedback.json there when you click “Write feedback.json”"
+        >
+          Watch folder
+        </button>
+        <button
+          class="btn btn-primary tooltipped"
+          id="btn-send"
+          style="display: none"
+          data-tooltip="Write feedback.json into the watched folder"
+        >
+          Write feedback.json
+        </button>
       </div>
     </header>
 
@@ -47,12 +55,25 @@
     <main class="layout">
       <section class="doc-pane">
         <div id="doc-wrap">
-          <div class="empty-state">
+          <!-- 初期 / 切断時に表示する素の空状態。手元の markdown を 1 ファイル単発で見るユースケース向け -->
+          <div class="empty-state" id="empty-state-default">
             <div class="empty-state-title">No file loaded</div>
             <div class="label empty-state-hint">Open a markdown file to start reviewing</div>
             <button class="btn btn-primary" onclick="document.getElementById('btn-load').click()">
               Choose file
             </button>
+          </div>
+          <!-- Watch folder 接続中 + review.md 未読込のとき表示。
+               agent ⇄ 人間のループ運用での「次に何が起きるか」をユーザーに伝える -->
+          <div class="empty-state" id="empty-state-watching" hidden>
+            <div class="empty-state-title">
+              Waiting for review.md in <span id="empty-state-folder">""</span>
+            </div>
+            <div class="label empty-state-hint">
+              It will load automatically when an agent (or you) places review.md in this folder.
+              Inline comments you add here are written back to feedback.json in the same folder when
+              you click “Write feedback.json”.
+            </div>
           </div>
         </div>
         <div id="doc"></div>

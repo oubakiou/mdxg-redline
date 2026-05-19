@@ -122,43 +122,84 @@ const wsState: {
 
 interface WsControls {
   sendBtn: HTMLElement
-  status: HTMLElement
   watchBtn: HTMLElement
 }
 
 /** File System Access API がブラウザで利用可能か。非対応環境では監視 UI を無効化する */
 const wsSupported = (): boolean => typeof globalThis.showDirectoryPicker === 'function'
 
-/** ワークスペース UI を構成する DOM 要素群（buttons + status）をまとめて取得する */
+/** ワークスペース UI を構成する DOM 要素群をまとめて取得する */
 const wsControls = (): WsControls => ({
   sendBtn: runtime().qs('#btn-send'),
-  status: runtime().qs('#ws-status'),
   watchBtn: runtime().qs('#btn-watch'),
 })
+
+/** Watch folder ボタンを初期状態に戻す時の tooltip 文言。HTML 側の初期値と一致させる */
+const WATCH_BTN_INACTIVE_TITLE =
+  `Auto-load ${WS.INPUT_FILE} from a folder and write ${WS.OUTPUT_FILE} ` +
+  `there when you click “Write ${WS.OUTPUT_FILE}”`
+
+interface EmptyStateEls {
+  defaultState: HTMLElement
+  folderEl: HTMLElement
+  watchingState: HTMLElement
+}
+
+/** 空状態の DOM 要素 3 つを一度に取得し、どれかが欠けていれば null（早期 return 用） */
+const emptyStateEls = (): EmptyStateEls | null => {
+  const defaultState = document.getElementById('empty-state-default')
+  const watchingState = document.getElementById('empty-state-watching')
+  const folderEl = document.getElementById('empty-state-folder')
+  if (!defaultState || !watchingState || !folderEl) {
+    return null
+  }
+  return { defaultState, folderEl, watchingState }
+}
+
+/** wsState の変化に追従して空状態 (doc-wrap 内) を Watch 用 / 通常用に切り替える。
+ * markdown が既にロード済みなら doc-wrap 自体が非表示なので、ここでの切り替えは無害だが
+ * 次に markdown が clear された時に正しい方が出るよう常に最新化しておく。 */
+const updateEmptyStateForWatching = (folderName: string | null): void => {
+  const els = emptyStateEls()
+  if (!els) {
+    return
+  }
+  const watching = folderName !== null
+  els.defaultState.hidden = watching
+  els.watchingState.hidden = !watching
+  if (watching) {
+    els.folderEl.textContent = `“${folderName}”`
+  }
+}
 
 /** ワークスペース監視中の UI 表示（接続済み・ポーリング中） */
 const showWsActive = (controls: WsControls, handle: FsDirectoryHandle): void => {
   controls.watchBtn.textContent = `Watching · ${handle.name}`
   controls.watchBtn.classList.add('btn-primary')
+  controls.watchBtn.setAttribute('data-tooltip', `Click to stop watching “${handle.name}”`)
   controls.sendBtn.style.display = ''
-  controls.status.style.display = ''
-  controls.status.textContent = `● ${WS.INPUT_FILE} → ${WS.OUTPUT_FILE}`
+  updateEmptyStateForWatching(handle.name)
 }
 
 /** 過去にハンドルはあるが権限切れの状態。ユーザーが再許可するまで監視は止める */
 const showWsReconnect = (controls: WsControls, handle: FsDirectoryHandle): void => {
   controls.watchBtn.textContent = `Reconnect · ${handle.name}`
   controls.watchBtn.classList.remove('btn-primary')
+  controls.watchBtn.setAttribute(
+    'data-tooltip',
+    `Permission for “${handle.name}” has expired. Click to re-grant access`
+  )
   controls.sendBtn.style.display = 'none'
-  controls.status.style.display = 'none'
+  updateEmptyStateForWatching(null)
 }
 
 /** ワークスペース未接続の初期状態 */
 const showWsInactive = (controls: WsControls): void => {
   controls.watchBtn.textContent = 'Watch folder'
   controls.watchBtn.classList.remove('btn-primary')
+  controls.watchBtn.setAttribute('data-tooltip', WATCH_BTN_INACTIVE_TITLE)
   controls.sendBtn.style.display = 'none'
-  controls.status.style.display = 'none'
+  updateEmptyStateForWatching(null)
 }
 
 /** wsState の現在値に応じて 3 つの UI 状態（active / reconnect / inactive）に分岐させる */
@@ -416,28 +457,28 @@ const writeWorkspaceFeedback = async (handle: FsDirectoryHandle): Promise<void> 
   await writable.close()
 }
 
-/** Send 成功時のトーストとステータスバー更新 */
+/** Write 成功時のトーストとステータスバー更新 */
 const finishWsSend = (): void => {
   const app = runtime()
-  app.toast(`Submitted · ${app.commentCountLabel()}`)
-  app.qs('#status').textContent = `${app.state.docName} · submitted`
+  app.toast(`Wrote ${WS.OUTPUT_FILE} · ${app.commentCountLabel()}`)
+  app.qs('#status').textContent = `${app.state.docName} · ${WS.OUTPUT_FILE} written`
 }
 
-/** Send ボタン押下時：ワークスペースに feedback.json を書き出す。ハンドル無し or 本文無しは無音で中止 */
+/** Write ボタン押下時：ワークスペースに feedback.json を書き出す。ハンドル無し or 本文無しは無音で中止 */
 export const wsSend = async (): Promise<void> => {
   const { handle } = wsState
   if (!handle) {
     return
   }
   if (!runtime().state.markdown) {
-    runtime().toast('Nothing to submit')
+    runtime().toast('Nothing to write')
     return
   }
   try {
     await writeWorkspaceFeedback(handle)
     finishWsSend()
   } catch {
-    runtime().toast('Submit failed')
+    runtime().toast('Write failed')
   }
 }
 

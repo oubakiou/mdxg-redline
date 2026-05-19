@@ -140,9 +140,6 @@ body > main.layout > aside.sidebar {
 .toolbar-status {
   margin-right: 8px;
 }
-.toolbar-status-accent {
-  color: var(--accent);
-}
 .btn {
   font-family: var(--font-system);
   font-size: 14px;
@@ -441,6 +438,40 @@ mark.cmt {
 mark.cmt:hover,
 mark.cmt.active {
   background: var(--highlight);
+}
+
+/* Tooltip (Primer 風).
+   ネイティブ title 属性は表示まで 1-2 秒の遅延があり、ブラウザ設定によっては出ないため、
+   data-tooltip 属性 + ::after 擬似要素で即時かつ統一されたスタイルで表示する。
+   data-tooltip と aria 属性を分離することで、screen reader 用のアクセシブル名は
+   ボタンのテキスト内容のまま維持する。 */
+.tooltipped {
+  position: relative;
+}
+.tooltipped::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 1000;
+  display: none;
+  max-width: 280px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--paper);
+  background: var(--ink);
+  border-radius: 6px;
+  white-space: normal;
+  word-wrap: break-word;
+  text-align: left;
+  pointer-events: none;
+  box-shadow: var(--shadow-large);
+}
+.tooltipped:hover::after,
+.tooltipped:focus-visible::after {
+  display: block;
 }
 
 /* Floating add-comment button (GitHub-style popover) */
