@@ -35,9 +35,9 @@
 
 エージェントとレビュワーが同一マシンで複数往復するワークフロー用。
 
-1. エージェントが任意のワークスペースディレクトリ（例: `.temp/review-session/`）に `<name>-<hash>-review.md` を書き出す（`<name>` は元 MD の basename から `.md` / `.markdown` 拡張子を除いたもの、`<hash>` は本文 SHA-256 の先頭 16 桁 hex）
+1. エージェントが任意のワークスペースディレクトリ（例: `.temp/review-session/`）に `<name>-<hash>-review.md` を書き出す（`<name>` は元 MD の basename から `.md` / `.markdown` 拡張子を除いたもの、`<hash>` は本文 SHA-256 の先頭 16 桁 hex）。`dist/embed.mjs <input.md> <output-dir>` を経由すると同 hash の `<name>-<hash>-review.html` も同時に生成され、Chromium 非対応環境のレビュワーには HTML を単体で渡すこともできる
 2. ブラウザで `review.html` を開き `Watch folder` でディレクトリを選択
-3. レビュワーがコメントを記入し `Submit review` をクリック
+3. レビュワーがコメントを記入し `Write feedback.json` をクリック
 4. 同じディレクトリに `<name>-<hash>-feedback.json` が書き出される（元の `review.md` と同じ `<name>` / `<hash>` を共有）
 5. エージェントが対応する `feedback.json` を読み、改訂版 `<name>-<新hash>-review.md` を書き戻すループ
 
@@ -94,7 +94,7 @@ npm run dev         # = vp dev          HMR 付き dev サーバー
 npm test            # = vp test         in-source tests を実行
 ```
 
-`npm ci` で `vite-plus` 由来の `vp` がローカルに導入されます。
+`npm ci` で `vite-plus` 由来の `vp` がローカルに導入されます。devcontainer / `local_setup.sh` を経由してセットアップした場合は内部で依存導入まで完了しているので、別途 `npm ci` を実行する必要はありません。
 
 ## ライセンス
 
