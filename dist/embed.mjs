@@ -23,6 +23,8 @@ var computeDocHash = async (markdown) => {
 var stripMarkdownExt = (filename) => filename.replace(/\.(?:markdown|md)$/i, "");
 /** ファイル命名規約 §8 に従って配布用 HTML のファイル名を組み立てる */
 var deriveReviewHtmlName = (mdFileName, docHash) => `${mdFileName}-${docHash}-review.html`;
+/** ファイル命名規約 §8 に従ってエージェント→人間方向の MD ファイル名を組み立てる */
+var deriveReviewMdName = (mdFileName, docHash) => `${mdFileName}-${docHash}-review.md`;
 /**
 * markdown 本文中の `<\/script>` を `<\/script>` に置換する。
 * script は raw text element のため、これだけで script タグの早期終了を回避できる。
@@ -73,18 +75,21 @@ var prepareEmbed = async (inputPath, outputDir) => {
 	const [markdown, reviewHtml] = await Promise.all([readFile(inputPath, "utf8"), readReviewHtml(resolve(scriptDir, "review.html"))]);
 	const docName = basename(inputPath);
 	const docHash = await computeDocHash(markdown);
+	const targetDir = outputDir ?? dirname(inputPath);
+	const mdFileName = stripMarkdownExt(docName);
 	return {
 		docName,
+		htmlOutputPath: resolve(targetDir, deriveReviewHtmlName(mdFileName, docHash)),
 		markdown,
-		outputPath: resolve(outputDir ?? dirname(inputPath), deriveReviewHtmlName(stripMarkdownExt(docName), docHash)),
+		mdOutputPath: resolve(targetDir, deriveReviewMdName(mdFileName, docHash)),
 		reviewHtml
 	};
 };
 var runEmbed = async (inputPath, outputDir) => {
 	const ctx = await prepareEmbed(inputPath, outputDir);
 	const result = rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName);
-	await writeFile(ctx.outputPath, result, "utf8");
-	process.stdout.write(`${ctx.outputPath}\n`);
+	await Promise.all([writeFile(ctx.htmlOutputPath, result, "utf8"), writeFile(ctx.mdOutputPath, ctx.markdown, "utf8")]);
+	process.stdout.write(`${ctx.htmlOutputPath}\n${ctx.mdOutputPath}\n`);
 };
 var main = async () => {
 	const [inputPath, outputDir] = process.argv.slice(2);

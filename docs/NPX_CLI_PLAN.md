@@ -10,7 +10,7 @@
 Phase 1 の実体：
 
 - `src/embed-core.ts` … pure ロジック（Node / browser 両対応）。in-source test 16 件
-- `src/embed.ts` … Node CLI ラッパー（shebang 付き、`<input.md> [output-dir]` 引数、§8 ファイル命名規約に従って出力ファイル名を自動決定、ENOENT を親切なメッセージに差し替え）
+- `src/embed.ts` … Node CLI ラッパー（shebang 付き、`<input.md> [output-dir]` 引数、§8 ファイル命名規約に従って `<mdFileName>-<docHash>-review.html` と同 hash の `<mdFileName>-<docHash>-review.md` を同ディレクトリへ出力、ENOENT を親切なメッセージに差し替え）
 - `vite.embed.config.ts` … SSR mode で `dist/embed.mjs` を生成するビルド設定
 - `npm run build:embed` … embed CLI のみの差分ビルド、`npm run build` は review.html と一緒に再生成
 
@@ -166,7 +166,7 @@ npx mdxg-redline <markdown-file> --print-temp-path
 凡例: [x] 実装済 / [部分] Phase 1 で一部実装、Phase 2 で拡張 / [ ] 未着手
 
 1. [部分] CLI エントリポイントを実装する（引数パース、`-`/stdin 対応、`--document-name` / `--print-temp-path` フラグ、エラー処理）
-   - Phase 1: `<input.md> [output-dir]` の 1〜2 引数。出力ファイル名は §8 ファイル命名規約（`<mdFileName>-<docHash>-review.html`）で自動決定。`src/embed.ts` として実装（当初の `src/cli.ts` という命名から変更）
+   - Phase 1: `<input.md> [output-dir]` の 1〜2 引数。出力ファイル名は §8 ファイル命名規約（`<mdFileName>-<docHash>-review.html` と同 hash の `<mdFileName>-<docHash>-review.md` の 2 ファイル）で自動決定。`src/embed.ts` として実装（当初の `src/cli.ts` という命名から変更）。`*-review.md` を同梱して書き出すのは、Watch folder 経路と埋め込み HTML 経路を併用したときに、古い `*-review.md` が新ラウンド HTML を上書きしてしまう構造的バグを防ぐため
    - Phase 2: stdin、`--document-name`、`--print-temp-path` を追加
 2. [部分] 指定ファイル/stdin の読み込み、ファイル存在チェック、エラー処理を実装する
    - Phase 1: ファイル読み込みと ENOENT 処理（`dist/review.html` 欠落時は `npm run build` を案内する親切なメッセージに差し替え）

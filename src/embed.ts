@@ -8,6 +8,7 @@ import { basename, dirname, resolve } from 'node:path'
 import {
   computeDocHash,
   deriveReviewHtmlName,
+  deriveReviewMdName,
   rewriteReviewHtml,
   stripMarkdownExt,
 } from './embed-core'
@@ -44,8 +45,9 @@ const readReviewHtml = async (path: string): Promise<string> => {
 
 interface EmbedContext {
   docName: string
+  htmlOutputPath: string
   markdown: string
-  outputPath: string
+  mdOutputPath: string
   reviewHtml: string
 }
 
@@ -63,16 +65,25 @@ const prepareEmbed = async (
   const docName = basename(inputPath)
   const docHash = await computeDocHash(markdown)
   const targetDir = outputDir ?? dirname(inputPath)
-  const outputPath = resolve(targetDir, deriveReviewHtmlName(stripMarkdownExt(docName), docHash))
-  return { docName, markdown, outputPath, reviewHtml }
+  const mdFileName = stripMarkdownExt(docName)
+  const htmlOutputPath = resolve(targetDir, deriveReviewHtmlName(mdFileName, docHash))
+  const mdOutputPath = resolve(targetDir, deriveReviewMdName(mdFileName, docHash))
+  return { docName, htmlOutputPath, markdown, mdOutputPath, reviewHtml }
 }
 
+// Watch folder 経路と埋め込み HTML 経路の整合性を保つため、HTML と一緒に
+// `<mdFileName>-<docHash>-review.md` も書き出す。ブラウザが Watch folder を
+// 有効化したときに、HTML の docHash と一致する .md が同ディレクトリに存在することで、
+// 古い .md による意図しない上書きを防げる。
 const runEmbed = async (inputPath: string, outputDir: string | undefined): Promise<void> => {
   const ctx = await prepareEmbed(inputPath, outputDir)
   const result = rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName)
-  await writeFile(ctx.outputPath, result, 'utf8')
+  await Promise.all([
+    writeFile(ctx.htmlOutputPath, result, 'utf8'),
+    writeFile(ctx.mdOutputPath, ctx.markdown, 'utf8'),
+  ])
   // 生成先パスを stdout に出し、シェルスクリプト・エージェントが拾えるようにする。
-  process.stdout.write(`${ctx.outputPath}\n`)
+  process.stdout.write(`${ctx.htmlOutputPath}\n${ctx.mdOutputPath}\n`)
 }
 
 const main = async (): Promise<void> => {
