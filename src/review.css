@@ -71,16 +71,13 @@ body > main.layout > aside.sidebar {
 .sidebar-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   margin-bottom: 16px;
 }
-.sidebar-title {
-  font-family: var(--font-system);
-  font-weight: 600;
-  letter-spacing: -0.005em;
-  font-size: 16px;
+.sidebar-header .menu-wrap {
+  margin-left: auto;
 }
-.sidebar-header .btn {
+.sidebar-header .btn-ghost {
   font-size: 13px;
   font-weight: 400;
   padding: 2px 8px;
@@ -88,7 +85,7 @@ body > main.layout > aside.sidebar {
   border: 1px solid var(--rule-muted);
   background: var(--paper);
 }
-.sidebar-header .btn:hover {
+.sidebar-header .btn-ghost:hover {
   color: var(--ink);
   background: var(--paper-edge);
   border-color: var(--rule);
