@@ -445,10 +445,6 @@ Safari と Firefox はファイル選択・埋め込み・URL ハッシュ・コ
 - **差分ビュー**：連続する `<name>-<hash>-review.md` バージョン間の変更を表示
 - **UI からファイル名を設定**：コード定数ではなく
 - **ネイティブなファイル変更通知**：オプションの CLI コンパニオン（30 行程度の Node WebSocket サーバーなど）で重ワークフロー時のサブ秒応答
-- **`npx` でブラウザ自動起動 (`file://` 直接オープン方式)**：起動 UX を `npx mdxg-redline` 一発に短縮する。バックエンド不要・依存最小の構成として `file://` 直接オープンを採用する。詳細計画は `docs/NPX_CLI_PLAN.md` を参照
-  - **Phase 1（実装済み）**：埋め込みコアは `src/embed-core.ts`（pure）+ `src/review-request.ts`（Node CLI）として実装され、`dist/review-request.mjs` に SSR ビルドされる。`node dist/review-request.mjs [--no-open] <input.md> [output-dir]` で markdown を埋め込んだ HTML を生成する。出力ファイル名は §8 のファイル命名規約に従って `<mdFileName>-<docHash>-review.html` に自動決定される。生成後は既定で `$BROWSER` → `execFile('open' | 'xdg-open' | cmd.exe /c start)` の優先順で OS の標準ブラウザを起動する。**`isHostBrowserUnreachableViaFile` が true（VS Code Remote / Codespaces 検知）の場合のみ、軽量 HTTP サーバーを `127.0.0.1` のデフォルトポート `51729`（`MDXG_REDLINE_PORT` で上書き可、衝突時はランダムへ fallback）に立てて http URL を `$BROWSER` に渡し、ホスト側ブラウザに到達させる。サーバーは初回リクエスト受信後 10 秒（リロード余裕）、リクエスト無しなら 60 秒で自動停止し、`Connection: close` で keep-alive を無効化する**。それ以外の環境（ローカル desktop / 通常の $BROWSER 設定）では file パス直渡し。`--no-open` で抑止可能。起動失敗時は stderr に警告を出すが exit 0 を維持する
-  - **Phase 2（実装済み）**：`package.json` に `bin: { "mdxg-redline": "dist/review-request.mjs" }` と `engines.node: ">=20.0.0"` を追加し、`npx mdxg-redline` で実行可能にした。CLI は引数なし / `--help` / `-h` で多行ヘルプを stdout に出して exit 0、第 1 引数 `-` で stdin から markdown を読み込み（出力ディレクトリ既定は cwd、mdFileName 既定は `stdin` 固定）、`--document-name <name>` で docName / 出力ファイル名 prefix を上書きできる。stdin デフォルト名や `--document-name` 値、ファイル basename はいずれも `sanitizeMdFileName` を通って mdFileName 部分の緩めサニタイズ（パス区切り `/` `\` / 制御文字 / 空・`.`・`..` / Windows 予約名 `CON` `PRN` `AUX` `NUL` `COM1-9` `LPT1-9`）を経由する。`parseArgs` は判別共用体 `{ mode: 'help' | 'invalid' | 'run' }` を返し、reduce-based state machine で実装している
-  - **配布物への影響**：`dist/review-request.mjs` の追加のみで、配布物 `dist/review.html` 側には影響しない
 - **review-request CLI のブラウザ起動チェーンを Linux でフルセットまで伸ばす**：現状 `buildOpenCommand` は `$BROWSER` → `xdg-open` の 2 段までで、主要 desktop 環境ではこれで通る前提。`gh` CLI 相当の `$BROWSER` → `xdg-open` → `wslview` (WSL) → `sensible-browser` → `x-www-browser` のフルチェーンに拡張すると、最小 Linux イメージや Debian/Ubuntu の特殊構成でも `xdg-open` 欠落時にフォールバックでブラウザが立ち上がる。各候補の存在判定（PATH 探索）と起動成否の判定を分けて実装する必要があり、検証コスト・テストマトリクスが増えるため現状は採用していない
 
 ---
@@ -549,6 +545,12 @@ npm test            # = vp test
 - `src/review.html` には外部 CDN への `<link>` / `<script src="https://...">` を含まない。`<head>` の `<link rel="stylesheet" href="./review.css">` も bundle 結果に inline される
 - 配布物 `dist/review.html` は **起動に必要なものをすべて内包し、外部依存ゼロ** で動作する
 
+### HTML minify 無効維持と CI スモークテスト指針
+
+review-request CLI は `dist/review.html` の `<script id="embedded-md" type="text/markdown">` を正規表現で書き換える方式を採っているため、HTML minify を有効化して属性順や空白を変えると `embed-core.ts` の `EMBEDDED_MD_RE` (`id="embedded-md"` と `type="text/markdown"` の両方を lookahead で要求) が脆くなる。属性順の揺らぎは lookahead で吸収しているが、属性自体が削除される minify は救済できない。**HTML minify は将来も無効のまま維持する** ことで、CLI 側の保守コストを増やさずに rewrite の安定性を確保する。
+
+将来 CI を強化する場合は、ビルド後の `dist/review.html` に **`id="embedded-md"` と `type="text/markdown"` を併せ持つ `<script>` タグが含まれていること** をスモークテストで検査するのが望ましい（embed-core の前提を守るため）。現状は in-source test が `dist/review.html` の構造を直接検査していないため、配布前の手作業確認に依存している。
+
 ### 開発者の責務
 
 1. ソースは `src/` 配下（`*.ts` / `review.css` / `review.html`）のみを編集する
@@ -625,9 +627,7 @@ mdxg-redline/
 │                             配布者向け review-request CLI。実行時に同ディレクトリの
 │                             review.html を読み込むため両者は揃った状態で commit する
 └── docs/
-    ├── DESIGN.md            本ドキュメント
-    └── NPX_CLI_PLAN.md      `npx mdxg-redline` 化に向けた計画書。Phase 1 (embedding core) は
-                              dist/review-request.mjs として実装済み
+    └── DESIGN.md            本ドキュメント
 ```
 
 ソース（`src/review.html` + `src/review.css` + `src/*.ts` + `vite.config.ts`）と出力（`dist/review.html`）はいずれも commit 対象。生成物を commit するのは、clone 直後の利用者が `vp build` を実行せずにそのままブラウザで開けるようにし、npm publish 時にも `dist/` が必ず含まれるようにするため。

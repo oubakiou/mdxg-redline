@@ -289,6 +289,11 @@ interface LaunchCommand {
 // 流儀に合わせて最優先で使う。これにより devcontainer 内に xdg-open が無くても、
 // VS Code が用意した helper script 経由でホスト側のブラウザに転送できる
 // (gh CLI など他ツールと同じ慣習)。
+// $BROWSER の値は単一実行可能パスとして扱い、execFile に引数配列 [path] を渡す。
+// `open -a "Google Chrome"` のような複合文字列は意図的にサポートしない:
+// sh -c 経由で実行すると引数注入経路 (利用者環境変数 → シェル解釈) を作ってしまうため。
+// 複数引数が必要な場合は wrapper script を作って $BROWSER にそのパスを設定する運用とする
+// (gh CLI なども同じ前提)。
 export const buildOpenCommand = (
   platform: NodeJS.Platform,
   path: string,
