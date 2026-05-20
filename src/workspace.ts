@@ -1,4 +1,4 @@
-// --- Workspace mode (file-watching protocol with Claude Code etc.) ----------
+// --- Workspace mode (file-watching protocol with LLM agents) ----------------
 // Protocol (詳細は docs/DESIGN.md §8):
 //   <workspace>/<mdFileName>-<docHash>-review.md     ← agent writes this; we pick mtime-latest
 //   <workspace>/<mdFileName>-<docHash>-feedback.json ← we write this when user clicks Send

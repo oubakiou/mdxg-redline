@@ -69,7 +69,7 @@ export const smoothScrollToCenter = (
 
 /**
  * MARK: In-Source Testing
- * @example vp test skills/md-review-request/src/scroll.ts
+ * @example vp test src/scroll.ts
  */
 
 if (import.meta.vitest) {

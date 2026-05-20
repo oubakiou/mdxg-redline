@@ -1,4 +1,4 @@
-// --- Boot: workspace > embedded > url hash > restored session ---------------
+// --- Boot: workspace > embedded > url hash ---------------------------------
 
 import { embeddedCommentsFromUnknown } from './feedback'
 import { tryRestoreWorkspace } from './workspace'
@@ -17,24 +17,11 @@ interface BootRuntime {
   loadFromMarkdown: (name: string, text: string) => Promise<void>
   reapplyAllMarks: () => void
   renderSidebar: () => void
-  save: () => Promise<void>
-  store: {
-    get: (key: string) => Promise<unknown>
-    listKeys: (prefix: string) => Promise<string[]>
-  }
   state: {
     comments: Comment[]
     markdown: string
   }
   toast: (msg: string) => void
-}
-
-/** 永続化された 1 ドキュメント分のスナップショット。Store.get の戻り値を narrow した型 */
-interface StoredDocument {
-  comments?: Comment[]
-  markdown?: string
-  name?: string | null
-  updated?: string
 }
 
 /** 任意要素の textContent を trim して返す。null/未存在の場合は空文字（embedded フォールバックを連鎖させやすくする） */
@@ -45,14 +32,9 @@ export const elementText = (el: { textContent?: string | null } | null): string 
   return ''
 }
 
-/** Store/JSON.parse 由来の unknown を StoredDocument として扱う最低限ガード */
-const isStoredDocument = (value: unknown): value is StoredDocument =>
-  value !== null && typeof value === 'object'
-
-/** 取り込んだコメント配列を state に流し込み、保存・再描画まで実施する */
-const applyEmbeddedComments = async (runtime: BootRuntime, comments: Comment[]): Promise<void> => {
+/** 取り込んだコメント配列を state に流し込み、再描画まで実施する */
+const applyEmbeddedComments = (runtime: BootRuntime, comments: Comment[]): void => {
   runtime.state.comments = comments
-  await runtime.save()
   runtime.reapplyAllMarks()
   runtime.renderSidebar()
 }
@@ -61,24 +43,21 @@ const applyEmbeddedComments = async (runtime: BootRuntime, comments: Comment[]):
  * 埋め込み HTML 内に同梱された feedback JSON があれば取り込む。
  * 単独ファイル配布で「ドキュメントとコメントを同梱して配る」ユースケース向けで、不正なら静かに無視する。
  */
-const restoreEmbeddedFeedback = async (
-  runtime: BootRuntime,
-  feedbackText: string
-): Promise<void> => {
+const restoreEmbeddedFeedback = (runtime: BootRuntime, feedbackText: string): void => {
   if (!feedbackText) {
     return
   }
   try {
     const comments = embeddedCommentsFromUnknown(JSON.parse(feedbackText))
     if (comments.length > 0) {
-      await applyEmbeddedComments(runtime, comments)
+      applyEmbeddedComments(runtime, comments)
     }
   } catch {
     // embedded feedback is optional
   }
 }
 
-/** `<script id="embedded-md">` のような埋め込み MD を起動時に読み込む。存在しなければ false を返して次のフォールバックに譲る */
+/** `<script id="embedded-md">` のような埋め込み MD を起動時に読み込む。存在しなければ false */
 const loadEmbeddedMarkdown = async (runtime: BootRuntime): Promise<boolean> => {
   const embedded = document.getElementById('embedded-md')
   const embeddedText = elementText(embedded)
@@ -87,7 +66,7 @@ const loadEmbeddedMarkdown = async (runtime: BootRuntime): Promise<boolean> => {
   }
   const name = embedded.dataset.name || 'document.md'
   await runtime.loadFromMarkdown(name, embeddedText)
-  await restoreEmbeddedFeedback(runtime, elementText(document.getElementById('embedded-feedback')))
+  restoreEmbeddedFeedback(runtime, elementText(document.getElementById('embedded-feedback')))
   return true
 }
 
@@ -112,7 +91,7 @@ const decodeBase64Utf8 = (encoded: string): string => {
   return new TextDecoder().decode(bytes)
 }
 
-/** hash パラメータから markdown を取り出してロードする本体（loadHashMarkdown の statements を分割） */
+/** hash パラメータから markdown を取り出して loadFromMarkdown へ渡す */
 const loadFromHashParams = async (
   runtime: BootRuntime,
   params: URLSearchParams
@@ -143,48 +122,11 @@ const loadHashMarkdown = async (runtime: BootRuntime): Promise<boolean> => {
   }
 }
 
-/** updated タイムスタンプが最も新しいドキュメントを 1 つ選ぶ（null・未定義に強い reduce 形） */
-export const latestDocument = <DocumentLike extends { updated?: string }>(
-  documents: (DocumentLike | null | undefined)[]
-): DocumentLike | null =>
-  documents.reduce<DocumentLike | null>((current, doc): DocumentLike | null => {
-    if (!doc) {
-      return current
-    }
-    if (!current || (doc.updated || '') > (current.updated || '')) {
-      return doc
-    }
-    return current
-  }, null)
-
-/** 直近セッションの復元。保存済みドキュメントをすべて舐めて最新を採用する（多数あっても起動時 1 回限りなのでコストは許容） */
-const restoreLatestDocument = async (runtime: BootRuntime): Promise<void> => {
-  try {
-    const keys = await runtime.store.listKeys('doc:')
-    if (keys.length === 0) {
-      return
-    }
-    const stored = await Promise.all(
-      keys.map(async (key): Promise<unknown> => runtime.store.get(key))
-    )
-    const documents = stored.filter((value): value is StoredDocument => isStoredDocument(value))
-    const latest = latestDocument(documents)
-    if (latest && latest.name && latest.markdown) {
-      await runtime.loadFromMarkdown(latest.name, latest.markdown)
-      runtime.toast('Restored last session')
-    }
-  } catch {
-    // no storage
-  }
-}
-
 /**
- * 起動時のロード優先順位を順に試す。
- * 1. ワークスペース監視を復元（成功してもこの後の手段は止めない: workspace の review.md は遅延着信もあるため）
+ * 起動時のロード優先順位を順に試す（詳細は DESIGN.md §9）。
+ * 1. ワークスペース監視を復元（成功してもこの後の手段は止めない: review.md は遅延着信もあるため）
  * 2. 埋め込み MD（同梱配布のケース）
  * 3. URL ハッシュの共有 MD
- * 4. workspace ポーリングで既に読み込まれていれば終了
- * 5. それでも未読込なら直近セッションを復元
  */
 export const boot = async (runtime: BootRuntime): Promise<void> => {
   await tryRestoreWorkspace()
@@ -194,10 +136,6 @@ export const boot = async (runtime: BootRuntime): Promise<void> => {
   if (await loadHashMarkdown(runtime)) {
     return
   }
-  if (runtime.state.markdown) {
-    return
-  }
-  await restoreLatestDocument(runtime)
 }
 
 const encodeBase64UrlForTest = (text: string): string => {
@@ -217,14 +155,9 @@ const bootRuntimeForTest = (loaded: { name: string; text: string }[] = []): Boot
   renderSidebar: (): void => {
     // test no-op
   },
-  save: async (): Promise<void> => Promise.resolve(),
   state: {
     comments: [],
     markdown: '',
-  },
-  store: {
-    get: async (): Promise<unknown> => Promise.resolve(null),
-    listKeys: async (): Promise<string[]> => Promise.resolve([]),
   },
   toast: (): void => {
     // test no-op
@@ -245,26 +178,6 @@ if (import.meta.vitest) {
 
     it('textContent が空ならフォールバックで空文字', () => {
       expect(elementText({ textContent: '' })).toBe('')
-    })
-  })
-
-  describe('latestDocument', () => {
-    it('updated が最も新しいドキュメントを返す', () => {
-      const docs = [
-        { name: 'a', updated: '2024-01-01T00:00:00Z' },
-        { name: 'b', updated: '2024-03-01T00:00:00Z' },
-        { name: 'c', updated: '2024-02-01T00:00:00Z' },
-      ]
-      expect(latestDocument(docs)).toEqual(docs[1])
-    })
-
-    it('空配列なら null', () => {
-      expect(latestDocument([])).toBeNull()
-    })
-
-    it('null エントリを無視して最新を返す', () => {
-      const docs = [null, { name: 'x', updated: '2024-01-01' }, null]
-      expect(latestDocument(docs)).toEqual({ name: 'x', updated: '2024-01-01' })
     })
   })
 

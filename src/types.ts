@@ -9,14 +9,6 @@ export interface Comment {
   created: string
 }
 
-/** 永続化された 1 ドキュメント分のスナップショット。Store.set/get で扱う */
-export interface DocumentSnapshot {
-  comments?: Comment[]
-  markdown: string
-  name?: string | null
-  updated?: string
-}
-
 /** 選択範囲を伴う保留状態。フローター・モーダルが共有する形 */
 export interface PendingSelection {
   blockId: string

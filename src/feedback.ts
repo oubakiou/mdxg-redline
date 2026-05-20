@@ -1,4 +1,4 @@
-import type { Comment, DocumentSnapshot, PendingSelection } from './types'
+import type { Comment, PendingSelection } from './types'
 
 /** unknown が object record としてプロパティ参照可能かを最初に狭める最小ガード */
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -49,22 +49,6 @@ export const commentsFromUnknown = (value: unknown): Comment[] => {
     return []
   }
   return value.filter(isComment)
-}
-
-/** Store.get から戻る unknown が、少なくとも markdown を持つ保存済み snapshot かを見る */
-const isDocumentSnapshot = (value: unknown): value is DocumentSnapshot => {
-  if (!isRecord(value)) {
-    return false
-  }
-  return typeof value.markdown === 'string'
-}
-
-/** 保存済み snapshot から comments だけを復元する。snapshot 自体が壊れていれば空配列に倒す */
-export const commentsFromStored = (stored: unknown): Comment[] => {
-  if (!isDocumentSnapshot(stored)) {
-    return []
-  }
-  return commentsFromUnknown(stored.comments)
 }
 
 /** 単一 HTML に埋め込まれた feedback から comments だけを抽出する。壊れていれば空配列扱い */

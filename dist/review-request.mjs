@@ -9,7 +9,7 @@ import process from "node:process";
 //#region src/embed-core.ts
 /**
 * markdown 本文の SHA-256 を計算し、先頭 8 バイトを 16 文字の hex 文字列で返す。
-* docHash としてファイル命名規約 (`<mdFileName>-<docHash>-...`) や永続化キー (`doc:<docHash>`)、
+* docHash としてファイル命名規約 (`<mdFileName>-<docHash>-...`) や
 * Workspace の差分検知に使う。同一ロジックを review.ts でも `hashStr` として呼び出すため、
 * 文字列化アルゴリズムは両者で一致させる必要がある。
 */

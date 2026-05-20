@@ -2,10 +2,7 @@ import type { Comment, ExportPayload } from './types'
 import { confirmDialog } from './dialog'
 import { exportBaseName } from './review-export'
 
-/**
- * toolbar は DOM ボタンとアプリ state の橋渡しだけを担当する。
- * review.ts との循環 import を避けるため、必要な副作用は runtime として注入する。
- */
+/** 循環 import を避けるため、必要な副作用は runtime として注入で受け取る */
 export interface ToolbarRuntime {
   buildExportPayload: () => ExportPayload
   commentCountLabel: () => string
@@ -14,7 +11,6 @@ export interface ToolbarRuntime {
   qsInput: (selector: string) => HTMLInputElement | HTMLTextAreaElement
   renderSidebar: () => void
   reapplyAllMarks: () => void
-  save: () => Promise<void>
   state: {
     comments: Comment[]
     docName: string | null
@@ -99,16 +95,15 @@ const fallbackCopy = (runtime: ToolbarRuntime, text: string): void => {
   document.body.removeChild(textarea)
 }
 
-/** 確認後に全コメントを破棄。再描画と保存まで一括で行うため UI の不整合は発生しない */
-const clearAllComments = async (runtime: ToolbarRuntime): Promise<void> => {
+/** 確認後に全コメントを破棄。再描画まで一括で行うため UI の不整合は発生しない */
+const clearAllComments = (runtime: ToolbarRuntime): void => {
   runtime.state.comments = []
-  await runtime.save()
   runtime.reapplyAllMarks()
   runtime.renderSidebar()
   runtime.toast('Comments discarded')
 }
 
-/** Markdown 読み込みボタンと隠し file input を接続する。読み込み本体は review.ts の loadFromMarkdown に委譲する */
+/** Markdown 読み込みボタンと隠し file input を接続する */
 const wireMarkdownLoad = (runtime: ToolbarRuntime): void => {
   runtime.qs('#btn-load').addEventListener('click', (): void => runtime.qsInput('#file-md').click())
   runtime.qsInput('#file-md').addEventListener('change', async (event): Promise<void> => {
@@ -165,11 +160,11 @@ const wireClear = (runtime: ToolbarRuntime): void => {
     if (!confirmed) {
       return
     }
-    await clearAllComments(runtime)
+    clearAllComments(runtime)
   })
 }
 
-/** toolbar 上の全ボタンを一括配線する entry point。review.ts からはこの関数だけを呼ぶ */
+/** toolbar 上の全ボタンを一括配線する entry point */
 export const wireToolbar = (runtime: ToolbarRuntime): void => {
   wireMarkdownLoad(runtime)
   wireExport(runtime)

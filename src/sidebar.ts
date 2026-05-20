@@ -5,7 +5,6 @@ import { smoothScrollToCenter } from './scroll'
 export interface SidebarRuntime {
   qs: (selector: string) => HTMLElement
   reapplyAllMarks: () => void
-  save: () => Promise<void>
   state: {
     comments: Comment[]
   }
@@ -58,7 +57,6 @@ const orderedComments = (comments: Comment[]): Comment[] => {
   )
 }
 
-/** サイドバーのカードクリック時：本文側の mark をハイライトしつつ画面中央へスクロールさせる */
 const focusCommentCard = (card: HTMLElement, comment: Comment): void => {
   const mark = document.querySelector(`mark.cmt[data-comment-id="${comment.id}"]`)
   if (!mark) {
@@ -82,12 +80,11 @@ const commentCardHTML = (comment: Comment): string => `
     <button class="cmt-del" data-del="${comment.id}">Delete</button>
   </div>`
 
-/** コメントを 1 件削除して即座に保存・再描画。サイドバー側は呼び出し側が再描画する */
-const deleteComment = async (runtime: SidebarRuntime, comment: Comment): Promise<void> => {
+/** コメントを 1 件削除して即座に再描画 */
+const deleteComment = (runtime: SidebarRuntime, comment: Comment): void => {
   runtime.state.comments = runtime.state.comments.filter(
     (other): boolean => other.id !== comment.id
   )
-  await runtime.save()
   runtime.reapplyAllMarks()
 }
 
@@ -105,16 +102,15 @@ const wireCommentCard = ({ card, comment, onDeleted, runtime }: WireCommentCardO
   })
   const delButton = card.querySelector('[data-del]')
   if (delButton) {
-    delButton.addEventListener('click', async (event): Promise<void> => {
+    delButton.addEventListener('click', (event): void => {
       event.stopPropagation()
-      await deleteComment(runtime, comment)
+      deleteComment(runtime, comment)
       onDeleted()
       runtime.toast('Comment deleted')
     })
   }
 }
 
-/** 完成済みカード要素（HTML 描画＋イベント配線済み）を返すファクトリ */
 const createCommentCard = (
   runtime: SidebarRuntime,
   comment: Comment,
@@ -135,7 +131,6 @@ const showEmptySidebar = (list: HTMLElement): void => {
 }
 
 export const createSidebar = (runtime: SidebarRuntime): SidebarController => {
-  /** サイドバー全体を再描画。コメントの追加・削除・読み込み後に呼ぶ単一エントリポイント */
   const render = (): void => {
     const list = runtime.qs('#cmt-list')
     runtime.qs('#cmt-count').textContent = String(runtime.state.comments.length)
@@ -149,7 +144,6 @@ export const createSidebar = (runtime: SidebarRuntime): SidebarController => {
     }
   }
 
-  /** 本文側 mark のクリックで対応するサイドバーカードをアクティブ化＋画面中央へスクロール */
   const activateMark = (mark: HTMLElement): void => {
     const id = mark.dataset.commentId
     clearActiveComments()

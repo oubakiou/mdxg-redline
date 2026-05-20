@@ -63,7 +63,7 @@ interface ParsedArgs {
 }
 
 // 位置引数 (input.md, output-dir) と --no-open フラグの混在を許容する。
-// 未知のフラグ・引数個数の異常は null を返し、呼び出し側で USAGE を表示する。
+// 未知のフラグ・引数個数の異常は null を返す。
 export const parseArgs = (argv: readonly string[]): ParsedArgs | null => {
   const flags = argv.filter((arg): boolean => arg.startsWith('--'))
   const positional = argv.filter((arg): boolean => !arg.startsWith('--'))
@@ -149,8 +149,6 @@ interface EmbedContext {
   reviewHtml: string
 }
 
-// 入力読み込みと出力パスの導出をまとめる。
-// main 側の statements を減らすために helper として分離している。
 const prepareEmbed = async (
   inputPath: string,
   outputDir: string | undefined
@@ -215,10 +213,9 @@ const serveOnceAndAutoStop = async (filePath: string): Promise<ServeHandle> =>
     })
   })
 
-// 「ブラウザを開く」フェーズだけ切り出して runEmbed の max-statements 制約を満たす。
 // VS Code Remote 系で $BROWSER 経由の file:// 渡しが届かない環境を検知した場合のみ、
 // 軽量 HTTP サーバー経由で http URL を $BROWSER に渡してホスト側ブラウザに到達させる。
-// それ以外の環境（ローカル desktop / 通常の $BROWSER 設定）では従来通り file パスを直渡し。
+// それ以外の環境（ローカル desktop / 通常の $BROWSER 設定）では file パスを直渡し。
 const openOutput = async (outputPath: string): Promise<void> => {
   if (!isHostBrowserUnreachableViaFile(process.env)) {
     await openInBrowser(outputPath)
@@ -255,7 +252,7 @@ const main = async (): Promise<void> => {
 
 // in-source test 実行時は main() が走らないようにする。
 // vitest は import.meta.vitest を truthy に定義する。production bundle では
-// vite.embed.config.ts の define で undefined にされ、main() が通常通り起動する。
+// vite config の define で undefined にされ、main() が通常通り起動する。
 if (!import.meta.vitest) {
   main().catch((error: unknown): void => {
     process.stderr.write(`review-request: ${errorMessage(error)}\n`)

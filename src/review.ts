@@ -1,15 +1,13 @@
-// DOM エントリポイント。純粋ロジックや外部境界は markdown / feedback / selection /
-// workspace / boot に分け、workspace と boot には runtime を注入して循環 import を避ける。
+// DOM エントリポイント。外部境界モジュールへは runtime を注入する形で渡し、循環 import を避ける。
 
 import { type BlockAnchor, buildBlockAnchors, renderMarkdown } from './markdown'
-import type { Comment, DocumentSnapshot, ExportPayload, PendingSelection } from './types'
+import type { Comment, ExportPayload, PendingSelection } from './types'
 import { buildDomRange, getSelectionInfo } from './selection'
 import { buildReviewExportPayload, commentCountLabel as formatCommentCount } from './review-export'
-import { commentsFromStored, parsePendingSelection } from './feedback'
 import { configureWorkspace, handleWatchClick, wsSend } from './workspace'
-import { Store } from './storage'
 import { boot } from './boot'
 import { createSidebar } from './sidebar'
+import { parsePendingSelection } from './feedback'
 import { wireToolbar } from './toolbar'
 
 // --- Types ------------------------------------------------------------------
@@ -91,9 +89,6 @@ export const toast = (msg: string): void => {
   }
   toastTimer = setTimeout((): void => toastEl.classList.remove('show'), 1800)
 }
-
-// ダイアログ層（confirmDialog / noticeDialog ほか）は ./dialog に切り出している。
-// スクロール層（smoothScrollToCenter ほか）は ./scroll に切り出している。
 
 // --- Render markdown --------------------------------------------------------
 
@@ -216,7 +211,6 @@ const mountRenderedDoc = (doc: HTMLElement, wrap: HTMLElement): void => {
   state.blockAnchors = buildBlockAnchors(state.markdown)
 }
 
-/** markdown → HTML レンダリング、ブロック原 HTML キャッシュ、全 mark 再適用までを一括で行うパイプライン */
 const renderDoc = (): void => {
   const doc = qs('#doc')
   const wrap = qs('#doc-wrap')
@@ -315,62 +309,29 @@ const closeCommentsMenu = (): void => {
   qs('#btn-comments-menu').setAttribute('aria-expanded', 'false')
 }
 
-// --- Persistence ------------------------------------------------------------
-
-/**
- * 現在の state を docHash 単位で保存する（キー: `doc:<docHash>`）。
- * docHash 未確定（ドキュメント未読込）の場合は何もしない。
- * 同じ markdown は同じハッシュになるため、ドキュメント本文ベースでコメントを復元できる。
- */
-export const save = async (): Promise<void> => {
-  if (!state.docHash) {
-    return
-  }
-  const payload: DocumentSnapshot = {
-    comments: state.comments,
-    markdown: state.markdown,
-    name: state.docName,
-    updated: new Date().toISOString(),
-  }
-  await Store.set(`doc:${state.docHash}`, payload)
-  qs('#status').textContent = `${state.docName} · saved`
-}
-
 // --- Sidebar ----------------------------------------------------------------
 
 const sidebar = createSidebar({
   qs,
   reapplyAllMarks,
-  save,
   state,
   toast,
 })
 
-/** サイドバー全体を再描画。コメントの追加・削除・読み込み後に呼ぶ単一エントリポイント */
 export const renderSidebar = (): void => sidebar.render()
-
-/** ステータスバーの「loaded/restored」サフィックス。コメントが復元できたかでラベルを切り替える */
-const loadStatusLabel = (): string => {
-  if (state.comments.length > 0) {
-    return 'restored'
-  }
-  return 'loaded'
-}
 
 /**
  * markdown 本文を取り込んで state を構築・描画・ステータス更新する中心ルーチン。
- * 同じ markdown を再読込しても docHash が変わらないため、Store から以前のコメントを復元できる。
+ * 永続化レイヤは workspace-handle のみ（詳細は DESIGN.md §7）。
  */
 export const loadFromMarkdown = async (name: string, text: string): Promise<void> => {
   state.docName = name
   state.markdown = text
   state.docHash = await hashStr(text)
-  // Restore prior comments if any
-  const saved = await Store.get(`doc:${state.docHash}`)
-  state.comments = commentsFromStored(saved)
+  state.comments = []
   renderDoc()
   renderSidebar()
-  qs('#status').textContent = `${name} (${state.docHash}) · ${loadStatusLabel()}`
+  qs('#status').textContent = `${name} (${state.docHash}) · loaded`
 }
 
 // --- Modal / Menu event listeners -------------------------------------------
@@ -397,7 +358,6 @@ const saveModalComment = async (): Promise<void> => {
     return
   }
   state.comments.push(commentFromSelection(selection, body))
-  await save()
   reapplyAllMarks()
   renderSidebar()
   closeModal()
@@ -474,7 +434,6 @@ if (!import.meta.vitest) {
 }
 
 // Click on mark → highlight sidebar
-/** 本文側 mark のクリックで対応するサイドバーカードをアクティブ化＋画面中央へスクロール */
 const activateMark = (mark: HTMLElement): void => sidebar.activateMark(mark)
 
 if (!import.meta.vitest) {
@@ -506,16 +465,14 @@ if (!import.meta.vitest) {
     qsInput,
     reapplyAllMarks,
     renderSidebar,
-    save,
     state,
     toast,
   })
 }
 
 // --- Workspace mode wiring --------------------------------------------------
-// 実装本体は ./workspace に切り出している。ここでは Watch / Send ボタンの
-// イベント配線のみを担う（循環 import の TDZ を避けるため、DOM 取得は
-// review.ts 側で行い、workspace.ts からはハンドラ関数のみ受け取る）。
+// 循環 import の TDZ を避けるため、DOM 取得側からハンドラ関数のみ受け取る形で
+// runtime を注入する。
 
 configureWorkspace({
   buildExportPayload,
@@ -533,24 +490,19 @@ if (!import.meta.vitest) {
 }
 
 // --- Boot trigger -----------------------------------------------------------
-// 起動シーケンス本体は ./boot に切り出している。ここでは vitest を除いて
-// 一度だけ boot() を発火させるだけにする（モジュール初期化時の TDZ を避けるため、
-// review.ts 側で実行する）。
+// モジュール初期化時の TDZ を避けるため、トップレベルで一度だけ boot() を発火する。
 
 if (!import.meta.vitest) {
   boot({
     loadFromMarkdown,
     reapplyAllMarks,
     renderSidebar,
-    save,
     state,
-    store: Store,
     toast,
   }).catch((): void => toast('Startup failed'))
 }
 
 // テスト用のダミーコメント (id 以外は空の Comment)。
-// テスト関数の外に置くのは consistent-function-scoping の警告を避けるため。
 const dummyCommentForTest = (id: string): Comment => ({
   blockId: '',
   comment: '',
@@ -563,33 +515,11 @@ const dummyCommentForTest = (id: string): Comment => ({
 
 /**
  * MARK: In-Source Testing
- * @example vp test skills/md-review-request/src/review.ts
+ * @example vp test src/review.ts
  */
 
 if (import.meta.vitest) {
   const { describe, it, expect } = import.meta.vitest
-
-  describe('loadStatusLabel (state 依存)', () => {
-    it('コメント 0 件なら loaded', () => {
-      const prev = state.comments
-      state.comments = []
-      try {
-        expect(loadStatusLabel()).toBe('loaded')
-      } finally {
-        state.comments = prev
-      }
-    })
-
-    it('コメント 1 件以上なら restored', () => {
-      const prev = state.comments
-      state.comments = [dummyCommentForTest('x')]
-      try {
-        expect(loadStatusLabel()).toBe('restored')
-      } finally {
-        state.comments = prev
-      }
-    })
-  })
 
   describe('commentCountLabel (state 依存)', () => {
     it('1 件のときは単数形', () => {
