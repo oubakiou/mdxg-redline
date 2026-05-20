@@ -31,18 +31,24 @@
 
 `review.html` をブラウザで開き、`Open file` で markdown を読み込み、選択 → `＋ Comment` でコメント → `Comments ▾ → Copy as JSON` で書き戻し。
 
-### review-request CLI でレビュー依頼用 HTML を生成して開く
+### `npx mdxg-redline` でレビュー依頼用 HTML を生成して開く
 
-手元の markdown 1 ファイルを単発レビューする場合、配布者向け CLI で markdown を埋め込んだ HTML を作って同時にブラウザで開けます。
+手元の markdown 1 ファイルを単発レビューする場合、同梱 CLI で markdown を埋め込んだ HTML を生成してそのままブラウザで開けます。
 
 ```bash
-node dist/review-request.mjs <input.md> [output-dir]
+npx mdxg-redline <input.md>                       # input.md と同じディレクトリに書き、ブラウザを起動
+npx mdxg-redline <input.md> ./reviews             # ./reviews に書き出す
+npx mdxg-redline --no-open <input.md>             # 生成のみ、ブラウザは起動しない
+cat spec.md | npx mdxg-redline - --document-name spec.md   # stdin から markdown を読み込む
+npx mdxg-redline --help                           # 使い方ヘルプを表示
 ```
 
-- 出力ファイル名は `<入力 MD basename>-<docHash>-review.html` で自動決定（`output-dir` 省略時は入力と同じディレクトリ）
+- 出力ファイル名は `<入力 MD basename>-<docHash>-review.html` で自動決定（`output-dir` 省略時は入力と同じディレクトリ、stdin 入力時は cwd）
+- `--document-name <name>` で docName（`data-name` 属性 / 出力ファイル名 prefix）を上書きできる。stdin 入力時に意味のあるファイル名を付けたい場合に推奨
 - 生成後、既定で `$BROWSER` → `open` / `xdg-open` / `cmd.exe /c start` の優先順で標準ブラウザを開く
-- VS Code Remote Containers / Codespaces を検知した場合のみ、`127.0.0.1` のランダムポートに軽量 HTTP サーバーを立ててホスト側ブラウザに転送する（`file://` がホストから見えないため）
+- VS Code Remote Containers / Codespaces を検知した場合のみ、`127.0.0.1` のデフォルトポート `51729` に軽量 HTTP サーバーを立ててホスト側ブラウザに転送する（`MDXG_REDLINE_PORT` で上書き可）。`file://` がホストから見えない環境向けの fallback。衝突時はランダムポートへ fallback して stderr に警告を出すが、**ランダムポートは `forwardPorts: "auto"` 設定でないとホスト側ブラウザから到達できない可能性がある**ため、空きが確定しているポートを `MDXG_REDLINE_PORT` で固定するか、`devcontainer.json` の `forwardPorts` に登録するのが推奨
 - `--no-open` で自動起動を抑止。stdout には常に生成パスが出るので CI / エージェントから拾える
+- 動作要件は Node.js 20+（`package.json` の `engines.node`）
 
 詳細・エスケープ仕様・命名規約は [docs/DESIGN.md §3 入力 2](docs/DESIGN.md#3-ユーザーフロー) と [§8 ワークスペースプロトコル](docs/DESIGN.md#8-ワークスペースプロトコル) を参照。
 

@@ -15,6 +15,9 @@
   ],
   "license": "MIT",
   "author": "oubakiou",
+  "bin": {
+    "mdxg-redline": "dist/review-request.mjs"
+  },
   "files": [
     "dist/",
     "src/",
@@ -42,5 +45,8 @@
     "vite-plugin-singlefile": "^2.3.3",
     "vite-plus": "0.x",
     "vitest": "^4.1.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

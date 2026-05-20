@@ -31,18 +31,24 @@ Obtain `review.html` via either:
 
 Open `review.html` in your browser, load markdown via `Open file`, select text → `＋ Comment` to leave a comment, then `Comments ▾ → Copy as JSON` to hand it back.
 
-### Generate and open a review request with the review-request CLI
+### Generate and open a review request with `npx mdxg-redline`
 
 For one-off reviews of a single local markdown file, the bundled CLI builds a review HTML with the markdown already embedded and opens it in your default browser.
 
 ```bash
-node dist/review-request.mjs <input.md> [output-dir]
+npx mdxg-redline <input.md>                       # writes alongside input.md and opens browser
+npx mdxg-redline <input.md> ./reviews             # writes into ./reviews
+npx mdxg-redline --no-open <input.md>             # generate only, do not open browser
+cat spec.md | npx mdxg-redline - --document-name spec.md   # read markdown from stdin
+npx mdxg-redline --help                           # print full usage and exit
 ```
 
-- The output filename is auto-derived as `<input-md-basename>-<docHash>-review.html` (`output-dir` defaults to the input's directory)
+- The output filename is auto-derived as `<input-md-basename>-<docHash>-review.html` (the `output-dir` argument defaults to the input's directory; for stdin input it defaults to the current working directory)
+- Use `--document-name <name>` to override the document name (used for the `data-name` attribute and the output filename prefix). Required when reading from stdin if you want a meaningful filename
 - After generation, the default browser is launched via `$BROWSER` → `open` / `xdg-open` / `cmd.exe /c start`, in that order
-- When VS Code Remote Containers / Codespaces is detected, the CLI instead starts a tiny HTTP server on `127.0.0.1` at a random port and hands the host browser an `http://localhost:<port>/...` URL (since `file://` paths in the container are invisible to the host)
+- When VS Code Remote Containers / Codespaces is detected, the CLI instead starts a tiny HTTP server on `127.0.0.1` at port `51729` (override with `MDXG_REDLINE_PORT`) and hands the host browser an `http://localhost:<port>/...` URL (since `file://` paths in the container are invisible to the host). If the preferred port is busy, the CLI falls back to a random port and prints a warning to stderr — **note that random ports may not be forwarded to the host browser if `forwardPorts` is not set to `auto`, so pin a known-free `MDXG_REDLINE_PORT` (or register it in `devcontainer.json` `forwardPorts`) for reliable host access**
 - Pass `--no-open` to suppress browser launch. The output path is always printed to stdout so CI scripts and agents can capture it
+- Requires Node.js 20+ (see `engines.node` in `package.json`)
 
 See [docs/DESIGN.md §3 input 2](docs/DESIGN.md#3-ユーザーフロー) and [§8 Workspace protocol](docs/DESIGN.md#8-ワークスペースプロトコル) for escape handling and the file-naming protocol.
 

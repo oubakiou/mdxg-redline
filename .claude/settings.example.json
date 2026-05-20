@@ -3,7 +3,16 @@
     "DISABLE_AUTOUPDATER": "1"
   },
   "permissions": {
-    "allow": ["Edit(docs/**)", "MultiEdit(docs/**)", "Write(docs/**)", "Bash(vp check *)"],
+    "allow": [
+      "Edit(src/**)",
+      "MultiEdit(src/**)",
+      "Write(src/**)",
+      "Edit(docs/**)",
+      "MultiEdit(docs/**)",
+      "Write(docs/**)",
+      "Bash(vp check *)",
+      "Bash(vp test *)"
+    ],
     "deny": ["Read(**.archive.md)", "Edit(**.archive.md)"]
   },
   "enableAllProjectMcpServers": true,

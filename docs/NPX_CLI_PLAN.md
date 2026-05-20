@@ -5,14 +5,15 @@
 | Phase                       | 内容                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 状態   |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
 | **Phase 1: embedding core** | `</script>` / `data-name` のエスケープ、`<script id="embedded-md">` の rewrite、最小 CLI (`input.md` + 任意 `output-dir`、§8 ファイル命名規約による自動命名)、生成後の既定ブラウザ自動起動と `--no-open`、VS Code Remote / Codespaces 検知時のみ軽量 HTTP サーバー fallback (10 秒 / 60 秒自動停止)                                                                                                                                                                | 実装済 |
-| **Phase 2: npx 起動 UX**    | `bin: { "mdxg-redline": "dist/review-request.mjs" }` エントリ追加、`engines.node` 明示と `files` 整合確認、stdin (`-`) 対応（cwd 既定 / mdFileName=`stdin` 固定）、`--document-name` フラグ、`--help` / `-h` フラグ（引数なし時にも同じヘルプを stdout）、README への CLI 利用方法追記。出力 HTML の配置・命名は Phase 1 仕様（命名規約に従う決定的命名、ユーザー指定 or 入力 MD と同じディレクトリ）を引き継ぐため、一時 HTML 生成や TTL クリーンアップは持たない | 未実装 |
+| **Phase 2: npx 起動 UX**    | `bin: { "mdxg-redline": "dist/review-request.mjs" }` エントリ追加、`engines.node` 明示と `files` 整合確認、stdin (`-`) 対応（cwd 既定 / mdFileName=`stdin` 固定）、`--document-name` フラグ、`--help` / `-h` フラグ（引数なし時にも同じヘルプを stdout）、README への CLI 利用方法追記。出力 HTML の配置・命名は Phase 1 仕様（命名規約に従う決定的命名、ユーザー指定 or 入力 MD と同じディレクトリ）を引き継ぐため、一時 HTML 生成や TTL クリーンアップは持たない | 実装済 |
 
-Phase 1 の実体：
+Phase 1 / Phase 2 の実体：
 
 - `src/embed-core.ts` … pure ロジック（Node / browser 両対応）。エスケープ・rewrite に加えて、§8 ファイル命名規約まわりの `computeDocHash` / `stripMarkdownExt` / `deriveReviewHtmlName` / `deriveReviewMdName` / `deriveFeedbackJsonName` / `parseReviewMdFilename` (+ `REVIEW_MD_PATTERN`) も担う。in-source test 37 件
-- `src/review-request.ts` … Node CLI ラッパー（shebang 付き、`[--no-open] <input.md> [output-dir]` 引数、§8 ファイル命名規約に従って出力ファイル名を自動決定、ENOENT を親切なメッセージに差し替え、生成 HTML の絶対パスを常時 stdout 出力、生成後の既定ブラウザ起動、VS Code Remote 検知時のみ軽量 HTTP サーバー fallback）。`parseArgs` / `buildOpenCommand` / `isHostBrowserUnreachableViaFile` / `resolvePreferredPort` を in-source test 対象として export。in-source test 29 件
+- `src/review-request.ts` … Node CLI ラッパー（shebang 付き、`[options] <input.md|-> [output-dir]` 引数、§8 ファイル命名規約に従って出力ファイル名を自動決定、ENOENT を親切なメッセージに差し替え、生成 HTML の絶対パスを常時 stdout 出力、生成後の既定ブラウザ起動、VS Code Remote 検知時のみ軽量 HTTP サーバー fallback）。Phase 2 で `--help` / `-h` / 引数なし時の help モード、stdin token `-`、`--document-name <name>`、`sanitizeMdFileName` による mdFileName の緩めサニタイズを追加。`parseArgs` は判別共用体 `{ mode: 'help' | 'invalid' | 'run' }` を返し、reduce-based state machine で実装。in-source test は parseArgs (run / --document-name / help / invalid に分割) + sanitizeMdFileName + buildOpenCommand + isHostBrowserUnreachableViaFile + resolvePreferredPort で計 49 件
 - `vite.review-request.config.ts` … SSR mode で `dist/review-request.mjs` を生成するビルド設定
 - `npm run build:review-request` … review-request CLI のみの差分ビルド、`npm run build` は review.html と一緒に再生成
+- `package.json` … `bin: { "mdxg-redline": "dist/review-request.mjs" }` と `engines.node: ">=20.0.0"` を Phase 2 で追加
 
 実装上の意思決定で本文と差分があるものは §5.1.1 / §10.1 の注記を参照。
 
@@ -126,13 +127,13 @@ npx mdxg-redline --help
 - 第 1 引数で markdown ファイルを受け取る
 - 任意の第 2 引数 `<output-dir>` で生成 HTML の出力先ディレクトリを指定する。省略時は入力 MD と同じディレクトリ（`dirname(inputPath)`）に書き出す。出力ファイル名は引数では指定できず、§8 ファイル命名規約に従って `<mdFileName>-<docHash>-review.html` で自動決定される（Phase 1 で実装済）
 - 第 1 引数が `-` の場合は stdin から markdown を読み込む（Phase 2）。stdin 入力時の出力ディレクトリ既定は cwd（入力 MD が無いため `dirname(inputPath)` フォールバックが効かない）、mdFileName は `stdin` 固定で `cwd/stdin-<docHash>-review.html` に書き出す。`--document-name <name>` で mdFileName 部分を上書きできる。上書き値は「緩めサニタイズ」を適用し、パス区切り（`/` `\`）、`..` セグメント、制御文字、Windows 予約名（`CON`, `PRN`, `AUX`, `NUL`, `COM1-9`, `LPT1-9`）に該当するケースのみ `_` 置換または接尾辞付与で回避し、それ以外の日本語・空白・記号は保持する
-- 引数なし、または `--help` / `-h` フラグ指定時は多行ヘルプを stdout に出力して exit 0（Phase 2）。Phase 1 現行 CLI は引数なし時に `Usage: review-request [--no-open] <input.md> [output-dir]` を stderr に 1 行出して exit 1 する暫定挙動
+- 引数なし、または `--help` / `-h` フラグ指定時は多行ヘルプを stdout に出力して exit 0（Phase 2 で実装済）。`--help` / `-h` は argv のどこに含まれていても最優先で扱われ、他の位置引数・フラグ・`--document-name` の値欠落より先に help モードに分岐する（`mdxg-redline --no-open --document-name spec.md` のような曖昧なコマンドでもユーザーがヘルプを見たいと意図したと判断する）。invalid 判定（引数不正・未知フラグ・`--document-name` 値欠落・位置引数の個数違反）の場合は `mdxg-redline: invalid arguments. Run \`mdxg-redline --help\` for usage.` を stderr に 1 行出して exit 1
 - 拡張子チェックは行わない（任意拡張子を許容する。読み込み可否のみで判定）
 - 存在しないパス、入力にディレクトリを指定、読み取り不可時は明確なエラーを返す
 - stdout には、ブラウザ起動の成否や `--no-open` 指定の有無にかかわらず、生成した HTML の絶対パスを常に 1 行出力する（シェルスクリプト・エージェント連携用）。起動に失敗した場合はそのパスを手動で `file://` で開ける導線としても機能する。起動失敗時も CLI は exit 0 を維持し、stderr に警告のみを出す
 - exit code は、引数不正・入力 MD の I/O エラー・`dist/review.html` 欠落など HTML 生成自体が失敗するケースで exit 1（stderr にエラーメッセージ）。一方、HTML 生成に成功した後のブラウザ起動失敗のみ exit 0（stderr に警告のみ）。生成物のパスは stdout に出ているため、利用者は手動オープンに切り替えられる
 - `--no-open`: ブラウザ起動を抑止する。CI / エージェント自動実行・ヘッドレス環境で意図せずブラウザを起こさないための opt-out（Phase 1 で `dist/review-request.mjs` に実装済）
-- ブラウザ起動コマンドは `$BROWSER` 環境変数を最優先で使い、未設定時に OS 既定（macOS: `open` / Linux 等: `xdg-open` / Windows: `cmd.exe /c start ""`）にフォールバックする。`$BROWSER` を最優先するのは VS Code Remote Containers / Codespaces / `gh` CLI など、helper script 経由でホスト側ブラウザに転送する慣習に合わせるため。`$BROWSER` は `open -a "Google Chrome"` のような複合文字列も許容し、環境変数由来の明示指定としてシェル解釈で実行する（未設定時の OS 既定コマンドは従来通り引数配列で実行）
+- ブラウザ起動コマンドは `$BROWSER` 環境変数を最優先で使い、未設定時に OS 既定（macOS: `open` / Linux 等: `xdg-open` / Windows: `cmd.exe /c start ""`）にフォールバックする。`$BROWSER` を最優先するのは VS Code Remote Containers / Codespaces / `gh` CLI など、helper script 経由でホスト側ブラウザに転送する慣習に合わせるため。`$BROWSER` の値は**単一実行可能パスとして扱い、`execFile` で引数配列 `[outputPath]` を渡す**。`open -a "Google Chrome"` のような複合文字列はサポートしない（シェル経由実行は引数注入の経路を作るため、明示的に拒否）。複数の引数が必要な場合は wrapper script を作成して `$BROWSER` にそのパスを設定する運用とする。VS Code Remote / Codespaces / `gh` の慣習でも `$BROWSER` は helper script の絶対パス 1 本である
 - VS Code Remote / Codespaces 環境（`REMOTE_CONTAINERS=true` / `CODESPACES=true` / `$BROWSER` が `vscode-server/.../helpers/browser.sh` を指す、で判定）を検知した場合のみ、`127.0.0.1` のデフォルトポート `51729` に軽量 HTTP サーバーを立てて `http://localhost:<port>/<file>` を `$BROWSER` に渡し、ホスト側ブラウザに到達させる。`MDXG_REDLINE_PORT` 環境変数でデフォルトポートを上書きでき、衝突時は `EADDRINUSE` を捕まえてランダムポートへ自動 fallback する（その回だけブラウザ側 IndexedDB のサイレント復元が効かない旨を stderr に警告）。サーバーは初回リクエスト受信後 10 秒、リクエスト無しなら 60 秒で自動停止する
 
 #### document 名の規約
@@ -176,26 +177,26 @@ npx mdxg-redline --help
 
 凡例: [x] 実装済 / [部分] Phase 1 で一部実装、Phase 2 で拡張 / [ ] 未着手
 
-1. [部分] CLI エントリポイントを実装する（引数パース、`-`/stdin 対応、`--document-name` / `--help` / `-h` フラグ、エラー処理）
+1. [x] CLI エントリポイントを実装する（引数パース、`-`/stdin 対応、`--document-name` / `--help` / `-h` フラグ、エラー処理）
    - Phase 1: `[--no-open] <input.md> [output-dir]` の引数。出力ファイル名は §8 ファイル命名規約（`<mdFileName>-<docHash>-review.html`）で自動決定。`src/review-request.ts` として実装（当初の `src/cli.ts` という命名から変更）。フラグと位置引数の混在順序を許容する `parseArgs` を in-source test 対象として export。引数なし時は Usage を stderr に 1 行出して exit 1 する暫定挙動
-   - Phase 2: stdin (`-`)、`--document-name <name>`、`--help` / `-h`（多行ヘルプ stdout + exit 0、引数なし時もこれを呼ぶ）を追加
-2. [部分] 指定ファイル/stdin の読み込み、ファイル存在チェック、エラー処理を実装する
+   - Phase 2: stdin (`-`)、`--document-name <name>`、`--help` / `-h`（多行ヘルプ stdout + exit 0、引数なし時もこれを呼ぶ）を実装済。`parseArgs` は判別共用体 `{ mode: 'help' | 'invalid' | 'run' }` を返す形に書き換え、reduce-based state machine で no-continue / no-plusplus / max-statements の lint 制約に抵触しないよう関数分割している
+2. [x] 指定ファイル/stdin の読み込み、ファイル存在チェック、エラー処理を実装する
    - Phase 1: ファイル読み込みと ENOENT 処理（`dist/review.html` 欠落時は `npm run build` を案内する親切なメッセージに差し替え）
-   - Phase 2: stdin パイプ入力、EACCES / EISDIR の区別
+   - Phase 2: stdin パイプ入力（`resolveInput` + `readStdin` の async iterator で全バイトを UTF-8 として読む）。EACCES / EISDIR の区別は Node 既定のメッセージに委ねている
 3. [x] document 名（basename）に §5.1.2 (b) の HTML 属性エスケープを適用する処理を実装する（`embed-core.ts` の `escapeHtmlAttribute`）
-   - Phase 2: stdin デフォルト名と `--document-name` 上書きの追加
+   - Phase 2: stdin デフォルト名 (`stdin.md`) と `--document-name` 上書きの導線を `resolveInput` で実装済。`sanitizeMdFileName` で mdFileName 部分のみパス区切り / 制御文字 / 予約名を緩めサニタイズし、表示用 docName はそのまま `data-name` に書き出す
 4. [x] markdown 本文に §5.1.2 (a) の `</script>` エスケープを適用する処理を実装する（`embed-core.ts` の `escapeScriptContent`）
 5. [x] `dist/review.html` を読み込み、`embedded-md` タグの中身と `data-name` 属性を書き換えて HTML を生成する処理を実装する（`embed-core.ts` の `rewriteReviewHtml`）
 6. [x] プラットフォーム判定で `execFile` + 引数配列ベースでブラウザを起動する処理を実装する（`shell: true` 禁止、起動失敗時は HTML パスを stdout に表示）
    - Phase 1: `src/review-request.ts` の `buildOpenCommand`（pure helper、in-source test 対象）+ `openInBrowser`（実起動）として実装。優先順は `$BROWSER` → darwin: `open` → win32: `cmd.exe /c start` → その他: `xdg-open`。`$BROWSER` を最優先することで VS Code Remote Containers / Codespaces などのヘルパースクリプト経由でホスト側ブラウザに転送できる（`gh` CLI などと同じ慣習）。既定で起動、`--no-open` で抑止。失敗時は stderr に警告を出して exit 0 を維持。stdout には `--no-open` や open 成否に関わらず生成 HTML の絶対パスを常に出す
    - Phase 1 追加: `isHostBrowserUnreachableViaFile`（pure helper）で `REMOTE_CONTAINERS=true` / `CODESPACES=true` / `$BROWSER` が `vscode-server/.../helpers/browser.sh` を指すケースを検知し、true の場合のみ `serveOnceAndAutoStop` で `127.0.0.1` の `resolvePreferredPort` が返すポート（`MDXG_REDLINE_PORT` > DEFAULT_PORT `51729`、衝突時は `EADDRINUSE` を捕まえてランダムポートへ fallback し stderr 警告）に軽量 HTTP サーバーを立てて `http://localhost:<port>/...` を `$BROWSER` に渡す。停止条件は二段構え（初回リクエスト後 10 秒 / 未着なら 60 秒で諦め）、レスポンスは `Connection: close` で keep-alive を無効化して `server.close()` のハングを防ぐ。配信は固定 HTML 1 ファイルのみ・リクエストパス無視でパストラバーサル不能
-   - Phase 2: stdin / `--document-name` 経路と組み合わせて `npx` 起動に統合
+   - Phase 2: stdin / `--document-name` 経路と組み合わせて `npx` 起動に統合済
 7. [x] CLI 向けの Node ESM ビルドを `package.json` の scripts に追加し、出力を `dist/` に配置する（`vite.review-request.config.ts` + `npm run build:review-request`）
-8. [ ] `package.json` の `bin` / `engines` を追加し、`files` の整合を確認する（Phase 2 で着手）
-9. [ ] README に CLI 利用方法を追記する（Phase 2 で着手）
-10. [部分] 正常系・異常系の確認を行う
+8. [x] `package.json` の `bin` / `engines` を追加し、`files` の整合を確認する（Phase 2 で `bin: { "mdxg-redline": "dist/review-request.mjs" }` と `engines.node: ">=20.0.0"` を追加。`files` は既に `dist/` を含むため変更なし）
+9. [x] README に CLI 利用方法を追記する（Phase 2 で `npx mdxg-redline ...` ベースの説明に書き換え、stdin / `--document-name` / `--help` の使い方を追加。`README.md` / `README_ja.md` の両方）
+10. [x] 正常系・異常系の確認を行う
     - Phase 1: in-source test 66 件（escape / rewrite / コメント内 literal の無視 / `type="text/markdown"` 要件 / 命名規約 helper / `parseArgs` / `buildOpenCommand` / `isHostBrowserUnreachableViaFile` / `resolvePreferredPort` など）+ 手動実行で `review.html` 欠落時のメッセージ確認
-    - Phase 2: §10.2 の E2E ケースを追加
+    - Phase 2: parseArgs を 4 つの sub-describe (run / --document-name / help / invalid) に分割し help / -h / stdin token / `--document-name` 値欠落 / 未知フラグ等のケースを追加。`sanitizeMdFileName` の describe を追加 (Windows 予約名・制御文字・パストラバーサル・日本語保持の網羅)。`vp test` で 141 件 / 全 pass
 
 ## 9. リスクと検討事項
 
@@ -213,7 +214,7 @@ npx mdxg-redline --help
     - `""` は start のウィンドウタイトル位置の空文字列プレースホルダ（これが無いと path がタイトルとして解釈される）
     - `windowsVerbatimArguments` の挙動は実装段階で実機検証する
 - 外部依存（`open` パッケージ等）は追加しない（`marked` のみのシンプルな依存構成を維持）
-- ただし `$BROWSER` が設定されている場合のみ例外として複合文字列を許容し、シェル解釈で実行する（ユーザー/実行環境が明示的に与えた値を優先するため）。未設定時の OS 既定経路は引き続き引数配列で実行する
+- `$BROWSER` 設定時も `execFile(env.BROWSER, [outputPath])` で実行し、シェル解釈は行わない（明示的に injection 経路を作らない方針）。複合文字列 (`open -a "Google Chrome"` 等) はサポート対象外で、その場合は wrapper script を経由するよう利用者に運用で寄せる
 - headless 環境や GUI 非搭載環境（devcontainer / Codespaces 等を含む）では起動が失敗しうる
 - stdout への生成 HTML 絶対パス出力は §6 の通り常時行う（成功時・失敗時・`--no-open` 時すべて）。ブラウザ起動失敗時はそれを手動で `file://` プロトコルで開ける導線として活用できる
 
@@ -255,10 +256,15 @@ review-request 側（29 件）：
 - [x] `isHostBrowserUnreachableViaFile`（REMOTE_CONTAINERS / CODESPACES / vscode helper script 検知 / 部分一致の誤検知防止）
 - [x] `resolvePreferredPort`（未設定・空文字で DEFAULT_PORT、有効値、範囲外・非整数・`"8080abc"` 形式での DEFAULT_PORT fallback と stderr 警告）
 
-Phase 2 で追加予定：
+Phase 2 で追加済（in-source test）：
 
-- [ ] stdin (`-`) 入力時の引数パースと出力先 / document 名解決（出力ディレクトリ既定は cwd、mdFileName 既定は `stdin` 固定、`--document-name` で上書き）
-- [ ] `--help` / `-h` フラグ（多行ヘルプを stdout に出して exit 0、引数なし時にも同じヘルプを呼ぶ）
+- [x] stdin token `-` 入力時の `parseArgs` 結果（run モードで `inputPath: '-'`）
+- [x] `--document-name <name>` を位置引数・`--no-open` と組み合わせた parseArgs ケース
+- [x] `--document-name` の値欠落 / 値位置に別フラグが来た場合 invalid 判定
+- [x] `--help` / `-h` / 引数なし → help モード判定。`--help` が他の引数より優先されること
+- [x] `sanitizeMdFileName` の全分岐（普通の名前 / 日本語 / パス区切り / パストラバーサル / 空・`.`・`..` / Windows 予約名 + 拡張子 / 制御文字 / 偽予約名）
+
+入出力境界（`resolveInput` の stdin 読み込み / `main` の help テキスト stdout 出力 / `process.exit(1)` 経路）は副作用ベースのため §10.2 の手動 E2E で確認する。
 
 ### 10.2 手動 E2E
 

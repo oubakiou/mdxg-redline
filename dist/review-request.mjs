@@ -58,8 +58,37 @@ var rewriteReviewHtml = (reviewHtml, markdown, docName) => {
 };
 //#endregion
 //#region src/review-request.ts
-var USAGE = "Usage: review-request [--no-open] <input.md> [output-dir]";
 var NO_OPEN_FLAG = "--no-open";
+var HELP_FLAGS = new Set(["--help", "-h"]);
+var DOCUMENT_NAME_FLAG = "--document-name";
+var STDIN_TOKEN = "-";
+var STDIN_DEFAULT_DOC_NAME = "stdin.md";
+var HELP_TEXT = `Usage: mdxg-redline [options] <input.md|-> [output-dir]
+
+Generate a review-request HTML with the markdown embedded and open it in
+your default browser.
+
+Arguments:
+  <input.md>             Path to a markdown file. Pass \`-\` to read from stdin.
+  [output-dir]           Output directory. Defaults to the input file's
+                         directory; for stdin input, defaults to the current
+                         working directory. Output filename is auto-derived
+                         as <mdFileName>-<docHash>-review.html.
+
+Options:
+  --document-name <name> Override the document name used for the data-name
+                         attribute and the output filename prefix. Useful
+                         with stdin input.
+  --no-open              Generate the HTML but do not launch a browser.
+  -h, --help             Print this help and exit. Takes precedence over all
+                         other arguments and flags when present.
+
+Examples:
+  mdxg-redline spec.md
+  mdxg-redline spec.md ./reviews
+  mdxg-redline --no-open spec.md
+  cat spec.md | mdxg-redline - --document-name spec.md
+`;
 var SERVE_AUTOSTOP_MS = 1e4;
 var SERVE_GIVEUP_MS = 6e4;
 var SERVE_HOST = "127.0.0.1";
@@ -75,15 +104,106 @@ var errorMessage = (error) => {
 	if (error instanceof Error) return error.message;
 	return String(error);
 };
-var parseArgs = (argv) => {
-	const flags = argv.filter((arg) => arg.startsWith("--"));
-	const positional = argv.filter((arg) => !arg.startsWith("--"));
-	if (flags.some((flag) => flag !== NO_OPEN_FLAG)) return null;
-	if (positional.length < 1 || positional.length > 2) return null;
+var INITIAL_PARTITION_STATE = {
+	documentName: null,
+	open: true,
+	pendingDocName: false,
+	positional: [],
+	valid: true
+};
+var consumeDocNameValue = (acc, token) => {
+	if (token.startsWith("--")) return {
+		...acc,
+		valid: false
+	};
 	return {
-		inputPath: positional[0],
-		open: !flags.includes(NO_OPEN_FLAG),
-		outputDir: positional[1]
+		...acc,
+		documentName: token,
+		pendingDocName: false
+	};
+};
+var consumeFlag = (acc, token) => {
+	if (token === NO_OPEN_FLAG) return {
+		...acc,
+		open: false
+	};
+	if (token === DOCUMENT_NAME_FLAG) return {
+		...acc,
+		pendingDocName: true
+	};
+	return {
+		...acc,
+		valid: false
+	};
+};
+var stepArg = (acc, token) => {
+	if (!acc.valid) return acc;
+	if (acc.pendingDocName) return consumeDocNameValue(acc, token);
+	if (token.startsWith("--")) return consumeFlag(acc, token);
+	return {
+		...acc,
+		positional: [...acc.positional, token]
+	};
+};
+var partitionArgs = (argv) => {
+	const state = argv.reduce(stepArg, INITIAL_PARTITION_STATE);
+	const valid = state.valid && !state.pendingDocName;
+	const result = {
+		open: state.open,
+		positional: state.positional,
+		valid
+	};
+	if (state.documentName !== null) result.documentName = state.documentName;
+	return result;
+};
+var buildRunArgs = (parts) => {
+	const [inputPath, outputDir] = parts.positional;
+	const result = {
+		inputPath,
+		mode: "run",
+		open: parts.open
+	};
+	if (typeof outputDir === "string") result.outputDir = outputDir;
+	if (typeof parts.documentName === "string") result.documentName = parts.documentName;
+	return result;
+};
+var parseArgs = (argv) => {
+	if (argv.length === 0) return { mode: "help" };
+	if (argv.some((token) => HELP_FLAGS.has(token))) return { mode: "help" };
+	const parts = partitionArgs(argv);
+	if (!parts.valid) return { mode: "invalid" };
+	if (parts.positional.length < 1 || parts.positional.length > 2) return { mode: "invalid" };
+	return buildRunArgs(parts);
+};
+var sanitizeMdFileName = (name) => {
+	const cleaned = name.replace(/\p{Cc}/gu, "_").replace(/[\\/]/g, "_");
+	if (cleaned === "" || cleaned === "." || cleaned === "..") return "_";
+	if (/^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$/i.test(cleaned)) return `${cleaned}_`;
+	return cleaned;
+};
+var toBuffer = (chunk) => {
+	if (Buffer.isBuffer(chunk)) return chunk;
+	return Buffer.from(String(chunk), "utf8");
+};
+var readStdin = async () => {
+	const chunks = [];
+	for await (const chunk of process.stdin) chunks.push(toBuffer(chunk));
+	return Buffer.concat(chunks).toString("utf8");
+};
+var resolveInput = async (inputPath, documentName) => {
+	if (inputPath === STDIN_TOKEN) {
+		const markdown = await readStdin();
+		return {
+			defaultOutputDir: process.cwd(),
+			docName: documentName ?? STDIN_DEFAULT_DOC_NAME,
+			markdown
+		};
+	}
+	const markdown = await readFile(inputPath, "utf8");
+	return {
+		defaultOutputDir: dirname(inputPath),
+		docName: documentName ?? basename(inputPath),
+		markdown
 	};
 };
 var buildOpenCommand = (platform, path, env = process.env) => {
@@ -124,15 +244,16 @@ var readReviewHtml = async (path) => {
 		throw error;
 	}
 };
-var prepareEmbed = async (inputPath, outputDir) => {
+var prepareEmbed = async (args) => {
 	const scriptDir = dirname(fileURLToPath(import.meta.url));
-	const [markdown, reviewHtml] = await Promise.all([readFile(inputPath, "utf8"), readReviewHtml(resolve(scriptDir, "review.html"))]);
-	const docName = basename(inputPath);
-	const docHash = await computeDocHash(markdown);
+	const [input, reviewHtml] = await Promise.all([resolveInput(args.inputPath, args.documentName), readReviewHtml(resolve(scriptDir, "review.html"))]);
+	const docHash = await computeDocHash(input.markdown);
+	const mdFileName = sanitizeMdFileName(stripMarkdownExt(input.docName));
+	const outputPath = resolve(args.outputDir ?? input.defaultOutputDir, deriveReviewHtmlName(mdFileName, docHash));
 	return {
-		docName,
-		markdown,
-		outputPath: resolve(outputDir ?? dirname(inputPath), deriveReviewHtmlName(stripMarkdownExt(docName), docHash)),
+		docName: input.docName,
+		markdown: input.markdown,
+		outputPath,
 		reviewHtml
 	};
 };
@@ -217,7 +338,7 @@ var openOutput = async (outputPath) => {
 	await handle.done;
 };
 var runEmbed = async (args) => {
-	const ctx = await prepareEmbed(args.inputPath, args.outputDir);
+	const ctx = await prepareEmbed(args);
 	const result = rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName);
 	await writeFile(ctx.outputPath, result, "utf8");
 	process.stdout.write(`${ctx.outputPath}\n`);
@@ -225,8 +346,12 @@ var runEmbed = async (args) => {
 };
 var main = async () => {
 	const args = parseArgs(process.argv.slice(2));
-	if (!args) {
-		process.stderr.write(`${USAGE}\n`);
+	if (args.mode === "help") {
+		process.stdout.write(HELP_TEXT);
+		return;
+	}
+	if (args.mode === "invalid") {
+		process.stderr.write(`mdxg-redline: invalid arguments. Run \`mdxg-redline --help\` for usage.\n`);
 		process.exit(1);
 	}
 	await runEmbed(args);
@@ -236,4 +361,4 @@ main().catch((error) => {
 	process.exit(1);
 });
 //#endregion
-export { buildOpenCommand, isHostBrowserUnreachableViaFile, parseArgs, resolvePreferredPort };
+export { buildOpenCommand, isHostBrowserUnreachableViaFile, parseArgs, resolvePreferredPort, sanitizeMdFileName };
