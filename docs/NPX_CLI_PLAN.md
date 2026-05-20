@@ -125,14 +125,14 @@ npx mdxg-redline --help
 
 - 第 1 引数で markdown ファイルを受け取る
 - 任意の第 2 引数 `<output-dir>` で生成 HTML の出力先ディレクトリを指定する。省略時は入力 MD と同じディレクトリ（`dirname(inputPath)`）に書き出す。出力ファイル名は引数では指定できず、§8 ファイル命名規約に従って `<mdFileName>-<docHash>-review.html` で自動決定される（Phase 1 で実装済）
-- 第 1 引数が `-` の場合は stdin から markdown を読み込む（Phase 2）。stdin 入力時の出力ディレクトリ既定は cwd（入力 MD が無いため `dirname(inputPath)` フォールバックが効かない）、mdFileName は `stdin` 固定で `cwd/stdin-<docHash>-review.html` に書き出す。`--document-name <name>` で mdFileName 部分を上書きできる
+- 第 1 引数が `-` の場合は stdin から markdown を読み込む（Phase 2）。stdin 入力時の出力ディレクトリ既定は cwd（入力 MD が無いため `dirname(inputPath)` フォールバックが効かない）、mdFileName は `stdin` 固定で `cwd/stdin-<docHash>-review.html` に書き出す。`--document-name <name>` で mdFileName 部分を上書きできる。上書き値は「緩めサニタイズ」を適用し、パス区切り（`/` `\`）、`..` セグメント、制御文字、Windows 予約名（`CON`, `PRN`, `AUX`, `NUL`, `COM1-9`, `LPT1-9`）に該当するケースのみ `_` 置換または接尾辞付与で回避し、それ以外の日本語・空白・記号は保持する
 - 引数なし、または `--help` / `-h` フラグ指定時は多行ヘルプを stdout に出力して exit 0（Phase 2）。Phase 1 現行 CLI は引数なし時に `Usage: review-request [--no-open] <input.md> [output-dir]` を stderr に 1 行出して exit 1 する暫定挙動
 - 拡張子チェックは行わない（任意拡張子を許容する。読み込み可否のみで判定）
 - 存在しないパス、入力にディレクトリを指定、読み取り不可時は明確なエラーを返す
 - stdout には、ブラウザ起動の成否や `--no-open` 指定の有無にかかわらず、生成した HTML の絶対パスを常に 1 行出力する（シェルスクリプト・エージェント連携用）。起動に失敗した場合はそのパスを手動で `file://` で開ける導線としても機能する。起動失敗時も CLI は exit 0 を維持し、stderr に警告のみを出す
 - exit code は、引数不正・入力 MD の I/O エラー・`dist/review.html` 欠落など HTML 生成自体が失敗するケースで exit 1（stderr にエラーメッセージ）。一方、HTML 生成に成功した後のブラウザ起動失敗のみ exit 0（stderr に警告のみ）。生成物のパスは stdout に出ているため、利用者は手動オープンに切り替えられる
 - `--no-open`: ブラウザ起動を抑止する。CI / エージェント自動実行・ヘッドレス環境で意図せずブラウザを起こさないための opt-out（Phase 1 で `dist/review-request.mjs` に実装済）
-- ブラウザ起動コマンドは `$BROWSER` 環境変数を最優先で使い、未設定時に OS 既定（macOS: `open` / Linux 等: `xdg-open` / Windows: `cmd.exe /c start ""`）にフォールバックする。`$BROWSER` を最優先するのは VS Code Remote Containers / Codespaces / `gh` CLI など、helper script 経由でホスト側ブラウザに転送する慣習に合わせるため
+- ブラウザ起動コマンドは `$BROWSER` 環境変数を最優先で使い、未設定時に OS 既定（macOS: `open` / Linux 等: `xdg-open` / Windows: `cmd.exe /c start ""`）にフォールバックする。`$BROWSER` を最優先するのは VS Code Remote Containers / Codespaces / `gh` CLI など、helper script 経由でホスト側ブラウザに転送する慣習に合わせるため。`$BROWSER` は `open -a "Google Chrome"` のような複合文字列も許容し、環境変数由来の明示指定としてシェル解釈で実行する（未設定時の OS 既定コマンドは従来通り引数配列で実行）
 - VS Code Remote / Codespaces 環境（`REMOTE_CONTAINERS=true` / `CODESPACES=true` / `$BROWSER` が `vscode-server/.../helpers/browser.sh` を指す、で判定）を検知した場合のみ、`127.0.0.1` のデフォルトポート `51729` に軽量 HTTP サーバーを立てて `http://localhost:<port>/<file>` を `$BROWSER` に渡し、ホスト側ブラウザに到達させる。`MDXG_REDLINE_PORT` 環境変数でデフォルトポートを上書きでき、衝突時は `EADDRINUSE` を捕まえてランダムポートへ自動 fallback する（その回だけブラウザ側 IndexedDB のサイレント復元が効かない旨を stderr に警告）。サーバーは初回リクエスト受信後 10 秒、リクエスト無しなら 60 秒で自動停止する
 
 #### document 名の規約
@@ -140,6 +140,7 @@ npx mdxg-redline --help
 - ファイル引数の **basename のみ**をレビュー画面に引き継ぐ（例: `/path/to/spec.md` → `spec.md`）。出力 HTML ファイル名生成時はさらに `stripMarkdownExt` を通して `mdFileName` 部分（拡張子除去）にする
 - stdin (`-`) の場合は `data-name` 用の docName を `stdin.md`、出力 HTML 用の mdFileName を `stdin` 固定とする
 - `--document-name <name>` フラグで上書き可能とする（Phase 2）。指定値は docName（拡張子付き相当）として扱い、出力 HTML 用 mdFileName は `stripMarkdownExt` 経由で導出
+- 出力 HTML 用 mdFileName の導出後、ファイル名としては前述の「緩めサニタイズ」を適用する（docName の表示用途は保持しつつ、ファイル作成失敗や出力先逸脱のみ防ぐ）
 - どの経路で得られた値も、§5.1.2 (b) の HTML 属性エスケープを通過させた上で `data-name` に書き込む
 - 引き継いだ名前は埋め込み HTML の `data-name` 属性に設定され、エクスポート JSON の `document` フィールドに反映される
 
@@ -204,7 +205,7 @@ npx mdxg-redline --help
 
 ### 9.2 既定ブラウザ起動
 
-- `child_process` で OS ごとに以下を起動する。**`shell: true` は使わず、必ず引数配列を渡す**
+- `child_process` で OS ごとに以下を起動する。**既定経路（`$BROWSER` 未設定時）は `shell: true` を使わず、必ず引数配列を渡す**
   - macOS: `execFile('open', [path])`
   - Linux: `execFile('xdg-open', [path])`
   - Windows: `spawn('cmd.exe', ['/c', 'start', '""', path])`
@@ -212,6 +213,7 @@ npx mdxg-redline --help
     - `""` は start のウィンドウタイトル位置の空文字列プレースホルダ（これが無いと path がタイトルとして解釈される）
     - `windowsVerbatimArguments` の挙動は実装段階で実機検証する
 - 外部依存（`open` パッケージ等）は追加しない（`marked` のみのシンプルな依存構成を維持）
+- ただし `$BROWSER` が設定されている場合のみ例外として複合文字列を許容し、シェル解釈で実行する（ユーザー/実行環境が明示的に与えた値を優先するため）。未設定時の OS 既定経路は引き続き引数配列で実行する
 - headless 環境や GUI 非搭載環境（devcontainer / Codespaces 等を含む）では起動が失敗しうる
 - stdout への生成 HTML 絶対パス出力は §6 の通り常時行う（成功時・失敗時・`--no-open` 時すべて）。ブラウザ起動失敗時はそれを手動で `file://` プロトコルで開ける導線として活用できる
 
