@@ -2,15 +2,15 @@
 
 ## 0. 進捗ステータス
 
-| Phase                       | 内容                                                                                                                                                         | 状態   |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
-| **Phase 1: embedding core** | `</script>` / `data-name` のエスケープ、`<script id="embedded-md">` の rewrite、最小 CLI (`input.md` + 任意 `output-dir`、§8 ファイル命名規約による自動命名) | 実装済 |
-| **Phase 2: npx 起動 UX**    | `bin` エントリ追加、一時 HTML 生成、ブラウザ自動起動、stdin 対応、`--document-name` / `--print-temp-path` フラグ、TTL クリーンアップ                         | 未実装 |
+| Phase                       | 内容                                                                                                                                                                                                                                                                                                | 状態   |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| **Phase 1: embedding core** | `</script>` / `data-name` のエスケープ、`<script id="embedded-md">` の rewrite、最小 CLI (`input.md` + 任意 `output-dir`、§8 ファイル命名規約による自動命名)、生成後の既定ブラウザ自動起動と `--no-open`、VS Code Remote / Codespaces 検知時のみ軽量 HTTP サーバー fallback (10 秒 / 60 秒自動停止) | 実装済 |
+| **Phase 2: npx 起動 UX**    | `bin` エントリ追加、一時 HTML 生成、stdin 対応、`--document-name` / `--print-temp-path` フラグ、TTL クリーンアップ                                                                                                                                                                                  | 未実装 |
 
 Phase 1 の実体：
 
 - `src/embed-core.ts` … pure ロジック（Node / browser 両対応）。in-source test 16 件
-- `src/embed.ts` … Node CLI ラッパー（shebang 付き、`<input.md> [output-dir]` 引数、§8 ファイル命名規約に従って出力ファイル名を自動決定、ENOENT を親切なメッセージに差し替え）
+- `src/embed.ts` … Node CLI ラッパー（shebang 付き、`[--no-open] <input.md> [output-dir]` 引数、§8 ファイル命名規約に従って出力ファイル名を自動決定、ENOENT を親切なメッセージに差し替え、生成後の既定ブラウザ起動、VS Code Remote 検知時のみ軽量 HTTP サーバー fallback）。`parseArgs` / `buildOpenCommand` / `isHostBrowserUnreachableViaFile` を in-source test 対象として export
 - `vite.embed.config.ts` … SSR mode で `dist/embed.mjs` を生成するビルド設定
 - `npm run build:embed` … embed CLI のみの差分ビルド、`npm run build` は review.html と一緒に再生成
 
@@ -121,8 +121,9 @@ npx mdxg-redline <markdown-file> --print-temp-path
 - 引数なし時はヘルプを表示する
 - 拡張子チェックは行わない（任意拡張子を許容する。読み込み可否のみで判定）
 - 存在しないパス、ディレクトリ指定、読み取り不可時は明確なエラーを返す
-- 既定ブラウザ起動に失敗した場合は、生成した一時 HTML の絶対パスを stdout に表示し、ユーザーが手動で `file://` で開ける状態にする
-- `--print-temp-path`: ブラウザ起動をスキップし、生成した一時 HTML のパスを stdout に出して終了する（スクリプト連携・手動掃除用）
+- 既定ブラウザ起動に失敗した場合は、生成した一時 HTML の絶対パスを stdout に表示し、ユーザーが手動で `file://` で開ける状態にする。CLI は exit 0 を維持し、stderr に警告を出す
+- `--no-open`: ブラウザ起動を抑止する。CI / エージェント自動実行・ヘッドレス環境で意図せずブラウザを起こさないための opt-out（Phase 1 で `dist/embed.mjs` に実装済）
+- `--print-temp-path`: 一時 HTML 生成モード（Phase 2）でブラウザ起動をスキップし、生成した一時 HTML のパスを stdout に出して終了する（スクリプト連携・手動掃除用）
 
 #### document 名の規約
 
@@ -166,7 +167,7 @@ npx mdxg-redline <markdown-file> --print-temp-path
 凡例: [x] 実装済 / [部分] Phase 1 で一部実装、Phase 2 で拡張 / [ ] 未着手
 
 1. [部分] CLI エントリポイントを実装する（引数パース、`-`/stdin 対応、`--document-name` / `--print-temp-path` フラグ、エラー処理）
-   - Phase 1: `<input.md> [output-dir]` の 1〜2 引数。出力ファイル名は §8 ファイル命名規約（`<mdFileName>-<docHash>-review.html`）で自動決定。`src/embed.ts` として実装（当初の `src/cli.ts` という命名から変更）
+   - Phase 1: `[--no-open] <input.md> [output-dir]` の引数。出力ファイル名は §8 ファイル命名規約（`<mdFileName>-<docHash>-review.html`）で自動決定。`src/embed.ts` として実装（当初の `src/cli.ts` という命名から変更）。フラグと位置引数の混在順序を許容する `parseArgs` を in-source test 対象として export
    - Phase 2: stdin、`--document-name`、`--print-temp-path` を追加
 2. [部分] 指定ファイル/stdin の読み込み、ファイル存在チェック、エラー処理を実装する
    - Phase 1: ファイル読み込みと ENOENT 処理（`dist/review.html` 欠落時は `npm run build` を案内する親切なメッセージに差し替え）
@@ -176,7 +177,10 @@ npx mdxg-redline <markdown-file> --print-temp-path
 4. [x] markdown 本文に §5.1.2 (a) の `</script>` エスケープを適用する処理を実装する（`embed-core.ts` の `escapeScriptContent`）
 5. [x] `dist/review.html` を読み込み、`embedded-md` タグの中身と `data-name` 属性を書き換えて HTML を生成する処理を実装する（`embed-core.ts` の `rewriteReviewHtml`）
 6. [ ] `os.tmpdir()/mdxg-redline/` 配下に一時 HTML を書き出し、起動時に同ディレクトリ内の TTL 7 日超ファイルをクリーンアップする処理を実装する（Phase 2 で着手）
-7. [ ] プラットフォーム判定で `execFile` / `spawn` + 引数配列ベースでブラウザを起動する処理を実装する（`shell: true` 禁止、起動失敗時は一時 HTML パスを stdout に表示）（Phase 2 で着手）
+7. [x] プラットフォーム判定で `execFile` + 引数配列ベースでブラウザを起動する処理を実装する（`shell: true` 禁止、起動失敗時は一時 HTML パスを stdout に表示）
+   - Phase 1: `src/embed.ts` の `buildOpenCommand`（pure helper、in-source test 対象）+ `openInBrowser`（実起動）として実装。優先順は `$BROWSER` → darwin: `open` → win32: `cmd.exe /c start` → その他: `xdg-open`。`$BROWSER` を最優先することで VS Code Remote Containers / Codespaces などのヘルパースクリプト経由でホスト側ブラウザに転送できる（`gh` CLI などと同じ慣習）。既定で起動、`--no-open` で抑止。失敗時は stderr に警告を出して exit 0 を維持
+   - Phase 1 追加: `isHostBrowserUnreachableViaFile`（pure helper）で `REMOTE_CONTAINERS=true` / `CODESPACES=true` / `$BROWSER` が `vscode-server/.../helpers/browser.sh` を指すケースを検知し、true の場合のみ `serveOnceAndAutoStop` で `127.0.0.1` のランダムポートに軽量 HTTP サーバーを立てて `http://localhost:<port>/...` を `$BROWSER` に渡す。停止条件は二段構え（初回リクエスト後 10 秒 / 未着なら 60 秒で諦め）、レスポンスは `Connection: close` で keep-alive を無効化して `server.close()` のハングを防ぐ。配信は固定 HTML 1 ファイルのみ・リクエストパス無視でパストラバーサル不能
+   - Phase 2: 一時 HTML ディレクトリと組み合わせて `npx` 起動に統合（タスク 6 と連動）
 8. [x] CLI 向けの Node ESM ビルドを `package.json` の scripts に追加し、出力を `dist/` に配置する（`vite.embed.config.ts` + `npm run build:embed`）
 9. [ ] `package.json` の `bin` / `engines` を追加し、`files` の整合を確認する（Phase 2 で着手）
 10. [ ] README に CLI 利用方法を追記する（Phase 2 で着手）

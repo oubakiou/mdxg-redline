@@ -31,6 +31,21 @@ Obtain `review.html` via either:
 
 Open `review.html` in your browser, load markdown via `Open file`, select text → `＋ Comment` to leave a comment, then `Comments ▾ → Copy as JSON` to hand it back.
 
+### Generate and open a review HTML with the embed CLI
+
+For one-off reviews of a single local markdown file, the bundled CLI builds a review HTML with the markdown already embedded and opens it in your default browser.
+
+```bash
+node dist/embed.mjs <input.md> [output-dir]
+```
+
+- The output filename is auto-derived as `<input-md-basename>-<docHash>-review.html` (`output-dir` defaults to the input's directory)
+- After generation, the default browser is launched via `$BROWSER` → `open` / `xdg-open` / `cmd.exe /c start`, in that order
+- When VS Code Remote Containers / Codespaces is detected, the CLI instead starts a tiny HTTP server on `127.0.0.1` at a random port and hands the host browser an `http://localhost:<port>/...` URL (since `file://` paths in the container are invisible to the host)
+- Pass `--no-open` to suppress browser launch. The output path is always printed to stdout so CI scripts and agents can capture it
+
+See [docs/DESIGN.md §3 input 2](docs/DESIGN.md#3-ユーザーフロー) and [§8 Workspace protocol](docs/DESIGN.md#8-ワークスペースプロトコル) for escape handling and the file-naming protocol.
+
 ### Workspace watching (recommended, Chromium-based browsers only)
 
 For workflows where an agent and a reviewer iterate multiple times on the same machine.
@@ -88,10 +103,11 @@ The build tool is [Vite+ (vp)](https://viteplus.dev/), installed via npm (`vite-
 
 ```bash
 npm ci
-npm run build       # = vp build       generates dist/review.html
-npm run build:watch # = vp build --watch rebuilds on file changes
-npm run dev         # = vp dev          dev server with HMR
-npm test            # = vp test         runs in-source tests
+npm run build       # Generates both dist/review.html (distribution HTML) and dist/embed.mjs (embed CLI)
+npm run build:embed # = vp build --config vite.embed.config.ts  rebuilds the embed CLI only
+npm run build:watch # = vp build --watch  rebuilds review.html on file changes
+npm run dev         # = vp dev           dev server with HMR
+npm test            # = vp test          runs in-source tests
 ```
 
 `npm ci` will install `vp` locally from `vite-plus`.

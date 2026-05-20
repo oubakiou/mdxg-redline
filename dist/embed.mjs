@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import { basename, dirname, resolve } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { createServer } from "node:http";
+import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
 //#region src/embed-core.ts
@@ -55,11 +58,62 @@ var rewriteReviewHtml = (reviewHtml, markdown, docName) => {
 };
 //#endregion
 //#region src/embed.ts
-var USAGE = "Usage: embed <input.md> [output-dir]";
+var USAGE = "Usage: embed [--no-open] <input.md> [output-dir]";
+var NO_OPEN_FLAG = "--no-open";
+var SERVE_AUTOSTOP_MS = 1e4;
+var SERVE_GIVEUP_MS = 6e4;
+var SERVE_HOST = "127.0.0.1";
+var isHostBrowserUnreachableViaFile = (env) => {
+	if (env.REMOTE_CONTAINERS === "true") return true;
+	if (env.CODESPACES === "true") return true;
+	const browser = env.BROWSER ?? "";
+	return browser.includes("vscode-server") && browser.includes("helpers/browser.sh");
+};
 var errorMessage = (error) => {
 	if (error instanceof Error) return error.message;
 	return String(error);
 };
+var parseArgs = (argv) => {
+	const flags = argv.filter((arg) => arg.startsWith("--"));
+	const positional = argv.filter((arg) => !arg.startsWith("--"));
+	if (flags.some((flag) => flag !== NO_OPEN_FLAG)) return null;
+	if (positional.length < 1 || positional.length > 2) return null;
+	return {
+		inputPath: positional[0],
+		open: !flags.includes(NO_OPEN_FLAG),
+		outputDir: positional[1]
+	};
+};
+var buildOpenCommand = (platform, path, env = process.env) => {
+	if (env.BROWSER) return {
+		args: [path],
+		command: env.BROWSER
+	};
+	if (platform === "darwin") return {
+		args: [path],
+		command: "open"
+	};
+	if (platform === "win32") return {
+		args: [
+			"/c",
+			"start",
+			"\"\"",
+			path
+		],
+		command: "cmd.exe"
+	};
+	return {
+		args: [path],
+		command: "xdg-open"
+	};
+};
+var openInBrowser = async (path) => new Promise((done) => {
+	const { args, command } = buildOpenCommand(process.platform, path, process.env);
+	execFile(command, args, (error) => {
+		if (error) process.stderr.write(`embed: ブラウザを起動できませんでした (${command}: ${error.message})。上記のパスを手動で開いてください。\n`);
+		done();
+	});
+});
 var readReviewHtml = async (path) => {
 	try {
 		return await readFile(path, "utf8");
@@ -80,23 +134,67 @@ var prepareEmbed = async (inputPath, outputDir) => {
 		reviewHtml
 	};
 };
-var runEmbed = async (inputPath, outputDir) => {
-	const ctx = await prepareEmbed(inputPath, outputDir);
+var serveOnceAndAutoStop = async (filePath) => new Promise((resolveFn, rejectFn) => {
+	const server = createServer((_req, res) => {
+		res.writeHead(200, {
+			Connection: "close",
+			"Content-Type": "text/html; charset=utf-8"
+		});
+		createReadStream(filePath).pipe(res);
+	});
+	const done = new Promise((doneResolve) => {
+		const giveup = setTimeout(() => {
+			server.close(() => doneResolve());
+		}, SERVE_GIVEUP_MS);
+		server.once("request", () => {
+			clearTimeout(giveup);
+			setTimeout(() => {
+				server.close(() => doneResolve());
+			}, SERVE_AUTOSTOP_MS);
+		});
+	});
+	server.on("error", (error) => rejectFn(error));
+	server.listen(0, SERVE_HOST, () => {
+		const addr = server.address();
+		if (addr === null || typeof addr === "string") {
+			server.close();
+			rejectFn(/* @__PURE__ */ new Error("HTTP サーバーのアドレス取得に失敗しました"));
+			return;
+		}
+		resolveFn({
+			done,
+			url: `http://localhost:${addr.port}/${encodeURIComponent(basename(filePath))}`
+		});
+	});
+});
+var openOutput = async (outputPath) => {
+	if (!isHostBrowserUnreachableViaFile(process.env)) {
+		await openInBrowser(outputPath);
+		return;
+	}
+	const handle = await serveOnceAndAutoStop(outputPath);
+	process.stderr.write(`embed: VS Code Remote 環境を検知。HTTP サーバーを ${handle.url} で起動しました。初回アクセス後 ${SERVE_AUTOSTOP_MS / 1e3} 秒、リクエストが無ければ ${SERVE_GIVEUP_MS / 1e3} 秒で自動停止します。\n`);
+	await openInBrowser(handle.url);
+	await handle.done;
+};
+var runEmbed = async (args) => {
+	const ctx = await prepareEmbed(args.inputPath, args.outputDir);
 	const result = rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName);
 	await writeFile(ctx.outputPath, result, "utf8");
 	process.stdout.write(`${ctx.outputPath}\n`);
+	if (args.open) await openOutput(ctx.outputPath);
 };
 var main = async () => {
-	const [inputPath, outputDir] = process.argv.slice(2);
-	if (!inputPath) {
+	const args = parseArgs(process.argv.slice(2));
+	if (!args) {
 		process.stderr.write(`${USAGE}\n`);
 		process.exit(1);
 	}
-	await runEmbed(inputPath, outputDir);
+	await runEmbed(args);
 };
 main().catch((error) => {
 	process.stderr.write(`embed: ${errorMessage(error)}\n`);
 	process.exit(1);
 });
 //#endregion
-export {};
+export { buildOpenCommand, isHostBrowserUnreachableViaFile, parseArgs };
