@@ -56,6 +56,8 @@ interface ExportPayload {
 interface WorkspaceRuntime {
   buildExportPayload: () => ExportPayload
   commentCountLabel: () => string
+  onFeedbackWritten: () => void
+  onOutputFolderChanged: () => void
   qs: (selector: string) => HTMLElement
   state: {
     comments: Comment[]
@@ -227,11 +229,12 @@ const writeFeedbackToHandle = async (
   await writable.close()
 }
 
-/** Write 成功時の toast と status bar を一括更新する */
+/** Write 成功時の toast と status bar を一括更新し、dirty 状態をクリアする */
 const finishWrite = (folderName: string, filename: string): void => {
   const app = runtime()
   app.toast(`Wrote ${folderName}/${filename} · ${app.commentCountLabel()}`)
   app.qs('#status').textContent = `${app.state.docName} · ${folderName}/${filename} written`
+  app.onFeedbackWritten()
 }
 
 /**
@@ -382,6 +385,7 @@ export const changeOutputFolder = async (): Promise<void> => {
   wsState.handle = picked
   await persistWorkspaceHandle(picked)
   refreshSendButtonTooltip()
+  runtime().onOutputFolderChanged()
   runtime().toast(`Output folder set to “${picked.name}”`)
 }
 
@@ -427,6 +431,12 @@ const workspaceRuntimeForTest = (
     exportedAt: '2026-05-17T00:00:00.000Z',
   }),
   commentCountLabel: (): string => `${String(state.comments.length)} comments`,
+  onFeedbackWritten: (): void => {
+    // test no-op
+  },
+  onOutputFolderChanged: (): void => {
+    // test no-op
+  },
   qs: (selector: string): HTMLElement => {
     throw new Error(`Unexpected selector in workspace test: ${selector}`)
   },

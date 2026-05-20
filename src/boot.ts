@@ -15,6 +15,7 @@ interface Comment {
 
 interface BootRuntime {
   loadFromMarkdown: (name: string, text: string) => Promise<void>
+  markFeedbackWritten: () => void
   reapplyAllMarks: () => void
   renderSidebar: () => void
   state: {
@@ -35,6 +36,7 @@ export const elementText = (el: { textContent?: string | null } | null): string 
 /** 取り込んだコメント配列を state に流し込み、再描画まで実施する */
 const applyEmbeddedComments = (runtime: BootRuntime, comments: Comment[]): void => {
   runtime.state.comments = comments
+  runtime.markFeedbackWritten()
   runtime.reapplyAllMarks()
   runtime.renderSidebar()
 }

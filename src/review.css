@@ -168,6 +168,22 @@ body > main.layout > aside.sidebar {
   border-color: rgba(31, 35, 40, 0.15);
   color: var(--ink);
 }
+.btn:disabled,
+.btn[disabled] {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.btn:disabled:hover,
+.btn[disabled]:hover {
+  background: var(--paper-edge);
+  border-color: var(--rule);
+  color: var(--ink);
+}
+.btn-primary:disabled:hover,
+.btn-primary[disabled]:hover {
+  background: var(--success);
+  color: #ffffff;
+}
 .btn-primary {
   background: var(--success);
   color: #ffffff;
@@ -195,6 +211,7 @@ body > main.layout > aside.sidebar {
    主ボタン + caret ▾ を隣接させ、内側 border を潰して 1 つの UI として見せる。
    caret 側の border-left は半透明白で「分割」を示しつつ btn-primary の塗りに馴染ませる。 */
 .split-btn {
+  position: relative;
   display: inline-flex;
   align-items: stretch;
 }
@@ -205,10 +222,10 @@ body > main.layout > aside.sidebar {
 .split-btn-caret {
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
-  border-left: 1px solid rgba(255, 255, 255, 0.25);
+  border-left: 1px solid rgba(255, 255, 255, 0.5);
   padding-left: 8px;
   padding-right: 8px;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 20px;
 }
 
@@ -260,6 +277,18 @@ body > main.layout > aside.sidebar {
   background: var(--paper-edge);
   outline: none;
 }
+.menu-item:disabled,
+.menu-item[disabled] {
+  cursor: not-allowed;
+  color: var(--ink-faint);
+}
+.menu-item:disabled:hover,
+.menu-item:disabled:focus-visible,
+.menu-item[disabled]:hover,
+.menu-item[disabled]:focus-visible {
+  background: transparent;
+  color: var(--ink-faint);
+}
 .menu-item-danger {
   color: var(--danger);
 }
@@ -289,7 +318,7 @@ body > main.layout > aside.sidebar {
 
 mark.cmt {
   background: var(--highlight-soft);
-  border-bottom: 2px solid var(--danger);
+  border-bottom: 3px solid var(--danger);
   padding: 0 1px;
   cursor: pointer;
   transition: background 0.15s ease;

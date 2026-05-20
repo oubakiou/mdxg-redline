@@ -3,6 +3,7 @@ import { escapeHTML } from './markdown'
 import { smoothScrollToCenter } from './scroll'
 
 export interface SidebarRuntime {
+  isFeedbackDirty: () => boolean
   qs: (selector: string) => HTMLElement
   reapplyAllMarks: () => void
   state: {
@@ -130,11 +131,26 @@ const showEmptySidebar = (list: HTMLElement): void => {
     '<div class="label" style="color: var(--ink-faint);">Select text in the file to add a review comment.</div>'
 }
 
+const COMMENT_MENU_BUTTON_IDS = ['#btn-copy', '#btn-export', '#btn-clear'] as const
+
+const updateOutputButtonsDisabled = (
+  qs: (selector: string) => HTMLElement,
+  empty: boolean,
+  dirty: boolean
+): void => {
+  qs('#btn-send').toggleAttribute('disabled', empty || !dirty)
+  for (const id of COMMENT_MENU_BUTTON_IDS) {
+    qs(id).toggleAttribute('disabled', empty)
+  }
+}
+
 export const createSidebar = (runtime: SidebarRuntime): SidebarController => {
   const render = (): void => {
     const list = runtime.qs('#cmt-list')
+    const empty = runtime.state.comments.length === 0
     runtime.qs('#cmt-count').textContent = String(runtime.state.comments.length)
-    if (runtime.state.comments.length === 0) {
+    updateOutputButtonsDisabled(runtime.qs, empty, runtime.isFeedbackDirty())
+    if (empty) {
       showEmptySidebar(list)
       return
     }

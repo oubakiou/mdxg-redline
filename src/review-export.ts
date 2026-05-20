@@ -47,6 +47,14 @@ export const buildReviewExportPayload = (state: ReviewExportState): ExportPayloa
   exportedAt: new Date().toISOString(),
 })
 
+/**
+ * Write feedback.json の dirty 判定用署名。
+ * exportedAt のように毎回変動する値は含めず、docHash + comments のスナップショットを JSON 化する。
+ * lastWrittenSignature と等価なら「同じ内容を再度書き出しても無意味」と判定できる。
+ */
+export const feedbackSignature = (state: { comments: Comment[]; docHash: string | null }): string =>
+  JSON.stringify({ comments: state.comments, docHash: state.docHash })
+
 /** ダウンロード時のファイル名ベース。docName から拡張子を除き、未設定なら 'review' を返す */
 export const exportBaseName = (docName: string | null): string => {
   if (docName) {

@@ -3,7 +3,11 @@
 import { type BlockAnchor, buildBlockAnchors, renderMarkdown } from './markdown'
 import type { Comment, ExportPayload, PendingSelection } from './types'
 import { buildDomRange, getSelectionInfo } from './selection'
-import { buildReviewExportPayload, commentCountLabel as formatCommentCount } from './review-export'
+import {
+  buildReviewExportPayload,
+  feedbackSignature,
+  commentCountLabel as formatCommentCount,
+} from './review-export'
 import { changeOutputFolder, configureWorkspace, writeFeedback } from './workspace'
 import { boot } from './boot'
 import { createSidebar } from './sidebar'
@@ -31,6 +35,7 @@ export const state: {
   comments: Comment[]
   docHash: string | null
   docName: string | null
+  lastWrittenSignature: string | null
   markdown: string
 } = {
   blockAnchors: new Map(),
@@ -38,6 +43,7 @@ export const state: {
   comments: [],
   docHash: null,
   docName: null,
+  lastWrittenSignature: null,
   markdown: '',
 }
 
@@ -323,7 +329,28 @@ const closeSendMenu = (): void => {
 
 // --- Sidebar ----------------------------------------------------------------
 
+/**
+ * Write feedback.json の dirty 判定。state.lastWrittenSignature と現在の payload 署名を比較し、
+ * 一度も書き出していない (null) または内容が変わっていれば dirty とする。
+ */
+export const isFeedbackDirty = (): boolean => {
+  if (state.lastWrittenSignature === null) {
+    return true
+  }
+  return state.lastWrittenSignature !== feedbackSignature(state)
+}
+
+/** writeFeedback / changeOutputFolder / boot で署名を入れ替える際の唯一の入り口 */
+export const markFeedbackWritten = (): void => {
+  state.lastWrittenSignature = feedbackSignature(state)
+}
+
+export const markFeedbackUnsaved = (): void => {
+  state.lastWrittenSignature = null
+}
+
 const sidebar = createSidebar({
+  isFeedbackDirty,
   qs,
   reapplyAllMarks,
   state,
@@ -341,6 +368,7 @@ export const loadFromMarkdown = async (name: string, text: string): Promise<void
   state.markdown = text
   state.docHash = await hashStr(text)
   state.comments = []
+  markFeedbackUnsaved()
   renderDoc()
   renderSidebar()
   qs('#status').textContent = `${name} (${state.docHash}) · loaded`
@@ -490,6 +518,14 @@ if (!import.meta.vitest) {
 configureWorkspace({
   buildExportPayload,
   commentCountLabel,
+  onFeedbackWritten: (): void => {
+    markFeedbackWritten()
+    renderSidebar()
+  },
+  onOutputFolderChanged: (): void => {
+    markFeedbackUnsaved()
+    renderSidebar()
+  },
   qs,
   state,
   toast,
@@ -531,6 +567,7 @@ if (!import.meta.vitest) {
 if (!import.meta.vitest) {
   boot({
     loadFromMarkdown,
+    markFeedbackWritten,
     reapplyAllMarks,
     renderSidebar,
     state,
