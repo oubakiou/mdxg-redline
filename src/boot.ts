@@ -57,11 +57,31 @@ const restoreEmbeddedFeedback = (runtime: BootRuntime, feedbackText: string): vo
   }
 }
 
+/**
+ * `<script id="embedded-md">` の textContent から元の markdown を復元する。
+ * CLI 側が `encodeEmbeddedMarkdown` で JSON 文字列として書き込んでいる前提で、
+ * `JSON.parse` で生 markdown に戻す。docHash が CLI 側と一致するよう trim はしない。
+ * 未挿入のプレースホルダ（空または空白のみ）は null。
+ */
+export const prepareEmbeddedMarkdown = (raw: string): string | null => {
+  if (raw.trim().length === 0) {
+    return null
+  }
+  const parsed: unknown = JSON.parse(raw)
+  if (typeof parsed !== 'string') {
+    throw new TypeError('embedded-md must be a JSON string')
+  }
+  return parsed
+}
+
 /** `<script id="embedded-md">` のような埋め込み MD を起動時に読み込む。存在しなければ false */
 const loadEmbeddedMarkdown = async (runtime: BootRuntime): Promise<boolean> => {
   const embedded = document.getElementById('embedded-md')
-  const embeddedText = elementText(embedded)
-  if (!embeddedText || !(embedded instanceof HTMLElement)) {
+  if (!(embedded instanceof HTMLElement)) {
+    return false
+  }
+  const embeddedText = prepareEmbeddedMarkdown(embedded.textContent ?? '')
+  if (embeddedText === null) {
     return false
   }
   const name = embedded.dataset.name || 'document.md'
@@ -96,6 +116,29 @@ if (import.meta.vitest) {
 
     it('textContent が空ならフォールバックで空文字', () => {
       expect(elementText({ textContent: '' })).toBe('')
+    })
+  })
+
+  describe('prepareEmbeddedMarkdown', () => {
+    it('JSON 文字列を decode して元 markdown を返す', () => {
+      expect(prepareEmbeddedMarkdown(JSON.stringify('# title\n'))).toBe('# title\n')
+    })
+
+    it('CLI の < 置換を含む形でも JSON.parse 経由で </script> リテラルが復元される', () => {
+      const encoded = JSON.stringify('a </script> b').replace(/</g, String.raw`<`)
+      expect(prepareEmbeddedMarkdown(encoded)).toBe('a </script> b')
+    })
+
+    it('空白だけの textContent は null を返す', () => {
+      expect(prepareEmbeddedMarkdown('   \n\n  ')).toBeNull()
+    })
+
+    it('空文字は null を返す', () => {
+      expect(prepareEmbeddedMarkdown('')).toBeNull()
+    })
+
+    it('JSON が文字列以外なら TypeError', () => {
+      expect(() => prepareEmbeddedMarkdown('123')).toThrow(TypeError)
     })
   })
 }

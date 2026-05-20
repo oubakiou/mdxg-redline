@@ -27,11 +27,12 @@ var stripMarkdownExt = (filename) => filename.replace(/\.(?:markdown|md)$/i, "")
 /** ファイル命名規約 §8 に従って配布用 HTML のファイル名を組み立てる */
 var deriveReviewHtmlName = (mdFileName, docHash) => `${mdFileName}-${docHash}-review.html`;
 /**
-* markdown 本文中の `<\/script>` を `<\/script>` に置換する。
-* script は raw text element のため、これだけで script タグの早期終了を回避できる。
-* 大文字小文字を区別せずに `<\/SCRIPT...` などもまとめて捕まえつつ、原文の case は保持する。
+* markdown 本文を `<script>` タグに埋め込み可能な JSON 文字列にエンコードする。
+* `JSON.stringify` で JSON 文字列化したうえで、`<` を JSON の Unicode escape `<` に置換する。
+* これにより HTML パーサが `<\/script>` を閉じタグとして認識する可能性をゼロにしつつ、
+* 復元側は `JSON.parse` のみで Unicode escape も含めて元の markdown 1 文字に戻せる。
 */
-var escapeScriptContent = (markdown) => markdown.replace(/<(\/script)/gi, String.raw`<\$1`);
+var encodeEmbeddedMarkdown = (markdown) => JSON.stringify(markdown).replace(/</g, String.raw`\u003C`);
 /**
 * data-name 属性に書き込む値を HTML 属性文脈用にエスケープする。
 * 属性はダブルクォートで囲む前提に固定しているため、ダブルクォートと特殊文字のみ対象。
@@ -53,7 +54,7 @@ var rewriteReviewHtml = (reviewHtml, markdown, docName) => {
 	const match = EMBEDDED_MD_RE.exec(reviewHtml);
 	if (!match) throw new Error("review.html に id=\"embedded-md\" の <script> タグが見つかりません");
 	const [fullMatch, openingTag, , closingTag] = match;
-	const replaced = `${replaceDataName(openingTag, escapeHtmlAttribute(docName))}${escapeScriptContent(markdown)}${closingTag}`;
+	const replaced = `${replaceDataName(openingTag, escapeHtmlAttribute(docName))}${encodeEmbeddedMarkdown(markdown)}${closingTag}`;
 	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
 };
 //#endregion

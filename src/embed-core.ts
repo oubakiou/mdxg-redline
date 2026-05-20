@@ -59,12 +59,13 @@ export const parseReviewMdFilename = (filename: string): ReviewMdFilenameParts |
 }
 
 /**
- * markdown 本文中の `</script>` を `<\/script>` に置換する。
- * script は raw text element のため、これだけで script タグの早期終了を回避できる。
- * 大文字小文字を区別せずに `</SCRIPT...` などもまとめて捕まえつつ、原文の case は保持する。
+ * markdown 本文を `<script>` タグに埋め込み可能な JSON 文字列にエンコードする。
+ * `JSON.stringify` で JSON 文字列化したうえで、`<` を JSON の Unicode escape `<` に置換する。
+ * これにより HTML パーサが `</script>` を閉じタグとして認識する可能性をゼロにしつつ、
+ * 復元側は `JSON.parse` のみで Unicode escape も含めて元の markdown 1 文字に戻せる。
  */
-export const escapeScriptContent = (markdown: string): string =>
-  markdown.replace(/<(\/script)/gi, String.raw`<\$1`)
+export const encodeEmbeddedMarkdown = (markdown: string): string =>
+  JSON.stringify(markdown).replace(/</g, String.raw`\u003C`)
 
 /**
  * data-name 属性に書き込む値を HTML 属性文脈用にエスケープする。
@@ -114,7 +115,7 @@ export const rewriteReviewHtml = (
 
   const [fullMatch, openingTag, , closingTag] = match
   const newOpeningTag = replaceDataName(openingTag, escapeHtmlAttribute(docName))
-  const replaced = `${newOpeningTag}${escapeScriptContent(markdown)}${closingTag}`
+  const replaced = `${newOpeningTag}${encodeEmbeddedMarkdown(markdown)}${closingTag}`
   return (
     reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length)
   )
@@ -123,24 +124,25 @@ export const rewriteReviewHtml = (
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
 
-  describe('escapeScriptContent', () => {
-    it('小文字の </script> をエスケープする', () => {
-      expect(escapeScriptContent('a </script> b')).toBe(String.raw`a <\/script> b`)
+  describe('encodeEmbeddedMarkdown', () => {
+    it('JSON.parse で元 markdown に戻せる (round-trip)', () => {
+      const md = '# hello\nworld\n'
+      expect(JSON.parse(encodeEmbeddedMarkdown(md))).toBe(md)
     })
 
-    it('大文字混在 </Script> もエスケープする', () => {
-      expect(escapeScriptContent('x </Script>y</SCRIPT z')).toBe(
-        String.raw`x <\/Script>y<\/SCRIPT z`
-      )
+    it('encoded には raw < が一切現れない（HTML パーサが閉じタグを検出しない）', () => {
+      const encoded = encodeEmbeddedMarkdown('before </script> after <div>')
+      expect(encoded.includes('<')).toBe(false)
     })
 
-    it('他の文字 (<, &, " など) はそのまま残す', () => {
-      expect(escapeScriptContent('a < b & c " d')).toBe('a < b & c " d')
+    it('</script> を含む markdown も JSON.parse で完全復元される', () => {
+      const md = 'before </script> after </Script> and <div>'
+      expect(JSON.parse(encodeEmbeddedMarkdown(md))).toBe(md)
     })
 
-    it('</script> が無い markdown はそのまま返す', () => {
-      const md = '# hello\n\nworld'
-      expect(escapeScriptContent(md)).toBe(md)
+    it('バックスラッシュ・末尾改行・絵文字も保持される (docHash 一致のため)', () => {
+      const md = `${String.raw`\n \\ 仕様書 🚀`}\n`
+      expect(JSON.parse(encodeEmbeddedMarkdown(md))).toBe(md)
     })
   })
 
@@ -165,13 +167,19 @@ if (import.meta.vitest) {
     it('既存テンプレートに markdown と data-name を埋め込める', () => {
       const out = rewriteReviewHtml(baseHtml, '# hello', 'spec.md')
       expect(out).toContain('data-name="spec.md"')
-      expect(out).toContain('># hello</script>')
+      expect(out).toContain('>"# hello"</script>')
       expect(out).not.toContain('data-name="document.md"')
     })
 
-    it('markdown 中の </script> がエスケープされる', () => {
-      const out = rewriteReviewHtml(baseHtml, 'before </script> after', 'a.md')
-      expect(out).toContain(String.raw`before <\/script> after</script>`)
+    it('markdown 中の </script> は閉じタグ生成を防ぐ形で埋め込まれ、JSON.parse で復元できる', () => {
+      const md = 'before </script> after'
+      const out = rewriteReviewHtml(baseHtml, md, 'a.md')
+      const opening = out.indexOf('<script id="embedded-md"')
+      const tagOpenEnd = out.indexOf('>', opening) + 1
+      const closing = out.indexOf('</script>', tagOpenEnd)
+      const embeddedBody = out.slice(tagOpenEnd, closing)
+      expect(embeddedBody.includes('<')).toBe(false)
+      expect(JSON.parse(embeddedBody)).toBe(md)
     })
 
     it('data-name に含まれる " や & がエスケープされる', () => {
@@ -184,27 +192,27 @@ if (import.meta.vitest) {
       const out = rewriteReviewHtml(html, 'body', 'new.md')
       expect(out).toContain('data-name="new.md"')
       expect(out).toContain('id="embedded-md"')
-      expect(out).toContain('>body</script>')
+      expect(out).toContain('>"body"</script>')
     })
 
     it('data-name 属性が無い場合は補って挿入する', () => {
       const html = '<script id="embedded-md" type="text/markdown"></script>'
       const out = rewriteReviewHtml(html, 'body', 'new.md')
       expect(out).toContain('data-name="new.md"')
-      expect(out).toContain('>body</script>')
+      expect(out).toContain('>"body"</script>')
     })
 
     it('既存コンテンツがあっても置き換える', () => {
       const html =
         '<script id="embedded-md" type="text/markdown" data-name="x.md">old body</script>'
       const out = rewriteReviewHtml(html, 'new body', 'y.md')
-      expect(out).toContain('>new body</script>')
+      expect(out).toContain('>"new body"</script>')
       expect(out).not.toContain('old body')
     })
 
     it('markdown に $ を含んでも replace の特殊置換扱いを受けない', () => {
       const out = rewriteReviewHtml(baseHtml, '$1 $& $`', 'a.md')
-      expect(out).toContain('>$1 $& $`</script>')
+      expect(out).toContain('>"$1 $& $`"</script>')
     })
 
     it('元文字列を破壊しない', () => {
@@ -228,7 +236,7 @@ if (import.meta.vitest) {
       const out = rewriteReviewHtml(html, '# body', 'spec.md')
       expect(out).toContain('<!-- the <script id="embedded-md"> block -->')
       expect(out).toContain('data-name="spec.md"')
-      expect(out).toContain('># body</script>')
+      expect(out).toContain('>"# body"</script>')
       expect(out).not.toContain('data-name="document.md"')
     })
 
