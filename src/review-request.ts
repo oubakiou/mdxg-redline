@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// embed-core の純粋ロジックに、Node 側の I/O (引数パース / ファイル読み書き / ブラウザ起動)
-// だけを付ける薄い CLI。ビルド後は dist/embed.mjs として配布される。
+// review-request CLI: レビュー依頼用 HTML を生成して標準ブラウザで開くツール。
+// embed-core の純粋な埋め込みロジックに、Node 側の I/O (引数パース / ファイル読み書き /
+// ブラウザ起動) だけを付ける薄い CLI。ビルド後は dist/review-request.mjs として配布される。
 // dist/review.html を同ディレクトリから読み込む。
 // 出力ファイル名は docs/DESIGN.md §8 のファイル命名規約に従い、入力 MD の basename と
 // 本文 SHA-256 から自動決定する。利用者は output ファイル名ではなくディレクトリだけ指定できる。
@@ -23,7 +24,7 @@ import { execFile } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import process from 'node:process'
 
-const USAGE = 'Usage: embed [--no-open] <input.md> [output-dir]'
+const USAGE = 'Usage: review-request [--no-open] <input.md> [output-dir]'
 const NO_OPEN_FLAG = '--no-open'
 const SERVE_AUTOSTOP_MS = 10_000
 const SERVE_GIVEUP_MS = 60_000
@@ -117,7 +118,7 @@ const openInBrowser = async (path: string): Promise<void> =>
     execFile(command, args, (error): void => {
       if (error) {
         process.stderr.write(
-          `embed: ブラウザを起動できませんでした (${command}: ${error.message})。上記のパスを手動で開いてください。\n`
+          `review-request: ブラウザを起動できませんでした (${command}: ${error.message})。上記のパスを手動で開いてください。\n`
         )
       }
       done()
@@ -225,7 +226,7 @@ const openOutput = async (outputPath: string): Promise<void> => {
   }
   const handle = await serveOnceAndAutoStop(outputPath)
   process.stderr.write(
-    `embed: VS Code Remote 環境を検知。HTTP サーバーを ${handle.url} で起動しました。初回アクセス後 ${SERVE_AUTOSTOP_MS / 1000} 秒、リクエストが無ければ ${SERVE_GIVEUP_MS / 1000} 秒で自動停止します。\n`
+    `review-request: VS Code Remote 環境を検知。HTTP サーバーを ${handle.url} で起動しました。初回アクセス後 ${SERVE_AUTOSTOP_MS / 1000} 秒、リクエストが無ければ ${SERVE_GIVEUP_MS / 1000} 秒で自動停止します。\n`
   )
   await openInBrowser(handle.url)
   await handle.done
@@ -257,7 +258,7 @@ const main = async (): Promise<void> => {
 // vite.embed.config.ts の define で undefined にされ、main() が通常通り起動する。
 if (!import.meta.vitest) {
   main().catch((error: unknown): void => {
-    process.stderr.write(`embed: ${errorMessage(error)}\n`)
+    process.stderr.write(`review-request: ${errorMessage(error)}\n`)
     process.exit(1)
   })
 }

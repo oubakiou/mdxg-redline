@@ -10,9 +10,9 @@
 Phase 1 の実体：
 
 - `src/embed-core.ts` … pure ロジック（Node / browser 両対応）。in-source test 16 件
-- `src/embed.ts` … Node CLI ラッパー（shebang 付き、`[--no-open] <input.md> [output-dir]` 引数、§8 ファイル命名規約に従って出力ファイル名を自動決定、ENOENT を親切なメッセージに差し替え、生成後の既定ブラウザ起動、VS Code Remote 検知時のみ軽量 HTTP サーバー fallback）。`parseArgs` / `buildOpenCommand` / `isHostBrowserUnreachableViaFile` を in-source test 対象として export
-- `vite.embed.config.ts` … SSR mode で `dist/embed.mjs` を生成するビルド設定
-- `npm run build:embed` … embed CLI のみの差分ビルド、`npm run build` は review.html と一緒に再生成
+- `src/review-request.ts` … Node CLI ラッパー（shebang 付き、`[--no-open] <input.md> [output-dir]` 引数、§8 ファイル命名規約に従って出力ファイル名を自動決定、ENOENT を親切なメッセージに差し替え、生成後の既定ブラウザ起動、VS Code Remote 検知時のみ軽量 HTTP サーバー fallback）。`parseArgs` / `buildOpenCommand` / `isHostBrowserUnreachableViaFile` を in-source test 対象として export
+- `vite.review-request.config.ts` … SSR mode で `dist/review-request.mjs` を生成するビルド設定
+- `npm run build:review-request` … review-request CLI のみの差分ビルド、`npm run build` は review.html と一緒に再生成
 
 実装上の意思決定で本文と差分があるものは §5.1.1 / §10.1 の注記を参照。
 
@@ -122,7 +122,7 @@ npx mdxg-redline <markdown-file> --print-temp-path
 - 拡張子チェックは行わない（任意拡張子を許容する。読み込み可否のみで判定）
 - 存在しないパス、ディレクトリ指定、読み取り不可時は明確なエラーを返す
 - 既定ブラウザ起動に失敗した場合は、生成した一時 HTML の絶対パスを stdout に表示し、ユーザーが手動で `file://` で開ける状態にする。CLI は exit 0 を維持し、stderr に警告を出す
-- `--no-open`: ブラウザ起動を抑止する。CI / エージェント自動実行・ヘッドレス環境で意図せずブラウザを起こさないための opt-out（Phase 1 で `dist/embed.mjs` に実装済）
+- `--no-open`: ブラウザ起動を抑止する。CI / エージェント自動実行・ヘッドレス環境で意図せずブラウザを起こさないための opt-out（Phase 1 で `dist/review-request.mjs` に実装済）
 - `--print-temp-path`: 一時 HTML 生成モード（Phase 2）でブラウザ起動をスキップし、生成した一時 HTML のパスを stdout に出して終了する（スクリプト連携・手動掃除用）
 
 #### document 名の規約
@@ -160,14 +160,14 @@ npx mdxg-redline <markdown-file> --print-temp-path
 - CLI 用に Node 向け ESM ビルドのターゲットを追加する必要がある（tsc 直叩き、もしくは Vite の lib モード）
 - どちらにするかは実装段階で決める（依存追加の少ない tsc 直叩きが候補）
 
-**実装注記（Phase 1）**: Vite の SSR モードを別 config (`vite.embed.config.ts`) で運用する方式を採用した。Rolldown が `src/embed.ts` 冒頭の shebang を自動で保持し、`node:*` モジュールを external にするだけで Node 20+ で実行可能な ESM が出力される。`lib` モードは top-level side-effect しか持たない CLI エントリと相性が悪く、tree-shake で本体が空になる挙動が出たため SSR モードを選択した。
+**実装注記（Phase 1）**: Vite の SSR モードを別 config (`vite.review-request.config.ts`) で運用する方式を採用した。Rolldown が `src/review-request.ts` 冒頭の shebang を自動で保持し、`node:*` モジュールを external にするだけで Node 20+ で実行可能な ESM が出力される。`lib` モードは top-level side-effect しか持たない CLI エントリと相性が悪く、tree-shake で本体が空になる挙動が出たため SSR モードを選択した。
 
 ## 8. 実装ステップ案
 
 凡例: [x] 実装済 / [部分] Phase 1 で一部実装、Phase 2 で拡張 / [ ] 未着手
 
 1. [部分] CLI エントリポイントを実装する（引数パース、`-`/stdin 対応、`--document-name` / `--print-temp-path` フラグ、エラー処理）
-   - Phase 1: `[--no-open] <input.md> [output-dir]` の引数。出力ファイル名は §8 ファイル命名規約（`<mdFileName>-<docHash>-review.html`）で自動決定。`src/embed.ts` として実装（当初の `src/cli.ts` という命名から変更）。フラグと位置引数の混在順序を許容する `parseArgs` を in-source test 対象として export
+   - Phase 1: `[--no-open] <input.md> [output-dir]` の引数。出力ファイル名は §8 ファイル命名規約（`<mdFileName>-<docHash>-review.html`）で自動決定。`src/review-request.ts` として実装（当初の `src/cli.ts` という命名から変更）。フラグと位置引数の混在順序を許容する `parseArgs` を in-source test 対象として export
    - Phase 2: stdin、`--document-name`、`--print-temp-path` を追加
 2. [部分] 指定ファイル/stdin の読み込み、ファイル存在チェック、エラー処理を実装する
    - Phase 1: ファイル読み込みと ENOENT 処理（`dist/review.html` 欠落時は `npm run build` を案内する親切なメッセージに差し替え）
@@ -178,10 +178,10 @@ npx mdxg-redline <markdown-file> --print-temp-path
 5. [x] `dist/review.html` を読み込み、`embedded-md` タグの中身と `data-name` 属性を書き換えて HTML を生成する処理を実装する（`embed-core.ts` の `rewriteReviewHtml`）
 6. [ ] `os.tmpdir()/mdxg-redline/` 配下に一時 HTML を書き出し、起動時に同ディレクトリ内の TTL 7 日超ファイルをクリーンアップする処理を実装する（Phase 2 で着手）
 7. [x] プラットフォーム判定で `execFile` + 引数配列ベースでブラウザを起動する処理を実装する（`shell: true` 禁止、起動失敗時は一時 HTML パスを stdout に表示）
-   - Phase 1: `src/embed.ts` の `buildOpenCommand`（pure helper、in-source test 対象）+ `openInBrowser`（実起動）として実装。優先順は `$BROWSER` → darwin: `open` → win32: `cmd.exe /c start` → その他: `xdg-open`。`$BROWSER` を最優先することで VS Code Remote Containers / Codespaces などのヘルパースクリプト経由でホスト側ブラウザに転送できる（`gh` CLI などと同じ慣習）。既定で起動、`--no-open` で抑止。失敗時は stderr に警告を出して exit 0 を維持
+   - Phase 1: `src/review-request.ts` の `buildOpenCommand`（pure helper、in-source test 対象）+ `openInBrowser`（実起動）として実装。優先順は `$BROWSER` → darwin: `open` → win32: `cmd.exe /c start` → その他: `xdg-open`。`$BROWSER` を最優先することで VS Code Remote Containers / Codespaces などのヘルパースクリプト経由でホスト側ブラウザに転送できる（`gh` CLI などと同じ慣習）。既定で起動、`--no-open` で抑止。失敗時は stderr に警告を出して exit 0 を維持
    - Phase 1 追加: `isHostBrowserUnreachableViaFile`（pure helper）で `REMOTE_CONTAINERS=true` / `CODESPACES=true` / `$BROWSER` が `vscode-server/.../helpers/browser.sh` を指すケースを検知し、true の場合のみ `serveOnceAndAutoStop` で `127.0.0.1` のランダムポートに軽量 HTTP サーバーを立てて `http://localhost:<port>/...` を `$BROWSER` に渡す。停止条件は二段構え（初回リクエスト後 10 秒 / 未着なら 60 秒で諦め）、レスポンスは `Connection: close` で keep-alive を無効化して `server.close()` のハングを防ぐ。配信は固定 HTML 1 ファイルのみ・リクエストパス無視でパストラバーサル不能
    - Phase 2: 一時 HTML ディレクトリと組み合わせて `npx` 起動に統合（タスク 6 と連動）
-8. [x] CLI 向けの Node ESM ビルドを `package.json` の scripts に追加し、出力を `dist/` に配置する（`vite.embed.config.ts` + `npm run build:embed`）
+8. [x] CLI 向けの Node ESM ビルドを `package.json` の scripts に追加し、出力を `dist/` に配置する（`vite.review-request.config.ts` + `npm run build:review-request`）
 9. [ ] `package.json` の `bin` / `engines` を追加し、`files` の整合を確認する（Phase 2 で着手）
 10. [ ] README に CLI 利用方法を追記する（Phase 2 で着手）
 11. [部分] 正常系・異常系の確認を行う
@@ -248,7 +248,7 @@ Phase 2 で追加予定：
 
 ### 10.2 手動 E2E
 
-Phase 1 で `node dist/embed.mjs` を直接叩いて確認済（命名規約導入前の `<input.md> <output.html>` 形式での記録）：
+Phase 1 で `node dist/review-request.mjs` を直接叩いて確認済（命名規約導入前の `<input.md> <output.html>` 形式での記録）：
 
 - [x] 短い markdown で生成できること
 - [x] 日本語・絵文字・記号を含む markdown を壊さないこと（HTML エンティティ的な文字列も含む）
@@ -279,4 +279,4 @@ Phase 2 で追加確認：
 `npx mdxg-redline <markdown-file>` の利用形態は **十分に実現可能** であり、既存実装との整合性を保ちながら進められる。
 最も自然でリスクが低いのは、**既存の `review.html` を活かしつつ、一時 HTML を生成して起動する薄い CLI を追加する方針** である。
 
-**Phase 1 で完了したのは、この CLI の中核である「embedding core（エスケープ + rewrite）+ 最小 CLI」までで、`dist/embed.mjs` として配布できる状態になっている。** CLI のインターフェースは §8 ファイル命名規約の導入に合わせて `<input.md> [output-dir]` に変更され、出力ファイル名は規約から自動決定される。`npx mdxg-redline` 化（Phase 2）は §0 の進捗ステータス参照。
+**Phase 1 で完了したのは、この CLI の中核である「embedding core（エスケープ + rewrite）+ 最小 CLI」までで、`dist/review-request.mjs` として配布できる状態になっている。** CLI のインターフェースは §8 ファイル命名規約の導入に合わせて `<input.md> [output-dir]` に変更され、出力ファイル名は規約から自動決定される。`npx mdxg-redline` 化（Phase 2）は §0 の進捗ステータス参照。

@@ -31,12 +31,12 @@
 
 `review.html` をブラウザで開き、`Open file` で markdown を読み込み、選択 → `＋ Comment` でコメント → `Comments ▾ → Copy as JSON` で書き戻し。
 
-### embed CLI でレビュー HTML を生成して開く
+### review-request CLI でレビュー依頼用 HTML を生成して開く
 
 手元の markdown 1 ファイルを単発レビューする場合、配布者向け CLI で markdown を埋め込んだ HTML を作って同時にブラウザで開けます。
 
 ```bash
-node dist/embed.mjs <input.md> [output-dir]
+node dist/review-request.mjs <input.md> [output-dir]
 ```
 
 - 出力ファイル名は `<入力 MD basename>-<docHash>-review.html` で自動決定（`output-dir` 省略時は入力と同じディレクトリ）
@@ -103,11 +103,11 @@ node dist/embed.mjs <input.md> [output-dir]
 
 ```bash
 npm ci
-npm run build       # dist/review.html (配布用 HTML) と dist/embed.mjs (埋め込み CLI) を生成
-npm run build:embed # = vp build --config vite.embed.config.ts  embed CLI のみ差分ビルド
-npm run build:watch # = vp build --watch  ファイル変更で review.html を自動再ビルド
-npm run dev         # = vp dev           HMR 付き dev サーバー
-npm test            # = vp test          in-source tests を実行
+npm run build                # dist/review.html (配布用 HTML) と dist/review-request.mjs (レビュー依頼 CLI) を生成
+npm run build:review-request # = vp build --config vite.review-request.config.ts  review-request CLI のみ差分ビルド
+npm run build:watch          # = vp build --watch  ファイル変更で review.html を自動再ビルド
+npm run dev                  # = vp dev           HMR 付き dev サーバー
+npm test                     # = vp test          in-source tests を実行
 ```
 
 `npm ci` で `vite-plus` 由来の `vp` がローカルに導入されます。

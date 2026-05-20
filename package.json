@@ -23,8 +23,8 @@
   ],
   "type": "module",
   "scripts": {
-    "build": "vp build && vp build --config vite.embed.config.ts",
-    "build:embed": "vp build --config vite.embed.config.ts",
+    "build": "vp build && vp build --config vite.review-request.config.ts",
+    "build:review-request": "vp build --config vite.review-request.config.ts",
     "build:watch": "vp build --watch",
     "dev": "vp dev",
     "test": "vp test",

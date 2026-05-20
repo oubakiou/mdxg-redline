@@ -57,8 +57,8 @@ var rewriteReviewHtml = (reviewHtml, markdown, docName) => {
 	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
 };
 //#endregion
-//#region src/embed.ts
-var USAGE = "Usage: embed [--no-open] <input.md> [output-dir]";
+//#region src/review-request.ts
+var USAGE = "Usage: review-request [--no-open] <input.md> [output-dir]";
 var NO_OPEN_FLAG = "--no-open";
 var SERVE_AUTOSTOP_MS = 1e4;
 var SERVE_GIVEUP_MS = 6e4;
@@ -110,7 +110,7 @@ var buildOpenCommand = (platform, path, env = process.env) => {
 var openInBrowser = async (path) => new Promise((done) => {
 	const { args, command } = buildOpenCommand(process.platform, path, process.env);
 	execFile(command, args, (error) => {
-		if (error) process.stderr.write(`embed: ブラウザを起動できませんでした (${command}: ${error.message})。上記のパスを手動で開いてください。\n`);
+		if (error) process.stderr.write(`review-request: ブラウザを起動できませんでした (${command}: ${error.message})。上記のパスを手動で開いてください。\n`);
 		done();
 	});
 });
@@ -173,7 +173,7 @@ var openOutput = async (outputPath) => {
 		return;
 	}
 	const handle = await serveOnceAndAutoStop(outputPath);
-	process.stderr.write(`embed: VS Code Remote 環境を検知。HTTP サーバーを ${handle.url} で起動しました。初回アクセス後 ${SERVE_AUTOSTOP_MS / 1e3} 秒、リクエストが無ければ ${SERVE_GIVEUP_MS / 1e3} 秒で自動停止します。\n`);
+	process.stderr.write(`review-request: VS Code Remote 環境を検知。HTTP サーバーを ${handle.url} で起動しました。初回アクセス後 ${SERVE_AUTOSTOP_MS / 1e3} 秒、リクエストが無ければ ${SERVE_GIVEUP_MS / 1e3} 秒で自動停止します。\n`);
 	await openInBrowser(handle.url);
 	await handle.done;
 };
@@ -193,7 +193,7 @@ var main = async () => {
 	await runEmbed(args);
 };
 main().catch((error) => {
-	process.stderr.write(`embed: ${errorMessage(error)}\n`);
+	process.stderr.write(`review-request: ${errorMessage(error)}\n`);
 	process.exit(1);
 });
 //#endregion
