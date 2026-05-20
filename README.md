@@ -15,7 +15,7 @@ End users only need a **single HTML file** (`review.html`). No server, no extra 
 
 - **Location-aware inline comments**: Select any text range, leave a comment, and export JSON that pinpoints each comment with `headingPath` and `sourceLine`
 - **Single-file HTML distribution**: All dependencies (including `marked`) are inlined — no CDN references
-- **Three handoff paths**: Workspace watching / embedded HTML / URL hash
+- **Two handoff paths**: Embedded HTML / file picker
 - **Read-only**: Never mutates the source markdown
 
 ## Usage
