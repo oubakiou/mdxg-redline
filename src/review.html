@@ -38,13 +38,6 @@
       <div class="toolbar-actions">
         <span id="status" class="label toolbar-status">No file</span>
         <button class="btn" id="btn-load">Open file</button>
-        <button
-          class="btn tooltipped"
-          id="btn-watch"
-          data-tooltip="Auto-load the latest *-review.md from a folder and write the matching *-feedback.json there when you click “Write feedback.json”"
-        >
-          Watch folder
-        </button>
       </div>
     </header>
 
@@ -53,7 +46,9 @@
     <main class="layout">
       <section class="doc-pane">
         <div id="doc-wrap">
-          <!-- 初期 / 切断時に表示する素の空状態。手元の markdown を 1 ファイル単発で見るユースケース向け -->
+          <!-- 初期表示の素の空状態。手元の markdown を 1 ファイル単発で見るユースケース向け。
+               エージェント連携時は review-request CLI で生成された HTML を開く前提なので、
+               この空状態は実質「直接ブラウザで開いた利用者」だけが目にする -->
           <div class="empty-state" id="empty-state-default">
             <div class="empty-state-title">No file loaded</div>
             <div class="label empty-state-hint">Open a markdown file to start reviewing</div>
@@ -61,35 +56,38 @@
               Choose file
             </button>
           </div>
-          <!-- Watch folder 接続中 + *-review.md 未読込のとき表示。
-               agent ⇄ 人間のループ運用での「次に何が起きるか」をユーザーに伝える -->
-          <div class="empty-state" id="empty-state-watching" hidden>
-            <div class="empty-state-title">
-              Waiting for &lt;name&gt;-&lt;hash&gt;-review.md in
-              <span id="empty-state-folder">""</span>
-            </div>
-            <div class="label empty-state-hint">
-              It will load automatically when an agent (or you) places a
-              <code>&lt;name&gt;-&lt;hash&gt;-review.md</code> in this folder. Inline comments you
-              add here are written back to the matching
-              <code>&lt;name&gt;-&lt;hash&gt;-feedback.json</code> in the same folder when you click
-              “Write feedback.json”.
-            </div>
-          </div>
         </div>
         <div id="doc"></div>
       </section>
 
       <aside class="sidebar">
         <div class="sidebar-header">
-          <button
-            class="btn btn-primary tooltipped"
-            id="btn-send"
-            style="display: none"
-            data-tooltip="Write feedback.json into the watched folder"
-          >
-            Write feedback.json
-          </button>
+          <!-- GitHub の Merge pull request 風 split button。
+               隣接した 2 ボタンの border を内側で潰し、caret 側の半透明 border-left で
+               「分割されているが 1 つの UI」として読ませる (CSS .split-btn-caret 参照) -->
+          <div class="split-btn menu-wrap">
+            <button
+              class="btn btn-primary split-btn-main tooltipped"
+              id="btn-send"
+              data-tooltip="Choose an output folder and write the current feedback there"
+            >
+              Write feedback.json
+            </button>
+            <button
+              class="btn btn-primary split-btn-caret"
+              id="btn-send-menu"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-label="Output folder options"
+            >
+              ▾
+            </button>
+            <div class="menu" id="menu-send" role="menu">
+              <button class="menu-item" id="btn-change-output" role="menuitem">
+                Change output folder…
+              </button>
+            </div>
+          </div>
           <div class="menu-wrap">
             <button
               class="btn btn-ghost"

@@ -63,6 +63,8 @@ var NO_OPEN_FLAG = "--no-open";
 var SERVE_AUTOSTOP_MS = 1e4;
 var SERVE_GIVEUP_MS = 6e4;
 var SERVE_HOST = "127.0.0.1";
+var DEFAULT_PORT = 51729;
+var PORT_ENV_VAR = "MDXG_REDLINE_PORT";
 var isHostBrowserUnreachableViaFile = (env) => {
 	if (env.REMOTE_CONTAINERS === "true") return true;
 	if (env.CODESPACES === "true") return true;
@@ -134,7 +136,53 @@ var prepareEmbed = async (inputPath, outputDir) => {
 		reviewHtml
 	};
 };
-var serveOnceAndAutoStop = async (filePath) => new Promise((resolveFn, rejectFn) => {
+var resolvePreferredPort = (env) => {
+	const raw = env[PORT_ENV_VAR];
+	if (!raw) return DEFAULT_PORT;
+	const parsed = Number(raw);
+	if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+		process.stderr.write(`review-request: ${PORT_ENV_VAR}="${raw}" は有効なポート番号ではないため ${String(DEFAULT_PORT)} を使います。\n`);
+		return DEFAULT_PORT;
+	}
+	return parsed;
+};
+var isPortInUseError = (error) => error instanceof Error && "code" in error && error.code === "EADDRINUSE";
+var tryListen = async (server, port) => new Promise((resolveFn, rejectFn) => {
+	const listeners = {
+		onError: () => {},
+		onListening: () => {}
+	};
+	listeners.onError = (error) => {
+		server.removeListener("listening", listeners.onListening);
+		rejectFn(error);
+	};
+	listeners.onListening = () => {
+		server.removeListener("error", listeners.onError);
+		const addr = server.address();
+		if (addr === null || typeof addr === "string") {
+			rejectFn(/* @__PURE__ */ new Error("HTTP サーバーのアドレス取得に失敗しました"));
+			return;
+		}
+		resolveFn({
+			port: addr.port,
+			server
+		});
+	};
+	server.once("error", listeners.onError);
+	server.once("listening", listeners.onListening);
+	server.listen(port, SERVE_HOST);
+});
+var listenWithFallback = async (server, preferred) => {
+	try {
+		return await tryListen(server, preferred);
+	} catch (error) {
+		if (!isPortInUseError(error)) throw error;
+	}
+	const result = await tryListen(server, 0);
+	process.stderr.write(`review-request: ポート ${String(preferred)} が使用中のため ${String(result.port)} を使います。${PORT_ENV_VAR} でデフォルトを上書きできます。今回はブラウザ側 IndexedDB のサイレント復元 (Write feedback.json の保存先記憶) が効かない可能性があります。\n`);
+	return result;
+};
+var serveOnceAndAutoStop = async (filePath) => {
 	const server = createServer((_req, res) => {
 		res.writeHead(200, {
 			Connection: "close",
@@ -142,31 +190,22 @@ var serveOnceAndAutoStop = async (filePath) => new Promise((resolveFn, rejectFn)
 		});
 		createReadStream(filePath).pipe(res);
 	});
-	const done = new Promise((doneResolve) => {
-		const giveup = setTimeout(() => {
-			server.close(() => doneResolve());
-		}, SERVE_GIVEUP_MS);
-		server.once("request", () => {
-			clearTimeout(giveup);
-			setTimeout(() => {
+	const listened = await listenWithFallback(server, resolvePreferredPort(process.env));
+	return {
+		done: new Promise((doneResolve) => {
+			const giveup = setTimeout(() => {
 				server.close(() => doneResolve());
-			}, SERVE_AUTOSTOP_MS);
-		});
-	});
-	server.on("error", (error) => rejectFn(error));
-	server.listen(0, SERVE_HOST, () => {
-		const addr = server.address();
-		if (addr === null || typeof addr === "string") {
-			server.close();
-			rejectFn(/* @__PURE__ */ new Error("HTTP サーバーのアドレス取得に失敗しました"));
-			return;
-		}
-		resolveFn({
-			done,
-			url: `http://localhost:${addr.port}/${encodeURIComponent(basename(filePath))}`
-		});
-	});
-});
+			}, SERVE_GIVEUP_MS);
+			server.once("request", () => {
+				clearTimeout(giveup);
+				setTimeout(() => {
+					server.close(() => doneResolve());
+				}, SERVE_AUTOSTOP_MS);
+			});
+		}),
+		url: `http://localhost:${String(listened.port)}/${encodeURIComponent(basename(filePath))}`
+	};
+};
 var openOutput = async (outputPath) => {
 	if (!isHostBrowserUnreachableViaFile(process.env)) {
 		await openInBrowser(outputPath);
@@ -197,4 +236,4 @@ main().catch((error) => {
 	process.exit(1);
 });
 //#endregion
-export { buildOpenCommand, isHostBrowserUnreachableViaFile, parseArgs };
+export { buildOpenCommand, isHostBrowserUnreachableViaFile, parseArgs, resolvePreferredPort };

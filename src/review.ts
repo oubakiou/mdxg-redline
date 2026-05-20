@@ -4,7 +4,7 @@ import { type BlockAnchor, buildBlockAnchors, renderMarkdown } from './markdown'
 import type { Comment, ExportPayload, PendingSelection } from './types'
 import { buildDomRange, getSelectionInfo } from './selection'
 import { buildReviewExportPayload, commentCountLabel as formatCommentCount } from './review-export'
-import { configureWorkspace, handleWatchClick, wsSend } from './workspace'
+import { changeOutputFolder, configureWorkspace, writeFeedback } from './workspace'
 import { boot } from './boot'
 import { createSidebar } from './sidebar'
 import { parsePendingSelection } from './feedback'
@@ -309,6 +309,18 @@ const closeCommentsMenu = (): void => {
   qs('#btn-comments-menu').setAttribute('aria-expanded', 'false')
 }
 
+/** Write feedback.json split button の caret ▾ menu を開く */
+const openSendMenu = (): void => {
+  qs('#menu-send').classList.add('open')
+  qs('#btn-send-menu').setAttribute('aria-expanded', 'true')
+}
+
+/** Write feedback.json split button の caret ▾ menu を閉じる */
+const closeSendMenu = (): void => {
+  qs('#menu-send').classList.remove('open')
+  qs('#btn-send-menu').setAttribute('aria-expanded', 'false')
+}
+
 // --- Sidebar ----------------------------------------------------------------
 
 const sidebar = createSidebar({
@@ -391,6 +403,7 @@ if (!import.meta.vitest) {
     if (event.key === 'Escape') {
       closeModal()
       closeCommentsMenu()
+      closeSendMenu()
     }
     if (
       event.key === 'Enter' &&
@@ -477,16 +490,39 @@ if (!import.meta.vitest) {
 configureWorkspace({
   buildExportPayload,
   commentCountLabel,
-  hashStr,
-  loadFromMarkdown,
   qs,
   state,
   toast,
 })
 
 if (!import.meta.vitest) {
-  qs('#btn-watch').addEventListener('click', async (): Promise<void> => handleWatchClick())
-  qs('#btn-send').addEventListener('click', wsSend)
+  qs('#btn-send').addEventListener('click', async (): Promise<void> => writeFeedback())
+  qs('#btn-send-menu').addEventListener('click', (event): void => {
+    // stopPropagation しないと直下の document click が即 close してしまい menu が開かない
+    event.stopPropagation()
+    if (qs('#menu-send').classList.contains('open')) {
+      closeSendMenu()
+    } else {
+      openSendMenu()
+    }
+  })
+  qs('#btn-change-output').addEventListener('click', async (): Promise<void> => {
+    closeSendMenu()
+    await changeOutputFolder()
+  })
+  document.addEventListener('click', (event): void => {
+    if (!qs('#menu-send').classList.contains('open')) {
+      return
+    }
+    const { target } = event
+    if (
+      target instanceof Element &&
+      (target.closest('#menu-send') || target.closest('#btn-send-menu'))
+    ) {
+      return
+    }
+    closeSendMenu()
+  })
 }
 
 // --- Boot trigger -----------------------------------------------------------

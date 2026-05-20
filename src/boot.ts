@@ -1,7 +1,7 @@
 // --- Boot: workspace > embedded > url hash ---------------------------------
 
 import { embeddedCommentsFromUnknown } from './feedback'
-import { tryRestoreWorkspace } from './workspace'
+import { restoreWorkspaceHandle } from './workspace'
 
 interface Comment {
   id: string
@@ -124,12 +124,12 @@ const loadHashMarkdown = async (runtime: BootRuntime): Promise<boolean> => {
 
 /**
  * 起動時のロード優先順位を順に試す（詳細は DESIGN.md §9）。
- * 1. ワークスペース監視を復元（成功してもこの後の手段は止めない: review.md は遅延着信もあるため）
- * 2. 埋め込み MD（同梱配布のケース）
- * 3. URL ハッシュの共有 MD
+ * 0. 保存済みの出力先フォルダ handle を IDB からサイレント復元（書き出し時の picker 省略用）
+ * 1. 埋め込み MD（review-request CLI 配布 / 同梱配布のケース）
+ * 2. URL ハッシュの共有 MD
  */
 export const boot = async (runtime: BootRuntime): Promise<void> => {
-  await tryRestoreWorkspace()
+  await restoreWorkspaceHandle()
   if (await loadEmbeddedMarkdown(runtime)) {
     return
   }

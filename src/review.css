@@ -73,7 +73,8 @@ body > main.layout > aside.sidebar {
   align-items: center;
   gap: 8px;
   margin-bottom: 16px;
-  /* btn-send 出現で行高が変わらないよう、primary btn の実高さ (line-height 20 + padding 5*2 + border 1*2 = 32px) を確保 */
+  /* primary btn の実高さ (line-height 20 + padding 5*2 + border 1*2 = 32px) を確保し、
+     comments count の表示有無で sidebar-header の高さが揺れないようにする */
   min-height: 32px;
 }
 .sidebar-header .menu-wrap {
@@ -190,15 +191,25 @@ body > main.layout > aside.sidebar {
   border-color: transparent;
   color: var(--ink);
 }
-.btn-watching::before {
-  content: '';
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 8px;
-  border-radius: 50%;
-  background: var(--success);
-  vertical-align: 1px;
+/* Split button (GitHub Primer "Merge pull request" 風)。
+   主ボタン + caret ▾ を隣接させ、内側 border を潰して 1 つの UI として見せる。
+   caret 側の border-left は半透明白で「分割」を示しつつ btn-primary の塗りに馴染ませる。 */
+.split-btn {
+  display: inline-flex;
+  align-items: stretch;
+}
+.split-btn-main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.split-btn-caret {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.25);
+  padding-left: 8px;
+  padding-right: 8px;
+  font-size: 10px;
+  line-height: 20px;
 }
 
 /* Action menu (GitHub Primer ActionList style) */
