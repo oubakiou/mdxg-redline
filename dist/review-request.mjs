@@ -1,69 +1,15 @@
 #!/usr/bin/env node
 import { basename, dirname, resolve } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { execFile } from "node:child_process";
+import process from "node:process";
 import { createReadStream } from "node:fs";
 import { createServer } from "node:http";
-import { execFile } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import process from "node:process";
-//#region src/embed-core.ts
-/**
-* markdown 本文の SHA-256 を計算し、先頭 8 バイトを 16 文字の hex 文字列で返す。
-* docHash としてファイル命名規約 (`<mdFileName>-<docHash>-...`) や
-* Workspace の差分検知に使う。同一ロジックを review.ts でも `hashStr` として呼び出すため、
-* 文字列化アルゴリズムは両者で一致させる必要がある。
-*/
-var computeDocHash = async (markdown) => {
-	const buf = new TextEncoder().encode(markdown);
-	const hash = await crypto.subtle.digest("SHA-256", buf);
-	return [...new Uint8Array(hash)].slice(0, 8).map((byte) => byte.toString(16).padStart(2, "0")).join("");
-};
-/**
-* MD ファイル名から `.md` / `.markdown` 拡張子を除いた basename を返す。
-* 大文字小文字無視。拡張子が無いファイル名はそのまま返す。
-* ファイル命名規約 §8 の `mdFileName` 部分を組み立てるベース。
-*/
-var stripMarkdownExt = (filename) => filename.replace(/\.(?:markdown|md)$/i, "");
-/** ファイル命名規約 §8 に従って配布用 HTML のファイル名を組み立てる */
-var deriveReviewHtmlName = (mdFileName, docHash) => `${mdFileName}-${docHash}-review.html`;
-/**
-* markdown 本文を `<script>` タグに埋め込み可能な JSON 文字列にエンコードする。
-* `JSON.stringify` で JSON 文字列化したうえで、`<` を JSON の Unicode escape `<` に置換する。
-* これにより HTML パーサが `<\/script>` を閉じタグとして認識する可能性をゼロにしつつ、
-* 復元側は `JSON.parse` のみで Unicode escape も含めて元の markdown 1 文字に戻せる。
-*/
-var encodeEmbeddedMarkdown = (markdown) => JSON.stringify(markdown).replace(/</g, String.raw`\u003C`);
-/**
-* data-name 属性に書き込む値を HTML 属性文脈用にエスケープする。
-* 属性はダブルクォートで囲む前提に固定しているため、ダブルクォートと特殊文字のみ対象。
-* ブラウザは dataset.name 経由で自動デコードするため、boot.ts 側は無変更で良い。
-*/
-var escapeHtmlAttribute = (value) => value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&#39;");
-var EMBEDDED_MD_RE = /(<script\b(?=[^>]*\bid="embedded-md")(?=[^>]*\btype="text\/markdown")[^>]*>)([\s\S]*?)(<\/script>)/i;
-var DATA_NAME_RE = /\bdata-name="[^"]*"/;
-var replaceDataName = (openingTag, escapedName) => {
-	if (DATA_NAME_RE.test(openingTag)) return openingTag.replace(DATA_NAME_RE, `data-name="${escapedName}"`);
-	return openingTag.replace(/>$/, ` data-name="${escapedName}">`);
-};
-/**
-* review.html の文字列を受け取り、`<script id="embedded-md">` の中身と data-name 属性を
-* 書き換えた新しい HTML 文字列を返す。元文字列は変更しない。
-* embedded-md タグが見つからない場合は Error を投げる（呼び出し側が CLI エラーに変換）。
-*/
-var rewriteReviewHtml = (reviewHtml, markdown, docName) => {
-	const match = EMBEDDED_MD_RE.exec(reviewHtml);
-	if (!match) throw new Error("review.html に id=\"embedded-md\" の <script> タグが見つかりません");
-	const [fullMatch, openingTag, , closingTag] = match;
-	const replaced = `${replaceDataName(openingTag, escapeHtmlAttribute(docName))}${encodeEmbeddedMarkdown(markdown)}${closingTag}`;
-	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
-};
-//#endregion
-//#region src/review-request.ts
+//#region src/cli-parse-args.ts
 var NO_OPEN_FLAG = "--no-open";
 var HELP_FLAGS = new Set(["--help", "-h"]);
 var DOCUMENT_NAME_FLAG = "--document-name";
-var STDIN_TOKEN = "-";
-var STDIN_DEFAULT_DOC_NAME = "stdin.md";
 var HELP_TEXT = `Usage: mdxg-redline [options] <input.md|-> [output-dir]
 
 Generate a review-request HTML with the markdown embedded and open it in
@@ -90,21 +36,6 @@ Examples:
   mdxg-redline --no-open spec.md
   cat spec.md | mdxg-redline - --document-name spec.md
 `;
-var SERVE_AUTOSTOP_MS = 1e4;
-var SERVE_GIVEUP_MS = 6e4;
-var SERVE_HOST = "127.0.0.1";
-var DEFAULT_PORT = 51729;
-var PORT_ENV_VAR = "MDXG_REDLINE_PORT";
-var isHostBrowserUnreachableViaFile = (env) => {
-	if (env.REMOTE_CONTAINERS === "true") return true;
-	if (env.CODESPACES === "true") return true;
-	const browser = env.BROWSER ?? "";
-	return browser.includes("vscode-server") && browser.includes("helpers/browser.sh");
-};
-var errorMessage = (error) => {
-	if (error instanceof Error) return error.message;
-	return String(error);
-};
 var INITIAL_PARTITION_STATE = {
 	documentName: null,
 	open: true,
@@ -182,30 +113,65 @@ var sanitizeMdFileName = (name) => {
 	if (/^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$/i.test(cleaned)) return `${cleaned}_`;
 	return cleaned;
 };
-var toBuffer = (chunk) => {
-	if (Buffer.isBuffer(chunk)) return chunk;
-	return Buffer.from(String(chunk), "utf8");
+//#endregion
+//#region src/embed-core.ts
+/**
+* markdown 本文の SHA-256 を計算し、先頭 8 バイトを 16 文字の hex 文字列で返す。
+* docHash としてファイル命名規約 (`<mdFileName>-<docHash>-...`) や
+* Workspace の差分検知に使う。同一ロジックを review.ts でも `hashStr` として呼び出すため、
+* 文字列化アルゴリズムは両者で一致させる必要がある。
+*/
+var computeDocHash = async (markdown) => {
+	const buf = new TextEncoder().encode(markdown);
+	const hash = await crypto.subtle.digest("SHA-256", buf);
+	return [...new Uint8Array(hash)].slice(0, 8).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 };
-var readStdin = async () => {
-	const chunks = [];
-	for await (const chunk of process.stdin) chunks.push(toBuffer(chunk));
-	return Buffer.concat(chunks).toString("utf8");
+/**
+* MD ファイル名から `.md` / `.markdown` 拡張子を除いた basename を返す。
+* 大文字小文字無視。拡張子が無いファイル名はそのまま返す。
+* ファイル命名規約 §8 の `mdFileName` 部分を組み立てるベース。
+*/
+var stripMarkdownExt = (filename) => filename.replace(/\.(?:markdown|md)$/i, "");
+/** ファイル命名規約 §8 に従って配布用 HTML のファイル名を組み立てる */
+var deriveReviewHtmlName = (mdFileName, docHash) => `${mdFileName}-${docHash}-review.html`;
+/**
+* markdown 本文を `<script>` タグに埋め込み可能な JSON 文字列にエンコードする。
+* `JSON.stringify` で JSON 文字列化したうえで、`<` を JSON の Unicode escape `<` に置換する。
+* これにより HTML パーサが `<\/script>` を閉じタグとして認識する可能性をゼロにしつつ、
+* 復元側は `JSON.parse` のみで Unicode escape も含めて元の markdown 1 文字に戻せる。
+*/
+var encodeEmbeddedMarkdown = (markdown) => JSON.stringify(markdown).replace(/</g, String.raw`\u003C`);
+/**
+* data-name 属性に書き込む値を HTML 属性文脈用にエスケープする。
+* 属性はダブルクォートで囲む前提に固定しているため、ダブルクォートと特殊文字のみ対象。
+* ブラウザは dataset.name 経由で自動デコードするため、boot.ts 側は無変更で良い。
+*/
+var escapeHtmlAttribute = (value) => value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&#39;");
+var EMBEDDED_MD_RE = /(<script\b(?=[^>]*\bid="embedded-md")(?=[^>]*\btype="text\/markdown")[^>]*>)([\s\S]*?)(<\/script>)/i;
+var DATA_NAME_RE = /\bdata-name="[^"]*"/;
+var replaceDataName = (openingTag, escapedName) => {
+	if (DATA_NAME_RE.test(openingTag)) return openingTag.replace(DATA_NAME_RE, `data-name="${escapedName}"`);
+	return openingTag.replace(/>$/, ` data-name="${escapedName}">`);
 };
-var resolveInput = async (inputPath, documentName) => {
-	if (inputPath === STDIN_TOKEN) {
-		const markdown = await readStdin();
-		return {
-			defaultOutputDir: process.cwd(),
-			docName: documentName ?? STDIN_DEFAULT_DOC_NAME,
-			markdown
-		};
-	}
-	const markdown = await readFile(inputPath, "utf8");
-	return {
-		defaultOutputDir: dirname(inputPath),
-		docName: documentName ?? basename(inputPath),
-		markdown
-	};
+/**
+* review.html の文字列を受け取り、`<script id="embedded-md">` の中身と data-name 属性を
+* 書き換えた新しい HTML 文字列を返す。元文字列は変更しない。
+* embedded-md タグが見つからない場合は Error を投げる（呼び出し側が CLI エラーに変換）。
+*/
+var rewriteReviewHtml = (reviewHtml, markdown, docName) => {
+	const match = EMBEDDED_MD_RE.exec(reviewHtml);
+	if (!match) throw new Error("review.html に id=\"embedded-md\" の <script> タグが見つかりません");
+	const [fullMatch, openingTag, , closingTag] = match;
+	const replaced = `${replaceDataName(openingTag, escapeHtmlAttribute(docName))}${encodeEmbeddedMarkdown(markdown)}${closingTag}`;
+	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
+};
+//#endregion
+//#region src/cli-open-command.ts
+var isHostBrowserUnreachableViaFile = (env) => {
+	if (env.REMOTE_CONTAINERS === "true") return true;
+	if (env.CODESPACES === "true") return true;
+	const browser = env.BROWSER ?? "";
+	return browser.includes("vscode-server") && browser.includes("helpers/browser.sh");
 };
 var buildOpenCommand = (platform, path, env = process.env) => {
 	if (env.BROWSER) return {
@@ -237,27 +203,13 @@ var openInBrowser = async (path) => new Promise((done) => {
 		done();
 	});
 });
-var readReviewHtml = async (path) => {
-	try {
-		return await readFile(path, "utf8");
-	} catch (error) {
-		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(`${path} が見つかりません。先に \`npm run build\` を実行して dist/review.html を生成してください。`, { cause: error });
-		throw error;
-	}
-};
-var prepareEmbed = async (args) => {
-	const scriptDir = dirname(fileURLToPath(import.meta.url));
-	const [input, reviewHtml] = await Promise.all([resolveInput(args.inputPath, args.documentName), readReviewHtml(resolve(scriptDir, "review.html"))]);
-	const docHash = await computeDocHash(input.markdown);
-	const mdFileName = sanitizeMdFileName(stripMarkdownExt(input.docName));
-	const outputPath = resolve(args.outputDir ?? input.defaultOutputDir, deriveReviewHtmlName(mdFileName, docHash));
-	return {
-		docName: input.docName,
-		markdown: input.markdown,
-		outputPath,
-		reviewHtml
-	};
-};
+//#endregion
+//#region src/cli-serve.ts
+var SERVE_AUTOSTOP_MS = 1e4;
+var SERVE_GIVEUP_MS = 6e4;
+var SERVE_HOST = "127.0.0.1";
+var DEFAULT_PORT = 51729;
+var PORT_ENV_VAR = "MDXG_REDLINE_PORT";
 var resolvePreferredPort = (env) => {
 	const raw = env[PORT_ENV_VAR];
 	if (!raw) return DEFAULT_PORT;
@@ -338,6 +290,62 @@ var openOutput = async (outputPath) => {
 	await openInBrowser(handle.url);
 	await handle.done;
 };
+//#endregion
+//#region src/cli-input-source.ts
+var STDIN_TOKEN = "-";
+var STDIN_DEFAULT_DOC_NAME = "stdin.md";
+var toBuffer = (chunk) => {
+	if (Buffer.isBuffer(chunk)) return chunk;
+	return Buffer.from(String(chunk), "utf8");
+};
+var readStdin = async () => {
+	const chunks = [];
+	for await (const chunk of process.stdin) chunks.push(toBuffer(chunk));
+	return Buffer.concat(chunks).toString("utf8");
+};
+var resolveInput = async (inputPath, documentName) => {
+	if (inputPath === STDIN_TOKEN) {
+		const markdown = await readStdin();
+		return {
+			defaultOutputDir: process.cwd(),
+			docName: documentName ?? STDIN_DEFAULT_DOC_NAME,
+			markdown
+		};
+	}
+	const markdown = await readFile(inputPath, "utf8");
+	return {
+		defaultOutputDir: dirname(inputPath),
+		docName: documentName ?? basename(inputPath),
+		markdown
+	};
+};
+//#endregion
+//#region src/review-request.ts
+var errorMessage = (error) => {
+	if (error instanceof Error) return error.message;
+	return String(error);
+};
+var readReviewHtml = async (path) => {
+	try {
+		return await readFile(path, "utf8");
+	} catch (error) {
+		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(`${path} が見つかりません。先に \`npm run build\` を実行して dist/review.html を生成してください。`, { cause: error });
+		throw error;
+	}
+};
+var prepareEmbed = async (args) => {
+	const scriptDir = dirname(fileURLToPath(import.meta.url));
+	const [input, reviewHtml] = await Promise.all([resolveInput(args.inputPath, args.documentName), readReviewHtml(resolve(scriptDir, "review.html"))]);
+	const docHash = await computeDocHash(input.markdown);
+	const mdFileName = sanitizeMdFileName(stripMarkdownExt(input.docName));
+	const outputPath = resolve(args.outputDir ?? input.defaultOutputDir, deriveReviewHtmlName(mdFileName, docHash));
+	return {
+		docName: input.docName,
+		markdown: input.markdown,
+		outputPath,
+		reviewHtml
+	};
+};
 var runEmbed = async (args) => {
 	const ctx = await prepareEmbed(args);
 	const result = rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName);
@@ -362,4 +370,4 @@ main().catch((error) => {
 	process.exit(1);
 });
 //#endregion
-export { buildOpenCommand, isHostBrowserUnreachableViaFile, parseArgs, resolvePreferredPort, sanitizeMdFileName };
+export {};
