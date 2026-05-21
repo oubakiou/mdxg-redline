@@ -1,233 +1,33 @@
 // DOM エントリポイント。外部境界モジュールへは runtime を注入する形で渡し、循環 import を避ける。
+// 状態 (app-state) / DOM helper (dom-utils) / mark 反映 (mark-engine) / markdown 描画 (doc-renderer)
+// は別モジュールへ抽出済み。本ファイルは modal / menu / event の wiring と
+// loadFromMarkdown orchestrator、sidebar/toolbar/workspace/boot の組み立てに専念する。
 
-import { type BlockAnchor, buildBlockAnchors, renderMarkdown } from './markdown'
 import type { Comment, ExportPayload, PendingSelection } from './types'
-import { buildDomRange, getSelectionInfo } from './selection'
 import {
   buildReviewExportPayload,
   feedbackSignature,
   commentCountLabel as formatCommentCount,
 } from './review-export'
 import { changeOutputFolder, configureWorkspace, writeFeedback } from './workspace'
+import { hashStr, qs, qsInput, toast, uid } from './dom-utils'
+import { isFeedbackDirty, markFeedbackUnsaved, markFeedbackWritten, state } from './app-state'
 import { boot } from './boot'
 import { createSidebar } from './sidebar'
+import { getSelectionInfo } from './selection'
 import { parsePendingSelection } from './feedback'
+import { reapplyAllMarks } from './mark-engine'
+import { renderDoc } from './doc-renderer'
 import { wireToolbar } from './toolbar'
 
-// --- Types ------------------------------------------------------------------
-
-interface MarkableRange {
-  endNode: Text
-  range: Range
-  startNode: Text
-}
+// app-state / dom-utils / mark-engine の export を再公開し、
+// 既存利用者 (テスト・外部 import 予定箇所) からの参照経路を維持する。
+export { feedbackSignature }
+export { state, isFeedbackDirty, markFeedbackWritten, markFeedbackUnsaved }
+export { hashStr, qs, toast }
+export { reapplyAllMarks }
 
 type SelectionInfo = NonNullable<ReturnType<typeof getSelectionInfo>>
-
-// --- State ------------------------------------------------------------------
-/**
- * アプリ全体の現在状態。レンダリング・保存・サイドバー描画はすべてこの 1 箇所を参照する単一の真の源として扱う。
- * docHash は markdown 本文の SHA-256 先頭 8 バイト hex で、保存キーや workspace 取り込みの版差分検知に用いる。
- */
-export const state: {
-  blockAnchors: Map<string, BlockAnchor>
-  blockOriginalHTML: Map<string, string>
-  comments: Comment[]
-  docHash: string | null
-  docName: string | null
-  lastWrittenSignature: string | null
-  markdown: string
-} = {
-  blockAnchors: new Map(),
-  blockOriginalHTML: new Map(),
-  comments: [],
-  docHash: null,
-  docName: null,
-  lastWrittenSignature: null,
-  markdown: '',
-}
-
-// --- Utils ------------------------------------------------------------------
-/**
- * `document.querySelector` の薄いエイリアス。本ファイルでは全箇所これ経由でアクセスする。
- * セレクタが必ず存在する前提のアプリ仕様なので、見つからなければ throw して気付かせる。
- */
-export const qs = (selector: string): HTMLElement => {
-  const el = document.querySelector<HTMLElement>(selector)
-  if (!el) {
-    throw new Error(`Element not found: ${selector}`)
-  }
-  return el
-}
-
-/** `qs` の input/textarea 版。`.value` `.focus()` 等を型安全に取りに行く */
-const qsInput = (selector: string): HTMLInputElement | HTMLTextAreaElement => {
-  const el = qs(selector)
-  if (!(el instanceof HTMLInputElement) && !(el instanceof HTMLTextAreaElement)) {
-    throw new Error(`Element ${selector} is not an input or textarea`)
-  }
-  return el
-}
-
-/** 8 文字の base36 ランダム ID。コメント等の一過性 ID として使う（衝突確率は実用上問題にならない範囲を想定） */
-const uid = (): string => Math.random().toString(36).slice(2, 10)
-
-/** SHA-256 の先頭 8 バイトを hex で返す。docHash として保存キー・ワークスペース差分検知に使う（短く比較しやすいことを優先） */
-export const hashStr = async (str: string): Promise<string> => {
-  const buf = new TextEncoder().encode(str)
-  const hash = await crypto.subtle.digest('SHA-256', buf)
-  return [...new Uint8Array(hash)]
-    .slice(0, 8)
-    .map((byte): string => byte.toString(16).padStart(2, '0'))
-    .join('')
-}
-
-// toast の解除タイマー。関数静的プロパティを使わず、モジュールスコープで型安全に保持する。
-let toastTimer: ReturnType<typeof setTimeout> | null = null
-
-/** 1.8 秒で消える短時間トースト。連続呼び出しは前回の解除タイマーを潰して上書きする */
-export const toast = (msg: string): void => {
-  const toastEl = qs('#toast')
-  toastEl.textContent = msg
-  toastEl.classList.add('show')
-  if (toastTimer !== null) {
-    clearTimeout(toastTimer)
-  }
-  toastTimer = setTimeout((): void => toastEl.classList.remove('show'), 1800)
-}
-
-// --- Render markdown --------------------------------------------------------
-
-/**
- * 指定 Range を `<mark class="cmt">` で囲む。
- * 単一テキストノード内なら surroundContents、ノードまたぎなら extractContents+insertNode で対応する。
- * surroundContents は要素境界をまたぐと例外を投げるため try/catch でフォールバック扱いにする（その mark のみスキップ）。
- */
-const wrapRangeWithMark = (domRange: MarkableRange, commentId: string): void => {
-  const { endNode, range, startNode } = domRange
-  const mark = document.createElement('mark')
-  mark.className = 'cmt'
-  mark.dataset.commentId = commentId
-  try {
-    if (startNode === endNode) {
-      range.surroundContents(mark)
-    } else {
-      const contents = range.extractContents()
-      mark.appendChild(contents)
-      range.insertNode(mark)
-    }
-  } catch {
-    // Fallback: skip this mark if range crosses element boundaries awkwardly
-  }
-}
-
-/** 1 件のコメントに対応する mark を該当ブロック上に貼る。Range 構築失敗時は何もしない（fail-soft） */
-const applyMark = (blockEl: Element, comment: Comment): void => {
-  const built = buildDomRange(blockEl, comment)
-  if (!built) {
-    return
-  }
-  wrapRangeWithMark(built, comment.id)
-}
-
-/** state.comments を blockId キーでグルーピングする。再描画時にブロック単位でまとめて処理するための前処理 */
-const commentsGroupedByBlock = (): Map<string, Comment[]> => {
-  const byBlock = new Map<string, Comment[]>()
-  for (const comment of state.comments) {
-    const bucket = byBlock.get(comment.blockId)
-    if (bucket) {
-      bucket.push(comment)
-    } else {
-      byBlock.set(comment.blockId, [comment])
-    }
-  }
-  return byBlock
-}
-
-/**
- * 同一ブロック内のコメントを startOffset の降順で並べる。
- * 後ろから mark を貼ることで、前方への挿入による以降のオフセットずれを回避する。
- */
-const sortedBlockComments = (byBlock: Map<string, Comment[]>, blockId: string): Comment[] =>
-  [...(byBlock.get(blockId) || [])].toSorted(
-    (left, right): number => right.startOffset - left.startOffset
-  )
-
-/** ブロック内 HTML を原状復帰してから、そのブロックに紐づく全コメントの mark を貼り直す */
-const applyMarksForBlock = ({
-  blockId,
-  byBlock,
-  doc,
-  original,
-}: {
-  blockId: string
-  byBlock: Map<string, Comment[]>
-  doc: Element
-  original: string
-}): void => {
-  const el = doc.querySelector(`[data-block-id="${blockId}"]`)
-  if (!el) {
-    return
-  }
-  el.innerHTML = original
-  for (const comment of sortedBlockComments(byBlock, blockId)) {
-    applyMark(el, comment)
-  }
-}
-
-/**
- * すべてのブロックに対して mark を貼り直す。
- * コメントの追加・削除があるたび「キャッシュ済み原 HTML へ戻す → 全 mark 再生成」というラウンドトリップを取り、
- * 差分管理を避けて単純化している（コメント件数は実用上それほど多くならない想定）。
- */
-export const reapplyAllMarks = (): void => {
-  const doc = qs('#doc')
-  const byBlock = commentsGroupedByBlock()
-  for (const [bid, original] of state.blockOriginalHTML) {
-    applyMarksForBlock({ blockId: bid, byBlock, doc, original })
-  }
-}
-
-/** ドキュメントが未読込のときの表示。プレースホルダ #doc-wrap を見える状態に戻す */
-const showEmptyDocument = (doc: HTMLElement, wrap: HTMLElement): void => {
-  doc.innerHTML = ''
-  wrap.style.display = 'block'
-}
-
-/**
- * トップレベルブロックに連番 ID を付け、原 HTML をキャッシュする。
- * 以降の mark 再適用ではこのキャッシュをベースに HTML を巻き戻すため、レンダリング直後に必ず呼ぶ必要がある。
- */
-const cacheBlockOriginalHTML = (doc: HTMLElement): void => {
-  state.blockOriginalHTML.clear()
-  for (const [index, el] of [...doc.children].entries()) {
-    if (el instanceof HTMLElement) {
-      const id = `b${String(index + 1).padStart(3, '0')}`
-      el.dataset.blockId = id
-      state.blockOriginalHTML.set(id, el.innerHTML)
-    }
-  }
-}
-
-/** markdown を HTML 化して #doc に流し込み、ブロック原 HTML と markdown 上のアンカーを更新する */
-const mountRenderedDoc = (doc: HTMLElement, wrap: HTMLElement): void => {
-  wrap.style.display = 'none'
-  doc.innerHTML = renderMarkdown(state.markdown)
-  cacheBlockOriginalHTML(doc)
-  state.blockAnchors = buildBlockAnchors(state.markdown)
-}
-
-const renderDoc = (): void => {
-  const doc = qs('#doc')
-  const wrap = qs('#doc-wrap')
-  if (!state.markdown) {
-    state.blockAnchors.clear()
-    showEmptyDocument(doc, wrap)
-    return
-  }
-  mountRenderedDoc(doc, wrap)
-  reapplyAllMarks()
-}
 
 // --- Selection -> floater ---------------------------------------------------
 
@@ -328,26 +128,6 @@ const closeSendMenu = (): void => {
 }
 
 // --- Sidebar ----------------------------------------------------------------
-
-/**
- * Write feedback.json の dirty 判定。state.lastWrittenSignature と現在の payload 署名を比較し、
- * 一度も書き出していない (null) または内容が変わっていれば dirty とする。
- */
-export const isFeedbackDirty = (): boolean => {
-  if (state.lastWrittenSignature === null) {
-    return true
-  }
-  return state.lastWrittenSignature !== feedbackSignature(state)
-}
-
-/** writeFeedback / changeOutputFolder / boot で署名を入れ替える際の唯一の入り口 */
-export const markFeedbackWritten = (): void => {
-  state.lastWrittenSignature = feedbackSignature(state)
-}
-
-export const markFeedbackUnsaved = (): void => {
-  state.lastWrittenSignature = null
-}
 
 const sidebar = createSidebar({
   isFeedbackDirty,
