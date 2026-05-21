@@ -1,5 +1,5 @@
 import type { Comment } from './types'
-import { escapeHTML } from './markdown'
+import { escapeHtml } from './escape'
 import { smoothScrollToCenter } from './scroll'
 
 export interface SidebarRuntime {
@@ -71,11 +71,11 @@ const focusCommentCard = (card: HTMLElement, comment: Comment): void => {
 
 /**
  * カード 1 枚分の HTML を生成。
- * `escapeHTML` で quote / body を必ずエスケープすることが、ユーザー由来テキストを innerHTML に流す際の前提。
+ * `escapeHtml` で quote / body を必ずエスケープすることが、ユーザー由来テキストを innerHTML に流す際の前提。
  */
 const commentCardHTML = (comment: Comment): string => `
-  <div class="cmt-quote">“${escapeHTML(comment.quote)}”</div>
-  <div class="cmt-body">${escapeHTML(comment.comment)}</div>
+  <div class="cmt-quote">“${escapeHtml(comment.quote)}”</div>
+  <div class="cmt-body">${escapeHtml(comment.comment)}</div>
   <div class="cmt-meta">
     <span>${comment.blockId} · ${new Date(comment.created).toLocaleString()}</span>
     <button class="cmt-del" data-del="${comment.id}">Delete</button>

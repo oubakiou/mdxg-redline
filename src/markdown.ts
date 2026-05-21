@@ -1,16 +1,6 @@
 import { Renderer, marked } from 'marked'
 
-/** ユーザー入力テキストを innerHTML 経由で描画する際の HTML エスケープ（XSS 防止のための最小集合） */
-export const escapeHTML = (str: string): string => {
-  const replacements: Record<string, string> = {
-    '"': '&quot;',
-    '&': '&amp;',
-    "'": '&#39;',
-    '<': '&lt;',
-    '>': '&gt;',
-  }
-  return str.replace(/[&<>"']/g, (ch): string => replacements[ch] || ch)
-}
+import { escapeHtml } from './escape'
 
 const ALLOWED_LINK_SCHEMES = new Set(['http:', 'https:'])
 // http: は CSP の img-src と揃えて意図的に除外している。平文通信と外部追跡経路を構造的に塞ぐ。
@@ -36,13 +26,13 @@ export const isAllowedImageHref = (href: string): boolean => {
 }
 
 const rawHtmlEscapingRenderer = new Renderer()
-rawHtmlEscapingRenderer.html = (html: string): string => escapeHTML(html)
+rawHtmlEscapingRenderer.html = (html: string): string => escapeHtml(html)
 
 const titleAttr = (title: string | null): string => {
   if (!title) {
     return ''
   }
-  return ` title="${escapeHTML(title)}"`
+  return ` title="${escapeHtml(title)}"`
 }
 
 // 信頼できない markdown を前提に、URL スキームを allowlist で絞る (DESIGN.md §11)。
@@ -52,14 +42,14 @@ rawHtmlEscapingRenderer.link = (href: string, title: string | null, text: string
   if (!isAllowedLinkHref(href)) {
     return text
   }
-  return `<a href="${escapeHTML(href)}"${titleAttr(title)} rel="noopener noreferrer" target="_blank">${text}</a>`
+  return `<a href="${escapeHtml(href)}"${titleAttr(title)} rel="noopener noreferrer" target="_blank">${text}</a>`
 }
 
 rawHtmlEscapingRenderer.image = (href: string, title: string | null, text: string): string => {
   if (!isAllowedImageHref(href)) {
-    return escapeHTML(text)
+    return escapeHtml(text)
   }
-  return `<img src="${escapeHTML(href)}" alt="${escapeHTML(text)}"${titleAttr(title)} referrerpolicy="no-referrer">`
+  return `<img src="${escapeHtml(href)}" alt="${escapeHtml(text)}"${titleAttr(title)} referrerpolicy="no-referrer">`
 }
 
 /** marked で markdown を HTML に変換。raw HTML は実行されないよう文字として escape する */
@@ -180,18 +170,6 @@ export const buildBlockAnchors = (markdown: string): Map<string, BlockAnchor> =>
 
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
-
-  describe('escapeHTML', () => {
-    it('プレーンテキストはそのまま返す', () => {
-      expect(escapeHTML('plain text')).toBe('plain text')
-    })
-
-    it('HTML に意味を持つ文字を全てエスケープする', () => {
-      expect(escapeHTML(`<a href="x">'&'</a>`)).toBe(
-        '&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;'
-      )
-    })
-  })
 
   describe('renderMarkdown', () => {
     it('raw HTML is escaped instead of emitted as executable markup', () => {

@@ -2,6 +2,8 @@
 // Node CLI からも、将来のブラウザ側 UI からも使えるよう、I/O や Node 専用 API は持たない。
 // `crypto.subtle` は Node 20+ / モダンブラウザ双方で globalThis.crypto として利用可能。
 
+import { escapeHtml } from './escape'
+
 /**
  * markdown 本文の SHA-256 を計算し、先頭 8 バイトを 16 文字の hex 文字列で返す。
  * docHash としてファイル命名規約 (`<mdFileName>-<docHash>-...`) や
@@ -67,19 +69,6 @@ export const parseReviewMdFilename = (filename: string): ReviewMdFilenameParts |
 export const encodeEmbeddedMarkdown = (markdown: string): string =>
   JSON.stringify(markdown).replace(/</g, String.raw`\u003C`)
 
-/**
- * data-name 属性に書き込む値を HTML 属性文脈用にエスケープする。
- * 属性はダブルクォートで囲む前提に固定しているため、ダブルクォートと特殊文字のみ対象。
- * ブラウザは dataset.name 経由で自動デコードするため、boot.ts 側は無変更で良い。
- */
-export const escapeHtmlAttribute = (value: string): string =>
-  value
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/'/g, '&#39;')
-
 // 属性順や空白の揺らぎを許容するため、id="embedded-md" と type="text/markdown" の両方を
 // 含む <script ...> の開きタグ全体、コンテンツ、閉じタグの 3 グループに分けて捕まえる。
 // 両属性を lookahead で要求することで、HTML コメント等の説明テキスト内に出現する
@@ -114,7 +103,7 @@ export const rewriteReviewHtml = (
   }
 
   const [fullMatch, openingTag, , closingTag] = match
-  const newOpeningTag = replaceDataName(openingTag, escapeHtmlAttribute(docName))
+  const newOpeningTag = replaceDataName(openingTag, escapeHtml(docName))
   const replaced = `${newOpeningTag}${encodeEmbeddedMarkdown(markdown)}${closingTag}`
   return (
     reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length)
@@ -143,20 +132,6 @@ if (import.meta.vitest) {
     it('バックスラッシュ・末尾改行・絵文字も保持される (docHash 一致のため)', () => {
       const md = `${String.raw`\n \\ 仕様書 🚀`}\n`
       expect(JSON.parse(encodeEmbeddedMarkdown(md))).toBe(md)
-    })
-  })
-
-  describe('escapeHtmlAttribute', () => {
-    it('& " < > \' を実体参照に置換する', () => {
-      expect(escapeHtmlAttribute(`& " < > '`)).toBe('&amp; &quot; &lt; &gt; &#39;')
-    })
-
-    it('& が他のエスケープ結果を二重エスケープしないよう先に処理されている', () => {
-      expect(escapeHtmlAttribute('A&B"C')).toBe('A&amp;B&quot;C')
-    })
-
-    it('特殊文字を含まない値はそのまま返す', () => {
-      expect(escapeHtmlAttribute('spec.md')).toBe('spec.md')
     })
   })
 

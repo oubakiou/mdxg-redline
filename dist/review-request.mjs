@@ -114,6 +114,16 @@ var sanitizeMdFileName = (name) => {
 	return cleaned;
 };
 //#endregion
+//#region src/escape.ts
+var REPLACEMENTS = {
+	"\"": "&quot;",
+	"&": "&amp;",
+	"'": "&#39;",
+	"<": "&lt;",
+	">": "&gt;"
+};
+var escapeHtml = (value) => value.replace(/[&<>"']/g, (ch) => REPLACEMENTS[ch] || ch);
+//#endregion
 //#region src/embed-core.ts
 /**
 * markdown 本文の SHA-256 を計算し、先頭 8 バイトを 16 文字の hex 文字列で返す。
@@ -141,12 +151,6 @@ var deriveReviewHtmlName = (mdFileName, docHash) => `${mdFileName}-${docHash}-re
 * 復元側は `JSON.parse` のみで Unicode escape も含めて元の markdown 1 文字に戻せる。
 */
 var encodeEmbeddedMarkdown = (markdown) => JSON.stringify(markdown).replace(/</g, String.raw`\u003C`);
-/**
-* data-name 属性に書き込む値を HTML 属性文脈用にエスケープする。
-* 属性はダブルクォートで囲む前提に固定しているため、ダブルクォートと特殊文字のみ対象。
-* ブラウザは dataset.name 経由で自動デコードするため、boot.ts 側は無変更で良い。
-*/
-var escapeHtmlAttribute = (value) => value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&#39;");
 var EMBEDDED_MD_RE = /(<script\b(?=[^>]*\bid="embedded-md")(?=[^>]*\btype="text\/markdown")[^>]*>)([\s\S]*?)(<\/script>)/i;
 var DATA_NAME_RE = /\bdata-name="[^"]*"/;
 var replaceDataName = (openingTag, escapedName) => {
@@ -162,7 +166,7 @@ var rewriteReviewHtml = (reviewHtml, markdown, docName) => {
 	const match = EMBEDDED_MD_RE.exec(reviewHtml);
 	if (!match) throw new Error("review.html に id=\"embedded-md\" の <script> タグが見つかりません");
 	const [fullMatch, openingTag, , closingTag] = match;
-	const replaced = `${replaceDataName(openingTag, escapeHtmlAttribute(docName))}${encodeEmbeddedMarkdown(markdown)}${closingTag}`;
+	const replaced = `${replaceDataName(openingTag, escapeHtml(docName))}${encodeEmbeddedMarkdown(markdown)}${closingTag}`;
 	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
 };
 //#endregion
