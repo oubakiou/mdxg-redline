@@ -1,28 +1,9 @@
+import { isFeedbackDirty, state } from './app-state'
+import { qs, toast } from './dom-utils'
 import type { Comment } from '../core/types'
 import { escapeHtml } from '../core/escape'
+import { reapplyAllMarks } from './mark-engine'
 import { smoothScrollToCenter } from './scroll'
-
-export interface SidebarRuntime {
-  isFeedbackDirty: () => boolean
-  qs: (selector: string) => HTMLElement
-  reapplyAllMarks: () => void
-  state: {
-    comments: Comment[]
-  }
-  toast: (msg: string) => void
-}
-
-export interface SidebarController {
-  activateMark: (mark: HTMLElement) => void
-  render: () => void
-}
-
-interface WireCommentCardOptions {
-  card: HTMLElement
-  comment: Comment
-  onDeleted: () => void
-  runtime: SidebarRuntime
-}
 
 /** mark とカード両方の active 状態を一括解除（ハイライト切り替え時の前処理） */
 const clearActiveComments = (): void => {
@@ -82,18 +63,16 @@ const commentCardHTML = (comment: Comment): string => `
   </div>`
 
 /** コメントを 1 件削除して即座に再描画 */
-const deleteComment = (runtime: SidebarRuntime, comment: Comment): void => {
-  runtime.state.comments = runtime.state.comments.filter(
-    (other): boolean => other.id !== comment.id
-  )
-  runtime.reapplyAllMarks()
+const deleteComment = (comment: Comment): void => {
+  state.comments = state.comments.filter((other): boolean => other.id !== comment.id)
+  reapplyAllMarks()
 }
 
 /**
  * カードのクリック動作を配線する。
  * 削除ボタン押下は stopPropagation でカードクリック（フォーカス遷移）と切り分ける必要があり、これがバグの温床になりやすいため明示的にハンドラを分けている。
  */
-const wireCommentCard = ({ card, comment, onDeleted, runtime }: WireCommentCardOptions): void => {
+const wireCommentCard = (card: HTMLElement, comment: Comment, onDeleted: () => void): void => {
   card.addEventListener('click', (event): void => {
     const { target } = event
     if (target instanceof HTMLElement && target.dataset.del) {
@@ -105,23 +84,19 @@ const wireCommentCard = ({ card, comment, onDeleted, runtime }: WireCommentCardO
   if (delButton) {
     delButton.addEventListener('click', (event): void => {
       event.stopPropagation()
-      deleteComment(runtime, comment)
+      deleteComment(comment)
       onDeleted()
-      runtime.toast('Comment deleted')
+      toast('Comment deleted')
     })
   }
 }
 
-const createCommentCard = (
-  runtime: SidebarRuntime,
-  comment: Comment,
-  onDeleted: () => void
-): HTMLDivElement => {
+const createCommentCard = (comment: Comment, onDeleted: () => void): HTMLDivElement => {
   const card = document.createElement('div')
   card.className = 'cmt-card'
   card.dataset.id = comment.id
   card.innerHTML = commentCardHTML(comment)
-  wireCommentCard({ card, comment, onDeleted, runtime })
+  wireCommentCard(card, comment, onDeleted)
   return card
 }
 
@@ -133,45 +108,37 @@ const showEmptySidebar = (list: HTMLElement): void => {
 
 const COMMENT_MENU_BUTTON_IDS = ['#btn-copy', '#btn-export', '#btn-clear'] as const
 
-const updateOutputButtonsDisabled = (
-  qs: (selector: string) => HTMLElement,
-  empty: boolean,
-  dirty: boolean
-): void => {
+const updateOutputButtonsDisabled = (empty: boolean, dirty: boolean): void => {
   qs('#btn-send').toggleAttribute('disabled', empty || !dirty)
   for (const id of COMMENT_MENU_BUTTON_IDS) {
     qs(id).toggleAttribute('disabled', empty)
   }
 }
 
-export const createSidebar = (runtime: SidebarRuntime): SidebarController => {
-  const render = (): void => {
-    const list = runtime.qs('#cmt-list')
-    const empty = runtime.state.comments.length === 0
-    runtime.qs('#cmt-count').textContent = String(runtime.state.comments.length)
-    updateOutputButtonsDisabled(runtime.qs, empty, runtime.isFeedbackDirty())
-    if (empty) {
-      showEmptySidebar(list)
-      return
-    }
-    list.innerHTML = ''
-    for (const comment of orderedComments(runtime.state.comments)) {
-      list.appendChild(createCommentCard(runtime, comment, render))
-    }
+export const renderSidebar = (): void => {
+  const list = qs('#cmt-list')
+  const empty = state.comments.length === 0
+  qs('#cmt-count').textContent = String(state.comments.length)
+  updateOutputButtonsDisabled(empty, isFeedbackDirty())
+  if (empty) {
+    showEmptySidebar(list)
+    return
   }
-
-  const activateMark = (mark: HTMLElement): void => {
-    const id = mark.dataset.commentId
-    clearActiveComments()
-    mark.classList.add('active')
-    const card = document.querySelector(`.cmt-card[data-id="${id}"]`)
-    if (card) {
-      card.classList.add('active')
-      smoothScrollToCenter(card)
-    }
+  list.innerHTML = ''
+  for (const comment of orderedComments(state.comments)) {
+    list.appendChild(createCommentCard(comment, renderSidebar))
   }
+}
 
-  return { activateMark, render }
+export const activateSidebarMark = (mark: HTMLElement): void => {
+  const id = mark.dataset.commentId
+  clearActiveComments()
+  mark.classList.add('active')
+  const card = document.querySelector(`.cmt-card[data-id="${id}"]`)
+  if (card) {
+    card.classList.add('active')
+    smoothScrollToCenter(card)
+  }
 }
 
 const commentForTest = (id: string): Comment => ({

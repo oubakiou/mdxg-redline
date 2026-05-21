@@ -124,12 +124,15 @@ export const buildDomRange = (blockEl: Element, comment: Comment): BuiltDomRange
   return { endNode, range, startNode }
 }
 
+// segments.find は `node === container` の参照同一性しか見ないため、両側を unknown で受ける。
+// production の呼び出しでは segments: TextSegment[] / container: Node が渡るが、いずれも
+// unknown のサブタイプなのでそのまま通る。テスト側は Text 互換キャストなしで identity 値を渡せる。
 const textOffsetForTextNode = (
-  blockEl: Element,
-  container: Node,
+  segments: { node: unknown; start: number }[],
+  container: unknown,
   offset: number
 ): number | null => {
-  const segment = textSegments(blockEl).find(({ node }): boolean => node === container)
+  const segment = segments.find(({ node }): boolean => node === container)
   if (!segment) {
     return null
   }
@@ -153,10 +156,22 @@ const textOffsetForElementBoundary = (
 
 /**
  * 選択範囲の (container, offset) をブロック先頭からのテキストオフセットに変換する。
- * テキストノード直指定なら厳密マッピング、要素境界なら Range の boundary point として解決する。
+ * テキストノード直指定なら平坦化済み segments への線形探索、
+ * 要素境界なら Range の boundary point として解決する。
+ * segments は呼び出し側で 1 度だけ計算したものを渡し、start/end の 2 回探索で再計算しない。
  */
-const textOffsetFromBlock = (blockEl: Element, container: Node, offset: number): number => {
-  const fromText = textOffsetForTextNode(blockEl, container, offset)
+const textOffsetFromBlock = ({
+  blockEl,
+  container,
+  offset,
+  segments,
+}: {
+  blockEl: Element
+  container: Node
+  offset: number
+  segments: TextSegment[]
+}): number => {
+  const fromText = textOffsetForTextNode(segments, container, offset)
   if (fromText !== null) {
     return fromText
   }
@@ -202,13 +217,28 @@ const blockForSelectionRange = (range: Range): HTMLElement | null => {
   return null
 }
 
-/** 選択範囲の両端を解決し、両端とも有効でかつ非ゼロ幅であることを確認する。条件を満たさなければ null */
+/**
+ * 選択範囲の両端を解決し、両端とも有効でかつ非ゼロ幅であることを確認する。
+ * textSegments(block) を 1 度だけ計算して start/end 両方の解決に流用する。
+ * 条件を満たさなければ null。
+ */
 const selectionOffsets = (
   block: Element,
   range: Range
 ): { endOff: number; startOff: number } | null => {
-  const startOff = textOffsetFromBlock(block, range.startContainer, range.startOffset)
-  const endOff = textOffsetFromBlock(block, range.endContainer, range.endOffset)
+  const segments = textSegments(block)
+  const startOff = textOffsetFromBlock({
+    blockEl: block,
+    container: range.startContainer,
+    offset: range.startOffset,
+    segments,
+  })
+  const endOff = textOffsetFromBlock({
+    blockEl: block,
+    container: range.endContainer,
+    offset: range.endOffset,
+    segments,
+  })
   if (startOff < 0 || endOff < 0 || endOff <= startOff) {
     return null
   }
@@ -284,6 +314,33 @@ if (import.meta.vitest) {
 
     it('範囲外 offset は null', () => {
       expect(resolveSegmentOffsets([{ end: 2, start: 0 }], 5, 6)).toBeNull()
+    })
+  })
+
+  describe('textOffsetForTextNode', () => {
+    // segments.find は `node === container` の参照同一性しか見ないため、テストでは
+    // Symbol を identity マーカーに使う (object literal だと structural equal で誤マッチする懸念を排除)。
+    it('container が segments のいずれかと一致したら start + offset を返す', () => {
+      const nodeA = Symbol('a')
+      const nodeB = Symbol('b')
+      const segments = [
+        { node: nodeA, start: 0 },
+        { node: nodeB, start: 5 },
+      ]
+      expect(textOffsetForTextNode(segments, nodeB, 3)).toBe(8)
+    })
+
+    it('container が segments に含まれない場合は null (要素境界等のフォールバック呼び出し用)', () => {
+      const nodeA = Symbol('a')
+      const stranger = Symbol('stranger')
+      const segments = [{ node: nodeA, start: 0 }]
+      expect(textOffsetForTextNode(segments, stranger, 0)).toBeNull()
+    })
+
+    it('offset 0 でも segment.start を正しく返す (boundary)', () => {
+      const nodeA = Symbol('a')
+      const segments = [{ node: nodeA, start: 12 }]
+      expect(textOffsetForTextNode(segments, nodeA, 0)).toBe(12)
     })
   })
 }

@@ -1,9 +1,10 @@
 // state.markdown を HTML 化して #doc に流し込み、後段の mark 再適用が依存する
 // blockOriginalHTML / blockAnchors の 2 つのキャッシュも更新する。
 
-import { buildBlockAnchors, renderMarkdown } from '../core/markdown'
+import { buildBlockAnchors } from '../core/block-anchors'
 import { qs } from './dom-utils'
 import { reapplyAllMarks } from './mark-engine'
+import { renderMarkdown } from '../core/markdown'
 import { state } from './app-state'
 
 /** ドキュメントが未読込のときの表示。プレースホルダ #doc-wrap を見える状態に戻す */

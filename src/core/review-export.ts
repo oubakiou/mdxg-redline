@@ -1,5 +1,5 @@
 import type { Comment, ExportComment, ExportPayload } from './types'
-import type { BlockAnchor } from './markdown'
+import type { BlockAnchor } from './block-anchors'
 
 export interface ReviewExportState {
   blockAnchors: Map<string, BlockAnchor>

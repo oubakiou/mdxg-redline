@@ -25,16 +25,6 @@ export const qsInput = (selector: string): HTMLInputElement | HTMLTextAreaElemen
 /** 8 文字の base36 ランダム ID。コメント等の一過性 ID として使う（衝突確率は実用上問題にならない範囲を想定） */
 export const uid = (): string => Math.random().toString(36).slice(2, 10)
 
-/** SHA-256 の先頭 8 バイトを hex で返す。docHash として保存キー・ワークスペース差分検知に使う（短く比較しやすいことを優先） */
-export const hashStr = async (str: string): Promise<string> => {
-  const buf = new TextEncoder().encode(str)
-  const hash = await crypto.subtle.digest('SHA-256', buf)
-  return [...new Uint8Array(hash)]
-    .slice(0, 8)
-    .map((byte): string => byte.toString(16).padStart(2, '0'))
-    .join('')
-}
-
 // toast の解除タイマー。関数静的プロパティを使わず、モジュールスコープで型安全に保持する。
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 

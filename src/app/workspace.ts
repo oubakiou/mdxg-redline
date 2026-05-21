@@ -1,9 +1,8 @@
 // 出力先フォルダの handle 管理と `<mdFileName>-<docHash>-feedback.json` の書き出し。
 // プロトコル詳細は DESIGN.md §8 を参照。
 // FS Access API の低レベル wrapper は workspace-fs.ts に切り出し済み。
-// 本ファイルは runtime (UI / app state) に依存する書き出し workflow とその公開 API に専念する。
+// 本ファイルは書き出し workflow とその公開 API に専念し、依存は全て直接 import する。
 
-import type { Comment, ExportComment, ExportPayload } from '../core/types'
 import {
   type FsDirectoryHandle,
   type FsFileHandle,
@@ -17,52 +16,26 @@ import {
   wsState,
   wsSupported,
 } from './workspace-fs'
+import {
+  buildReviewExportPayload,
+  commentCountLabel as formatCommentCount,
+} from '../core/review-export'
 import { deriveFeedbackJsonName, stripMarkdownExt } from '../core/embed'
+import { markFeedbackUnsaved, markFeedbackWritten, state } from './app-state'
+import { qs, toast } from './dom-utils'
+import type { ExportPayload } from '../core/types'
+import { renderSidebar } from './sidebar'
 
-interface WorkspaceRuntime {
-  buildExportPayload: () => ExportPayload
-  commentCountLabel: () => string
-  onFeedbackWritten: () => void
-  onOutputFolderChanged: () => void
-  qs: (selector: string) => HTMLElement
-  state: {
-    comments: Comment[]
-    docHash: string | null
-    docName: string | null
-    markdown: string
-  }
-  toast: (msg: string) => void
-}
+const buildExportPayload = (): ExportPayload => buildReviewExportPayload(state)
 
-const runtimeRef: { current: WorkspaceRuntime | null } = {
-  current: null,
-}
-
-export const configureWorkspace = (runtime: WorkspaceRuntime): void => {
-  runtimeRef.current = runtime
-}
-
-const runtime = (): WorkspaceRuntime => {
-  if (!runtimeRef.current) {
-    throw new Error('Workspace runtime is not configured')
-  }
-  return runtimeRef.current
-}
-
-interface SendButtonControls {
-  sendBtn: HTMLElement
-}
-
-const sendButtonControls = (): SendButtonControls => ({
-  sendBtn: runtime().qs('#btn-send'),
-})
+const commentCountLabel = (): string => formatCommentCount(state.comments.length)
 
 /**
  * 出力先フォルダ表示の更新。Write feedback.json ボタンの tooltip にだけ反映する。
  * ボタン本体テキストは常に "Write feedback.json" 固定で、状態の発見性は tooltip / toast に寄せる。
  */
 const refreshSendButtonTooltip = (): void => {
-  const { sendBtn } = sendButtonControls()
+  const sendBtn = qs('#btn-send')
   const name = getOutputFolderName()
   if (name === null) {
     sendBtn.setAttribute(
@@ -98,7 +71,6 @@ export const restoreWorkspaceHandle = async (): Promise<boolean> => {
  * docName / docHash が未確定なら null（呼び出し側で抑止）。
  */
 const resolveFeedbackFilename = (): string | null => {
-  const { state } = runtime()
   if (!state.docName || !state.docHash) {
     return null
   }
@@ -115,16 +87,16 @@ const writeFeedbackToHandle = async (
 ): Promise<void> => {
   const fh = await handle.getFileHandle(filename, { create: true })
   const writable = await fh.createWritable()
-  await writable.write(JSON.stringify(runtime().buildExportPayload(), null, 2))
+  await writable.write(JSON.stringify(buildExportPayload(), null, 2))
   await writable.close()
 }
 
 /** Write 成功時の toast と status bar を一括更新し、dirty 状態をクリアする */
 const finishWrite = (folderName: string, filename: string): void => {
-  const app = runtime()
-  app.toast(`Wrote ${folderName}/${filename} · ${app.commentCountLabel()}`)
-  app.qs('#status').textContent = `${app.state.docName} · ${folderName}/${filename} written`
-  app.onFeedbackWritten()
+  toast(`Wrote ${folderName}/${filename} · ${commentCountLabel()}`)
+  qs('#status').textContent = `${state.docName} · ${folderName}/${filename} written`
+  markFeedbackWritten()
+  renderSidebar()
 }
 
 /** ピッカーで取得したハンドルを wsState と IDB に反映し、tooltip を更新する */
@@ -156,13 +128,13 @@ const acquireUsableHandle = async (): Promise<FsDirectoryHandle | null> => {
 
 /** 書き出し可能な前提が揃っていれば feedback.json の filename を返す。未確定なら toast を出して null */
 const ensureWritableFilename = (): string | null => {
-  if (!runtime().state.markdown) {
-    runtime().toast('Nothing to write')
+  if (!state.markdown) {
+    toast('Nothing to write')
     return null
   }
   const filename = resolveFeedbackFilename()
   if (!filename) {
-    runtime().toast('Nothing to write')
+    toast('Nothing to write')
     return null
   }
   return filename
@@ -184,7 +156,7 @@ const retryWriteAfterFailure = async (filename: string): Promise<void> => {
     await writeFeedbackToHandle(fresh, filename)
     finishWrite(fresh.name, filename)
   } catch {
-    runtime().toast('Write failed')
+    toast('Write failed')
   }
 }
 
@@ -217,58 +189,10 @@ export const changeOutputFolder = async (): Promise<void> => {
   wsState.handle = picked
   await persistWorkspaceHandle(picked)
   refreshSendButtonTooltip()
-  runtime().onOutputFolderChanged()
-  runtime().toast(`Output folder set to “${picked.name}”`)
+  markFeedbackUnsaved()
+  renderSidebar()
+  toast(`Output folder set to “${picked.name}”`)
 }
-
-const workspaceCommentForTest = (id: string): Comment => ({
-  blockId: 'b001',
-  comment: 'body',
-  created: '2026-05-17T00:00:00.000Z',
-  endOffset: 4,
-  id,
-  quote: 'text',
-  startOffset: 0,
-})
-
-const workspaceRuntimeForTest = (
-  state: WorkspaceRuntime['state'] = {
-    comments: [],
-    docHash: 'testhash00000000',
-    docName: 'review.md',
-    markdown: '# Review',
-  }
-): WorkspaceRuntime => ({
-  buildExportPayload: (): ExportPayload => ({
-    comments: state.comments.map(
-      (comment): ExportComment => ({
-        comment: comment.comment,
-        created: comment.created,
-        headingPath: [],
-        id: comment.id,
-        quote: comment.quote,
-        sourceLine: 0,
-      })
-    ),
-    docHash: state.docHash ?? '',
-    document: state.docName,
-    exportedAt: '2026-05-17T00:00:00.000Z',
-  }),
-  commentCountLabel: (): string => `${String(state.comments.length)} comments`,
-  onFeedbackWritten: (): void => {
-    // test no-op
-  },
-  onOutputFolderChanged: (): void => {
-    // test no-op
-  },
-  qs: (selector: string): HTMLElement => {
-    throw new Error(`Unexpected selector in workspace test: ${selector}`)
-  },
-  state,
-  toast: (_msg: string): void => {
-    // test no-op
-  },
-})
 
 const resetWorkspaceForTest = (): void => {
   wsState.handle = null
@@ -277,19 +201,40 @@ const resetWorkspaceForTest = (): void => {
 if (import.meta.vitest) {
   const { afterEach, beforeEach, describe, expect, it } = import.meta.vitest
 
+  // state は app-state.ts の mutable singleton。テスト用に直接書き換えるため、
+  // 各 it の前後で関連フィールドを退避・復元して相互干渉を防ぐ。
+  const snapshot = {
+    comments: state.comments,
+    docHash: state.docHash,
+    docName: state.docName,
+    markdown: state.markdown,
+  }
+
   beforeEach(() => {
     resetWorkspaceForTest()
+    snapshot.comments = state.comments
+    snapshot.docHash = state.docHash
+    snapshot.docName = state.docName
+    snapshot.markdown = state.markdown
   })
 
   afterEach(() => {
     resetWorkspaceForTest()
+    state.comments = snapshot.comments
+    state.docHash = snapshot.docHash
+    state.docName = snapshot.docName
+    state.markdown = snapshot.markdown
   })
 
   describe('writeFeedbackToHandle', () => {
-    // state.docName='review.md' + state.docHash='testhash00000000' → 命名規約の filename
     const expectedFilename = 'review-testhash00000000-feedback.json'
 
     it('<mdFileName>-<docHash>-feedback.json に export payload を JSON として書き出す', async () => {
+      state.comments = []
+      state.docHash = 'testhash00000000'
+      state.docName = 'review.md'
+      state.markdown = '# Review'
+
       let written = ''
       let closed = false
       const handle: FsDirectoryHandle = {
@@ -315,55 +260,36 @@ if (import.meta.vitest) {
         requestPermission: async (): Promise<FsPermissionState> => Promise.resolve('granted'),
       }
 
-      configureWorkspace(
-        workspaceRuntimeForTest({
-          comments: [workspaceCommentForTest('c1')],
-          docHash: 'testhash00000000',
-          docName: 'review.md',
-          markdown: '# Review',
-        })
-      )
-
       await writeFeedbackToHandle(handle, expectedFilename)
-      expect(JSON.parse(written)).toEqual(runtime().buildExportPayload())
+      // exportedAt は呼び出しごとに ms 単位で変動するため個別フィールドで検証する
+      expect(JSON.parse(written)).toMatchObject({
+        comments: [],
+        docHash: 'testhash00000000',
+        document: 'review.md',
+      })
       expect(closed).toBe(true)
     })
   })
 
   describe('resolveFeedbackFilename', () => {
     it('docName と docHash からファイル命名規約どおりの filename を組み立てる', () => {
-      configureWorkspace(
-        workspaceRuntimeForTest({
-          comments: [],
-          docHash: 'a1b2c3d4e5f6a7b8',
-          docName: 'spec.md',
-          markdown: '# Spec',
-        })
-      )
+      state.docHash = 'a1b2c3d4e5f6a7b8'
+      state.docName = 'spec.md'
+      state.markdown = '# Spec'
       expect(resolveFeedbackFilename()).toBe('spec-a1b2c3d4e5f6a7b8-feedback.json')
     })
 
     it('docName が .markdown 拡張子でも除去して組み立てる', () => {
-      configureWorkspace(
-        workspaceRuntimeForTest({
-          comments: [],
-          docHash: 'a1b2c3d4e5f6a7b8',
-          docName: 'notes.markdown',
-          markdown: '# Notes',
-        })
-      )
+      state.docHash = 'a1b2c3d4e5f6a7b8'
+      state.docName = 'notes.markdown'
+      state.markdown = '# Notes'
       expect(resolveFeedbackFilename()).toBe('notes-a1b2c3d4e5f6a7b8-feedback.json')
     })
 
     it('docHash 未確定なら null（書き出し抑止）', () => {
-      configureWorkspace(
-        workspaceRuntimeForTest({
-          comments: [],
-          docHash: null,
-          docName: 'spec.md',
-          markdown: '',
-        })
-      )
+      state.docHash = null
+      state.docName = 'spec.md'
+      state.markdown = ''
       expect(resolveFeedbackFilename()).toBeNull()
     })
   })

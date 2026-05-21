@@ -1,22 +1,16 @@
-import type { Comment, ExportPayload } from '../core/types'
+import { qs, qsInput, toast } from './dom-utils'
+import type { ExportPayload } from '../core/types'
 import { confirmDialog } from './dialog'
 import { exportBaseName } from '../core/review-export'
+import { reapplyAllMarks } from './mark-engine'
+import { renderSidebar } from './sidebar'
+import { state } from './app-state'
 
-/** 循環 import を避けるため、必要な副作用は runtime として注入で受け取る */
+/** loadFromMarkdown のみ循環を避けるため runtime 経由で受け取る */
 export interface ToolbarRuntime {
   buildExportPayload: () => ExportPayload
   commentCountLabel: () => string
   loadFromMarkdown: (name: string, text: string) => Promise<void>
-  qs: (selector: string) => HTMLElement
-  qsInput: (selector: string) => HTMLInputElement | HTMLTextAreaElement
-  renderSidebar: () => void
-  reapplyAllMarks: () => void
-  state: {
-    comments: Comment[]
-    docName: string | null
-    markdown: string
-  }
-  toast: (msg: string) => void
 }
 
 /** FileList は配列ではないため、テストしやすい ArrayLike 境界で先頭 File だけ取り出す */
@@ -45,14 +39,14 @@ const clearFileInput = (event: Event): void => {
 }
 
 /** Blob を一時 URL 化してアンカークリックで即ダウンロードする定石。URL は即 revoke してリークを防ぐ */
-const downloadJson = (runtime: ToolbarRuntime, payload: ExportPayload): void => {
+const downloadJson = (payload: ExportPayload): void => {
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
     type: 'application/json',
   })
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = `${exportBaseName(runtime.state.docName)}.feedback.json`
+  anchor.download = `${exportBaseName(state.docName)}.feedback.json`
   anchor.click()
   URL.revokeObjectURL(url)
 }
@@ -83,30 +77,30 @@ const copySelectedText = (): boolean => {
  * `navigator.clipboard` が使えない／拒否された場合の代替コピー経路。
  * 一時 textarea + execCommand('copy') という古典手法を使うが、これ無しでは安全コンテキスト外ブラウザで完全に動かなくなる。
  */
-const fallbackCopy = (runtime: ToolbarRuntime, text: string): void => {
+const fallbackCopy = (text: string): void => {
   const textarea = createHiddenTextarea(text)
   document.body.appendChild(textarea)
   textarea.select()
   if (copySelectedText()) {
-    runtime.toast('Copied')
+    toast('Copied')
   } else {
-    runtime.toast('Copy failed')
+    toast('Copy failed')
   }
   document.body.removeChild(textarea)
 }
 
 /** 確認後に全コメントを破棄。再描画まで一括で行うため UI の不整合は発生しない */
-const clearAllComments = (runtime: ToolbarRuntime): void => {
-  runtime.state.comments = []
-  runtime.reapplyAllMarks()
-  runtime.renderSidebar()
-  runtime.toast('Comments discarded')
+const clearAllComments = (): void => {
+  state.comments = []
+  reapplyAllMarks()
+  renderSidebar()
+  toast('Comments discarded')
 }
 
 /** Markdown 読み込みボタンと隠し file input を接続する */
 const wireMarkdownLoad = (runtime: ToolbarRuntime): void => {
-  runtime.qs('#btn-load').addEventListener('click', (): void => runtime.qsInput('#file-md').click())
-  runtime.qsInput('#file-md').addEventListener('change', async (event): Promise<void> => {
+  qs('#btn-load').addEventListener('click', (): void => qsInput('#file-md').click())
+  qsInput('#file-md').addEventListener('change', async (event): Promise<void> => {
     const file = fileFromChange(event)
     if (!file) {
       return
@@ -119,48 +113,48 @@ const wireMarkdownLoad = (runtime: ToolbarRuntime): void => {
 
 /** 現在の review state を feedback.json としてダウンロードする。本文未読込時は何も出力しない */
 const wireExport = (runtime: ToolbarRuntime): void => {
-  runtime.qs('#btn-export').addEventListener('click', (): void => {
-    if (!runtime.state.markdown) {
-      runtime.toast('Nothing to export')
+  qs('#btn-export').addEventListener('click', (): void => {
+    if (!state.markdown) {
+      toast('Nothing to export')
       return
     }
-    downloadJson(runtime, runtime.buildExportPayload())
-    runtime.toast('Exported')
+    downloadJson(runtime.buildExportPayload())
+    toast('Exported')
   })
 }
 
 /** feedback JSON をクリップボードへコピーする。ブラウザ拒否時は fallbackCopy に任せる */
 const wireCopy = (runtime: ToolbarRuntime): void => {
-  runtime.qs('#btn-copy').addEventListener('click', async (): Promise<void> => {
-    if (!runtime.state.markdown) {
-      runtime.toast('Nothing to copy')
+  qs('#btn-copy').addEventListener('click', async (): Promise<void> => {
+    if (!state.markdown) {
+      toast('Nothing to copy')
       return
     }
     const text = JSON.stringify(runtime.buildExportPayload(), null, 2)
     try {
       await navigator.clipboard.writeText(text)
-      runtime.toast(`Copied · ${runtime.commentCountLabel()}`)
+      toast(`Copied · ${runtime.commentCountLabel()}`)
     } catch {
-      fallbackCopy(runtime, text)
+      fallbackCopy(text)
     }
   })
 }
 
 /** 全コメント削除の UI 配線。破壊的操作なので confirmDialog を挟んでから state を更新する */
-const wireClear = (runtime: ToolbarRuntime): void => {
-  runtime.qs('#btn-clear').addEventListener('click', async (): Promise<void> => {
-    if (!runtime.state.comments.length) {
-      runtime.toast('No comments to clear')
+const wireClear = (): void => {
+  qs('#btn-clear').addEventListener('click', async (): Promise<void> => {
+    if (!state.comments.length) {
+      toast('No comments to clear')
       return
     }
     const confirmed = await confirmDialog(
-      `Delete all ${runtime.state.comments.length} comments?`,
+      `Delete all ${state.comments.length} comments?`,
       'This cannot be undone.'
     )
     if (!confirmed) {
       return
     }
-    clearAllComments(runtime)
+    clearAllComments()
   })
 }
 
@@ -169,7 +163,7 @@ export const wireToolbar = (runtime: ToolbarRuntime): void => {
   wireMarkdownLoad(runtime)
   wireExport(runtime)
   wireCopy(runtime)
-  wireClear(runtime)
+  wireClear()
 }
 
 if (import.meta.vitest) {

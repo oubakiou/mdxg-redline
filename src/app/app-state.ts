@@ -2,7 +2,7 @@
 // state は import した複数モジュールから共有される mutable オブジェクトとしてエクスポートする
 // (workspace.ts と同じ pattern)。
 
-import type { BlockAnchor } from '../core/markdown'
+import type { BlockAnchor } from '../core/block-anchors'
 import type { Comment } from '../core/types'
 import { feedbackSignature } from '../core/review-export'
 

@@ -1,19 +1,14 @@
 // --- Boot: workspace > embedded -------------------------------------------
 
+import { markFeedbackWritten, state } from './app-state'
 import type { Comment } from '../core/types'
 import { embeddedCommentsFromUnknown } from '../core/feedback'
+import { reapplyAllMarks } from './mark-engine'
+import { renderSidebar } from './sidebar'
 import { restoreWorkspaceHandle } from './workspace'
 
 interface BootRuntime {
   loadFromMarkdown: (name: string, text: string) => Promise<void>
-  markFeedbackWritten: () => void
-  reapplyAllMarks: () => void
-  renderSidebar: () => void
-  state: {
-    comments: Comment[]
-    markdown: string
-  }
-  toast: (msg: string) => void
 }
 
 /** 任意要素の textContent を trim して返す。null/未存在の場合は空文字（embedded フォールバックを連鎖させやすくする） */
@@ -25,25 +20,25 @@ export const elementText = (el: { textContent?: string | null } | null): string 
 }
 
 /** 取り込んだコメント配列を state に流し込み、再描画まで実施する */
-const applyEmbeddedComments = (runtime: BootRuntime, comments: Comment[]): void => {
-  runtime.state.comments = comments
-  runtime.markFeedbackWritten()
-  runtime.reapplyAllMarks()
-  runtime.renderSidebar()
+const applyEmbeddedComments = (comments: Comment[]): void => {
+  state.comments = comments
+  markFeedbackWritten()
+  reapplyAllMarks()
+  renderSidebar()
 }
 
 /**
  * 埋め込み HTML 内に同梱された feedback JSON があれば取り込む。
  * 単独ファイル配布で「ドキュメントとコメントを同梱して配る」ユースケース向けで、不正なら静かに無視する。
  */
-const restoreEmbeddedFeedback = (runtime: BootRuntime, feedbackText: string): void => {
+const restoreEmbeddedFeedback = (feedbackText: string): void => {
   if (!feedbackText) {
     return
   }
   try {
     const comments = embeddedCommentsFromUnknown(JSON.parse(feedbackText))
     if (comments.length > 0) {
-      applyEmbeddedComments(runtime, comments)
+      applyEmbeddedComments(comments)
     }
   } catch {
     // embedded feedback is optional
@@ -79,7 +74,7 @@ const loadEmbeddedMarkdown = async (runtime: BootRuntime): Promise<boolean> => {
   }
   const name = embedded.dataset.name || 'document.md'
   await runtime.loadFromMarkdown(name, embeddedText)
-  restoreEmbeddedFeedback(runtime, elementText(document.getElementById('embedded-feedback')))
+  restoreEmbeddedFeedback(elementText(document.getElementById('embedded-feedback')))
   return true
 }
 

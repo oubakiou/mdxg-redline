@@ -7,8 +7,8 @@ import { escapeHtml } from './escape'
 /**
  * markdown 本文の SHA-256 を計算し、先頭 8 バイトを 16 文字の hex 文字列で返す。
  * docHash としてファイル命名規約 (`<mdFileName>-<docHash>-...`) や
- * Workspace の差分検知に使う。同一ロジックを review.ts でも `hashStr` として呼び出すため、
- * 文字列化アルゴリズムは両者で一致させる必要がある。
+ * Workspace の差分検知に使う。CLI とブラウザの双方からこの関数を直接呼ぶことで、
+ * docHash の計算結果がプロセスを跨いで一致することを保証する。
  */
 export const computeDocHash = async (markdown: string): Promise<string> => {
   const buf = new TextEncoder().encode(markdown)
