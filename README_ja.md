@@ -9,13 +9,13 @@
 
 `mdxg-redline` は、LLM エージェントが人間レビュワーから「長文 markdown に対するフィードバック」を **散文の感想ではなく位置情報付きの構造化 JSON** として受け取るためのブラウザツールです。LLM エージェントと人間レビュワーの間に立ち、「markdown を貼って、散文のフィードバックを受け取る」という曖昧なループを、**機械可読なフィードバック成果物** に置き換えます。
 
-エンドユーザーには **単一 HTML ファイル**（`review.html`）を配布するだけで動きます。サーバー不要・追加インストール不要・ネットワーク通信ゼロ。
+エンドユーザーには **単一 HTML ファイル**（`review.html`）を配布するだけで動きます。サーバー不要・追加インストール不要・ LLM コンテンツ起点での外部通信ゼロ。
 
 ## 特徴
 
 - **位置情報付きインラインコメント**: 任意のテキスト範囲を選択してコメントを残し、`headingPath` と `sourceLine` で位置を特定できる JSON を出力
 - **単一 HTML 配布**: `marked` を含む全依存を inline、CDN 参照なし
-- **2 つの受け渡し経路**: 埋め込み HTML / ファイル選択
+- **2 つの入力経路**: HTML への事前注入（埋め込み） / ブラウザでのファイル選択
 - **読み取り専用**: 原文 markdown を改変しない
 
 ## 使い方
@@ -33,7 +33,7 @@
 
 ### `npx mdxg-redline` でレビュー依頼用 HTML を生成して開く
 
-手元の markdown 1 ファイルを単発レビューする場合、同梱 CLI で markdown を埋め込んだ HTML を生成してそのままブラウザで開けます。
+LLM エージェントから人間にレビューを依頼する場合や、手元の markdown 1 ファイルを単発レビューしたい場合に、同梱 CLI で markdown を埋め込んだ HTML を生成してそのままブラウザで開けます。
 
 ```bash
 npx mdxg-redline <input.md>                       # input.md と同じディレクトリに書き、ブラウザを起動
@@ -50,19 +50,21 @@ npx mdxg-redline --help                           # 使い方ヘルプを表示
 - `--no-open` で自動起動を抑止。stdout には常に生成パスが出るので CI / エージェントから拾える
 - 動作要件は Node.js 20+（`package.json` の `engines.node`）
 
-詳細・エスケープ仕様・命名規約は [docs/DESIGN.md §3 入力 2](docs/DESIGN.md#3-ユーザーフロー) と [§8 ワークスペースプロトコル](docs/DESIGN.md#8-ワークスペースプロトコル) を参照。
+詳細・エスケープ仕様・命名規約は [docs/DESIGN.md §3 ユーザーフロー](docs/DESIGN.md#3-ユーザーフロー) と [§8 ワークスペースプロトコル](docs/DESIGN.md#8-ワークスペースプロトコル) を参照。
 
-### Workspace 監視（推奨、Chromium 系のみ）
+### LLM エージェントとレビュワーの標準ループ（Chromium 系推奨）
 
 エージェントとレビュワーが同一マシンで複数往復するワークフロー用。
 
-1. エージェントが任意のワークスペースディレクトリ（例: `.temp/review-session/`）に `<name>-<hash>-review.md` を書き出す（`<name>` は元 MD の basename から `.md` / `.markdown` 拡張子を除いたもの、`<hash>` は本文 SHA-256 の先頭 16 桁 hex）
-2. ブラウザで `review.html` を開き `Watch folder` でディレクトリを選択
-3. レビュワーがコメントを記入し `Submit review` をクリック
-4. 同じディレクトリに `<name>-<hash>-feedback.json` が書き出される（元の `review.md` と同じ `<name>` / `<hash>` を共有）
-5. エージェントが対応する `feedback.json` を読み、改訂版 `<name>-<新hash>-review.md` を書き戻すループ
+1. エージェントが `npx mdxg-redline <input.md> <folder>` で `<mdFileName>-<docHash>-review.html` をワークスペースフォルダに生成する（`mdFileName` は元 MD basename から `.md` / `.markdown` 拡張子を除いたもの、`docHash` は本文 SHA-256 の先頭 16 桁 hex）
+2. CLI が標準ブラウザで HTML を自動起動。レビュワーがコメントを記入する
+3. サイドバーの `Write feedback.json` ボタン（split button）をクリック。初回は出力先フォルダを picker で選択し、IndexedDB に永続化。2 回目以降は picker 無しで同じフォルダに書き出される
+4. 同じフォルダに `<mdFileName>-<docHash>-feedback.json` が書き出される（元 review.html と同じ `<mdFileName>` / `<docHash>` を共有するため対応関係が機械的に決まる）
+5. エージェントが対応する feedback.json を読み、改訂版を `npx mdxg-redline <input2.md> <folder>` で次ラウンドの HTML を生成 → ループ継続
 
-ファイル命名規約の詳細は [docs/DESIGN.md のワークスペースプロトコル](docs/DESIGN.md#8-ワークスペースプロトコル) を参照。
+`Write feedback.json` は File System Access API を使うため Chromium 系（Chrome / Edge / Arc / Brave / Opera）のみ対応。Safari / Firefox では代替として `Comments ▾ → Export as JSON` でダウンロード、または `Copy as JSON` でクリップボード経由のフィードバック授受になる。
+
+ファイル命名規約と詳細フローは [docs/DESIGN.md §8 ワークスペースプロトコル](docs/DESIGN.md#8-ワークスペースプロトコル) を参照。
 
 ## 出力 JSON
 
@@ -101,7 +103,7 @@ npx mdxg-redline --help                           # 使い方ヘルプを表示
 | §10 Search               | MUST (Viewer) | 未対応                                              |
 | §13 Keyboard Navigation  | MUST (Viewer) | 部分対応                                            |
 
-今後のロードマップは [docs/DESIGN.md §13](docs/DESIGN.md) を参照。
+今後のロードマップは [docs/DESIGN.md §12 MDXG 準拠ロードマップ・今後の拡張](docs/DESIGN.md#12-mdxg-準拠ロードマップ今後の拡張) を参照。
 
 ## 開発
 
