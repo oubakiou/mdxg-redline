@@ -1,6 +1,7 @@
 // 出力先フォルダの handle 管理と `<mdFileName>-<docHash>-feedback.json` の書き出し。
 // プロトコル詳細は DESIGN.md §8 を参照。
 
+import type { Comment, ExportComment, ExportPayload } from './types'
 import { deriveFeedbackJsonName, stripMarkdownExt } from './embed-core'
 import { IDB } from './storage'
 import { noticeDialog } from './dialog'
@@ -25,32 +26,6 @@ interface FsWritableStream {
 
 interface FsDirectoryHandle extends FsHandle {
   getFileHandle: (name: string, options?: { create?: boolean }) => Promise<FsFileHandle>
-}
-
-interface Comment {
-  blockId: string
-  comment: string
-  created: string
-  endOffset: number
-  id: string
-  quote: string
-  startOffset: number
-}
-
-interface ExportComment {
-  comment: string
-  created: string
-  headingPath: string[]
-  id: string
-  quote: string
-  sourceLine: number
-}
-
-interface ExportPayload {
-  comments: ExportComment[]
-  docHash: string
-  document: string | null
-  exportedAt: string
 }
 
 interface WorkspaceRuntime {

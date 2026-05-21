@@ -1,17 +1,8 @@
 // --- Boot: workspace > embedded -------------------------------------------
 
+import type { Comment } from './types'
 import { embeddedCommentsFromUnknown } from './feedback'
 import { restoreWorkspaceHandle } from './workspace'
-
-interface Comment {
-  id: string
-  quote: string
-  comment: string
-  blockId: string
-  startOffset: number
-  endOffset: number
-  created: string
-}
 
 interface BootRuntime {
   loadFromMarkdown: (name: string, text: string) => Promise<void>
