@@ -1,5 +1,5 @@
-import type { Comment } from './types'
-import { escapeHtml } from './escape'
+import type { Comment } from '../core/types'
+import { escapeHtml } from '../core/escape'
 import { smoothScrollToCenter } from './scroll'
 
 export interface SidebarRuntime {

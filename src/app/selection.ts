@@ -1,4 +1,4 @@
-import type { Comment, PendingSelection } from './types'
+import type { Comment, PendingSelection } from '../core/types'
 
 /** 選択範囲解析結果。フローター位置決め用の rect 込み */
 export interface SelectionInfo extends PendingSelection {

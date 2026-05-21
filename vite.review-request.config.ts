@@ -11,14 +11,14 @@ export default defineConfig({
     outDir: 'dist',
     rollupOptions: {
       external: [/^node:/],
-      input: 'src/review-request.ts',
+      input: 'src/cli/review-request.ts',
       output: {
         entryFileNames: 'review-request.mjs',
         format: 'esm',
       },
       preserveEntrySignatures: 'allow-extension',
     },
-    ssr: 'src/review-request.ts',
+    ssr: 'src/cli/review-request.ts',
     target: 'node20',
   },
   // in-source test (`if (import.meta.vitest) { ... }`) を production bundle から除去する。

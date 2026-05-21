@@ -3,19 +3,19 @@
 // は別モジュールへ抽出済み。本ファイルは modal / menu / event の wiring と
 // loadFromMarkdown orchestrator、sidebar/toolbar/workspace/boot の組み立てに専念する。
 
-import type { Comment, ExportPayload, PendingSelection } from './types'
+import type { Comment, ExportPayload, PendingSelection } from '../core/types'
 import {
   buildReviewExportPayload,
   feedbackSignature,
   commentCountLabel as formatCommentCount,
-} from './review-export'
+} from '../core/review-export'
 import { changeOutputFolder, configureWorkspace, writeFeedback } from './workspace'
 import { hashStr, qs, qsInput, toast, uid } from './dom-utils'
 import { isFeedbackDirty, markFeedbackUnsaved, markFeedbackWritten, state } from './app-state'
 import { boot } from './boot'
 import { createSidebar } from './sidebar'
 import { getSelectionInfo } from './selection'
-import { parsePendingSelection } from './feedback'
+import { parsePendingSelection } from '../core/feedback'
 import { reapplyAllMarks } from './mark-engine'
 import { renderDoc } from './doc-renderer'
 import { wireToolbar } from './toolbar'

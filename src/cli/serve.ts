@@ -3,7 +3,7 @@
 // 自動停止する。ポートは MDXG_REDLINE_PORT or DEFAULT_PORT を優先し、衝突時のみ
 // ランダムポートにフォールバックする。
 
-import { isHostBrowserUnreachableViaFile, openInBrowser } from './cli-open-command'
+import { isHostBrowserUnreachableViaFile, openInBrowser } from './open-command'
 
 import { basename } from 'node:path'
 import { createReadStream } from 'node:fs'

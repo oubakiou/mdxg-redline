@@ -9,22 +9,22 @@
 // VS Code Remote Containers / Codespaces のように $BROWSER が file:// を扱えない環境を
 // 検知した場合のみ、軽量 HTTP サーバーを 127.0.0.1 に立てて http URL で配信する。
 // 本ファイルはエントリ専用に薄く保ち、引数パース / 入力解決 / ブラウザ起動 / HTTP サーバーは
-// cli-parse-args / cli-input-source / cli-open-command / cli-serve に分割している。
+// cli/{parse-args,input-source,open-command,serve}.ts に分割している。
 
-import { HELP_TEXT, type RunArgs, parseArgs, sanitizeMdFileName } from './cli-parse-args'
+import { HELP_TEXT, type RunArgs, parseArgs, sanitizeMdFileName } from './parse-args'
 import {
   computeDocHash,
   deriveReviewHtmlName,
   rewriteReviewHtml,
   stripMarkdownExt,
-} from './embed-core'
+} from '../core/embed'
 import { dirname, resolve } from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
 
 import { fileURLToPath } from 'node:url'
-import { openOutput } from './cli-serve'
+import { openOutput } from './serve'
 import process from 'node:process'
-import { resolveInput } from './cli-input-source'
+import { resolveInput } from './input-source'
 
 const errorMessage = (error: unknown): string => {
   if (error instanceof Error) {

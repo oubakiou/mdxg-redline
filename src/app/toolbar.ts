@@ -1,6 +1,6 @@
-import type { Comment, ExportPayload } from './types'
+import type { Comment, ExportPayload } from '../core/types'
 import { confirmDialog } from './dialog'
-import { exportBaseName } from './review-export'
+import { exportBaseName } from '../core/review-export'
 
 /** 循環 import を避けるため、必要な副作用は runtime として注入で受け取る */
 export interface ToolbarRuntime {

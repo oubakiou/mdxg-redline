@@ -1,7 +1,7 @@
 // state.markdown を HTML 化して #doc に流し込み、後段の mark 再適用が依存する
 // blockOriginalHTML / blockAnchors の 2 つのキャッシュも更新する。
 
-import { buildBlockAnchors, renderMarkdown } from './markdown'
+import { buildBlockAnchors, renderMarkdown } from '../core/markdown'
 import { qs } from './dom-utils'
 import { reapplyAllMarks } from './mark-engine'
 import { state } from './app-state'

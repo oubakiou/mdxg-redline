@@ -2,7 +2,7 @@
 // コメントの追加/削除/再描画のたびに「キャッシュ済み原 HTML へ戻す → 全 mark 再生成」
 // というラウンドトリップを取り、差分管理を避けて単純化している。
 
-import type { Comment } from './types'
+import type { Comment } from '../core/types'
 import { buildDomRange } from './selection'
 import { qs } from './dom-utils'
 import { state } from './app-state'

@@ -6,7 +6,7 @@ import { execFile } from "node:child_process";
 import process from "node:process";
 import { createReadStream } from "node:fs";
 import { createServer } from "node:http";
-//#region src/cli-parse-args.ts
+//#region src/cli/parse-args.ts
 var NO_OPEN_FLAG = "--no-open";
 var HELP_FLAGS = new Set(["--help", "-h"]);
 var DOCUMENT_NAME_FLAG = "--document-name";
@@ -114,7 +114,7 @@ var sanitizeMdFileName = (name) => {
 	return cleaned;
 };
 //#endregion
-//#region src/escape.ts
+//#region src/core/escape.ts
 var REPLACEMENTS = {
 	"\"": "&quot;",
 	"&": "&amp;",
@@ -124,7 +124,7 @@ var REPLACEMENTS = {
 };
 var escapeHtml = (value) => value.replace(/[&<>"']/g, (ch) => REPLACEMENTS[ch] || ch);
 //#endregion
-//#region src/embed-core.ts
+//#region src/core/embed.ts
 /**
 * markdown 本文の SHA-256 を計算し、先頭 8 バイトを 16 文字の hex 文字列で返す。
 * docHash としてファイル命名規約 (`<mdFileName>-<docHash>-...`) や
@@ -170,7 +170,7 @@ var rewriteReviewHtml = (reviewHtml, markdown, docName) => {
 	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
 };
 //#endregion
-//#region src/cli-open-command.ts
+//#region src/cli/open-command.ts
 var isHostBrowserUnreachableViaFile = (env) => {
 	if (env.REMOTE_CONTAINERS === "true") return true;
 	if (env.CODESPACES === "true") return true;
@@ -208,7 +208,7 @@ var openInBrowser = async (path) => new Promise((done) => {
 	});
 });
 //#endregion
-//#region src/cli-serve.ts
+//#region src/cli/serve.ts
 var SERVE_AUTOSTOP_MS = 1e4;
 var SERVE_GIVEUP_MS = 6e4;
 var SERVE_HOST = "127.0.0.1";
@@ -295,7 +295,7 @@ var openOutput = async (outputPath) => {
 	await handle.done;
 };
 //#endregion
-//#region src/cli-input-source.ts
+//#region src/cli/input-source.ts
 var STDIN_TOKEN = "-";
 var STDIN_DEFAULT_DOC_NAME = "stdin.md";
 var toBuffer = (chunk) => {
@@ -324,7 +324,7 @@ var resolveInput = async (inputPath, documentName) => {
 	};
 };
 //#endregion
-//#region src/review-request.ts
+//#region src/cli/review-request.ts
 var errorMessage = (error) => {
 	if (error instanceof Error) return error.message;
 	return String(error);

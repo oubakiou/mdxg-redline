@@ -1,7 +1,7 @@
 // --- Boot: workspace > embedded -------------------------------------------
 
-import type { Comment } from './types'
-import { embeddedCommentsFromUnknown } from './feedback'
+import type { Comment } from '../core/types'
+import { embeddedCommentsFromUnknown } from '../core/feedback'
 import { restoreWorkspaceHandle } from './workspace'
 
 interface BootRuntime {

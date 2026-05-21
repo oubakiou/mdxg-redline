@@ -3,7 +3,7 @@
 // FS Access API の低レベル wrapper は workspace-fs.ts に切り出し済み。
 // 本ファイルは runtime (UI / app state) に依存する書き出し workflow とその公開 API に専念する。
 
-import type { Comment, ExportComment, ExportPayload } from './types'
+import type { Comment, ExportComment, ExportPayload } from '../core/types'
 import {
   type FsDirectoryHandle,
   type FsFileHandle,
@@ -17,7 +17,7 @@ import {
   wsState,
   wsSupported,
 } from './workspace-fs'
-import { deriveFeedbackJsonName, stripMarkdownExt } from './embed-core'
+import { deriveFeedbackJsonName, stripMarkdownExt } from '../core/embed'
 
 interface WorkspaceRuntime {
   buildExportPayload: () => ExportPayload
