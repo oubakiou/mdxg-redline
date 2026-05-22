@@ -208,25 +208,26 @@ export function normalizeLangIdentifier(raw: string): SupportedLang | null
 
 成果物：全 `<pre>` の右上に Copy button が出現し、1 クリックでコードがクリップボードに入ること
 
-### Step 7: §1 Theming の dark 連動
+### Step 7: §1 Theming との連動（コードブロック背景は両モードで dark 固定）
 
+- 設計方針：**コードブロック背景は light / dark 共通で dark トークン (`--doc-code-bg`) に固定する**（DESIGN.md §1 Theming の `--doc-code-bg` 例外。IDE / Discord / Notion 等の慣行に揃える）。これに合わせてシンタックスハイライト配色も両モードで `--shiki-dark` のみを採用し、`--shiki-light` は CSS 側で不採用とする
 - `src/styles/markdown.css` に Shiki 用ルールを追加：
   ```css
   #doc pre.shiki {
     background: var(--doc-code-bg);
     color: var(--doc-code-ink);
   }
-  /* Shiki の dual theme: light は --shiki-light, dark は --shiki-dark を採用 */
-  :where(.dark) #doc pre.shiki span {
-    color: var(--shiki-dark) !important;
-    background-color: var(--shiki-dark-bg) !important;
+  /* 背景が両モードで dark 固定のため、light/dark を切り分けず --shiki-dark のみ採用 */
+  :where(#doc) pre.shiki span {
+    color: var(--shiki-dark);
   }
   ```
-  ※ `!important` は Shiki が `<span style="color:#...">` で inline style を出力するため、CSS 側で上書きするには必要。`:where()` で詳細度ゼロにしているのは §1 Theming と同じカスタマイズ容易性の方針
-- light 側は inline style がそのまま採用される（`--shiki-light` の値が `color: #...` として書かれている）
-- 切替は `<html>.dark` クラスの変化を `subscribeSystemTheme` 経由で検知し、CSS だけで完結（DOM 再構築は不要）
+  `:where()` で詳細度ゼロにしているのは §1 Theming と同じカスタマイズ容易性の方針
+- Shiki への `defaultColor: false` で span 側に直接 `color: #...` が書かれないため、CSS variable 参照のみで上書きが完結し `!important` は不要
+- dual theme の出力構造 (`--shiki-light` / `--shiki-dark` 両併存) は将来「light モードでコードブロック背景を明色化する」方針に切替えた時に CSS だけで対応できるよう温存する
+- `<html>.dark` クラスの変化は `subscribeSystemTheme` で検知済みだが、本ルールは light/dark どちらでも同じ値を採用するためトグル時の再描画は発生しない
 
-成果物：`html.dark` トグルで Shiki ハイライトが light / dark にリアクティブ追従
+成果物：light / dark どちらのテーマでもコードブロックが dark 背景 + dark 系ハイライトで一貫描画される
 
 ### Step 8: §6 アンカリングの維持確認
 
@@ -279,14 +280,19 @@ dual theme の出力形式（同じ `<span>` に light / dark 両方の色を CS
 
 A 案は `injectCopyButtons` が `<pre>` の親を確認して未 wrap なら wrap する idempotent 設計にすれば、再描画でも重複生成しない。
 
-### d. テーマ切替方式：Shiki dual theme + CSS variables（DOM 再構築なし）
+### d. テーマ切替方式：Shiki dual theme 出力を保持しつつ CSS 側で dark のみ採用
 
-Shiki の dual theme は出力 `<span>` の `style` 属性に `--shiki-light: #...; --shiki-dark: #...;` の両方を埋め込む。CSS 側で `:where(.dark) #doc pre.shiki span` で `color: var(--shiki-dark)` を採用するように書けば、`html.dark` クラスの toggle だけでテーマが切り替わる。
+Shiki の dual theme は出力 `<span>` の `style` 属性に `--shiki-light: #...; --shiki-dark: #...;` の両方を埋め込む。MDXG Redline は **コードブロック背景を light / dark 共通で dark に固定する** デザイン方針（DESIGN.md §1 Theming の `--doc-code-bg` 例外）を採るため、CSS 側では light/dark セレクタを切り分けず `:where(#doc) pre.shiki span { color: var(--shiki-dark); }` の単一ルールで `--shiki-dark` のみを採用する。
+
+dual theme の出力構造自体は温存する。理由：
+
+- 将来「light モードではコードブロック背景も明色化する」方針に切替える可能性が残る場合、CSS ルールだけで `:where(:not(.dark)) #doc pre.shiki span { color: var(--shiki-light); }` を追加すれば対応できる（再描画不要）
+- Shiki single theme への変更は CSS 側の変更だけでは戻せず、`shiki.ts` の初期化を書き換える必要があるため可逆性が低い
 
 `defaultColor: false` を Shiki に渡すことで、`color: #...` が直接 inline で書かれず CSS variable 経由になる。これにより：
 
-- DOM 再構築不要
-- §1 Theming の `subscribeSystemTheme` が `html.dark` を toggle するだけでハイライト配色も追従
+- CSS 側で `!important` 無しに色を上書きできる
+- DOM 再構築不要（テーマ方針を将来切替えても CSS だけで済む）
 - Shiki インスタンスは light / dark で 1 つだけ（メモリ・初期化コストが半減）
 
 ### e. CLI 既定値は `auto`：オプトインなしで最小サイズ

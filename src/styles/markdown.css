@@ -162,21 +162,15 @@
   border-radius: 0;
 }
 
-/* Shiki dual theme との連動 (MDXG §2 [MUST] ハイライト配色の light / dark 適応)。
-   Shiki が <span style="--shiki-light:#xxx;--shiki-dark:#yyy"> を出力するので、
-   html.dark のとき span の color を --shiki-dark に切替える。
-   !important が必要なのは Shiki の inline style (color: ...) が一見不要に見えるが、
-   実際は defaultColor: false でこれらは CSS variable 参照のみ。CSS 側で span に直接 color を
-   指定する場合のみ衝突する。ここでは Shiki の inline style に上書き color を入れない仕様。
-   詳細度ゼロの :where() で書き、テーマ拡張時のカスタマイズ容易性を保つ (§1 Theming と同じ方針) */
+/* コードブロック背景は light / dark 両モードで dark トークン (--doc-code-bg) に統一する
+   設計のため、Shiki dual theme が出力する --shiki-light は採用せず、両モードとも
+   --shiki-dark のみを使う。詳細度ゼロの :where() でテーマ拡張時の上書き容易性を保つ
+   (§1 Theming と同じ方針)。 */
 #doc pre.shiki {
   color: var(--doc-code-ink);
 }
-:where(.dark) #doc pre.shiki span {
+:where(#doc) pre.shiki span {
   color: var(--shiki-dark);
-}
-:where(:not(.dark)) #doc pre.shiki span {
-  color: var(--shiki-light);
 }
 
 /* `<pre>` を `<div class="code-block-wrap">` で wrap し、コピー button を右上に absolute 配置。

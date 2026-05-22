@@ -464,7 +464,7 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 #### §1 Theming（準拠）
 
 - [MUST] ホスト環境への外観適応: ✓（`<head>` inline script が `prefers-color-scheme` を初期値として参照、`subscribeSystemTheme` で `system` 状態の間は OS 変更にもリアクティブ追従）
-- [SHOULD] 色をホストテーマ / OS から導出: ✓（DADS primitive から自前 semantic マッピング。dark トークンは `:root.dark` / `:where(.dark) #doc` で `--paper` / `--ink` / `--accent` / `--rule` 等を上書き、§7c）
+- [SHOULD] 色をホストテーマ / OS から導出: ✓（DADS primitive から自前 semantic マッピング。dark トークンは `:root.dark` / `:where(.dark) #doc` で `--paper` / `--ink` / `--accent` / `--rule` 等を上書き、§7c）。例外として **コードブロック背景 (`--doc-code-bg`) は light / dark 共通で dark トークン (`#1e1e1e` / `#0d0d0d`) に固定する** デザイン方針を採る（IDE / Discord / Notion 等で慣行化された見え方に合わせるため）。コードブロック内のシンタックスハイライト配色も同方針で両モードとも dark 系を採用する（§12 §2 Code Block Rendering 行）
 - [MUST NOT] 色をユーザー設定必須にしない: ✓（`localStorage` 未設定時の既定が `system` で OS 設定を反映）
 - [MUST] ライト / ダーク両ホストテーマ対応: ✓（toolbar の 3 状態 toggle で `system → light → dark` を循環、ボタンに `aria-label` / `data-tooltip` 付与）
 
@@ -480,11 +480,12 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 - [MUST] 言語識別子付きフェンスの構文ハイライト: ✓（`shiki/core` + JS engine + 27 言語の TextMate grammar、`createHighlighterCoreSync` で同期初期化。`bash` / `shell` / `zsh` / `ts` / `js` / `py` / `yml` / `rb` 等のエイリアスは Shiki メタから自動生成した `src/core/shiki-aliases.generated.ts` で正規名に正規化）
 - [MUST] 言語識別子なしブロックの等幅描画: ✓
 - [MUST] 1 アクションでコピー可能なボタン: ✓（`<pre>` を `<div class="code-block-wrap">` で wrap して右上に絶対配置の Copy button。`navigator.clipboard.writeText(pre.textContent)` で 1 クリックコピー、成功時は「Copy → Copied」を 1.5 秒トグル、失敗時は toast で fallback）
-- [MUST] ハイライト配色のライト / ダーク適応: ✓（Shiki dual theme `github-light` + `github-dark` を `<span style="--shiki-light:#…;--shiki-dark:#…">` 形式で出力、`html.dark` 切替に CSS variable で追従し DOM 再構築なし）
+- [MUST] ハイライト配色のライト / ダーク適応: ✓（Shiki dual theme `github-light` + `github-dark` を `<span style="--shiki-light:#…;--shiki-dark:#…">` 形式で出力。本実装はコードブロック背景を light / dark 共通で dark トークン (`--doc-code-bg`) に固定する設計判断のため、span 側は両モードとも `--shiki-dark` のみを CSS で採用する。dual theme の出力構造自体は将来の方針見直し時に CSS だけで切替えられるよう保持する。詳細は §1 Theming の `--doc-code-bg` 例外、および下記実装詳細）
 
 実装詳細：
 
 - **Shiki 初期化**：`createHighlighterCoreSync({ engine: createJavaScriptRegexEngine(), langs, themes: [githubLight, githubDark] })` で同期 lazy singleton 初期化。`defaultColor: false` で inline color を CSS variable に逃がす（`src/app/shiki.ts`）
+- **配色採用ルール**：`src/styles/markdown.css` の `#doc pre.shiki span` で `color: var(--shiki-dark)` を一律指定。light / dark セレクタを切り分けず単一ルールに統合しているのは、コードブロック背景が両モードで dark 固定だからで、light theme 側の色相を採ると暗背景に対して低コントラストになるため`--shiki-light` は不採用
 - **grammar の動的注入**：`dist/review.html` には Shiki core + JS engine + 2 テーマだけ inline し、27 言語の grammar JSON は `dist/shiki-langs/<lang>.json` として個別 emit して **commit 対象** にする。CLI が markdown をスキャンして必要 grammar だけを配布 HTML の `<script id="embedded-shiki-langs" type="application/json">` に注入する。`dist/shiki-langs/` を commit する理由は `dist/review.html` / `dist/review-request.mjs` と同じ「clone 直後に `npm run build` 抜きで CLI を実行できる」配布契約に揃えるため。partial clone や手動削除で grammar JSON が欠けた場合は CLI が ENOENT を捕えて「`先に npm run build を実行してください`」案内を投げる（`src/cli/review-request.ts` の `readGrammarJson` / `src/core/embed.ts`）
 - **CLI オプション**：`--shiki-langs <auto|all|none|<csv>>`。既定 `auto` は `marked.lexer` で markdown 中のフェンス言語を抽出。`<csv>` は `ts,js,py` のような短縮形を受け、Shiki メタ由来のエイリアスマップで正規化（`src/cli/parse-args.ts` の `parseShikiLangsValue`）
 - **27 正規名**：設計上の 28 言語のうち `bash` / `shell` は Shiki 内部で `shellscript` のエイリアスに集約されるため、ユニークな正規名は 27 個になる（エイリアスは ALIAS_TO_CANONICAL で同じ正規名にマップされる）
