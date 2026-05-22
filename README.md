@@ -88,14 +88,15 @@ See [docs/DESIGN.md §8 Workspace Protocol](docs/DESIGN.md#8-ワークスペー�
 
 ## MDXG compliance status
 
-The [Markdown Experience Guidelines (MDXG)](https://github.com/vercel-labs/mdxg) are currently a preview specification and may change. Reviewer-facing features are being adopted incrementally.
+The [Markdown Experience Guidelines (MDXG)](https://github.com/vercel-labs/mdxg) are currently a preview specification and may change. MDXG Redline embeds an **MDXG Viewer** (the read-only rendering conformance level) and layers inline commenting and structured feedback JSON export on top of it as review-specific features. Viewer features are being adopted incrementally.
 
 | MDXG section             | Required level | Current status                                                         |
 | ------------------------ | -------------- | ---------------------------------------------------------------------- |
 | §1 Theming               | MUST (Viewer)  | Partial (DADS theme; host theme adaptation is not implemented yet)     |
 | §2 Code Block Rendering  | MUST (Viewer)  | Partial (copy button and syntax highlighting are not implemented yet)  |
 | §3 Task Lists            | MUST (Viewer)  | Supported via marked defaults                                          |
-| §4 Images / §5 Tables    | MUST (Viewer)  | Supported via marked defaults                                          |
+| §4 Images                | MUST (Viewer)  | Partial (relative image paths not resolved due to the trust boundary)  |
+| §5 Tables                | MUST (Viewer)  | Compliant (horizontal scrolling supported)                             |
 | §6 Virtual Pages         | MUST (Viewer)  | Not supported yet (requires integration design with the comment model) |
 | §7 Page Navigation       | MUST (Viewer)  | Not supported yet                                                      |
 | §8 Page Outline          | MUST (Viewer)  | Not supported yet                                                      |

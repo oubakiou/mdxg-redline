@@ -88,14 +88,15 @@ npx mdxg-redline --help                           # 使い方ヘルプを表示
 
 ## MDXG 準拠状況
 
-[Markdown Experience Guidelines (MDXG)](https://github.com/vercel-labs/mdxg) は現在プレビュー版で、仕様は今後変更される可能性があります。本ツールではレビュワー観点機能を段階的に取り込み中です。
+[Markdown Experience Guidelines (MDXG)](https://github.com/vercel-labs/mdxg) は現在プレビュー版で、仕様は今後変更される可能性があります。MDXG Redline は **MDXG Viewer**（読み取り専用のレンダラ準拠レベル）を内蔵し、その上にインラインコメントと構造化フィードバック JSON の書き出しというレビュー機能を載せたツールです。Viewer の各機能は段階的に取り込み中です。
 
 | MDXG セクション          | 必須レベル    | 現状                                                |
 | ------------------------ | ------------- | --------------------------------------------------- |
 | §1 Theming               | MUST (Viewer) | 部分（DADS テーマ。host theme 追従は未実装）        |
 | §2 Code Block Rendering  | MUST (Viewer) | 部分（コピー button・シンタックスハイライト未実装） |
 | §3 Task Lists            | MUST (Viewer) | marked デフォルトで対応                             |
-| §4 Images / §5 Tables    | MUST (Viewer) | marked デフォルトで対応                             |
+| §4 Images                | MUST (Viewer) | 部分（相対画像パスは信頼境界の都合で未対応）        |
+| §5 Tables                | MUST (Viewer) | 準拠（水平スクロール対応）                          |
 | §6 Virtual Pages         | MUST (Viewer) | 未対応（コメントモデルとの統合設計が必要）          |
 | §7 Page Navigation       | MUST (Viewer) | 未対応                                              |
 | §8 Page Outline          | MUST (Viewer) | 未対応                                              |
