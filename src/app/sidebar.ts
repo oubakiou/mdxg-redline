@@ -59,7 +59,7 @@ const commentCardHTML = (comment: Comment): string => `
   <div class="cmt-body">${escapeHtml(comment.comment)}</div>
   <div class="cmt-meta">
     <span>${comment.blockId} · ${new Date(comment.created).toLocaleString()}</span>
-    <button class="cmt-del" data-del="${comment.id}">Delete</button>
+    <button class="cmt-del" data-del="${comment.id}" aria-label="Delete comment">Delete</button>
   </div>`
 
 /** コメントを 1 件削除して即座に再描画 */

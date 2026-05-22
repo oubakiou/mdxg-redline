@@ -111,7 +111,7 @@
               aria-expanded="false"
               aria-label="Output folder options"
             >
-              ▾
+              <span aria-hidden="true">▾</span>
             </button>
             <div class="menu" id="menu-send" role="menu">
               <button class="menu-item" id="btn-change-output" role="menuitem">
@@ -126,7 +126,9 @@
               aria-haspopup="true"
               aria-expanded="false"
             >
-              <span id="cmt-count">0</span> comments<span class="menu-caret">▾</span>
+              <span id="cmt-count">0</span> comments<span class="menu-caret" aria-hidden="true"
+                >▾</span
+              >
             </button>
             <div class="menu" id="menu-comments" role="menu">
               <button class="menu-item" id="btn-copy" role="menuitem">Copy as JSON</button>
@@ -144,14 +146,19 @@
       </aside>
     </main>
 
-    <div id="floater">＋ Comment</div>
+    <div id="floater"><span aria-hidden="true">＋</span> Comment</div>
 
     <div class="modal-backdrop" id="modal">
-      <div class="modal">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-input-label">
         <div class="label modal-label">Selected text</div>
         <div id="modal-quote" class="cmt-quote modal-quote"></div>
-        <div class="label modal-label">Add a review comment</div>
-        <textarea id="modal-input" rows="4" placeholder="Leave a comment"></textarea>
+        <div class="label modal-label" id="modal-input-label">Add a review comment</div>
+        <textarea
+          id="modal-input"
+          rows="4"
+          placeholder="Leave a comment"
+          aria-labelledby="modal-input-label"
+        ></textarea>
         <div class="modal-actions">
           <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
           <button class="btn btn-primary" id="modal-save">Comment</button>

@@ -458,7 +458,7 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 | Document Structure | [§8 Page Outline](./mdxg/02-document-structure.md#8-page-outlineページアウトライン)                   | 未対応 | スクロールスパイ未実装                                                              |
 | Document Structure | [§9 Sequential Navigation](./mdxg/02-document-structure.md#9-sequential-navigation逐次ナビゲーション) | 未対応 | 前 / 次ナビ未実装                                                                   |
 | Document Structure | [§10 Search](./mdxg/02-document-structure.md#10-search検索)                                           | 未対応 | Virtual Pages 統合後の課題                                                          |
-| Accessibility      | [§13 Keyboard Navigation](./mdxg/04-accessibility.md#13-keyboard-navigationキーボードナビゲーション)  | 部分   | アクセシブル名は要件充足、ページナビ系のキーボード操作は未対応                      |
+| Accessibility      | [§13 Keyboard Navigation](./mdxg/04-accessibility.md#13-keyboard-navigationキーボードナビゲーション)  | 部分   | アクセシブル名は網羅監査済み、ページナビ系のキーボード操作は未対応                  |
 
 #### §1 Theming（準拠）
 
@@ -600,7 +600,7 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 - [MUST] Enter 等でのページ移動: 未対応
 - [SHOULD] アクティブページがフォーカスを受け取る: 未対応
 - [SHOULD] 逐次ナビゲーションのキーボードアクセス: 未対応
-- [MUST] 全インタラクティブ要素のアクセシブル名: 部分（split button / Comments ▾ には `aria-label` / `role`、可視テキスト持ち button は要件充足。全要素の網羅監査は未実施）
+- [MUST] 全インタラクティブ要素のアクセシブル名: ✓（網羅監査済み。装飾文字 `▾` / `＋` を `<span aria-hidden="true">` で覆い、`#modal` (コメント入力) に `role="dialog"` / `aria-modal="true"` / `aria-labelledby` を付与、`#modal-input` `<textarea>` に `aria-labelledby="modal-input-label"` で「Add a review comment」をアクセシブル名として束ね、サイドバーの `.cmt-del` に `aria-label="Delete comment"` を追加。アイコン only な `#btn-theme` / `#btn-send-menu` は既存の `aria-label` で要件充足）
 
 **リファレンス実装 (vercel-labs/mdxg)**
 
@@ -609,11 +609,10 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 
 優先順序：
 
-1. **§13 アクセシブル名の網羅監査** — 全インタラクティブ要素に可視テキストまたは `aria-label` を確認・付与（ページ概念に非依存で先行可能）
-2. **§2 コピー button + シンタックスハイライト** — Shiki をリファレンス実装と同じ構成（`themes: { light: github-light, dark: github-dark }` の dual theme + リファレンス実装が採用する 28 言語: `javascript` / `typescript` / `python` / `bash` / `json` / `html` / `css` / `markdown` / `yaml` / `toml` / `rust` / `go` / `java` / `c` / `cpp` / `ruby` / `php` / `sql` / `shell` / `diff` / `jsx` / `tsx` / `xml` / `swift` / `kotlin` / `scala` / `zig` / `lua`）で採用する。bundle 戦略は `shiki/core` + `shiki/engine/javascript` + 言語の個別 import で Rolldown の tree-shake に乗せる（Oniguruma WASM engine は WASM 込みで更に重くなるため JS engine を採用）。**想定バンドル増分は raw +3〜5 MB / gzipped +1〜1.5 MB** で、`dist/review.html` のサイズは現状 70 KB から **約 5 MB / 1.5 MB gzipped に拡大する**（実測値は導入後ビルドで確定）。`core/markdown.ts` の marked renderer の `code` を Shiki 呼び出しに差し替え、§1 host theme adaptation で導入した `html.dark` 切替に追従させる。コピー button は React 非依存で、レンダリング後の `<pre>` に DOM 操作で動的注入する（リファレンス実装の useEffect 相当ロジックを `doc-renderer.ts` の再描画フックに移植）。配布物サイズが問題になる場合は[その他の拡張候補](#その他の拡張候補)の「review-request CLI による Shiki 言語サブセット動的注入」で必要分だけに絞る
-3. **§6 / §7 / §8 / §9 Virtual Pages 系** — UI モデルの根本見直し。インラインコメントとの統合設計が前提。@mdxg/parser をフル採用すると §11 URL allowlist / §4 相対 URL ポリシー / blockId アンカリングと衝突するため、**`splitIntoChunks` / `extractHeadings` / `slugify` のロジックを参考に MDXG Redline 内へ再実装する B 案** を推奨（リファレンス実装の `splitIntoChunks` 側に存在するコードフェンス追跡欠落バグも、再実装の段階で修正できる）。コメントの blockId は page 単位に閉じ込め、page 境界跨ぎの選択は不許可、という方針で整理する必要がある。UI 側の左サイドバー / 折りたたみ / Next.js Router 相当の URL 同期はリファレンス実装の `mdxg-viewer.tsx` がそのまま設計の下敷きになる
-4. **§13 残り（ページナビ矢印 / Enter / フォーカス受け取り / 逐次ナビのキーボード操作）** — §6–§9 のページモデル成立後。リファレンス実装の `handleTocKeyDown`（↑↓ で項目移動 / ←→ で H1 配下の折りたたみ・親へフォーカス / Enter で navigate / `activePageIndex` 変化時の自動 focus）がそのまま参考になる
-5. **§10 Search** — Virtual Pages 統合後。リファレンス実装は `globalMatches` で全ページから集約 → `highlightTextNodes` で text node に `<mark class="search-hl">` を挿入する方式。MDXG Redline は既にコメントの `<mark class="cmt">` が DOM に常駐するため、**検索ハイライト用 `<mark>` とコメントハイライト用 `<mark>` の共存設計**（クラス分離 + 既存 blockId オフセット再計算との競合回避 + 選択範囲 → コメント生成フロー中の検索 mark 退避）が前提条件として追加で必要
+1. **§2 コピー button + シンタックスハイライト** — Shiki をリファレンス実装と同じ構成（`themes: { light: github-light, dark: github-dark }` の dual theme + リファレンス実装が採用する 28 言語: `javascript` / `typescript` / `python` / `bash` / `json` / `html` / `css` / `markdown` / `yaml` / `toml` / `rust` / `go` / `java` / `c` / `cpp` / `ruby` / `php` / `sql` / `shell` / `diff` / `jsx` / `tsx` / `xml` / `swift` / `kotlin` / `scala` / `zig` / `lua`）で採用する。bundle 戦略は `shiki/core` + `shiki/engine/javascript` + 言語の個別 import で Rolldown の tree-shake に乗せる（Oniguruma WASM engine は WASM 込みで更に重くなるため JS engine を採用）。**想定バンドル増分は raw +3〜5 MB / gzipped +1〜1.5 MB** で、`dist/review.html` のサイズは現状 70 KB から **約 5 MB / 1.5 MB gzipped に拡大する**（実測値は導入後ビルドで確定）。`core/markdown.ts` の marked renderer の `code` を Shiki 呼び出しに差し替え、§1 host theme adaptation で導入した `html.dark` 切替に追従させる。コピー button は React 非依存で、レンダリング後の `<pre>` に DOM 操作で動的注入する（リファレンス実装の useEffect 相当ロジックを `doc-renderer.ts` の再描画フックに移植）。配布物サイズが問題になる場合は[その他の拡張候補](#その他の拡張候補)の「review-request CLI による Shiki 言語サブセット動的注入」で必要分だけに絞る
+2. **§6 / §7 / §8 / §9 Virtual Pages 系** — UI モデルの根本見直し。インラインコメントとの統合設計が前提。@mdxg/parser をフル採用すると §11 URL allowlist / §4 相対 URL ポリシー / blockId アンカリングと衝突するため、**`splitIntoChunks` / `extractHeadings` / `slugify` のロジックを参考に MDXG Redline 内へ再実装する B 案** を推奨（リファレンス実装の `splitIntoChunks` 側に存在するコードフェンス追跡欠落バグも、再実装の段階で修正できる）。コメントの blockId は page 単位に閉じ込め、page 境界跨ぎの選択は不許可、という方針で整理する必要がある。UI 側の左サイドバー / 折りたたみ / Next.js Router 相当の URL 同期はリファレンス実装の `mdxg-viewer.tsx` がそのまま設計の下敷きになる
+3. **§13 残り（ページナビ矢印 / Enter / フォーカス受け取り / 逐次ナビのキーボード操作）** — §6–§9 のページモデル成立後。リファレンス実装の `handleTocKeyDown`（↑↓ で項目移動 / ←→ で H1 配下の折りたたみ・親へフォーカス / Enter で navigate / `activePageIndex` 変化時の自動 focus）がそのまま参考になる
+4. **§10 Search** — Virtual Pages 統合後。リファレンス実装は `globalMatches` で全ページから集約 → `highlightTextNodes` で text node に `<mark class="search-hl">` を挿入する方式。MDXG Redline は既にコメントの `<mark class="cmt">` が DOM に常駐するため、**検索ハイライト用 `<mark>` とコメントハイライト用 `<mark>` の共存設計**（クラス分離 + 既存 blockId オフセット再計算との競合回避 + 選択範囲 → コメント生成フロー中の検索 mark 退避）が前提条件として追加で必要
 
 ### 規格に明文規定がない領域での判断
 
