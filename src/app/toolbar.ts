@@ -1,3 +1,14 @@
+import {
+  type StoredTheme,
+  applyAppliedTheme,
+  getSystemPrefersDark,
+  nextStoredTheme,
+  readCliHint,
+  readStoredTheme,
+  resolveEffectiveTheme,
+  subscribeSystemTheme,
+  writeStoredTheme,
+} from './theme'
 import { qs, qsInput, toast } from './dom-utils'
 import type { ExportPayload } from '../core/types'
 import { confirmDialog } from './dialog'
@@ -97,6 +108,63 @@ const clearAllComments = (): void => {
   toast('Comments discarded')
 }
 
+// テキストアイコン (Unicode シンボル) を使うことで OS 絵文字差異を回避しつつ、追加リソース無しで
+// 3 状態を識別可能にする。SVG inline 化は将来の見栄え調整時に検討。
+const THEME_ICON: Readonly<Record<StoredTheme, string>> = {
+  dark: '☾',
+  light: '☀',
+  system: '◐',
+}
+
+const THEME_LABEL: Readonly<Record<StoredTheme, string>> = {
+  dark: 'Theme: dark',
+  light: 'Theme: light',
+  system: 'Theme: system',
+}
+
+const THEME_TOOLTIP_NEXT: Readonly<Record<StoredTheme, string>> = {
+  dark: 'Switch to system',
+  light: 'Switch to dark',
+  system: 'Switch to light',
+}
+
+// localStorage 未設定時は 'system' 既定。MDXG §1 [MUST NOT] (ユーザー設定必須化禁止) を満たす
+const currentStored = (): StoredTheme => readStoredTheme() ?? 'system'
+
+/** stored 値から button の見た目とアクセシブル名 / tooltip を更新する */
+const renderThemeButton = (button: HTMLElement, stored: StoredTheme): void => {
+  button.textContent = THEME_ICON[stored]
+  button.setAttribute('aria-label', THEME_LABEL[stored])
+  button.setAttribute('data-tooltip', THEME_TOOLTIP_NEXT[stored])
+}
+
+/**
+ * theme toggle ボタンの配線。inline script で既に .dark は確定しているため、
+ * click ハンドラ・OS テーマ変更購読・button 表示の同期だけを担う。
+ */
+const wireThemeToggle = (): void => {
+  const button = qs('#btn-theme')
+  renderThemeButton(button, currentStored())
+  button.addEventListener('click', (): void => {
+    const next = nextStoredTheme(currentStored())
+    writeStoredTheme(next)
+    applyAppliedTheme(resolveEffectiveTheme(next, readCliHint(), getSystemPrefersDark()))
+    renderThemeButton(button, next)
+  })
+  // OS テーマ変更は stored が 'system' 由来 (localStorage 未設定 + cliHint も無し or system) の間だけ
+  // 反映する。明示 light/dark の間は OS 変化を無視する (DESIGN.md §7c / §12 §1 Theming 行)。
+  subscribeSystemTheme((prefersDark): void => {
+    const stored = readStoredTheme()
+    if (stored !== null && stored !== 'system') {
+      return
+    }
+    if (stored === null && readCliHint() !== null && readCliHint() !== 'system') {
+      return
+    }
+    applyAppliedTheme(resolveEffectiveTheme(stored, readCliHint(), prefersDark))
+  })
+}
+
 /** Markdown 読み込みボタンと隠し file input を接続する */
 const wireMarkdownLoad = (runtime: ToolbarRuntime): void => {
   qs('#btn-load').addEventListener('click', (): void => qsInput('#file-md').click())
@@ -164,6 +232,7 @@ export const wireToolbar = (runtime: ToolbarRuntime): void => {
   wireExport(runtime)
   wireCopy(runtime)
   wireClear()
+  wireThemeToggle()
 }
 
 if (import.meta.vitest) {

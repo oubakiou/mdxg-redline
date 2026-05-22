@@ -10,6 +10,13 @@ import { createServer } from "node:http";
 var NO_OPEN_FLAG = "--no-open";
 var HELP_FLAGS = new Set(["--help", "-h"]);
 var DOCUMENT_NAME_FLAG = "--document-name";
+var THEME_FLAG = "--theme";
+var THEME_VALUES = [
+	"system",
+	"light",
+	"dark"
+];
+var isThemeHint = (value) => THEME_VALUES.includes(value);
 var HELP_TEXT = `Usage: mdxg-redline [options] <input.md|-> [output-dir]
 
 Generate a review-request HTML with the markdown embedded and open it in
@@ -26,6 +33,12 @@ Options:
   --document-name <name> Override the document name used for the data-name
                          attribute and the output filename prefix. Useful
                          with stdin input.
+  --theme <value>        Set the initial theme hint for the generated HTML.
+                         One of: system | light | dark. Written as a
+                         <html data-theme> attribute and used only when the
+                         viewer has no localStorage preference yet (the user's
+                         UI toggle history always wins). Omit to leave the
+                         attribute off entirely.
   --no-open              Generate the HTML but do not launch a browser.
   -h, --help             Print this help and exit. Takes precedence over all
                          other arguments and flags when present.
@@ -34,13 +47,16 @@ Examples:
   mdxg-redline spec.md
   mdxg-redline spec.md ./reviews
   mdxg-redline --no-open spec.md
+  mdxg-redline --theme dark spec.md
   cat spec.md | mdxg-redline - --document-name spec.md
 `;
 var INITIAL_PARTITION_STATE = {
 	documentName: null,
 	open: true,
 	pendingDocName: false,
+	pendingTheme: false,
 	positional: [],
+	themeHint: null,
 	valid: true
 };
 var consumeDocNameValue = (acc, token) => {
@@ -54,6 +70,17 @@ var consumeDocNameValue = (acc, token) => {
 		pendingDocName: false
 	};
 };
+var consumeThemeValue = (acc, token) => {
+	if (token.startsWith("--") || !isThemeHint(token)) return {
+		...acc,
+		valid: false
+	};
+	return {
+		...acc,
+		pendingTheme: false,
+		themeHint: token
+	};
+};
 var consumeFlag = (acc, token) => {
 	if (token === NO_OPEN_FLAG) return {
 		...acc,
@@ -63,6 +90,10 @@ var consumeFlag = (acc, token) => {
 		...acc,
 		pendingDocName: true
 	};
+	if (token === THEME_FLAG) return {
+		...acc,
+		pendingTheme: true
+	};
 	return {
 		...acc,
 		valid: false
@@ -71,6 +102,7 @@ var consumeFlag = (acc, token) => {
 var stepArg = (acc, token) => {
 	if (!acc.valid) return acc;
 	if (acc.pendingDocName) return consumeDocNameValue(acc, token);
+	if (acc.pendingTheme) return consumeThemeValue(acc, token);
 	if (token.startsWith("--")) return consumeFlag(acc, token);
 	return {
 		...acc,
@@ -79,13 +111,14 @@ var stepArg = (acc, token) => {
 };
 var partitionArgs = (argv) => {
 	const state = argv.reduce(stepArg, INITIAL_PARTITION_STATE);
-	const valid = state.valid && !state.pendingDocName;
+	const valid = state.valid && !state.pendingDocName && !state.pendingTheme;
 	const result = {
 		open: state.open,
 		positional: state.positional,
 		valid
 	};
 	if (state.documentName !== null) result.documentName = state.documentName;
+	if (state.themeHint !== null) result.themeHint = state.themeHint;
 	return result;
 };
 var buildRunArgs = (parts) => {
@@ -97,6 +130,7 @@ var buildRunArgs = (parts) => {
 	};
 	if (typeof outputDir === "string") result.outputDir = outputDir;
 	if (typeof parts.documentName === "string") result.documentName = parts.documentName;
+	if (typeof parts.themeHint === "string") result.themeHint = parts.themeHint;
 	return result;
 };
 var parseArgs = (argv) => {
@@ -153,14 +187,35 @@ var deriveReviewHtmlName = (mdFileName, docHash) => `${mdFileName}-${docHash}-re
 var encodeEmbeddedMarkdown = (markdown) => JSON.stringify(markdown).replace(/</g, String.raw`\u003C`);
 var EMBEDDED_MD_RE = /(<script\b(?=[^>]*\bid="embedded-md")(?=[^>]*\btype="text\/markdown")[^>]*>)([\s\S]*?)(<\/script>)/i;
 var DATA_NAME_RE = /\bdata-name="[^"]*"/;
+var HTML_TAG_RE = /<html\b[^>]*>/i;
+var DATA_THEME_RE = /\bdata-theme="[^"]*"/;
 var replaceDataName = (openingTag, escapedName) => {
 	if (DATA_NAME_RE.test(openingTag)) return openingTag.replace(DATA_NAME_RE, `data-name="${escapedName}"`);
 	return openingTag.replace(/>$/, ` data-name="${escapedName}">`);
+};
+var replaceDataTheme = (openingTag, escapedTheme) => {
+	if (DATA_THEME_RE.test(openingTag)) return openingTag.replace(DATA_THEME_RE, `data-theme="${escapedTheme}"`);
+	return openingTag.replace(/>$/, ` data-theme="${escapedTheme}">`);
+};
+/**
+* `<html>` 開きタグに `data-theme="<themeHint>"` を挿入する。属性が既にあれば上書き。
+* inline script はこの属性を localStorage より低い優先度で初期値ヒントとして使う。
+* 未指定時は属性を付けないため、呼び出し側で themeHint の有無を判断してから呼ぶ
+* (CLI 既定では --theme 未指定時はこの関数を呼ばない方針)。
+*/
+var upsertHtmlDataTheme = (reviewHtml, themeHint) => {
+	const match = HTML_TAG_RE.exec(reviewHtml);
+	if (!match) throw new Error("review.html に <html> タグが見つかりません");
+	const [tag] = match;
+	const newTag = replaceDataTheme(tag, escapeHtml(themeHint));
+	return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length);
 };
 /**
 * review.html の文字列を受け取り、`<script id="embedded-md">` の中身と data-name 属性を
 * 書き換えた新しい HTML 文字列を返す。元文字列は変更しない。
 * embedded-md タグが見つからない場合は Error を投げる（呼び出し側が CLI エラーに変換）。
+*
+* theme 属性の付与は `upsertHtmlDataTheme` を別途呼ぶ責務分担にしている。
 */
 var rewriteReviewHtml = (reviewHtml, markdown, docName) => {
 	const match = EMBEDDED_MD_RE.exec(reviewHtml);
@@ -350,9 +405,13 @@ var prepareEmbed = async (args) => {
 		reviewHtml
 	};
 };
+var applyThemeHint = (html, themeHint) => {
+	if (typeof themeHint !== "string") return html;
+	return upsertHtmlDataTheme(html, themeHint);
+};
 var runEmbed = async (args) => {
 	const ctx = await prepareEmbed(args);
-	const result = rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName);
+	const result = applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint);
 	await writeFile(ctx.outputPath, result, "utf8");
 	process.stdout.write(`${ctx.outputPath}\n`);
 	if (args.open) await openOutput(ctx.outputPath);

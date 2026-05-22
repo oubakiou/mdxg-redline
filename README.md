@@ -17,6 +17,7 @@ End users only need a **single HTML file** (`review.html`). No server, no extra 
 - **Single-file HTML distribution**: All dependencies (including `marked`) are inlined — no CDN references
 - **Two input paths**: Embed markdown into the HTML up front, or pick a file from the browser
 - **Read-only**: Never mutates the source markdown
+- **Light / dark themes**: Initial value follows `prefers-color-scheme`; a 3-state toolbar toggle cycles through `system → light → dark`. The choice is persisted to `localStorage`, and distributors can pre-set the initial hint with `--theme`
 
 ## Usage
 
@@ -39,12 +40,14 @@ When an LLM agent needs to request a review from a human, or for one-off reviews
 npx mdxg-redline <input.md>                       # writes alongside input.md and opens browser
 npx mdxg-redline <input.md> ./reviews             # writes into ./reviews
 npx mdxg-redline --no-open <input.md>             # generate only, do not open browser
+npx mdxg-redline --theme dark <input.md>          # pre-set the initial theme hint to dark on the generated HTML
 cat spec.md | npx mdxg-redline - --document-name spec.md   # read markdown from stdin
 npx mdxg-redline --help                           # print full usage and exit
 ```
 
 - The output filename is auto-derived as `<input-md-basename>-<docHash>-review.html` (the `output-dir` argument defaults to the input's directory; for stdin input it defaults to the current working directory)
 - Use `--document-name <name>` to override the document name (used for the `data-name` attribute and the output filename prefix). Required when reading from stdin if you want a meaningful filename
+- Use `--theme <system|light|dark>` to write a `<html data-theme>` attribute into the generated HTML. The receiving inline script always **prefers the user's UI toggle history (`localStorage`)** first, then this hint, then `prefers-color-scheme` (when omitted, the attribute is left off and existing behavior is preserved)
 - After generation, the default browser is launched via `$BROWSER` → `open` / `xdg-open` / `cmd.exe /c start`, in that order
 - When VS Code Remote Containers / Codespaces is detected, the CLI instead starts a tiny HTTP server on `127.0.0.1` at port `51729` (override with `MDXG_REDLINE_PORT`) and hands the host browser an `http://localhost:<port>/...` URL (since `file://` paths in the container are invisible to the host). If the preferred port is busy, the CLI falls back to a random port and prints a warning to stderr — **note that random ports may not be forwarded to the host browser if `forwardPorts` is not set to `auto`, so pin a known-free `MDXG_REDLINE_PORT` (or register it in `devcontainer.json` `forwardPorts`) for reliable host access**
 - Pass `--no-open` to suppress browser launch. The output path is always printed to stdout so CI scripts and agents can capture it
@@ -90,19 +93,19 @@ See [docs/DESIGN.md §8 Workspace Protocol](docs/DESIGN.md#8-ワークスペー�
 
 The [Markdown Experience Guidelines (MDXG)](https://github.com/vercel-labs/mdxg) are currently a preview specification and may change. MDXG Redline embeds an **MDXG Viewer** (the read-only rendering conformance level) and layers inline commenting and structured feedback JSON export on top of it as review-specific features. Viewer features are being adopted incrementally.
 
-| MDXG section             | Required level | Current status                                                         |
-| ------------------------ | -------------- | ---------------------------------------------------------------------- |
-| §1 Theming               | MUST (Viewer)  | Partial (DADS theme; host theme adaptation is not implemented yet)     |
-| §2 Code Block Rendering  | MUST (Viewer)  | Partial (copy button and syntax highlighting are not implemented yet)  |
-| §3 Task Lists            | MUST (Viewer)  | Supported via marked defaults                                          |
-| §4 Images                | MUST (Viewer)  | Partial (relative image paths not resolved due to the trust boundary)  |
-| §5 Tables                | MUST (Viewer)  | Compliant (horizontal scrolling supported)                             |
-| §6 Virtual Pages         | MUST (Viewer)  | Not supported yet (requires integration design with the comment model) |
-| §7 Page Navigation       | MUST (Viewer)  | Not supported yet                                                      |
-| §8 Page Outline          | MUST (Viewer)  | Not supported yet                                                      |
-| §9 Sequential Navigation | MUST (Viewer)  | Not supported yet                                                      |
-| §10 Search               | MUST (Viewer)  | Not supported yet                                                      |
-| §13 Keyboard Navigation  | MUST (Viewer)  | Partial                                                                |
+| MDXG section             | Required level | Current status                                                           |
+| ------------------------ | -------------- | ------------------------------------------------------------------------ |
+| §1 Theming               | MUST (Viewer)  | Compliant (DADS theme + 3-state toggle following `prefers-color-scheme`) |
+| §2 Code Block Rendering  | MUST (Viewer)  | Partial (copy button and syntax highlighting are not implemented yet)    |
+| §3 Task Lists            | MUST (Viewer)  | Supported via marked defaults                                            |
+| §4 Images                | MUST (Viewer)  | Partial (relative image paths not resolved due to the trust boundary)    |
+| §5 Tables                | MUST (Viewer)  | Compliant (horizontal scrolling supported)                               |
+| §6 Virtual Pages         | MUST (Viewer)  | Not supported yet (requires integration design with the comment model)   |
+| §7 Page Navigation       | MUST (Viewer)  | Not supported yet                                                        |
+| §8 Page Outline          | MUST (Viewer)  | Not supported yet                                                        |
+| §9 Sequential Navigation | MUST (Viewer)  | Not supported yet                                                        |
+| §10 Search               | MUST (Viewer)  | Not supported yet                                                        |
+| §13 Keyboard Navigation  | MUST (Viewer)  | Partial                                                                  |
 
 For the roadmap ahead, see [docs/DESIGN.md §12 MDXG compliance roadmap and future extensions](docs/DESIGN.md#12-mdxg-準拠ロードマップ今後の拡張).
 

@@ -4,6 +4,13 @@
 const NO_OPEN_FLAG = '--no-open'
 const HELP_FLAGS = new Set(['--help', '-h'])
 const DOCUMENT_NAME_FLAG = '--document-name'
+const THEME_FLAG = '--theme'
+
+export type ThemeHint = 'system' | 'light' | 'dark'
+const THEME_VALUES = ['system', 'light', 'dark'] as const
+
+const isThemeHint = (value: string): value is ThemeHint =>
+  (THEME_VALUES as readonly string[]).includes(value)
 
 export const HELP_TEXT = `Usage: mdxg-redline [options] <input.md|-> [output-dir]
 
@@ -21,6 +28,12 @@ Options:
   --document-name <name> Override the document name used for the data-name
                          attribute and the output filename prefix. Useful
                          with stdin input.
+  --theme <value>        Set the initial theme hint for the generated HTML.
+                         One of: system | light | dark. Written as a
+                         <html data-theme> attribute and used only when the
+                         viewer has no localStorage preference yet (the user's
+                         UI toggle history always wins). Omit to leave the
+                         attribute off entirely.
   --no-open              Generate the HTML but do not launch a browser.
   -h, --help             Print this help and exit. Takes precedence over all
                          other arguments and flags when present.
@@ -29,6 +42,7 @@ Examples:
   mdxg-redline spec.md
   mdxg-redline spec.md ./reviews
   mdxg-redline --no-open spec.md
+  mdxg-redline --theme dark spec.md
   cat spec.md | mdxg-redline - --document-name spec.md
 `
 
@@ -37,6 +51,7 @@ export interface RunArgs {
   inputPath: string
   open: boolean
   outputDir?: string
+  themeHint?: ThemeHint
 }
 
 export type ParsedArgs = { mode: 'help' } | { mode: 'invalid' } | ({ mode: 'run' } & RunArgs)
@@ -45,6 +60,7 @@ interface PartitionedArgs {
   documentName?: string
   open: boolean
   positional: readonly string[]
+  themeHint?: ThemeHint
   valid: boolean
 }
 
@@ -52,7 +68,9 @@ interface PartitionState {
   documentName: string | null
   open: boolean
   pendingDocName: boolean
+  pendingTheme: boolean
   positional: readonly string[]
+  themeHint: ThemeHint | null
   valid: boolean
 }
 
@@ -60,7 +78,9 @@ const INITIAL_PARTITION_STATE: PartitionState = {
   documentName: null,
   open: true,
   pendingDocName: false,
+  pendingTheme: false,
   positional: [],
+  themeHint: null,
   valid: true,
 }
 
@@ -73,6 +93,14 @@ const consumeDocNameValue = (acc: PartitionState, token: string): PartitionState
   return { ...acc, documentName: token, pendingDocName: false }
 }
 
+// --theme の値位置。許容値 (system|light|dark) 以外は invalid。`-` 始まりも値欠落扱い。
+const consumeThemeValue = (acc: PartitionState, token: string): PartitionState => {
+  if (token.startsWith('--') || !isThemeHint(token)) {
+    return { ...acc, valid: false }
+  }
+  return { ...acc, pendingTheme: false, themeHint: token }
+}
+
 // `--` 始まりのトークンを既知フラグへ振り分け。未知フラグは invalid。
 const consumeFlag = (acc: PartitionState, token: string): PartitionState => {
   if (token === NO_OPEN_FLAG) {
@@ -80,6 +108,9 @@ const consumeFlag = (acc: PartitionState, token: string): PartitionState => {
   }
   if (token === DOCUMENT_NAME_FLAG) {
     return { ...acc, pendingDocName: true }
+  }
+  if (token === THEME_FLAG) {
+    return { ...acc, pendingTheme: true }
   }
   return { ...acc, valid: false }
 }
@@ -93,6 +124,9 @@ const stepArg = (acc: PartitionState, token: string): PartitionState => {
   if (acc.pendingDocName) {
     return consumeDocNameValue(acc, token)
   }
+  if (acc.pendingTheme) {
+    return consumeThemeValue(acc, token)
+  }
   if (token.startsWith('--')) {
     return consumeFlag(acc, token)
   }
@@ -101,7 +135,7 @@ const stepArg = (acc: PartitionState, token: string): PartitionState => {
 
 const partitionArgs = (argv: readonly string[]): PartitionedArgs => {
   const state = argv.reduce<PartitionState>(stepArg, INITIAL_PARTITION_STATE)
-  const valid = state.valid && !state.pendingDocName
+  const valid = state.valid && !state.pendingDocName && !state.pendingTheme
   const result: PartitionedArgs = {
     open: state.open,
     positional: state.positional,
@@ -109,6 +143,9 @@ const partitionArgs = (argv: readonly string[]): PartitionedArgs => {
   }
   if (state.documentName !== null) {
     result.documentName = state.documentName
+  }
+  if (state.themeHint !== null) {
+    result.themeHint = state.themeHint
   }
   return result
 }
@@ -125,6 +162,9 @@ const buildRunArgs = (parts: PartitionedArgs): { mode: 'run' } & RunArgs => {
   }
   if (typeof parts.documentName === 'string') {
     result.documentName = parts.documentName
+  }
+  if (typeof parts.themeHint === 'string') {
+    result.themeHint = parts.themeHint
   }
   return result
 }
@@ -288,6 +328,72 @@ if (import.meta.vitest) {
 
     it('未知のフラグは invalid', () => {
       expect(parseArgs(['--unknown', 'spec.md'])).toEqual({ mode: 'invalid' })
+    })
+  })
+
+  describe('parseArgs: --theme', () => {
+    it('--theme system / light / dark がパースされる', () => {
+      expect(parseArgs(['--theme', 'system', 'spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        mode: 'run',
+        open: true,
+        themeHint: 'system',
+      })
+      expect(parseArgs(['--theme', 'light', 'spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        mode: 'run',
+        open: true,
+        themeHint: 'light',
+      })
+      expect(parseArgs(['--theme', 'dark', 'spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        mode: 'run',
+        open: true,
+        themeHint: 'dark',
+      })
+    })
+
+    it('--theme が末尾にあって値が無い場合は invalid', () => {
+      expect(parseArgs(['spec.md', '--theme'])).toEqual({ mode: 'invalid' })
+    })
+
+    it('--theme の値位置に別フラグが来た場合は invalid', () => {
+      expect(parseArgs(['--theme', '--no-open', 'spec.md'])).toEqual({ mode: 'invalid' })
+    })
+
+    it('--theme の値が許容外 (auto / 空文字 / 大文字) は invalid', () => {
+      expect(parseArgs(['--theme', 'auto', 'spec.md'])).toEqual({ mode: 'invalid' })
+      expect(parseArgs(['--theme', '', 'spec.md'])).toEqual({ mode: 'invalid' })
+      expect(parseArgs(['--theme', 'Dark', 'spec.md'])).toEqual({ mode: 'invalid' })
+    })
+
+    it('--theme 未指定時は themeHint が含まれない (data-theme 属性は付かない)', () => {
+      expect(parseArgs(['spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        mode: 'run',
+        open: true,
+      })
+    })
+
+    it('--theme と他のフラグ・位置引数の組み合わせも認識する', () => {
+      expect(
+        parseArgs([
+          '--no-open',
+          '--theme',
+          'dark',
+          '--document-name',
+          'override.md',
+          'spec.md',
+          '/tmp/out',
+        ])
+      ).toEqual({
+        documentName: 'override.md',
+        inputPath: 'spec.md',
+        mode: 'run',
+        open: false,
+        outputDir: '/tmp/out',
+        themeHint: 'dark',
+      })
     })
   })
 

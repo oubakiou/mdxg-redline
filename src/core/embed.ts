@@ -77,6 +77,8 @@ const EMBEDDED_MD_RE =
   /(<script\b(?=[^>]*\bid="embedded-md")(?=[^>]*\btype="text\/markdown")[^>]*>)([\s\S]*?)(<\/script>)/i
 
 const DATA_NAME_RE = /\bdata-name="[^"]*"/
+const HTML_TAG_RE = /<html\b[^>]*>/i
+const DATA_THEME_RE = /\bdata-theme="[^"]*"/
 
 // data-name が無い既存テンプレートでも安全に補えるように、置換と挿入を関数として分離する。
 // 関数化により rewriteReviewHtml 側を no-ternary / prefer-ternary 双方に抵触せず保てる。
@@ -87,10 +89,37 @@ const replaceDataName = (openingTag: string, escapedName: string): string => {
   return openingTag.replace(/>$/, ` data-name="${escapedName}">`)
 }
 
+// <html> 開きタグに data-theme 属性を挿入 / 上書きする。CLI バリデーション済み値が前提だが、
+// 念のため escapeHtml を通して属性 escape 経路を data-name と揃える。
+const replaceDataTheme = (openingTag: string, escapedTheme: string): string => {
+  if (DATA_THEME_RE.test(openingTag)) {
+    return openingTag.replace(DATA_THEME_RE, `data-theme="${escapedTheme}"`)
+  }
+  return openingTag.replace(/>$/, ` data-theme="${escapedTheme}">`)
+}
+
+/**
+ * `<html>` 開きタグに `data-theme="<themeHint>"` を挿入する。属性が既にあれば上書き。
+ * inline script はこの属性を localStorage より低い優先度で初期値ヒントとして使う。
+ * 未指定時は属性を付けないため、呼び出し側で themeHint の有無を判断してから呼ぶ
+ * (CLI 既定では --theme 未指定時はこの関数を呼ばない方針)。
+ */
+export const upsertHtmlDataTheme = (reviewHtml: string, themeHint: string): string => {
+  const match = HTML_TAG_RE.exec(reviewHtml)
+  if (!match) {
+    throw new Error('review.html に <html> タグが見つかりません')
+  }
+  const [tag] = match
+  const newTag = replaceDataTheme(tag, escapeHtml(themeHint))
+  return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length)
+}
+
 /**
  * review.html の文字列を受け取り、`<script id="embedded-md">` の中身と data-name 属性を
  * 書き換えた新しい HTML 文字列を返す。元文字列は変更しない。
  * embedded-md タグが見つからない場合は Error を投げる（呼び出し側が CLI エラーに変換）。
+ *
+ * theme 属性の付与は `upsertHtmlDataTheme` を別途呼ぶ責務分担にしている。
  */
 export const rewriteReviewHtml = (
   reviewHtml: string,
@@ -194,6 +223,38 @@ if (import.meta.vitest) {
       const html = baseHtml
       rewriteReviewHtml(html, 'x', 'y.md')
       expect(html).toBe(baseHtml)
+    })
+  })
+
+  describe('upsertHtmlDataTheme', () => {
+    it('data-theme 属性を <html> タグに挿入する', () => {
+      const html = '<html lang="ja"><body></body></html>'
+      const out = upsertHtmlDataTheme(html, 'dark')
+      expect(out).toContain('<html lang="ja" data-theme="dark">')
+    })
+
+    it('既存の data-theme 属性を上書きする', () => {
+      const html = '<html lang="ja" data-theme="light"><body></body></html>'
+      const out = upsertHtmlDataTheme(html, 'dark')
+      expect(out).toContain('data-theme="dark"')
+      expect(out).not.toContain('data-theme="light"')
+    })
+
+    it('属性値は HTML 属性 escape を通る (data-name と同じ経路)', () => {
+      // CLI バリデーション済み値が前提だが、念のため escape 動作を確認
+      const html = '<html></html>'
+      const out = upsertHtmlDataTheme(html, '"&<>')
+      expect(out).toContain('data-theme="&quot;&amp;&lt;&gt;"')
+    })
+
+    it('<html> タグが無いと Error を投げる', () => {
+      expect(() => upsertHtmlDataTheme('<body></body>', 'dark')).toThrow(/<html>/)
+    })
+
+    it('元文字列を破壊しない', () => {
+      const html = '<html><body></body></html>'
+      upsertHtmlDataTheme(html, 'dark')
+      expect(html).toBe('<html><body></body></html>')
     })
   })
 

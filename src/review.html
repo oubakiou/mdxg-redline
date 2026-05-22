@@ -8,6 +8,25 @@
       content="default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; connect-src 'none'; script-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'"
     />
     <title>Markdown Review — Inline Comments for Agents</title>
+    <!-- FOUC 防止のため stylesheet より前で paint 直前に .dark を付ける。
+         優先順位 P1: localStorage > <html data-theme> > prefers-color-scheme
+         (DESIGN.md §7c / §12 §1 Theming 行)。
+         壊れた値 (旧バージョン / 他アプリの混入 / 手動編集) で初期描画と後続ランタイムが
+         ズレないよう、'system' | 'light' | 'dark' のホワイトリストで検証する
+         (theme.ts の isStoredTheme と同じ判定)。 -->
+    <script>
+      try {
+        var stored = localStorage.getItem('mdxg-redline.theme')
+        var hint = document.documentElement.getAttribute('data-theme')
+        var s = stored === 'system' || stored === 'light' || stored === 'dark' ? stored : null
+        var h = hint === 'system' || hint === 'light' || hint === 'dark' ? hint : null
+        var effective = s || h || 'system'
+        var dark =
+          effective === 'dark' ||
+          (effective === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        if (dark) document.documentElement.classList.add('dark')
+      } catch (e) {}
+    </script>
     <link rel="stylesheet" href="./styles/review.css" />
     <link rel="stylesheet" href="./styles/markdown.css" />
   </head>
@@ -42,6 +61,14 @@
       <div class="toolbar-actions">
         <span id="status" class="label toolbar-status">No file</span>
         <button class="btn" id="btn-load">Open file</button>
+        <button
+          class="btn btn-ghost tooltipped"
+          id="btn-theme"
+          aria-label="Theme: system"
+          data-tooltip="Switch to light"
+        >
+          ◐
+        </button>
       </div>
     </header>
 

@@ -1,25 +1,46 @@
 /* Rendered markdown — DADS (Digital Agency Design System) theme.
    Based on: https://design.digital.go.jp/dads/foundations/
-   Package: @digital-go-jp/design-tokens */
+   Package: @digital-go-jp/design-tokens
 
-/* doc 専用トークン。エンドユーザーがこのファイル単体を差し替えてプレビュー外観を
+   doc 専用トークン。エンドユーザーがこのファイル単体を差し替えてプレビュー外観を
    カスタマイズできるよう、グローバル :root トークンに依存せず #doc スコープで
-   自己完結させる。 */
+   自己完結させる。
+
+   .dark との契約:
+   - <html> 要素には .dark クラスが付く / 外れる (head 内 inline script が判定)
+   - dark 配色を提供するには本ファイル末尾のように `:where(.dark) #doc { ... }`
+     ブロックで --doc-* トークンを上書きする
+   - dark 配色を省略した場合、dark モードでも #doc は light 配色のまま表示される
+   - `:where()` で詳細度ゼロのため、ユーザー差し替え CSS の `#doc { ... }`
+     ルールは dark 状態でも上書き勝ちできる */
 #doc {
   --doc-font-system:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif,
     'Apple Color Emoji', 'Segoe UI Emoji';
   --doc-font-mono:
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --doc-paper: #ffffff;
+  --doc-ink: #1a1a1a;
+  --doc-mute: #4d4d4d;
   --doc-border: #d0d7de;
+  --doc-rule: #e6e6e6;
+  --doc-link: #0031d8;
+  --doc-link-hover: #002db6;
+  --doc-quote-bg: #f2f2f2;
+  --doc-quote-rule: #cccccc;
+  --doc-code-bg: #1e1e1e;
+  --doc-code-rule: #333333;
+  --doc-code-ink: #d4d4d4;
+  --doc-thead-bg: #f2f2f2;
+  --doc-checkbox-accent: #0031d8;
 
   font-family: var(--doc-font-system);
   font-size: 1.125rem;
   font-weight: 400;
   line-height: 1.7;
   letter-spacing: 0.02em;
-  color: #1a1a1a;
-  background-color: #ffffff;
+  color: var(--doc-ink);
+  background-color: var(--doc-paper);
   max-width: 860px;
   margin: 0 auto;
   padding: 2rem;
@@ -34,7 +55,7 @@
 #doc h6 {
   font-family: var(--doc-font-system);
   font-weight: 700;
-  color: #1a1a1a;
+  color: var(--doc-ink);
   margin-top: 1.5em;
   margin-bottom: 0.5em;
 }
@@ -43,14 +64,14 @@
   line-height: 1.4;
   letter-spacing: 0.01em;
   padding-bottom: 0.3em;
-  border-bottom: 1px solid #e6e6e6;
+  border-bottom: 1px solid var(--doc-rule);
 }
 #doc h2 {
   font-size: 1.875rem;
   line-height: 1.5;
   letter-spacing: 0.01em;
   padding-bottom: 0.25em;
-  border-bottom: 1px solid #e6e6e6;
+  border-bottom: 1px solid var(--doc-rule);
 }
 #doc h3 {
   font-size: 1.625rem;
@@ -71,7 +92,7 @@
   font-size: 1.125rem;
   line-height: 1.7;
   letter-spacing: 0.02em;
-  color: #4d4d4d;
+  color: var(--doc-mute);
 }
 #doc p {
   margin-top: 0;
@@ -81,11 +102,11 @@
   font-weight: 700;
 }
 #doc a {
-  color: #0031d8;
+  color: var(--doc-link);
   text-decoration: underline;
 }
 #doc a:hover {
-  color: #002db6;
+  color: var(--doc-link-hover);
 }
 #doc ul,
 #doc ol {
@@ -104,9 +125,9 @@
 #doc blockquote {
   margin: 0 0 1rem 0;
   padding: 0.5rem 1rem;
-  border-left: 4px solid #cccccc;
-  color: #4d4d4d;
-  background-color: #f2f2f2;
+  border-left: 4px solid var(--doc-quote-rule);
+  color: var(--doc-mute);
+  background-color: var(--doc-quote-bg);
   border-radius: 0.25rem;
 }
 #doc blockquote > p:last-child {
@@ -117,8 +138,8 @@
   font-size: 0.875rem;
   line-height: 1.5;
   padding: 0.125rem 0.375rem;
-  background-color: #f2f2f2;
-  border: 1px solid #e6e6e6;
+  background-color: var(--doc-quote-bg);
+  border: 1px solid var(--doc-rule);
   border-radius: 0.25rem;
 }
 #doc pre {
@@ -126,8 +147,8 @@
   margin-bottom: 1rem;
   padding: 1rem;
   overflow-x: auto;
-  background-color: #1e1e1e;
-  border: 1px solid #333333;
+  background-color: var(--doc-code-bg);
+  border: 1px solid var(--doc-code-rule);
   border-radius: 0.5rem;
 }
 #doc pre code {
@@ -135,7 +156,7 @@
   font-size: 1rem;
   letter-spacing: 0;
   padding: 0;
-  color: #d4d4d4;
+  color: var(--doc-code-ink);
   background-color: transparent;
   border: none;
   border-radius: 0;
@@ -161,27 +182,27 @@
   margin-bottom: 0;
   font-size: 1rem;
   line-height: 1.5;
-  border-top: 1px solid #e6e6e6;
-  border-left: 1px solid #e6e6e6;
+  border-top: 1px solid var(--doc-rule);
+  border-left: 1px solid var(--doc-rule);
 }
 #doc thead {
-  background-color: #f2f2f2;
+  background-color: var(--doc-thead-bg);
 }
 #doc th {
   font-weight: 700;
   text-align: left;
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid #e6e6e6;
-  border-right: 1px solid #e6e6e6;
+  border-bottom: 1px solid var(--doc-rule);
+  border-right: 1px solid var(--doc-rule);
 }
 #doc td {
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid #e6e6e6;
-  border-right: 1px solid #e6e6e6;
+  border-bottom: 1px solid var(--doc-rule);
+  border-right: 1px solid var(--doc-rule);
 }
 #doc hr {
   border: none;
-  border-top: 1px solid #e6e6e6;
+  border-top: 1px solid var(--doc-rule);
   margin: 2rem 0;
 }
 #doc img {
@@ -191,5 +212,26 @@
 }
 #doc input[type='checkbox'] {
   margin-right: 0.5rem;
-  accent-color: #0031d8;
+  accent-color: var(--doc-checkbox-accent);
+}
+
+/* dark 上書き。<html>.dark の付与は head 内 inline script が担う。
+   :where() で詳細度ゼロ化することで、ユーザー差し替え CSS の `#doc { ... }` ルールが
+   dark 状態でも上書き勝ちできる (上記 .dark との契約参照)。
+   dark 値は DADS primitive (digital-go-jp/design-tokens) から自前マッピング。 */
+:where(.dark) #doc {
+  --doc-paper: #1a1a1a;
+  --doc-ink: #f2f2f2;
+  --doc-mute: #b3b3b3;
+  --doc-border: #4d4d4d;
+  --doc-rule: #333333;
+  --doc-link: #9db7f9;
+  --doc-link-hover: #7096f8;
+  --doc-quote-bg: #262626;
+  --doc-quote-rule: #4d4d4d;
+  --doc-code-bg: #0d0d0d;
+  --doc-code-rule: #4d4d4d;
+  --doc-code-ink: #d4d4d4;
+  --doc-thead-bg: #262626;
+  --doc-checkbox-accent: #9db7f9;
 }

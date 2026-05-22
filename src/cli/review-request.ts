@@ -17,6 +17,7 @@ import {
   deriveReviewHtmlName,
   rewriteReviewHtml,
   stripMarkdownExt,
+  upsertHtmlDataTheme,
 } from '../core/embed'
 import { dirname, resolve } from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
@@ -70,9 +71,20 @@ const prepareEmbed = async (args: RunArgs): Promise<EmbedContext> => {
   return { docName: input.docName, markdown: input.markdown, outputPath, reviewHtml }
 }
 
+// --theme 未指定時は data-theme を付けず、既存配布物との互換性を維持する。
+// 明示指定時のみ <html data-theme> を上書きし、生成 HTML 初回起動の初期値ヒントにする
+// (受信側 inline script は localStorage > data-theme > prefers-color-scheme の優先順位)。
+const applyThemeHint = (html: string, themeHint: RunArgs['themeHint']): string => {
+  if (typeof themeHint !== 'string') {
+    return html
+  }
+  return upsertHtmlDataTheme(html, themeHint)
+}
+
 const runEmbed = async (args: RunArgs): Promise<void> => {
   const ctx = await prepareEmbed(args)
-  const result = rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName)
+  const embedded = rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName)
+  const result = applyThemeHint(embedded, args.themeHint)
   await writeFile(ctx.outputPath, result, 'utf8')
   // 生成先パスを stdout に出し、シェルスクリプト・エージェントが拾えるようにする。
   // --no-open でも、open 成功時でも、失敗時でも常に出す。

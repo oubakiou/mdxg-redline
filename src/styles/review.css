@@ -1,4 +1,6 @@
-/* GitHub Primer design tokens (light) */
+/* GitHub Primer design tokens (light). dark 値は :root.dark で上書き。
+   dark 値は DADS primitive (digital-go-jp/design-tokens) から自前マッピング。
+   採用方針は DESIGN.md §12 §1 Theming 行参照。 */
 :root {
   --paper: #ffffff;
   --paper-edge: #f6f8fa;
@@ -13,6 +15,12 @@
   --rule-muted: #d8dee4;
   --success: #1f883d;
   --success-hover: #1a7f37;
+  --btn-primary-fg: #ffffff;
+  --btn-hover: #f3f4f6;
+  --floater-bg: #1f2328;
+  --floater-fg: #ffffff;
+  --toast-bg: #1f2328;
+  --toast-fg: #ffffff;
   --danger: #cf222e;
   --shadow-small: 0 1px 0 rgba(31, 35, 40, 0.04);
   --shadow-medium: 0 3px 6px rgba(140, 149, 159, 0.15);
@@ -22,6 +30,33 @@
     'Apple Color Emoji', 'Segoe UI Emoji';
   --font-mono:
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+/* dark 上書き。<html>.dark の付与は head 内 inline script が担う (review.html 参照)。
+   primary button の文字色は light の白から dark の暗色へ反転している (#2cac6e × white が
+   2.77:1 で AA 不足のため、#2cac6e × #1a1a1a で 6.30:1 を確保)。
+   Material Design 3 / Tailwind dark の primary button 慣行と一致。 */
+:root.dark {
+  --paper: #1a1a1a;
+  --paper-edge: #262626;
+  --ink: #f2f2f2;
+  --ink-soft: #b3b3b3;
+  --ink-faint: #999999;
+  --accent: #9db7f9;
+  --accent-soft: #00316a;
+  --highlight: #ffc700;
+  --highlight-soft: #806300;
+  --rule: #4d4d4d;
+  --rule-muted: #333333;
+  --success: #2cac6e;
+  --success-hover: #259d63;
+  --btn-primary-fg: #1a1a1a;
+  --btn-hover: #333333;
+  --floater-bg: #f2f2f2;
+  --floater-fg: #1a1a1a;
+  --toast-bg: #f2f2f2;
+  --toast-fg: #1a1a1a;
+  --danger: #ff5454;
 }
 html,
 body {
@@ -164,7 +199,7 @@ body > main.layout > aside.sidebar {
     border-color 0.15s ease;
 }
 .btn:hover {
-  background: #f3f4f6;
+  background: var(--btn-hover);
   border-color: rgba(31, 35, 40, 0.15);
   color: var(--ink);
 }
@@ -182,11 +217,11 @@ body > main.layout > aside.sidebar {
 .btn-primary:disabled:hover,
 .btn-primary[disabled]:hover {
   background: var(--success);
-  color: #ffffff;
+  color: var(--btn-primary-fg);
 }
 .btn-primary {
   background: var(--success);
-  color: #ffffff;
+  color: var(--btn-primary-fg);
   border-color: rgba(31, 35, 40, 0.15);
   box-shadow:
     var(--shadow-small),
@@ -195,7 +230,7 @@ body > main.layout > aside.sidebar {
 .btn-primary:hover {
   background: var(--success-hover);
   border-color: rgba(31, 35, 40, 0.15);
-  color: #ffffff;
+  color: var(--btn-primary-fg);
 }
 .btn-ghost {
   border-color: transparent;
@@ -327,6 +362,14 @@ mark.cmt:hover,
 mark.cmt.active {
   background: var(--highlight);
 }
+/* dark active 時の前景固定。dark の --highlight (#ffc700 黄色) × --ink (#f2f2f2 明色) は
+   contrast 約 1.33:1 で AA 大幅違反になるため、active 状態の本文色を暗色に固定する。
+   非 active 時は dark の --highlight-soft (#806300) × --ink (#f2f2f2) = 約 4.5:1 で
+   AA 通過するため、本文色は --ink 継承のまま。 */
+:root.dark mark.cmt:hover,
+:root.dark mark.cmt.active {
+  color: #1a1a1a;
+}
 
 /* Tooltip (Primer 風).
    ネイティブ title 属性は表示まで 1-2 秒の遅延があり、ブラウザ設定によっては出ないため、
@@ -367,8 +410,8 @@ mark.cmt.active {
   position: fixed;
   z-index: 50;
   display: none;
-  background: var(--ink);
-  color: #ffffff;
+  background: var(--floater-bg);
+  color: var(--floater-fg);
   font-family: var(--font-system);
   font-size: 12px;
   font-weight: 500;
@@ -390,7 +433,7 @@ mark.cmt.active {
   height: 0;
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
-  border-top: 5px solid var(--ink);
+  border-top: 5px solid var(--floater-bg);
 }
 
 /* Sidebar comments (GitHub PR review card style) */
@@ -399,7 +442,7 @@ mark.cmt.active {
   border-radius: 6px;
   padding: 10px 12px;
   margin-bottom: 8px;
-  background: #ffffff;
+  background: var(--paper);
   cursor: pointer;
   transition:
     border-color 0.15s ease,
@@ -575,8 +618,8 @@ mark.cmt.active {
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--ink);
-  color: #ffffff;
+  background: var(--toast-bg);
+  color: var(--toast-fg);
   padding: 8px 14px;
   font-family: var(--font-system);
   font-size: 13px;
