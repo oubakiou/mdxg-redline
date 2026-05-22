@@ -52,6 +52,20 @@ rawHtmlEscapingRenderer.image = (href: string, title: string | null, text: strin
   return `<img src="${escapeHtml(href)}" alt="${escapeHtml(text)}"${titleAttr(title)} referrerpolicy="no-referrer">`
 }
 
+// #doc の max-width を超える広いテーブルが親レイアウトを破壊しないよう、
+// table をスクロール可能なラッパで包む (MDXG §5 [MUST] 広いテーブルの水平スクロール)。
+// blockId は #doc 直下の子要素 (= このラッパ div) に付与されるが、内部 DOM ツリーは
+// 通常の <table> のままなのでテキストオフセット計算とアンカリングへの影響はない。
+const wrapTbody = (body: string): string => {
+  if (body) {
+    return `<tbody>${body}</tbody>`
+  }
+  return ''
+}
+
+rawHtmlEscapingRenderer.table = (header: string, body: string): string =>
+  `<div class="table-wrap"><table>\n<thead>\n${header}</thead>\n${wrapTbody(body)}</table>\n</div>\n`
+
 /** marked で markdown を HTML に変換。raw HTML は実行されないよう文字として escape する */
 export const renderMarkdown = (markdown: string): string => {
   const result = marked.parse(markdown, {
@@ -136,5 +150,33 @@ if (import.meta.vitest) {
       expect(html).toContain('bad')
     })
     /* eslint-enable no-script-url */
+  })
+
+  describe('renderMarkdown table rendering', () => {
+    it('table は <div class="table-wrap"> でラップされ <table> 構造を保つ (MDXG §5 水平スクロール対応)', () => {
+      const html = renderMarkdown('| A | B |\n|---|---|\n| 1 | 2 |\n')
+      expect(html).toContain('<div class="table-wrap"><table>')
+      expect(html).toContain('</table>\n</div>')
+      expect(html).toContain('<thead>')
+      expect(html).toContain('<tbody>')
+      expect(html).toContain('<th>A</th>')
+      expect(html).toContain('<td>1</td>')
+    })
+
+    it('body が空のテーブルでも <tbody> を出さない (marked デフォルト挙動を維持)', () => {
+      const html = renderMarkdown('| A | B |\n|---|---|\n')
+      expect(html).toContain('<div class="table-wrap"><table>')
+      expect(html).not.toContain('<tbody>')
+      expect(html).toContain('<th>A</th>')
+    })
+
+    // doc-renderer の cacheBlockOriginalHTML は #doc 直下の子要素を順に巡って blockId を振る。
+    // table token 1 つにつきラッパ div 1 つが top-level に出ることが崩れると、blockId 連番が DOM
+    // 側だけズレて block-anchors (lexer 側) と対応が壊れるため、1:1 対応を構造的に固定する。
+    it('複数 table を含む markdown でも table-wrap が table token と 1:1 対応する', () => {
+      const html = renderMarkdown('| A |\n|---|\n| 1 |\n\nbetween\n\n| B |\n|---|\n| 2 |\n')
+      expect(html.match(/<div class="table-wrap">/g)).toHaveLength(2)
+      expect(html.match(/<\/table>\n<\/div>/g)).toHaveLength(2)
+    })
   })
 }

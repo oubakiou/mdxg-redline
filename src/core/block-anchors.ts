@@ -147,5 +147,20 @@ if (import.meta.vitest) {
       expect(requireAnchor(anchors, 'b002').sourceLine).toBe(3)
       expect(requireAnchor(anchors, 'b003').sourceLine).toBe(8)
     })
+
+    // markdown.ts の renderer.table が <table> を <div class="table-wrap"> で包む変更を入れても、
+    // lexer 側の table token カウントは 1 のままで、その後ろのブロックの blockId 番号・sourceLine が
+    // ズレないことを構造的に担保する (mark-engine がブロック内テキストに mark を貼る前提)。
+    it('table ブロックを挟んでも後続ブロックの blockId 連番と sourceLine が乱れない', () => {
+      const anchors = buildBlockAnchors(
+        '# H1\n\nPara\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\nAfter\n'
+      )
+      expect(requireAnchor(anchors, 'b001').sourceLine).toBe(1)
+      expect(requireAnchor(anchors, 'b002').sourceLine).toBe(3)
+      expect(requireAnchor(anchors, 'b003').sourceLine).toBe(5)
+      expect(requireAnchor(anchors, 'b003').headingPath).toEqual(['# H1'])
+      expect(requireAnchor(anchors, 'b004').sourceLine).toBe(9)
+      expect(requireAnchor(anchors, 'b004').headingPath).toEqual(['# H1'])
+    })
   })
 }
