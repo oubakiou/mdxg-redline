@@ -47,6 +47,9 @@
      ============================================================================ -->
     <script id="embedded-md" type="text/markdown" data-name="document.md"></script>
     <script id="embedded-feedback" type="application/json"></script>
+    <!-- review-request CLI が --shiki-langs に応じて Shiki grammar の JSON を書き込む。
+         空のままだと全コードブロックが plain text fallback として描画される。 -->
+    <script id="embedded-shiki-langs" type="application/json"></script>
 
     <header class="app-header">
       <div class="app-brand">

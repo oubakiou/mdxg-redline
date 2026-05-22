@@ -60,14 +60,27 @@ export const parseReviewMdFilename = (filename: string): ReviewMdFilenameParts |
   return { docHash: match[2].toLowerCase(), mdFileName: match[1] }
 }
 
+// `<script>` タグの中身に JSON を埋め込む共通ロジック。`<` を JSON の Unicode escape
+// `<` に置換することで、HTML パーサが `</script>` を閉じタグとして誤検出する余地を
+// ゼロにする。復元側は `JSON.parse` のみで Unicode escape も含めて元の値に戻る。
+// embedded-md / embedded-shiki-langs / embedded-feedback など複数の埋め込み経路で共有する。
+const escapeJsonForScriptTag = (jsonString: string): string =>
+  jsonString.replace(/</g, String.raw`\u003C`)
+
 /**
- * markdown 本文を `<script>` タグに埋め込み可能な JSON 文字列にエンコードする。
- * `JSON.stringify` で JSON 文字列化したうえで、`<` を JSON の Unicode escape `<` に置換する。
- * これにより HTML パーサが `</script>` を閉じタグとして認識する可能性をゼロにしつつ、
- * 復元側は `JSON.parse` のみで Unicode escape も含めて元の markdown 1 文字に戻せる。
+ * markdown 本文を `<script id="embedded-md">` に埋め込み可能な JSON 文字列にエンコードする。
+ * 復元は `JSON.parse` のみで完結する。
  */
 export const encodeEmbeddedMarkdown = (markdown: string): string =>
-  JSON.stringify(markdown).replace(/</g, String.raw`\u003C`)
+  escapeJsonForScriptTag(JSON.stringify(markdown))
+
+/**
+ * Shiki grammar の集合を `<script id="embedded-shiki-langs">` に埋め込み可能な JSON 文字列に
+ * エンコードする。grammars は `{ <canonical>: LanguageRegistration[] }` 形式の plain object で、
+ * 復元側 (browser) は `JSON.parse` した後 createHighlighterCoreSync の `langs` に値を渡す。
+ */
+export const encodeEmbeddedShikiLangs = (grammars: Record<string, unknown>): string =>
+  escapeJsonForScriptTag(JSON.stringify(grammars))
 
 // 属性順や空白の揺らぎを許容するため、id="embedded-md" と type="text/markdown" の両方を
 // 含む <script ...> の開きタグ全体、コンテンツ、閉じタグの 3 グループに分けて捕まえる。
@@ -75,6 +88,11 @@ export const encodeEmbeddedMarkdown = (markdown: string): string =>
 // `<script id="embedded-md">` のような literal にマッチしてしまうのを防ぐ。
 const EMBEDDED_MD_RE =
   /(<script\b(?=[^>]*\bid="embedded-md")(?=[^>]*\btype="text\/markdown")[^>]*>)([\s\S]*?)(<\/script>)/i
+
+// embedded-md と同じパターン。id="embedded-shiki-langs" + type="application/json" の両属性を
+// lookahead で要求し、説明文中の literal `<script id="embedded-shiki-langs">` に誤マッチしないようにする。
+const EMBEDDED_SHIKI_LANGS_RE =
+  /(<script\b(?=[^>]*\bid="embedded-shiki-langs")(?=[^>]*\btype="application\/json")[^>]*>)([\s\S]*?)(<\/script>)/i
 
 const DATA_NAME_RE = /\bdata-name="[^"]*"/
 const HTML_TAG_RE = /<html\b[^>]*>/i
@@ -115,6 +133,28 @@ export const upsertHtmlDataTheme = (reviewHtml: string, themeHint: string): stri
 }
 
 /**
+ * `<script id="embedded-shiki-langs">` の中身を grammars の JSON で書き換える。
+ * - `grammars` が空オブジェクト `{}` でも JSON `{}` が書き込まれる (browser は空 langs として扱う)
+ * - 該当 `<script>` タグが review.html に無ければ Error を投げる (呼び出し側が CLI エラーに変換)
+ *
+ * embedded-md のように属性経由の上書きはなく、コンテンツ置換のみ。
+ */
+export const rewriteEmbeddedShikiLangs = (
+  reviewHtml: string,
+  grammars: Record<string, unknown>
+): string => {
+  const match = EMBEDDED_SHIKI_LANGS_RE.exec(reviewHtml)
+  if (!match) {
+    throw new Error('review.html に id="embedded-shiki-langs" の <script> タグが見つかりません')
+  }
+  const [fullMatch, openingTag, , closingTag] = match
+  const replaced = `${openingTag}${encodeEmbeddedShikiLangs(grammars)}${closingTag}`
+  return (
+    reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length)
+  )
+}
+
+/**
  * review.html の文字列を受け取り、`<script id="embedded-md">` の中身と data-name 属性を
  * 書き換えた新しい HTML 文字列を返す。元文字列は変更しない。
  * embedded-md タグが見つからない場合は Error を投げる（呼び出し側が CLI エラーに変換）。
@@ -141,6 +181,67 @@ export const rewriteReviewHtml = (
 
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
+
+  describe('encodeEmbeddedShikiLangs', () => {
+    it('grammars object を JSON.parse で完全復元できる', () => {
+      const grammars = {
+        python: [{ name: 'py' }],
+        typescript: [{ name: 'ts', scope: 'source.ts' }],
+      }
+      const encoded = encodeEmbeddedShikiLangs(grammars)
+      expect(JSON.parse(encoded)).toEqual(grammars)
+    })
+
+    it('grammars に含まれる literal < は Unicode escape されて raw < が一切現れない', () => {
+      const grammars = { html: [{ name: '<html>', pattern: '</script>' }] }
+      const encoded = encodeEmbeddedShikiLangs(grammars)
+      expect(encoded.includes('<')).toBe(false)
+      expect(JSON.parse(encoded)).toEqual(grammars)
+    })
+
+    it('空オブジェクトは "{}" を返す', () => {
+      expect(encodeEmbeddedShikiLangs({})).toBe('{}')
+    })
+  })
+
+  describe('rewriteEmbeddedShikiLangs', () => {
+    const baseHtml =
+      '<html><body><script id="embedded-shiki-langs" type="application/json"></script></body></html>'
+
+    it('grammars を script タグの中身として書き込み、JSON.parse で復元できる', () => {
+      const grammars = { typescript: [{ name: 'ts' }] }
+      const out = rewriteEmbeddedShikiLangs(baseHtml, grammars)
+      const opening = out.indexOf('<script id="embedded-shiki-langs"')
+      const tagOpenEnd = out.indexOf('>', opening) + 1
+      const closing = out.indexOf('</script>', tagOpenEnd)
+      const body = out.slice(tagOpenEnd, closing)
+      expect(body.includes('<')).toBe(false)
+      expect(JSON.parse(body)).toEqual(grammars)
+    })
+
+    it('既存コンテンツを置き換える', () => {
+      const html =
+        '<html><body><script id="embedded-shiki-langs" type="application/json">{"old":"yes"}</script></body></html>'
+      const out = rewriteEmbeddedShikiLangs(html, { typescript: [] })
+      expect(out).not.toContain('"old":"yes"')
+      expect(out).toContain('"typescript"')
+    })
+
+    it('embedded-shiki-langs タグが無いと Error を投げる', () => {
+      expect(() => rewriteEmbeddedShikiLangs('<html></html>', {})).toThrow(/embedded-shiki-langs/)
+    })
+
+    it('type="application/json" が無い script タグは対象外', () => {
+      const html = '<script id="embedded-shiki-langs"></script>'
+      expect(() => rewriteEmbeddedShikiLangs(html, {})).toThrow(/embedded-shiki-langs/)
+    })
+
+    it('元文字列を破壊しない', () => {
+      const html = baseHtml
+      rewriteEmbeddedShikiLangs(html, { typescript: [] })
+      expect(html).toBe(baseHtml)
+    })
+  })
 
   describe('encodeEmbeddedMarkdown', () => {
     it('JSON.parse で元 markdown に戻せる (round-trip)', () => {

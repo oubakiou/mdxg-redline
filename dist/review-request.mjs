@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { marked } from "marked";
 import { basename, dirname, resolve } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -6,17 +7,158 @@ import { execFile } from "node:child_process";
 import process from "node:process";
 import { createReadStream } from "node:fs";
 import { createServer } from "node:http";
+//#region src/core/shiki-aliases.generated.ts
+var SHIKI_SUPPORTED_LANGS = [
+	"c",
+	"cpp",
+	"css",
+	"diff",
+	"go",
+	"html",
+	"java",
+	"javascript",
+	"json",
+	"jsx",
+	"kotlin",
+	"lua",
+	"markdown",
+	"php",
+	"python",
+	"ruby",
+	"rust",
+	"scala",
+	"shellscript",
+	"sql",
+	"swift",
+	"toml",
+	"tsx",
+	"typescript",
+	"xml",
+	"yaml",
+	"zig"
+];
+var ALIAS_TO_CANONICAL = {
+	bash: "shellscript",
+	c: "c",
+	"c++": "cpp",
+	cjs: "javascript",
+	cpp: "cpp",
+	css: "css",
+	cts: "typescript",
+	diff: "diff",
+	go: "go",
+	html: "html",
+	java: "java",
+	javascript: "javascript",
+	js: "javascript",
+	json: "json",
+	jsx: "jsx",
+	kotlin: "kotlin",
+	kt: "kotlin",
+	kts: "kotlin",
+	lua: "lua",
+	markdown: "markdown",
+	md: "markdown",
+	mjs: "javascript",
+	mts: "typescript",
+	php: "php",
+	py: "python",
+	python: "python",
+	rb: "ruby",
+	rs: "rust",
+	ruby: "ruby",
+	rust: "rust",
+	scala: "scala",
+	sh: "shellscript",
+	shell: "shellscript",
+	shellscript: "shellscript",
+	sql: "sql",
+	swift: "swift",
+	toml: "toml",
+	ts: "typescript",
+	tsx: "tsx",
+	typescript: "typescript",
+	xml: "xml",
+	yaml: "yaml",
+	yml: "yaml",
+	zig: "zig",
+	zsh: "shellscript"
+};
+//#endregion
+//#region src/core/scan-fenced-langs.ts
+var isTokenLike = (value) => {
+	if (typeof value !== "object" || value === null) return false;
+	return typeof value.type === "string";
+};
+/**
+* フェンスの info string (例: `ts foo=bar`) から先頭の言語識別子だけを取り出して
+* Shiki 正規名にマップする。エイリアス・大文字混入も含めて正規化する。
+* 該当なしの場合は null を返し、呼び出し側で plain text fallback に倒す判断に使う。
+*/
+var normalizeLangIdentifier = (raw) => {
+	if (typeof raw !== "string") return null;
+	const [head] = raw.trim().split(/\s+/u, 1);
+	if (!head) return null;
+	return ALIAS_TO_CANONICAL[head.toLowerCase()] ?? null;
+};
+var collectCodeLang = (token, acc) => {
+	if (token.type !== "code" || typeof token.lang !== "string") return;
+	const canonical = normalizeLangIdentifier(token.lang);
+	if (canonical !== null) acc.add(canonical);
+};
+var walkTokens = (tokens, acc) => {
+	if (!Array.isArray(tokens)) return;
+	for (const token of tokens) if (isTokenLike(token)) {
+		collectCodeLang(token, acc);
+		walkTokens(token.tokens, acc);
+		walkTokens(token.items, acc);
+	}
+};
+/**
+* markdown 全体を走査して、フェンスで指定された言語の Shiki 正規名集合を返す。
+* 入力 markdown が空 / フェンスなし / 全部 plain fallback でも空 Set を返す。
+*/
+var scanFencedLangs = (markdown) => {
+	const acc = /* @__PURE__ */ new Set();
+	walkTokens(marked.lexer(markdown), acc);
+	return acc;
+};
+//#endregion
 //#region src/cli/parse-args.ts
 var NO_OPEN_FLAG = "--no-open";
 var HELP_FLAGS = new Set(["--help", "-h"]);
 var DOCUMENT_NAME_FLAG = "--document-name";
 var THEME_FLAG = "--theme";
+var SHIKI_LANGS_FLAG = "--shiki-langs";
 var THEME_VALUES = [
 	"system",
 	"light",
 	"dark"
 ];
 var isThemeHint = (value) => THEME_VALUES.includes(value);
+var parseShikiLangsKeyword = (trimmed) => {
+	if (trimmed === "auto") return { kind: "auto" };
+	if (trimmed === "all") return { kind: "all" };
+	if (trimmed === "none") return { kind: "none" };
+	return null;
+};
+var parseShikiLangsList = (trimmed) => {
+	const tokens = trimmed.split(",").map((token) => token.trim()).filter((token) => token.length > 0);
+	const langs = /* @__PURE__ */ new Set();
+	for (const token of tokens) {
+		const canonical = normalizeLangIdentifier(token);
+		if (canonical !== null) langs.add(canonical);
+	}
+	return {
+		kind: "list",
+		langs
+	};
+};
+/**
+* `--shiki-langs` の値を ShikiLangsMode にパースする。pure な関数で、CLI 引数パースと
+* 単体テストの両方から再利用する。空白だけ / 未サポートのみは空 list (= none と等価) を返す。
+*/
+var parseShikiLangsValue = (value) => parseShikiLangsKeyword(value.trim()) ?? parseShikiLangsList(value.trim());
 var HELP_TEXT = `Usage: mdxg-redline [options] <input.md|-> [output-dir]
 
 Generate a review-request HTML with the markdown embedded and open it in
@@ -39,6 +181,17 @@ Options:
                          viewer has no localStorage preference yet (the user's
                          UI toggle history always wins). Omit to leave the
                          attribute off entirely.
+  --shiki-langs <value>  Select which Shiki grammars to embed in the HTML
+                         for syntax highlighting. One of:
+                           auto  Scan the input markdown and embed only the
+                                 grammars used by fenced blocks (default).
+                           all   Embed all 27 supported grammars (heaviest).
+                           none  Embed no grammars (all code blocks render as
+                                 plain text).
+                           <csv> Comma-separated list of language identifiers
+                                 (e.g. ts,js,py). Aliases are normalized to
+                                 canonical names; unsupported entries are
+                                 silently ignored.
   --no-open              Generate the HTML but do not launch a browser.
   -h, --help             Print this help and exit. Takes precedence over all
                          other arguments and flags when present.
@@ -54,8 +207,10 @@ var INITIAL_PARTITION_STATE = {
 	documentName: null,
 	open: true,
 	pendingDocName: false,
+	pendingShikiLangs: false,
 	pendingTheme: false,
 	positional: [],
+	shikiLangs: null,
 	themeHint: null,
 	valid: true
 };
@@ -81,6 +236,17 @@ var consumeThemeValue = (acc, token) => {
 		themeHint: token
 	};
 };
+var consumeShikiLangsValue = (acc, token) => {
+	if (token.startsWith("--")) return {
+		...acc,
+		valid: false
+	};
+	return {
+		...acc,
+		pendingShikiLangs: false,
+		shikiLangs: parseShikiLangsValue(token)
+	};
+};
 var consumeFlag = (acc, token) => {
 	if (token === NO_OPEN_FLAG) return {
 		...acc,
@@ -94,43 +260,62 @@ var consumeFlag = (acc, token) => {
 		...acc,
 		pendingTheme: true
 	};
+	if (token === SHIKI_LANGS_FLAG) return {
+		...acc,
+		pendingShikiLangs: true
+	};
 	return {
 		...acc,
 		valid: false
 	};
 };
-var stepArg = (acc, token) => {
-	if (!acc.valid) return acc;
+var consumePendingValue = (acc, token) => {
 	if (acc.pendingDocName) return consumeDocNameValue(acc, token);
 	if (acc.pendingTheme) return consumeThemeValue(acc, token);
+	if (acc.pendingShikiLangs) return consumeShikiLangsValue(acc, token);
+	return null;
+};
+var stepArg = (acc, token) => {
+	if (!acc.valid) return acc;
+	const pending = consumePendingValue(acc, token);
+	if (pending !== null) return pending;
 	if (token.startsWith("--")) return consumeFlag(acc, token);
 	return {
 		...acc,
 		positional: [...acc.positional, token]
 	};
 };
+var attachPartitionOptionals = (result, state) => {
+	if (state.documentName !== null) result.documentName = state.documentName;
+	if (state.themeHint !== null) result.themeHint = state.themeHint;
+	if (state.shikiLangs !== null) result.shikiLangs = state.shikiLangs;
+};
 var partitionArgs = (argv) => {
 	const state = argv.reduce(stepArg, INITIAL_PARTITION_STATE);
-	const valid = state.valid && !state.pendingDocName && !state.pendingTheme;
+	const valid = state.valid && !state.pendingDocName && !state.pendingTheme && !state.pendingShikiLangs;
 	const result = {
 		open: state.open,
 		positional: state.positional,
 		valid
 	};
-	if (state.documentName !== null) result.documentName = state.documentName;
-	if (state.themeHint !== null) result.themeHint = state.themeHint;
+	attachPartitionOptionals(result, state);
 	return result;
 };
+var attachRunOptionals = (result, parts) => {
+	const [, outputDir] = parts.positional;
+	if (typeof outputDir === "string") result.outputDir = outputDir;
+	if (typeof parts.documentName === "string") result.documentName = parts.documentName;
+	if (typeof parts.themeHint === "string") result.themeHint = parts.themeHint;
+	if (parts.shikiLangs) result.shikiLangs = parts.shikiLangs;
+};
 var buildRunArgs = (parts) => {
-	const [inputPath, outputDir] = parts.positional;
+	const [inputPath] = parts.positional;
 	const result = {
 		inputPath,
 		mode: "run",
 		open: parts.open
 	};
-	if (typeof outputDir === "string") result.outputDir = outputDir;
-	if (typeof parts.documentName === "string") result.documentName = parts.documentName;
-	if (typeof parts.themeHint === "string") result.themeHint = parts.themeHint;
+	attachRunOptionals(result, parts);
 	return result;
 };
 var parseArgs = (argv) => {
@@ -178,14 +363,20 @@ var computeDocHash = async (markdown) => {
 var stripMarkdownExt = (filename) => filename.replace(/\.(?:markdown|md)$/i, "");
 /** ファイル命名規約 §8 に従って配布用 HTML のファイル名を組み立てる */
 var deriveReviewHtmlName = (mdFileName, docHash) => `${mdFileName}-${docHash}-review.html`;
+var escapeJsonForScriptTag = (jsonString) => jsonString.replace(/</g, String.raw`\u003C`);
 /**
-* markdown 本文を `<script>` タグに埋め込み可能な JSON 文字列にエンコードする。
-* `JSON.stringify` で JSON 文字列化したうえで、`<` を JSON の Unicode escape `<` に置換する。
-* これにより HTML パーサが `<\/script>` を閉じタグとして認識する可能性をゼロにしつつ、
-* 復元側は `JSON.parse` のみで Unicode escape も含めて元の markdown 1 文字に戻せる。
+* markdown 本文を `<script id="embedded-md">` に埋め込み可能な JSON 文字列にエンコードする。
+* 復元は `JSON.parse` のみで完結する。
 */
-var encodeEmbeddedMarkdown = (markdown) => JSON.stringify(markdown).replace(/</g, String.raw`\u003C`);
+var encodeEmbeddedMarkdown = (markdown) => escapeJsonForScriptTag(JSON.stringify(markdown));
+/**
+* Shiki grammar の集合を `<script id="embedded-shiki-langs">` に埋め込み可能な JSON 文字列に
+* エンコードする。grammars は `{ <canonical>: LanguageRegistration[] }` 形式の plain object で、
+* 復元側 (browser) は `JSON.parse` した後 createHighlighterCoreSync の `langs` に値を渡す。
+*/
+var encodeEmbeddedShikiLangs = (grammars) => escapeJsonForScriptTag(JSON.stringify(grammars));
 var EMBEDDED_MD_RE = /(<script\b(?=[^>]*\bid="embedded-md")(?=[^>]*\btype="text\/markdown")[^>]*>)([\s\S]*?)(<\/script>)/i;
+var EMBEDDED_SHIKI_LANGS_RE = /(<script\b(?=[^>]*\bid="embedded-shiki-langs")(?=[^>]*\btype="application\/json")[^>]*>)([\s\S]*?)(<\/script>)/i;
 var DATA_NAME_RE = /\bdata-name="[^"]*"/;
 var HTML_TAG_RE = /<html\b[^>]*>/i;
 var DATA_THEME_RE = /\bdata-theme="[^"]*"/;
@@ -209,6 +400,20 @@ var upsertHtmlDataTheme = (reviewHtml, themeHint) => {
 	const [tag] = match;
 	const newTag = replaceDataTheme(tag, escapeHtml(themeHint));
 	return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length);
+};
+/**
+* `<script id="embedded-shiki-langs">` の中身を grammars の JSON で書き換える。
+* - `grammars` が空オブジェクト `{}` でも JSON `{}` が書き込まれる (browser は空 langs として扱う)
+* - 該当 `<script>` タグが review.html に無ければ Error を投げる (呼び出し側が CLI エラーに変換)
+*
+* embedded-md のように属性経由の上書きはなく、コンテンツ置換のみ。
+*/
+var rewriteEmbeddedShikiLangs = (reviewHtml, grammars) => {
+	const match = EMBEDDED_SHIKI_LANGS_RE.exec(reviewHtml);
+	if (!match) throw new Error("review.html に id=\"embedded-shiki-langs\" の <script> タグが見つかりません");
+	const [fullMatch, openingTag, , closingTag] = match;
+	const replaced = `${openingTag}${encodeEmbeddedShikiLangs(grammars)}${closingTag}`;
+	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
 };
 /**
 * review.html の文字列を受け取り、`<script id="embedded-md">` の中身と data-name 属性を
@@ -402,16 +607,50 @@ var prepareEmbed = async (args) => {
 		docName: input.docName,
 		markdown: input.markdown,
 		outputPath,
-		reviewHtml
+		reviewHtml,
+		scriptDir
 	};
 };
 var applyThemeHint = (html, themeHint) => {
 	if (typeof themeHint !== "string") return html;
 	return upsertHtmlDataTheme(html, themeHint);
 };
+/**
+* `--shiki-langs` の指定 (未指定時は auto と同じ) から注入対象の正規名集合を決める pure 関数。
+* - auto / 未指定: markdown を scan して使用されている grammar を集める
+* - all: SHIKI_SUPPORTED_LANGS 全部
+* - none: 空 Set
+* - list: 指定された Set をそのまま使う
+*/
+var resolveShikiLangSet = (mode, markdown) => {
+	if (!mode || mode.kind === "auto") return scanFencedLangs(markdown);
+	if (mode.kind === "all") return new Set(SHIKI_SUPPORTED_LANGS);
+	if (mode.kind === "none") return /* @__PURE__ */ new Set();
+	return new Set(mode.langs);
+};
+var readGrammarJson = async (scriptDir, lang) => {
+	const path = resolve(scriptDir, "shiki-langs", `${lang}.json`);
+	try {
+		const content = await readFile(path, "utf8");
+		return JSON.parse(content);
+	} catch (error) {
+		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(`${path} が見つかりません。先に \`npm run build\` を実行して dist/shiki-langs/ を生成してください。`, { cause: error });
+		throw error;
+	}
+};
+var loadShikiGrammars = async (langs, scriptDir) => {
+	const grammars = {};
+	await Promise.all([...langs].map(async (lang) => {
+		grammars[lang] = await readGrammarJson(scriptDir, lang);
+	}));
+	return grammars;
+};
+var applyShikiLangs = async (html, args, ctx) => {
+	return rewriteEmbeddedShikiLangs(html, await loadShikiGrammars(resolveShikiLangSet(args.shikiLangs, ctx.markdown), ctx.scriptDir));
+};
 var runEmbed = async (args) => {
 	const ctx = await prepareEmbed(args);
-	const result = applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint);
+	const result = await applyShikiLangs(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args, ctx);
 	await writeFile(ctx.outputPath, result, "utf8");
 	process.stdout.write(`${ctx.outputPath}\n`);
 	if (args.open) await openOutput(ctx.outputPath);
@@ -433,4 +672,4 @@ main().catch((error) => {
 	process.exit(1);
 });
 //#endregion
-export {};
+export { resolveShikiLangSet };

@@ -25,31 +25,21 @@ export const isAllowedImageHref = (href: string): boolean => {
   return scheme !== null && ALLOWED_IMAGE_SCHEMES.has(scheme)
 }
 
-const rawHtmlEscapingRenderer = new Renderer()
-rawHtmlEscapingRenderer.html = (html: string): string => escapeHtml(html)
+/**
+ * フェンス付きコードブロックを ハイライト済み HTML に変換する抽象。
+ * `null` を返した場合は marked デフォルトの `<pre><code class="language-...">…</code></pre>`
+ * にフォールバックする。core/markdown.ts は pure module を保つため Shiki に直接依存せず、
+ * 呼び出し側 (app/shiki.ts) が adapter を作って渡す。
+ */
+export interface CodeHighlighter {
+  highlight(code: string, rawLang: string): string | null
+}
 
 const titleAttr = (title: string | null): string => {
   if (!title) {
     return ''
   }
   return ` title="${escapeHtml(title)}"`
-}
-
-// 信頼できない markdown を前提に、URL スキームを allowlist で絞る (DESIGN.md §11)。
-// 不許可リンクは <a> を出さず inner HTML をそのまま流して plain text 扱いにし、
-// 不許可画像は alt テキストを描画して画像取得を起こさない。
-rawHtmlEscapingRenderer.link = (href: string, title: string | null, text: string): string => {
-  if (!isAllowedLinkHref(href)) {
-    return text
-  }
-  return `<a href="${escapeHtml(href)}"${titleAttr(title)} rel="noopener noreferrer" target="_blank">${text}</a>`
-}
-
-rawHtmlEscapingRenderer.image = (href: string, title: string | null, text: string): string => {
-  if (!isAllowedImageHref(href)) {
-    return escapeHtml(text)
-  }
-  return `<img src="${escapeHtml(href)}" alt="${escapeHtml(text)}"${titleAttr(title)} referrerpolicy="no-referrer">`
 }
 
 // #doc の max-width を超える広いテーブルが親レイアウトを破壊しないよう、
@@ -63,15 +53,55 @@ const wrapTbody = (body: string): string => {
   return ''
 }
 
-rawHtmlEscapingRenderer.table = (header: string, body: string): string =>
-  `<div class="table-wrap"><table>\n<thead>\n${header}</thead>\n${wrapTbody(body)}</table>\n</div>\n`
+// renderer.code (marked デフォルト) のフォールバック用。highlighter が null を返したときに使う。
+const defaultRenderer = new Renderer()
 
-/** marked で markdown を HTML に変換。raw HTML は実行されないよう文字として escape する */
-export const renderMarkdown = (markdown: string): string => {
+const createRenderer = (highlighter: CodeHighlighter | null | undefined): Renderer => {
+  const renderer = new Renderer()
+  renderer.html = (html: string): string => escapeHtml(html)
+
+  // 信頼できない markdown を前提に、URL スキームを allowlist で絞る (DESIGN.md §11)。
+  // 不許可リンクは <a> を出さず inner HTML をそのまま流して plain text 扱いにし、
+  // 不許可画像は alt テキストを描画して画像取得を起こさない。
+  renderer.link = (href: string, title: string | null, text: string): string => {
+    if (!isAllowedLinkHref(href)) {
+      return text
+    }
+    return `<a href="${escapeHtml(href)}"${titleAttr(title)} rel="noopener noreferrer" target="_blank">${text}</a>`
+  }
+
+  renderer.image = (href: string, title: string | null, text: string): string => {
+    if (!isAllowedImageHref(href)) {
+      return escapeHtml(text)
+    }
+    return `<img src="${escapeHtml(href)}" alt="${escapeHtml(text)}"${titleAttr(title)} referrerpolicy="no-referrer">`
+  }
+
+  renderer.table = (header: string, body: string): string =>
+    `<div class="table-wrap"><table>\n<thead>\n${header}</thead>\n${wrapTbody(body)}</table>\n</div>\n`
+
+  if (highlighter) {
+    renderer.code = (code: string, infostring: string | undefined, escaped: boolean): string => {
+      const highlighted = highlighter.highlight(code, infostring ?? '')
+      if (highlighted !== null) {
+        return highlighted
+      }
+      return defaultRenderer.code(code, infostring, escaped)
+    }
+  }
+
+  return renderer
+}
+
+/**
+ * marked で markdown を HTML に変換。raw HTML は実行されないよう文字として escape する。
+ * `highlighter` を渡すとフェンス付きコードブロックを差し替える (null 戻り値で fallback)。
+ */
+export const renderMarkdown = (markdown: string, highlighter?: CodeHighlighter | null): string => {
   const result = marked.parse(markdown, {
     breaks: false,
     gfm: true,
-    renderer: rawHtmlEscapingRenderer,
+    renderer: createRenderer(highlighter),
   })
   // marked.parse は同期設定 (async: false) ではあるが型上 string | Promise<string>
   if (typeof result === 'string') {

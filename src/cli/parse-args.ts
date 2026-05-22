@@ -1,16 +1,68 @@
 // review-request CLI の引数パースと、出力ファイル名 prefix のサニタイズ。
 // help テキストも CLI 表示用の単一定数としてここに集約する。
 
+import type { SupportedLang } from '../core/shiki-aliases.generated'
+import { normalizeLangIdentifier } from '../core/scan-fenced-langs'
+
 const NO_OPEN_FLAG = '--no-open'
 const HELP_FLAGS = new Set(['--help', '-h'])
 const DOCUMENT_NAME_FLAG = '--document-name'
 const THEME_FLAG = '--theme'
+const SHIKI_LANGS_FLAG = '--shiki-langs'
 
 export type ThemeHint = 'system' | 'light' | 'dark'
 const THEME_VALUES = ['system', 'light', 'dark'] as const
 
 const isThemeHint = (value: string): value is ThemeHint =>
   (THEME_VALUES as readonly string[]).includes(value)
+
+/**
+ * `--shiki-langs <mode>` のパース結果。
+ * - `auto`: markdown をスキャンして必要 grammar だけを注入 (CLI 既定)
+ * - `all`: 27 言語すべてを注入
+ * - `none`: 注入しない (全コードブロックを plain text fallback)
+ * - `list`: CSV で明示指定された正規名集合だけを注入 (エイリアスは正規化済み)
+ */
+export type ShikiLangsMode =
+  | { kind: 'all' }
+  | { kind: 'auto' }
+  | { kind: 'list'; langs: ReadonlySet<SupportedLang> }
+  | { kind: 'none' }
+
+const parseShikiLangsKeyword = (trimmed: string): ShikiLangsMode | null => {
+  if (trimmed === 'auto') {
+    return { kind: 'auto' }
+  }
+  if (trimmed === 'all') {
+    return { kind: 'all' }
+  }
+  if (trimmed === 'none') {
+    return { kind: 'none' }
+  }
+  return null
+}
+
+const parseShikiLangsList = (trimmed: string): ShikiLangsMode => {
+  const tokens = trimmed
+    .split(',')
+    .map((token: string): string => token.trim())
+    .filter((token: string): boolean => token.length > 0)
+  const langs = new Set<SupportedLang>()
+  for (const token of tokens) {
+    const canonical = normalizeLangIdentifier(token)
+    if (canonical !== null) {
+      langs.add(canonical)
+    }
+  }
+  return { kind: 'list', langs }
+}
+
+/**
+ * `--shiki-langs` の値を ShikiLangsMode にパースする。pure な関数で、CLI 引数パースと
+ * 単体テストの両方から再利用する。空白だけ / 未サポートのみは空 list (= none と等価) を返す。
+ */
+export const parseShikiLangsValue = (value: string): ShikiLangsMode =>
+  parseShikiLangsKeyword(value.trim()) ?? parseShikiLangsList(value.trim())
 
 export const HELP_TEXT = `Usage: mdxg-redline [options] <input.md|-> [output-dir]
 
@@ -34,6 +86,17 @@ Options:
                          viewer has no localStorage preference yet (the user's
                          UI toggle history always wins). Omit to leave the
                          attribute off entirely.
+  --shiki-langs <value>  Select which Shiki grammars to embed in the HTML
+                         for syntax highlighting. One of:
+                           auto  Scan the input markdown and embed only the
+                                 grammars used by fenced blocks (default).
+                           all   Embed all 27 supported grammars (heaviest).
+                           none  Embed no grammars (all code blocks render as
+                                 plain text).
+                           <csv> Comma-separated list of language identifiers
+                                 (e.g. ts,js,py). Aliases are normalized to
+                                 canonical names; unsupported entries are
+                                 silently ignored.
   --no-open              Generate the HTML but do not launch a browser.
   -h, --help             Print this help and exit. Takes precedence over all
                          other arguments and flags when present.
@@ -51,6 +114,7 @@ export interface RunArgs {
   inputPath: string
   open: boolean
   outputDir?: string
+  shikiLangs?: ShikiLangsMode
   themeHint?: ThemeHint
 }
 
@@ -60,6 +124,7 @@ interface PartitionedArgs {
   documentName?: string
   open: boolean
   positional: readonly string[]
+  shikiLangs?: ShikiLangsMode
   themeHint?: ThemeHint
   valid: boolean
 }
@@ -68,8 +133,10 @@ interface PartitionState {
   documentName: string | null
   open: boolean
   pendingDocName: boolean
+  pendingShikiLangs: boolean
   pendingTheme: boolean
   positional: readonly string[]
+  shikiLangs: ShikiLangsMode | null
   themeHint: ThemeHint | null
   valid: boolean
 }
@@ -78,8 +145,10 @@ const INITIAL_PARTITION_STATE: PartitionState = {
   documentName: null,
   open: true,
   pendingDocName: false,
+  pendingShikiLangs: false,
   pendingTheme: false,
   positional: [],
+  shikiLangs: null,
   themeHint: null,
   valid: true,
 }
@@ -101,6 +170,16 @@ const consumeThemeValue = (acc: PartitionState, token: string): PartitionState =
   return { ...acc, pendingTheme: false, themeHint: token }
 }
 
+// --shiki-langs の値位置。auto / all / none / CSV を受け付ける。`-` 始まりは値欠落扱い。
+// CSV のうち未サポート識別子は parseShikiLangsValue 内で silently drop されるため、
+// `--shiki-langs nim,brainfuck` のような全滅入力でも invalid にはせず空 list (= none と同等) を返す。
+const consumeShikiLangsValue = (acc: PartitionState, token: string): PartitionState => {
+  if (token.startsWith('--')) {
+    return { ...acc, valid: false }
+  }
+  return { ...acc, pendingShikiLangs: false, shikiLangs: parseShikiLangsValue(token) }
+}
+
 // `--` 始まりのトークンを既知フラグへ振り分け。未知フラグは invalid。
 const consumeFlag = (acc: PartitionState, token: string): PartitionState => {
   if (token === NO_OPEN_FLAG) {
@@ -112,7 +191,25 @@ const consumeFlag = (acc: PartitionState, token: string): PartitionState => {
   if (token === THEME_FLAG) {
     return { ...acc, pendingTheme: true }
   }
+  if (token === SHIKI_LANGS_FLAG) {
+    return { ...acc, pendingShikiLangs: true }
+  }
   return { ...acc, valid: false }
+}
+
+// 値待ちフラグがあるならその consumer に委譲し、無ければ null を返す。max-statements を
+// 抑えるために stepArg から切り出している。
+const consumePendingValue = (acc: PartitionState, token: string): PartitionState | null => {
+  if (acc.pendingDocName) {
+    return consumeDocNameValue(acc, token)
+  }
+  if (acc.pendingTheme) {
+    return consumeThemeValue(acc, token)
+  }
+  if (acc.pendingShikiLangs) {
+    return consumeShikiLangsValue(acc, token)
+  }
+  return null
 }
 
 // reduce で 1 トークンずつ状態を進める。pure な関数として書くことで、ESLint の
@@ -121,11 +218,9 @@ const stepArg = (acc: PartitionState, token: string): PartitionState => {
   if (!acc.valid) {
     return acc
   }
-  if (acc.pendingDocName) {
-    return consumeDocNameValue(acc, token)
-  }
-  if (acc.pendingTheme) {
-    return consumeThemeValue(acc, token)
+  const pending = consumePendingValue(acc, token)
+  if (pending !== null) {
+    return pending
   }
   if (token.startsWith('--')) {
     return consumeFlag(acc, token)
@@ -133,30 +228,35 @@ const stepArg = (acc: PartitionState, token: string): PartitionState => {
   return { ...acc, positional: [...acc.positional, token] }
 }
 
-const partitionArgs = (argv: readonly string[]): PartitionedArgs => {
-  const state = argv.reduce<PartitionState>(stepArg, INITIAL_PARTITION_STATE)
-  const valid = state.valid && !state.pendingDocName && !state.pendingTheme
-  const result: PartitionedArgs = {
-    open: state.open,
-    positional: state.positional,
-    valid,
-  }
+// 結果オブジェクトに optional フィールドを後付けで追加するヘルパ。max-statements を抑える。
+const attachPartitionOptionals = (result: PartitionedArgs, state: PartitionState): void => {
   if (state.documentName !== null) {
     result.documentName = state.documentName
   }
   if (state.themeHint !== null) {
     result.themeHint = state.themeHint
   }
+  if (state.shikiLangs !== null) {
+    result.shikiLangs = state.shikiLangs
+  }
+}
+
+const partitionArgs = (argv: readonly string[]): PartitionedArgs => {
+  const state = argv.reduce<PartitionState>(stepArg, INITIAL_PARTITION_STATE)
+  const valid =
+    state.valid && !state.pendingDocName && !state.pendingTheme && !state.pendingShikiLangs
+  const result: PartitionedArgs = {
+    open: state.open,
+    positional: state.positional,
+    valid,
+  }
+  attachPartitionOptionals(result, state)
   return result
 }
 
-const buildRunArgs = (parts: PartitionedArgs): { mode: 'run' } & RunArgs => {
-  const [inputPath, outputDir] = parts.positional
-  const result: { mode: 'run' } & RunArgs = {
-    inputPath,
-    mode: 'run',
-    open: parts.open,
-  }
+// RunArgs に optional フィールドを後付け。partition と同じ理由で関数として切り出し済み。
+const attachRunOptionals = (result: { mode: 'run' } & RunArgs, parts: PartitionedArgs): void => {
+  const [, outputDir] = parts.positional
   if (typeof outputDir === 'string') {
     result.outputDir = outputDir
   }
@@ -166,6 +266,19 @@ const buildRunArgs = (parts: PartitionedArgs): { mode: 'run' } & RunArgs => {
   if (typeof parts.themeHint === 'string') {
     result.themeHint = parts.themeHint
   }
+  if (parts.shikiLangs) {
+    result.shikiLangs = parts.shikiLangs
+  }
+}
+
+const buildRunArgs = (parts: PartitionedArgs): { mode: 'run' } & RunArgs => {
+  const [inputPath] = parts.positional
+  const result: { mode: 'run' } & RunArgs = {
+    inputPath,
+    mode: 'run',
+    open: parts.open,
+  }
+  attachRunOptionals(result, parts)
   return result
 }
 
@@ -393,6 +506,107 @@ if (import.meta.vitest) {
         open: false,
         outputDir: '/tmp/out',
         themeHint: 'dark',
+      })
+    })
+  })
+
+  describe('parseShikiLangsValue: keyword モード', () => {
+    it('auto / all / none を ShikiLangsMode として返す', () => {
+      expect(parseShikiLangsValue('auto')).toEqual({ kind: 'auto' })
+      expect(parseShikiLangsValue('all')).toEqual({ kind: 'all' })
+      expect(parseShikiLangsValue('none')).toEqual({ kind: 'none' })
+    })
+
+    it('前後の空白を許容する', () => {
+      expect(parseShikiLangsValue('  auto  ')).toEqual({ kind: 'auto' })
+    })
+  })
+
+  describe('parseShikiLangsValue: list モード', () => {
+    it('CSV を正規名 Set にパースする (エイリアスは normalize 済み)', () => {
+      const parsed = parseShikiLangsValue('ts,js,py')
+      expect(parsed.kind).toBe('list')
+      if (parsed.kind === 'list') {
+        expect([...parsed.langs].toSorted()).toEqual(['javascript', 'python', 'typescript'])
+      }
+    })
+
+    it('重複指定 (正規名 + エイリアス) は Set で重複排除される', () => {
+      const parsed = parseShikiLangsValue('typescript,ts')
+      expect(parsed.kind).toBe('list')
+      if (parsed.kind === 'list') {
+        expect([...parsed.langs]).toEqual(['typescript'])
+      }
+    })
+
+    it('未サポート言語のみの指定は空 list (= none と等価) を返す', () => {
+      const parsed = parseShikiLangsValue('nim,brainfuck')
+      expect(parsed.kind).toBe('list')
+      if (parsed.kind === 'list') {
+        expect(parsed.langs.size).toBe(0)
+      }
+    })
+
+    it('既知 + 未知の混在は既知のみが残る', () => {
+      const parsed = parseShikiLangsValue('ts,nim,py')
+      expect(parsed.kind).toBe('list')
+      if (parsed.kind === 'list') {
+        expect([...parsed.langs].toSorted()).toEqual(['python', 'typescript'])
+      }
+    })
+
+    it('空 token (連続カンマ / 末尾カンマ) は無視される', () => {
+      const parsed = parseShikiLangsValue('ts,,py,')
+      expect(parsed.kind).toBe('list')
+      if (parsed.kind === 'list') {
+        expect([...parsed.langs].toSorted()).toEqual(['python', 'typescript'])
+      }
+    })
+  })
+
+  describe('parseArgs: --shiki-langs', () => {
+    it('--shiki-langs auto / all / none が認識される', () => {
+      expect(parseArgs(['--shiki-langs', 'auto', 'spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        mode: 'run',
+        open: true,
+        shikiLangs: { kind: 'auto' },
+      })
+      expect(parseArgs(['--shiki-langs', 'all', 'spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        mode: 'run',
+        open: true,
+        shikiLangs: { kind: 'all' },
+      })
+      expect(parseArgs(['--shiki-langs', 'none', 'spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        mode: 'run',
+        open: true,
+        shikiLangs: { kind: 'none' },
+      })
+    })
+
+    it('--shiki-langs ts,js が list として認識される (エイリアス正規化)', () => {
+      const parsed = parseArgs(['--shiki-langs', 'ts,js', 'spec.md'])
+      expect(parsed.mode).toBe('run')
+      if (parsed.mode === 'run' && parsed.shikiLangs && parsed.shikiLangs.kind === 'list') {
+        expect([...parsed.shikiLangs.langs].toSorted()).toEqual(['javascript', 'typescript'])
+      }
+    })
+
+    it('--shiki-langs が末尾にあって値が無い場合は invalid', () => {
+      expect(parseArgs(['spec.md', '--shiki-langs'])).toEqual({ mode: 'invalid' })
+    })
+
+    it('--shiki-langs の値位置に別フラグが来た場合は invalid', () => {
+      expect(parseArgs(['--shiki-langs', '--no-open', 'spec.md'])).toEqual({ mode: 'invalid' })
+    })
+
+    it('--shiki-langs 未指定時は shikiLangs が含まれない', () => {
+      expect(parseArgs(['spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        mode: 'run',
+        open: true,
       })
     })
   })

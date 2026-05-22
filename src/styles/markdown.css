@@ -161,6 +161,53 @@
   border: none;
   border-radius: 0;
 }
+
+/* Shiki dual theme との連動 (MDXG §2 [MUST] ハイライト配色の light / dark 適応)。
+   Shiki が <span style="--shiki-light:#xxx;--shiki-dark:#yyy"> を出力するので、
+   html.dark のとき span の color を --shiki-dark に切替える。
+   !important が必要なのは Shiki の inline style (color: ...) が一見不要に見えるが、
+   実際は defaultColor: false でこれらは CSS variable 参照のみ。CSS 側で span に直接 color を
+   指定する場合のみ衝突する。ここでは Shiki の inline style に上書き color を入れない仕様。
+   詳細度ゼロの :where() で書き、テーマ拡張時のカスタマイズ容易性を保つ (§1 Theming と同じ方針) */
+#doc pre.shiki {
+  color: var(--doc-code-ink);
+}
+:where(.dark) #doc pre.shiki span {
+  color: var(--shiki-dark);
+}
+:where(:not(.dark)) #doc pre.shiki span {
+  color: var(--shiki-light);
+}
+
+/* `<pre>` を `<div class="code-block-wrap">` で wrap し、コピー button を右上に absolute 配置。
+   button が `<pre>` の textContent に混入しないため、§6 ブロックフラットテキスト計算は無影響。 */
+#doc .code-block-wrap {
+  position: relative;
+  margin-bottom: 1rem;
+}
+#doc .code-block-wrap > pre {
+  margin-bottom: 0;
+}
+#doc .code-copy-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.25rem 0.625rem;
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--doc-code-ink);
+  background: color-mix(in srgb, var(--doc-code-bg), transparent 20%);
+  border: 1px solid var(--doc-code-rule);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+#doc .code-block-wrap:hover .code-copy-btn,
+#doc .code-copy-btn:focus-visible {
+  opacity: 1;
+}
 /* #doc の max-width を超える広いテーブルが親レイアウトを破壊しないよう、
    markdown.ts の renderer.table が <table> を <div class="table-wrap"> で包む。
    水平スクロールはこのラッパが担い、内側 table は通常の table layout のままにする。

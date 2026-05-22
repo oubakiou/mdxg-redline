@@ -33,6 +33,9 @@
     "test": "vp test",
     "test:watch": "vp test --watch"
   },
+  "dependencies": {
+    "shiki": "^4.0.2"
+  },
   "devDependencies": {
     "@anthropic-ai/claude-code": "^2.1.80",
     "@openai/codex": "0.x",
