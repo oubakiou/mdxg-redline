@@ -3,12 +3,11 @@
 
 import { type CodeHighlighter, renderMarkdown } from '../core/markdown'
 import { getOrCreateHighlighter, highlightFenceWithShiki } from './shiki'
-import { qs, toast } from './dom-utils'
 import { buildBlockAnchors } from '../core/block-anchors'
+import { injectCopyButtons } from './code-copy-wrap'
+import { qs } from './dom-utils'
 import { reapplyAllMarks } from './mark-engine'
 import { state } from './app-state'
-
-const COPY_FEEDBACK_MS = 1500
 
 /**
  * embedded-shiki-langs から構築した Shiki ハイライタを CodeHighlighter インターフェースに包む。
@@ -23,67 +22,6 @@ const getCodeHighlighter = (): CodeHighlighter | null => {
     highlight(code: string, rawLang: string): string | null {
       return highlightFenceWithShiki(shiki, code, rawLang)
     },
-  }
-}
-
-const setCopyButtonLabel = (btn: HTMLButtonElement, label: string): void => {
-  const span = btn.querySelector('span')
-  if (span) {
-    span.textContent = label
-  }
-}
-
-const handleCopyClick = async (btn: HTMLButtonElement, pre: HTMLElement): Promise<void> => {
-  try {
-    await navigator.clipboard.writeText(pre.textContent ?? '')
-    setCopyButtonLabel(btn, 'Copied')
-    setTimeout((): void => setCopyButtonLabel(btn, 'Copy'), COPY_FEEDBACK_MS)
-  } catch {
-    toast('Copy failed. Select the text manually.')
-  }
-}
-
-const buildCopyButton = (pre: HTMLElement): HTMLButtonElement => {
-  const btn = document.createElement('button')
-  btn.type = 'button'
-  btn.className = 'code-copy-btn'
-  btn.setAttribute('aria-label', 'Copy code')
-  const span = document.createElement('span')
-  span.setAttribute('aria-hidden', 'true')
-  span.textContent = 'Copy'
-  btn.appendChild(span)
-  btn.addEventListener('click', async (): Promise<void> => {
-    await handleCopyClick(btn, pre)
-  })
-  return btn
-}
-
-const wrapPreWithCopyButton = (pre: HTMLElement): void => {
-  const parent = pre.parentElement
-  if (parent && parent.classList.contains('code-block-wrap')) {
-    return
-  }
-  const wrap = document.createElement('div')
-  wrap.className = 'code-block-wrap'
-  pre.before(wrap)
-  wrap.appendChild(pre)
-  wrap.appendChild(buildCopyButton(pre))
-}
-
-/**
- * `<pre>` 各要素を `<div class="code-block-wrap">` で wrap し、コピー button を
- * sibling として追加する。idempotent: 既に wrap 済みなら何もしない。
- *
- * §6 アンカリングを壊さないため、cacheBlockOriginalHTML を **先に** 呼び blockId を
- * `<pre>` に付けてから wrap する。これにより `<pre>` の `data-block-id` は維持され、
- * blockOriginalHTML には `<pre>` の innerHTML だけが保存される (button テキストは混入しない)。
- */
-export const injectCopyButtons = (doc: HTMLElement): void => {
-  const pres = doc.querySelectorAll('pre')
-  for (const pre of pres) {
-    if (pre instanceof HTMLElement) {
-      wrapPreWithCopyButton(pre)
-    }
   }
 }
 
@@ -112,9 +50,8 @@ const cacheBlockOriginalHTML = (doc: HTMLElement): void => {
 const mountRenderedDoc = (doc: HTMLElement, wrap: HTMLElement): void => {
   wrap.style.display = 'none'
   doc.innerHTML = renderMarkdown(state.markdown, getCodeHighlighter())
-  // cacheBlockOriginalHTML を先に呼び `<pre>` が blockId を持った状態でキャッシュしてから wrap する。
-  // これにより blockOriginalHTML には `<pre>` の innerHTML だけが入り、button の textContent が
-  // §6 のブロックフラットテキスト計算に混入しない。
+  // cacheBlockOriginalHTML を injectCopyButtons より先に呼び、トップレベル <pre> の場合に
+  // blockId が <pre> 自身に付与されるよう順序を保つ (wrap 後だと block-id は <div> 側に移る)。
   cacheBlockOriginalHTML(doc)
   injectCopyButtons(doc)
   state.blockAnchors = buildBlockAnchors(state.markdown)

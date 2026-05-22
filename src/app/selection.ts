@@ -43,10 +43,17 @@ export interface BuiltDomRange {
 /**
  * ブロック要素内のテキストノードを位置 (start, end) 付きで深さ優先で平坦化する。
  * コメントは「ブロック内テキストの先頭からのオフセット」で保存されるため、保存値と DOM ノードの突き合わせにこの一覧を使う。
+ *
+ * `.code-copy-btn` 配下は skip する: コピー button はレビュー対象 markdown 由来でなく描画時の動的注入で、
+ * その text node を含めると wrap の有無 (再描画前後 / ネストブロック vs トップレベル) で textContent が
+ * 変動しオフセットがズレるため。
  */
 const textSegments = (blockEl: Element): TextSegment[] => {
   const segments: TextSegment[] = []
   const visit = (node: Node): void => {
+    if (node instanceof Element && node.classList.contains('code-copy-btn')) {
+      return
+    }
     if (node instanceof Text) {
       const previous = segments.at(-1)
       const start = (previous && previous.end) || 0

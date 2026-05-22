@@ -4,6 +4,7 @@
 
 import type { Comment } from '../core/types'
 import { buildDomRange } from './selection'
+import { injectCopyButtons } from './code-copy-wrap'
 import { qs } from './dom-utils'
 import { state } from './app-state'
 
@@ -68,7 +69,16 @@ const sortedBlockComments = (byBlock: Map<string, Comment[]>, blockId: string): 
     (left, right): number => right.startOffset - left.startOffset
   )
 
-/** ブロック内 HTML を原状復帰してから、そのブロックに紐づく全コメントの mark を貼り直す */
+/**
+ * ブロック内 HTML を原状復帰してから、そのブロックに紐づく全コメントの mark を貼り直す。
+ *
+ * mark 適用 **後** に `injectCopyButtons(el)` を呼んで `<pre>` の wrap を再構築する。
+ * blockOriginalHTML には wrap される前の innerHTML がキャッシュされており、巻き戻しで
+ * `<div class="code-block-wrap">` と Copy button が消えるため、復元が必要 (ネストされた
+ * `<pre>` のみ顕在化する。トップレベル `<pre>` は `<pre>` 自身が blockId 持ちで wrap の
+ * 外側に居るので巻き戻しの影響を受けない)。textSegments は `.code-copy-btn` 配下を
+ * skip するため、wrap 復元はオフセット計算に影響しない。
+ */
 const applyMarksForBlock = ({
   blockId,
   byBlock,
@@ -87,6 +97,9 @@ const applyMarksForBlock = ({
   el.innerHTML = original
   for (const comment of sortedBlockComments(byBlock, blockId)) {
     applyMark(el, comment)
+  }
+  if (el instanceof HTMLElement) {
+    injectCopyButtons(el)
   }
 }
 
