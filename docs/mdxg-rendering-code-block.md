@@ -169,19 +169,47 @@ export function normalizeLangIdentifier(raw: string): SupportedLang | null
 
 成果物：CLI が markdown をスキャンして必要 grammar を埋め込めること（in-source test で `scanFencedLangs` 経路と `embed` 経路の両方を検証）
 
-### Step 5: ブラウザ側 — Shiki 初期化と marked renderer 差し替え
+### Step 5: ブラウザ側 — 初期 render と Shiki upgrade の 2 段階構成
+
+設計判断は §5.b の C 案（paint 後 lazy 初期化 + 各 `<pre>` 単位の upgrade）。Step 5a / 5b に分けて段階的に積む。
+
+#### Step 5a: 初期 render は highlighter なしで即時 paint
 
 - `src/app/shiki.ts`（新規）：
-  - `getOrCreateHighlighter()` で lazy singleton 初期化
+  - `getOrCreateHighlighter()` で lazy singleton 初期化（同期 API `createHighlighterCoreSync` を内部で使う）
   - `embedded-shiki-langs` が空 / 欠落なら null を返し、呼び出し側で plain fallback
-  - 28 言語ホワイトリスト外の grammar が含まれていたら無視（CLI 出力の壊れ対策）
-- `src/core/markdown.ts` の marked renderer の `code` を差し替え：
-  - 言語識別子が highlighter の `loadedLanguages` に含まれていれば `highlighter.codeToHtml(code, { lang, themes: { light: 'github-light', dark: 'github-dark' }, defaultColor: false })` を呼んで結果を inline
-  - そうでなければ既存の `<pre><code>` 出力（plain text）
-  - 出力は `<pre class="shiki shiki-themes …" data-lang="…">` で start することを利用し、後段の inject フックが識別できる
+  - 27 言語ホワイトリスト外の grammar が含まれていたら無視（CLI 出力の壊れ対策）
+  - `highlightFenceWithShiki(highlighter, code, rawLang)` 単一フェンス用ヘルパ（`defaultColor: false` で span 側に CSS variable のみ書かせる）
+- `src/core/markdown.ts` の marked renderer：
+  - `CodeHighlighter` インターフェースを保持し、引数が `null | undefined` の場合は marked デフォルトの `<pre><code class="language-…">` 出力に倒す
+  - 初期 render では呼び出し側が `null` を渡し、Shiki に触れずに plain HTML を即返す
+- `src/app/doc-renderer.ts` の初期描画パス：
+  - `renderMarkdown(state.markdown, null)` を同期で呼ぶ
+  - `cacheBlockOriginalHTML` → `injectCopyButtons` → `buildBlockAnchors` → `reapplyAllMarks` まで従来どおり同期で完了させる
+  - この時点で `loading spinner` を外して paint させる（spinner 表示時間は Shiki 初期化 cost ぶん短縮される）
+
+#### Step 5b: paint 後の Shiki upgrade
+
+- 同じ `doc-renderer.ts` に `upgradeFencesWithShiki(docEl)` を追加し、初期 render 完了後に schedule する
+  - `requestAnimationFrame` × 2 で paint 確実後に実行（次フレームに 2 回 yield することで初回 paint を確実に完了させてから走る）
+  - `window.getSelection().toString().length > 0` ならスキップし、`selectionchange` イベントで空に戻ったら次の rAF で再試行
+- 実行内容：
+  - `getOrCreateHighlighter()` を呼んで Shiki インスタンスを取得（null なら全コードブロックは plain text fallback で確定し、何もせず終了）
+  - `docEl.querySelectorAll('pre > code[class*="language-"]')` で各フェンスを走査
+  - 各 `<code>` の class から lang 識別子を取得し、`highlightFenceWithShiki(...)` で Shiki HTML を得る
+  - Shiki HTML を `<template>.innerHTML` でパースして中の `<pre>` を取り出し、**元の `<pre>` の innerHTML を Shiki `<pre>` の innerHTML で上書き**、加えて Shiki が付ける class（`shiki` / `shiki-themes ...`）と `style` / `tabindex` 属性を転写
+  - 元の `<pre>` 自体は残すため、`data-block-id` / 親 `.code-block-wrap` / Copy button は触らない（idempotent 化のために `data-shiki-applied="1"` を付ける）
+- upgrade 後の cleanup：
+  - `cacheBlockOriginalHTML` 相当のロジックで `state.blockOriginalHTML` を **新しい innerHTML（Shiki span 入り）で再構築**
+  - `reapplyAllMarks()` を再呼び出し（embedded-feedback で起動時に貼った `<mark class="cmt">` を Shiki span の上に貼り直す）
 - Shiki の出力 HTML には `<span style="...">` が含まれるが、CSP `style-src 'unsafe-inline'` で許可済み（§11）
 
-成果物：`#doc` の `<pre>` がハイライト付きで描画されること、未対応言語は plain text fallback
+成果物：
+
+- 初回 paint は marked plain で素早く完了（embedded markdown ロードの spinner 表示時間が短縮される）
+- paint 後 1-2 フレームで Shiki ハイライトが追加適用される
+- embedded-feedback の `<mark class="cmt">` は upgrade 後も正しい位置に再貼付される
+- 未対応言語は plain text fallback（upgrade フェーズで `highlightFenceWithShiki` が null を返して skip）
 
 ### Step 6: コピー button の動的注入
 
@@ -229,13 +257,20 @@ export function normalizeLangIdentifier(raw: string): SupportedLang | null
 
 成果物：light / dark どちらのテーマでもコードブロックが dark 背景 + dark 系ハイライトで一貫描画される
 
-### Step 8: §6 アンカリングの維持確認
+### Step 8: §6 アンカリングと C 案 upgrade 順序の維持確認
 
 - §6 のブロックフラットテキストオフセット計算は `range.startContainer.textContent` ベースで動くため、Shiki が `<pre><code>` 内に `<span>` 階層を追加しても **計算結果は不変**
-- ただしコピー button のテキスト「Copy」が `<pre>` の `textContent` に混入するのを構造的に避ける必要があるため、button を **`<pre>` の外側ラッパに置く**（§5.c）
-- in-source test に「`<pre>` 内に Shiki span が入っている状態でも startOffset / endOffset の計算が壊れないこと」のケースを追加（既存 `core/block-anchors.ts` / `app/selection.ts` のテストに 1 ケース追加）
+- ただしコピー button のテキスト「Copy」が `<pre>` の `textContent` に混入するのを構造的に避ける必要があるため、button を **`<pre>` の外側ラッパに置く**（§5.c）。`selection.ts` の `textSegments` は既に `.code-copy-btn` 配下を skip する設計なので、ハイライト適用前後で計算結果が一致する
+- C 案 upgrade 後の mark 再適用順序の検証：
+  - 初期 render → mark 適用済みの状態（embedded-feedback 経路）から upgrade を走らせ、`<pre>` 内の `<mark class="cmt">` が一度消えた後に正しい位置で復元されること
+  - `blockOriginalHTML` が Shiki span 入りの新 innerHTML に上書きされたあと、`reapplyAllMarks` が新 HTML を起点に mark を貼ること（古い plain `<pre>` HTML を保持していないこと）
+  - upgrade 中に選択操作を始めた場合に upgrade が後送りされ、選択を解除した瞬間に upgrade が完了すること
+- in-source test に追加：
+  - `<pre>` 内に Shiki span が入っている状態でも `startOffset` / `endOffset` の計算が壊れないこと（`core/block-anchors.ts` / `app/selection.ts` に 1 ケース）
+  - `doc-renderer.upgradeFencesWithShiki` 適用後の `blockOriginalHTML` が Shiki span 入りで再構築されること（`app/doc-renderer.ts` に 1 ケース）
+  - upgrade を 2 回呼んでも `data-shiki-applied="1"` ガードで二重適用にならないこと（idempotent）
 
-成果物：既存コメントが付いた markdown を再読込しても `<mark class="cmt">` が正しい位置に再適用されること
+成果物：既存コメントが付いた markdown を再読込しても `<mark class="cmt">` が正しい位置に再適用されること、upgrade 前後で Range / Selection の整合性が保たれること
 
 ### Step 9: DESIGN.md 反映と本ドキュメントの role 切替
 
@@ -260,15 +295,22 @@ export function normalizeLangIdentifier(raw: string): SupportedLang | null
 
 dual theme の出力形式（同じ `<span>` に light / dark 両方の色を CSS variable として持たせる）は **CSS だけで切替可能** で、JS 側の再描画が不要。`html.dark` 切替時の反応性が最も良い。
 
-### b. Shiki 初期化のタイミング：同期 lazy singleton
+### b. Shiki 初期化のタイミング：paint 後の lazy singleton + 各 `<pre>` 単位の upgrade
 
-| 候補                                                          | 採用 | 理由                                                                                                                                                                                 |
-| ------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **A. `createHighlighterCoreSync` で同期初期化**               | ✓    | marked の renderer が同期 API で、コードブロック描画も同期で完結する。Shiki v1.x の `shiki/core` には同期版があり、これを採用すると `<pre>` への描画タイミングが既存と完全に一致する |
-| B. `createHighlighter` (async) + marked のラップ              | ✗    | renderer 全体を async にすると `doc-renderer.ts` / `boot.ts` の同期前提が崩れ、再描画フックの順序保証が複雑になる                                                                    |
-| C. async 初期化 + 初期描画は plain → ハイライト到着後に再描画 | ✗    | FOUC が大きく、ユーザーがコメント選択を開始した直後にコードブロックが再描画されると Range が消える                                                                                   |
+| 候補                                                                | 採用 | 理由                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A. `createHighlighterCoreSync` で同期初期化                         | ✗    | 実装は最も単純で順序問題が起きないが、Shiki 初期化（27 言語 grammar の parse + JS engine 構築 + 2 テーマ ロード）が paint 前に同期で走るため、`loading spinner` 表示時間 = Shiki 初期化 cost ぶん延びる。embedded markdown ロード時に体感できる FCP 劣化が出る                                                                                                                   |
+| B. `createHighlighter` (async) + marked のラップ                    | ✗    | renderer 全体を async にすると `doc-renderer.ts` / `boot.ts` の同期前提が崩れ、再描画フックの順序保証が複雑になる。FCP を稼ぐ目的は C 案で達成できるため、renderer 自体を async 化するコストを払う動機がない                                                                                                                                                                     |
+| **C. 同期 API を paint 後に lazy 呼び出し + 各 `<pre>` を upgrade** | ✓    | 初期描画は `highlighter = null` で marked の `<pre><code class="language-X">` を即座に出して FCP を稼ぐ。`requestAnimationFrame` 2 回（= paint 確実）の後に `createHighlighterCoreSync` を初期化し、各 `<pre>` の innerHTML を Shiki 出力で差し替えて upgrade する。`<pre>` 自身は残すため `data-block-id` / wrap / Copy button はそのまま、ハイライトだけが後付けで載る形になる |
 
-`createHighlighterCoreSync` の前提：grammar JSON が **オブジェクトとして既に同期で渡せる状態** であること。`embedded-shiki-langs` を `JSON.parse` する段で同期に取得できるため成立する。WASM engine ではなく **JS engine** (`shiki/engine/javascript`) を採用することで WASM 非同期初期化も回避する。
+C 案の論点と mitigation：
+
+- **「ハイライト無 → 有のちらつき」**: コードブロック背景は §1 Theming の `--doc-code-bg` 例外で両モードとも dark 固定なので、plain `<pre>` も Shiki `<pre>` も背景は同色。差分は文字色（dark ink → syntax 色）のみで、視覚的には「色が薄く乗る」程度の変化に収まる
+- **選択中の DOM 差し替えで Range が消える**: upgrade 実行時に `window.getSelection().toString().length > 0` ならスキップし、`selectionchange` で空に戻ったら次の rAF で再試行する。レビュアーが選択操作中はハイライト適用を後送りする
+- **既存 `<mark class="cmt">` の消失**: embedded-feedback で起動時に mark を付けたあとに upgrade が走ると、`<pre>` 内の `<mark>` は innerHTML 差し替えで消える。upgrade 後に `state.blockOriginalHTML` を **新しい innerHTML（Shiki span 入り）で再構築** してから `reapplyAllMarks()` を呼び直すことで、mark を Shiki span の上にもう一度貼り直す。`mark-engine` の再適用は blockOriginalHTML を innerHTML に書き戻す既存ループに乗るため、追加で順序保証ロジックを書かない
+- **§6 アンカリングの維持**: ブロックフラットテキストのオフセット計算は `textContent` ベースで動くため、Shiki span の追加で値は変わらない（既存設計と同じ）
+
+`createHighlighterCoreSync` の前提：grammar JSON が **オブジェクトとして既に同期で渡せる状態** であること。`embedded-shiki-langs` を `JSON.parse` する段で同期に取得できるため成立する。WASM engine ではなく **JS engine** (`shiki/engine/javascript`) を採用することで WASM 非同期初期化も回避する。C 案でも同期 API を採用するのは、paint 後の単一フレーム内で 27 言語 grammar の parse まで完了させた方が、async/await 連鎖による追加 microtask hop を避けられて単純だからである。
 
 ### c. コピー button の DOM 配置：`<pre>` の外側ラッパに absolute 配置
 
