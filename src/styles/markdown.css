@@ -47,6 +47,11 @@
   border: 1px solid var(--doc-border);
   border-radius: 6px;
 }
+/* embedded markdown 無しで開いた経路では renderDoc が呼ばれず #doc が空のまま残るため、
+   :empty で空枠 (padding + border + 背景) を畳む。markdown 描画後は子要素が入って自動で外れる */
+#doc:empty {
+  display: none;
+}
 #doc h1,
 #doc h2,
 #doc h3,
