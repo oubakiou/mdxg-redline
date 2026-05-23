@@ -90,8 +90,8 @@ if (import.meta.vitest) {
 
     it('進行率に対して単調増加する', () => {
       const samples = [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1].map(easeInOutCubic)
-      for (let index = 1; index < samples.length; index += 1) {
-        expect(samples[index]).toBeGreaterThanOrEqual(samples[index - 1])
+      for (const [index, value] of samples.slice(1).entries()) {
+        expect(value).toBeGreaterThanOrEqual(samples[index])
       }
     })
   })

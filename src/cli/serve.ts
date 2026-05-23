@@ -173,10 +173,10 @@ if (import.meta.vitest) {
 
   describe('resolvePreferredPort', () => {
     // process.stderr.write を関数差し替えで黙らせ、警告経路のテストで標準エラー出力に
-    // ノイズを出さないようにする。捕捉した書き込みは文字列配列で返す。
+    // ノイズを出さないようにする。fn の戻り値と捕捉した stderr 書き込みを {result, written} で返す。
     // chunk → string 変換は if/else で展開している（no-ternary 回避 + 別 helper を
     // 切り出すと unicorn/consistent-function-scoping が「captures nothing」と警告するため）。
-    const silenceStderr = (fn: () => number): string[] => {
+    const silenceStderr = <Result>(fn: () => Result): { result: Result; written: string[] } => {
       const written: string[] = []
       const original = process.stderr.write.bind(process.stderr)
       process.stderr.write = ((chunk: string | Uint8Array): boolean => {
@@ -188,11 +188,10 @@ if (import.meta.vitest) {
         return true
       }) as typeof process.stderr.write
       try {
-        fn()
+        return { result: fn(), written }
       } finally {
         process.stderr.write = original
       }
-      return written
     }
 
     it('環境変数が未設定なら DEFAULT_PORT (51729) を返す', () => {
@@ -208,33 +207,27 @@ if (import.meta.vitest) {
     })
 
     it('範囲外 (0 以下 / 65535 超) は DEFAULT_PORT へ fallback して stderr 警告', () => {
-      let value = 0
-      const written = silenceStderr((): number => {
-        value = resolvePreferredPort({ MDXG_REDLINE_PORT: '0' })
-        return value
-      })
-      expect(value).toBe(51_729)
+      const { result, written } = silenceStderr((): number =>
+        resolvePreferredPort({ MDXG_REDLINE_PORT: '0' })
+      )
+      expect(result).toBe(51_729)
       expect(written.join('')).toContain('有効なポート番号ではない')
     })
 
     it('非整数の文字列も DEFAULT_PORT へ fallback', () => {
-      let value = 0
-      silenceStderr((): number => {
-        value = resolvePreferredPort({ MDXG_REDLINE_PORT: 'abc' })
-        return value
-      })
-      expect(value).toBe(51_729)
+      const { result } = silenceStderr((): number =>
+        resolvePreferredPort({ MDXG_REDLINE_PORT: 'abc' })
+      )
+      expect(result).toBe(51_729)
     })
 
     // Number.parseInt("8080abc", 10) は 8080 を返してしまうため、Number() で
     // 文字列全体を変換する実装になっている。リグレッション防止のためのテスト。
     it('末尾にゴミがある "8080abc" 形式は DEFAULT_PORT へ fallback', () => {
-      let value = 0
-      silenceStderr((): number => {
-        value = resolvePreferredPort({ MDXG_REDLINE_PORT: '8080abc' })
-        return value
-      })
-      expect(value).toBe(51_729)
+      const { result } = silenceStderr((): number =>
+        resolvePreferredPort({ MDXG_REDLINE_PORT: '8080abc' })
+      )
+      expect(result).toBe(51_729)
     })
   })
 }
