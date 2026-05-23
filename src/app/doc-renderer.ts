@@ -3,7 +3,7 @@
 //
 // 初期 render は marked のみで plain `<pre><code class="language-…">` を出して即 paint させ、
 // rAF × 2 で paint 確実後に Shiki を初期化して各 `<pre>` の innerHTML を upgrade する 2 段階構成
-// (docs/mdxg-rendering-code-block.md §5.b C 案)。
+// (docs/mdxg-rendering-code-block.archive.md §5.b C 案)。
 
 // fmt が `type` 修飾子付き specifier を先頭に並べ替える挙動と lint の sort-imports
 // (identifier 文字列順) がこのファイルでは衝突するため、ファイル全体で無効化する。
