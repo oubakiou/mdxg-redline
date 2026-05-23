@@ -89,6 +89,50 @@ export const encodeEmbeddedShikiLangs = (grammars: Record<string, unknown>): str
 const EMBEDDED_MD_RE =
   /(<script\b(?=[^>]*\bid="embedded-md")(?=[^>]*\btype="text\/markdown")[^>]*>)([\s\S]*?)(<\/script>)/i
 
+const STATUS_SPAN_RE = /(<span\b(?=[^>]*\bid="status")[^>]*>)([\s\S]*?)(<\/span>)/i
+
+const HEAD_OPEN_RE = /<head\b[^>]*>/i
+const EMBEDDED_MD_META_RE = /\s*<meta\b[^>]*\bname="mdxg-redline:embedded-md"[^>]*\/?>/i
+
+/**
+ * 「ロード済み」状態のステータステキストを組み立てる。CLI 経由配布物の paint 前確定と、
+ * JS 起動後の loadFromMarkdown 完了表示で同じ文字列を使うことで初期描画と JS 描画が一致する。
+ */
+export const formatLoadedStatus = (docName: string, docHash: string): string =>
+  `${docName} (${docHash}) · loaded`
+
+/**
+ * `<span id="status">` の中身を CLI が書き換える。paint 前から最終状態を見せることで、
+ * JS の loadFromMarkdown が走るまで「No file」が一瞬見える FOUC を構造的に防ぐ。
+ */
+export const rewriteInitialStatus = (reviewHtml: string, statusText: string): string => {
+  const match = STATUS_SPAN_RE.exec(reviewHtml)
+  if (!match) {
+    throw new Error('review.html に id="status" の <span> タグが見つかりません')
+  }
+  const [fullMatch, openingTag, , closingTag] = match
+  const replaced = `${openingTag}${escapeHtml(statusText)}${closingTag}`
+  return (
+    reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length)
+  )
+}
+
+/**
+ * paint 前介入用の <meta> を <head> 直下に挿入する (既存があれば置換、idempotent)。
+ * <head> 内 inline script がこの meta を検出して `<html>.has-embedded-md` を付ける仕組みで、
+ * body 内の `<script id="embedded-md">` 直後で判定する方式より早期に介入できる。
+ */
+export const upsertEmbeddedMdMeta = (reviewHtml: string): string => {
+  const cleaned = reviewHtml.replace(EMBEDDED_MD_META_RE, '')
+  const headMatch = HEAD_OPEN_RE.exec(cleaned)
+  if (!headMatch) {
+    throw new Error('review.html に <head> タグが見つかりません')
+  }
+  const insertPos = headMatch.index + headMatch[0].length
+  const meta = '\n    <meta name="mdxg-redline:embedded-md" content="1" />'
+  return cleaned.slice(0, insertPos) + meta + cleaned.slice(insertPos)
+}
+
 // embedded-md と同じパターン。id="embedded-shiki-langs" + type="application/json" の両属性を
 // lookahead で要求し、説明文中の literal `<script id="embedded-shiki-langs">` に誤マッチしないようにする。
 const EMBEDDED_SHIKI_LANGS_RE =
@@ -492,6 +536,76 @@ if (import.meta.vitest) {
 
     it('hash 部分に非 hex 文字を含む場合は null', () => {
       expect(parseReviewMdFilename('spec-zzzzzzzzzzzzzzzz-review.md')).toBeNull()
+    })
+  })
+
+  describe('formatLoadedStatus', () => {
+    it('docName (docHash) · loaded の形式で組み立てる', () => {
+      expect(formatLoadedStatus('spec.md', 'a1b2c3d4e5f6a7b8')).toBe(
+        'spec.md (a1b2c3d4e5f6a7b8) · loaded'
+      )
+    })
+
+    it('日本語 docName でもそのまま埋め込む (サニタイズなし)', () => {
+      expect(formatLoadedStatus('仕様書 v2.md', 'a1b2c3d4e5f6a7b8')).toBe(
+        '仕様書 v2.md (a1b2c3d4e5f6a7b8) · loaded'
+      )
+    })
+  })
+
+  describe('rewriteInitialStatus', () => {
+    const baseHtml = '<header><span id="status" class="label">No file</span></header>'
+
+    it('既存テキストを最終状態の文字列に書き換える', () => {
+      const out = rewriteInitialStatus(baseHtml, 'spec.md (a1b2c3d4e5f6a7b8) · loaded')
+      expect(out).toContain('>spec.md (a1b2c3d4e5f6a7b8) · loaded</span>')
+      expect(out).not.toContain('>No file<')
+    })
+
+    it('属性順が異なっても書き換える', () => {
+      const html = '<span class="label" id="status">old</span>'
+      const out = rewriteInitialStatus(html, 'new')
+      expect(out).toContain('>new</span>')
+    })
+
+    it('& や < などを HTML エスケープする', () => {
+      const out = rewriteInitialStatus(baseHtml, 'a & b < c.md')
+      expect(out).toContain('a &amp; b &lt; c.md')
+    })
+
+    it('id="status" の <span> タグが無いと Error を投げる', () => {
+      expect(() => rewriteInitialStatus('<html></html>', 'x')).toThrow(/id="status"/)
+    })
+
+    it('元文字列を破壊しない', () => {
+      const html = baseHtml
+      rewriteInitialStatus(html, 'x')
+      expect(html).toBe(baseHtml)
+    })
+  })
+
+  describe('upsertEmbeddedMdMeta', () => {
+    it('<head> 直下に meta タグを挿入する', () => {
+      const html = '<html><head><meta charset="UTF-8" /></head><body></body></html>'
+      const out = upsertEmbeddedMdMeta(html)
+      expect(out).toContain('<meta name="mdxg-redline:embedded-md" content="1" />')
+    })
+
+    it('既存の同名 meta があっても重複させない (idempotent)', () => {
+      const html = '<html><head><meta name="mdxg-redline:embedded-md" content="1" /></head></html>'
+      const out = upsertEmbeddedMdMeta(html)
+      const matches = out.match(/mdxg-redline:embedded-md/g) ?? []
+      expect(matches.length).toBe(1)
+    })
+
+    it('<head> タグが無いと Error を投げる', () => {
+      expect(() => upsertEmbeddedMdMeta('<body></body>')).toThrow(/<head>/)
+    })
+
+    it('元文字列を破壊しない', () => {
+      const html = '<html><head></head><body></body></html>'
+      upsertEmbeddedMdMeta(html)
+      expect(html).toBe('<html><head></head><body></body></html>')
     })
   })
 }

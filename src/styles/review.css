@@ -593,6 +593,19 @@ mark.cmt.active {
   padding: 12px 16px;
 }
 
+/* FOUC 防止: embedded-md がある (= CLI 経由配布物) 場合は空状態を paint 前から隠す。 */
+:root.has-embedded-md #doc-wrap {
+  display: none;
+}
+
+/* embedded-md ありの場合、描画完了まで .doc-pane を隠して白い空白を見せない。 */
+:root.has-embedded-md .doc-pane {
+  visibility: hidden;
+}
+:root.has-embedded-md.doc-ready .doc-pane {
+  visibility: visible;
+}
+
 .empty-state {
   border: 1px dashed var(--rule);
   border-radius: 6px;

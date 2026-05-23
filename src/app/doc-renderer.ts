@@ -63,8 +63,9 @@ export const renderDoc = (): void => {
   if (!state.markdown) {
     state.blockAnchors.clear()
     showEmptyDocument(doc, wrap)
-    return
+  } else {
+    mountRenderedDoc(doc, wrap)
+    reapplyAllMarks()
   }
-  mountRenderedDoc(doc, wrap)
-  reapplyAllMarks()
+  document.documentElement.classList.add('doc-ready')
 }

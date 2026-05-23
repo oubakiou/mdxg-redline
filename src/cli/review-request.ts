@@ -22,9 +22,12 @@ import { SHIKI_SUPPORTED_LANGS, type SupportedLang } from '../core/shiki-aliases
 import {
   computeDocHash,
   deriveReviewHtmlName,
+  formatLoadedStatus,
   rewriteEmbeddedShikiLangs,
+  rewriteInitialStatus,
   rewriteReviewHtml,
   stripMarkdownExt,
+  upsertEmbeddedMdMeta,
   upsertHtmlDataTheme,
 } from '../core/embed'
 import { dirname, resolve } from 'node:path'
@@ -61,6 +64,7 @@ const readReviewHtml = async (path: string): Promise<string> => {
 }
 
 interface EmbedContext {
+  docHash: string
   docName: string
   markdown: string
   outputPath: string
@@ -79,6 +83,7 @@ const prepareEmbed = async (args: RunArgs): Promise<EmbedContext> => {
   const targetDir = args.outputDir ?? input.defaultOutputDir
   const outputPath = resolve(targetDir, deriveReviewHtmlName(mdFileName, docHash))
   return {
+    docHash,
     docName: input.docName,
     markdown: input.markdown,
     outputPath,
@@ -158,11 +163,20 @@ const applyShikiLangs = async (html: string, args: RunArgs, ctx: EmbedContext): 
   return rewriteEmbeddedShikiLangs(html, grammars)
 }
 
-const runEmbed = async (args: RunArgs): Promise<void> => {
-  const ctx = await prepareEmbed(args)
+// rewrite 系を直列に通して最終 HTML を組み立てる。max-statements を満たすため runEmbed から
+// 分離している。
+const composeReviewHtml = async (args: RunArgs, ctx: EmbedContext): Promise<string> => {
   const embedded = rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName)
   const withTheme = applyThemeHint(embedded, args.themeHint)
-  const result = await applyShikiLangs(withTheme, args, ctx)
+  const withShiki = await applyShikiLangs(withTheme, args, ctx)
+  const statusText = formatLoadedStatus(ctx.docName, ctx.docHash)
+  const withStatus = rewriteInitialStatus(withShiki, statusText)
+  return upsertEmbeddedMdMeta(withStatus)
+}
+
+const runEmbed = async (args: RunArgs): Promise<void> => {
+  const ctx = await prepareEmbed(args)
+  const result = await composeReviewHtml(args, ctx)
   await writeFile(ctx.outputPath, result, 'utf8')
   // 生成先パスを stdout に出し、シェルスクリプト・エージェントが拾えるようにする。
   // --no-open でも、open 成功時でも、失敗時でも常に出す。

@@ -376,6 +376,37 @@ var encodeEmbeddedMarkdown = (markdown) => escapeJsonForScriptTag(JSON.stringify
 */
 var encodeEmbeddedShikiLangs = (grammars) => escapeJsonForScriptTag(JSON.stringify(grammars));
 var EMBEDDED_MD_RE = /(<script\b(?=[^>]*\bid="embedded-md")(?=[^>]*\btype="text\/markdown")[^>]*>)([\s\S]*?)(<\/script>)/i;
+var STATUS_SPAN_RE = /(<span\b(?=[^>]*\bid="status")[^>]*>)([\s\S]*?)(<\/span>)/i;
+var HEAD_OPEN_RE = /<head\b[^>]*>/i;
+var EMBEDDED_MD_META_RE = /\s*<meta\b[^>]*\bname="mdxg-redline:embedded-md"[^>]*\/?>/i;
+/**
+* 「ロード済み」状態のステータステキストを組み立てる。CLI 経由配布物の paint 前確定と、
+* JS 起動後の loadFromMarkdown 完了表示で同じ文字列を使うことで初期描画と JS 描画が一致する。
+*/
+var formatLoadedStatus = (docName, docHash) => `${docName} (${docHash}) · loaded`;
+/**
+* `<span id="status">` の中身を CLI が書き換える。paint 前から最終状態を見せることで、
+* JS の loadFromMarkdown が走るまで「No file」が一瞬見える FOUC を構造的に防ぐ。
+*/
+var rewriteInitialStatus = (reviewHtml, statusText) => {
+	const match = STATUS_SPAN_RE.exec(reviewHtml);
+	if (!match) throw new Error("review.html に id=\"status\" の <span> タグが見つかりません");
+	const [fullMatch, openingTag, , closingTag] = match;
+	const replaced = `${openingTag}${escapeHtml(statusText)}${closingTag}`;
+	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
+};
+/**
+* paint 前介入用の <meta> を <head> 直下に挿入する (既存があれば置換、idempotent)。
+* <head> 内 inline script がこの meta を検出して `<html>.has-embedded-md` を付ける仕組みで、
+* body 内の `<script id="embedded-md">` 直後で判定する方式より早期に介入できる。
+*/
+var upsertEmbeddedMdMeta = (reviewHtml) => {
+	const cleaned = reviewHtml.replace(EMBEDDED_MD_META_RE, "");
+	const headMatch = HEAD_OPEN_RE.exec(cleaned);
+	if (!headMatch) throw new Error("review.html に <head> タグが見つかりません");
+	const insertPos = headMatch.index + headMatch[0].length;
+	return cleaned.slice(0, insertPos) + "\n    <meta name=\"mdxg-redline:embedded-md\" content=\"1\" />" + cleaned.slice(insertPos);
+};
 var EMBEDDED_SHIKI_LANGS_RE = /(<script\b(?=[^>]*\bid="embedded-shiki-langs")(?=[^>]*\btype="application\/json")[^>]*>)([\s\S]*?)(<\/script>)/i;
 var DATA_NAME_RE = /\bdata-name="[^"]*"/;
 var HTML_TAG_RE = /<html\b[^>]*>/i;
@@ -604,6 +635,7 @@ var prepareEmbed = async (args) => {
 	const mdFileName = sanitizeMdFileName(stripMarkdownExt(input.docName));
 	const outputPath = resolve(args.outputDir ?? input.defaultOutputDir, deriveReviewHtmlName(mdFileName, docHash));
 	return {
+		docHash,
 		docName: input.docName,
 		markdown: input.markdown,
 		outputPath,
@@ -648,9 +680,12 @@ var loadShikiGrammars = async (langs, scriptDir) => {
 var applyShikiLangs = async (html, args, ctx) => {
 	return rewriteEmbeddedShikiLangs(html, await loadShikiGrammars(resolveShikiLangSet(args.shikiLangs, ctx.markdown), ctx.scriptDir));
 };
+var composeReviewHtml = async (args, ctx) => {
+	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyShikiLangs(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args, ctx), formatLoadedStatus(ctx.docName, ctx.docHash)));
+};
 var runEmbed = async (args) => {
 	const ctx = await prepareEmbed(args);
-	const result = await applyShikiLangs(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args, ctx);
+	const result = await composeReviewHtml(args, ctx);
 	await writeFile(ctx.outputPath, result, "utf8");
 	process.stdout.write(`${ctx.outputPath}\n`);
 	if (args.open) await openOutput(ctx.outputPath);

@@ -25,6 +25,9 @@
           effective === 'dark' ||
           (effective === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
         if (dark) document.documentElement.classList.add('dark')
+        if (document.querySelector('meta[name="mdxg-redline:embedded-md"]')) {
+          document.documentElement.classList.add('has-embedded-md')
+        }
       } catch (e) {}
     </script>
     <link rel="stylesheet" href="./styles/review.css" />

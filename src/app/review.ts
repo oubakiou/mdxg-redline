@@ -13,10 +13,10 @@ import {
 } from '../core/review-export'
 import { changeOutputFolder, writeFeedback } from './workspace'
 import { closeCommentModal, wireCommentModal } from './comment-modal'
+import { computeDocHash, formatLoadedStatus } from '../core/embed'
 import { markFeedbackUnsaved, state } from './app-state'
 import { qs, toast } from './dom-utils'
 import { boot } from './boot'
-import { computeDocHash } from '../core/embed'
 import { createDropdownMenu } from './menu'
 import { renderDoc } from './doc-renderer'
 import { wireFloater } from './floater'
@@ -34,7 +34,7 @@ export const loadFromMarkdown = async (name: string, text: string): Promise<void
   markFeedbackUnsaved()
   renderDoc()
   renderSidebar()
-  qs('#status').textContent = `${name} (${state.docHash}) · loaded`
+  qs('#status').textContent = formatLoadedStatus(name, state.docHash)
 }
 
 export const buildExportPayload = (): ExportPayload => buildReviewExportPayload(state)
@@ -96,7 +96,12 @@ if (!import.meta.vitest) {
 
   boot({
     loadFromMarkdown,
-  }).catch((): void => toast('Startup failed'))
+  }).catch((): void => {
+    toast('Startup failed')
+    // paint 前ガード (#doc-wrap / .doc-pane を隠す class) を解除し、空状態を見せる
+    document.documentElement.classList.remove('has-embedded-md')
+    document.documentElement.classList.add('doc-ready')
+  })
 }
 
 const dummyCommentForTest = (id: string): Comment => ({
