@@ -13,10 +13,13 @@ MDXG [§2 Code Block Rendering](./mdxg/01-rendering.md#2-code-block-renderingコ
 | [MUST] 1 アクションでコピー可能な「Copy」ボタンを各ブロックに提供                                 | 未   | `<pre>` 外側のラッパ要素に絶対配置した button から `navigator.clipboard.writeText` を呼ぶ                                                                                                                |
 | [MUST] 構文ハイライト配色がホストの light / dark に適応する（§1 Theming 連動）                    | 未   | Shiki dual theme (`github-light` + `github-dark`) を `<html>.dark` 切替で CSS variables 経由で適用                                                                                                       |
 
+追加実装（MDXG §2.2 SHOULD 未満の実装例だが UX 上有用）：
+
+- 言語ラベル表示（コピーボタンと並べて表示）。`core/markdown.ts` の renderer が `<pre data-lang="<raw lang>">` を付与し、`app/code-copy-wrap.ts` の `wrapPreWithCopyButton` が wrap 時に `<span class="code-lang-label" aria-hidden="true">` を Copy button の隣に追加する。表示テキストは `normalizeLangIdentifier` で正規名に正規化（`ts` → `typescript`、`sh` → `bash`）し、27 言語ホワイトリスト外の識別子は生 lang を fallback で表示する。Shiki upgrade は `<pre>` 自身を残すため `data-lang` 属性は upgrade 前後で不変
+
 スコープ外（別タスクで扱う）：
 
 - §1 Theming で導入済みの `--doc-code-bg` / `--doc-code-rule` / `--doc-code-ink` トークン定義（既に DADS primitive ベースで dark 対応済み）
-- 言語ラベル表示（MDXG §2.2 「コピーボタンと並べて表示される言語ラベル」は実装例 / SHOULD 未満であり、本タスクでは扱わない。`<pre data-lang="…">` 属性は出力に残し将来拡張で UI 追加可能にする）
 - インラインコード `` `code` `` のハイライト（フェンス付きブロックのみが §2 [MUST] スコープ）
 
 ## 2. リファレンス実装と差分

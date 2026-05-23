@@ -1,6 +1,7 @@
-// <pre> を <div class="code-block-wrap"> で wrap し、コピーボタンを追加するヘルパ。
+// <pre> を <div class="code-block-wrap"> で wrap し、コピーボタンと言語ラベルを追加するヘルパ。
 // 初回描画 (doc-renderer.ts) と mark 再適用後の wrap 復元 (mark-engine.ts) の双方から呼ばれる。
 
+import { normalizeLangIdentifier } from '../core/scan-fenced-langs'
 import { toast } from './dom-utils'
 
 const COPY_FEEDBACK_MS = 1500
@@ -37,16 +38,45 @@ const buildCopyButton = (pre: HTMLElement): HTMLButtonElement => {
   return btn
 }
 
+/**
+ * `<pre data-lang="…">` の値から表示用ラベルテキストを決める。
+ * 正規名にマップできれば正規名 (`ts → typescript` / `sh → bash`)、
+ * 27 言語ホワイトリスト外で正規化できない識別子は生 lang をそのまま返す
+ * (`nim` や typo を含むフェンスでもラベルが消えないようにする)。
+ */
+const resolveLangLabelText = (rawLang: string): string =>
+  normalizeLangIdentifier(rawLang) ?? rawLang
+
+const buildLangLabel = (rawLang: string): HTMLSpanElement => {
+  const span = document.createElement('span')
+  span.className = 'code-lang-label'
+  span.setAttribute('aria-hidden', 'true')
+  span.textContent = resolveLangLabelText(rawLang)
+  return span
+}
+
+const createCodeBlockWrap = (pre: HTMLElement): HTMLElement => {
+  const wrap = document.createElement('div')
+  wrap.className = 'code-block-wrap'
+  pre.before(wrap)
+  wrap.appendChild(pre)
+  return wrap
+}
+
+const appendWrapActions = (wrap: HTMLElement, pre: HTMLElement): void => {
+  const { lang } = pre.dataset
+  if (lang) {
+    wrap.appendChild(buildLangLabel(lang))
+  }
+  wrap.appendChild(buildCopyButton(pre))
+}
+
 const wrapPreWithCopyButton = (pre: HTMLElement): void => {
   const parent = pre.parentElement
   if (parent && parent.classList.contains('code-block-wrap')) {
     return
   }
-  const wrap = document.createElement('div')
-  wrap.className = 'code-block-wrap'
-  pre.before(wrap)
-  wrap.appendChild(pre)
-  wrap.appendChild(buildCopyButton(pre))
+  appendWrapActions(createCodeBlockWrap(pre), pre)
 }
 
 /**

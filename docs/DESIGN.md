@@ -492,6 +492,7 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 - **27 正規名**：設計上の 28 言語のうち `bash` / `shell` は Shiki 内部で `shellscript` のエイリアスに集約されるため、ユニークな正規名は 27 個になる（エイリアスは ALIAS_TO_CANONICAL で同じ正規名にマップされる）
 - **配布物サイズ**：`dist/review.html` 約 264 KB / gzip 約 83 KB（実測。Shiki core + JS engine + 2 テーマ inline ぶん）。grammar 追加分は `auto` で典型 100〜300 KB、`all` で +5.2 MB raw（+1〜1.5 MB gzip）
 - **§6 アンカリングとの両立**：`doc-renderer.ts` で `cacheBlockOriginalHTML` を先に呼んで `<pre>` に blockId を付け、その後に `injectCopyButtons` で wrap する順序にすることで、blockOriginalHTML には `<pre>` の innerHTML のみが入り Copy button の textContent はフラットテキスト計算に混入しない
+- **言語ラベル表示 (MDXG §2.2 実装例 / SHOULD 未満)**：`core/markdown.ts` の renderer が言語識別子付きフェンスに対し `<pre data-lang="<raw lang>">` を付与する (`infostring` をそのまま属性値とし HTML escape する)。`app/code-copy-wrap.ts` の `wrapPreWithCopyButton` が wrap 時に `<span class="code-lang-label" aria-hidden="true">` を Copy button の左隣に追加し、`normalizeLangIdentifier` で正規名にマップ (`ts` → `typescript`、`sh` → `bash`) して表示する。27 言語ホワイトリスト外の識別子は生 lang を fallback として表示する。`<span>` の textContent はオフセット計算に混入させないよう `selection.ts` の `textSegments` が `.code-lang-label` 配下を skip する (既存 `.code-copy-btn` と同じパターン)。Shiki upgrade は `<pre>` 自身を残すため `data-lang` 属性は upgrade 前後で不変
 
 **リファレンス実装 (vercel-labs/mdxg)**
 

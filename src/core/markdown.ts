@@ -80,14 +80,25 @@ const createRenderer = (highlighter: CodeHighlighter | null | undefined): Render
   renderer.table = (header: string, body: string): string =>
     `<div class="table-wrap"><table>\n<thead>\n${header}</thead>\n${wrapTbody(body)}</table>\n</div>\n`
 
-  if (highlighter) {
-    renderer.code = (code: string, infostring: string | undefined, escaped: boolean): string => {
-      const highlighted = highlighter.highlight(code, infostring ?? '')
+  // フェンス付きコードブロックは highlighter の有無にかかわらず `<pre data-lang="…">` を出力する。
+  // data-lang は MDXG §2.2 の「コピーボタンと並べて表示される言語ラベル」用のフックで、
+  // app/code-copy-wrap.ts が wrap 時に読み取って `<span class="code-lang-label">` を生成する。
+  // Shiki は data-lang を出さないため、highlighter 成功時も出力 HTML の `<pre>` 開始タグに
+  // data-lang を注入してパス間で属性を統一する。Shiki upgrade で `<pre>` の innerHTML は
+  // 差し替わるが、`<pre>` 自身は残るため data-lang は不変。
+  renderer.code = (code: string, infostring: string | undefined, escaped: boolean): string => {
+    const lang = (infostring ?? '').trim()
+    if (highlighter && lang) {
+      const highlighted = highlighter.highlight(code, lang)
       if (highlighted !== null) {
-        return highlighted
+        return highlighted.replace(/^<pre(\s|>)/u, `<pre data-lang="${escapeHtml(lang)}"$1`)
       }
-      return defaultRenderer.code(code, infostring, escaped)
     }
+    const fallback = defaultRenderer.code(code, infostring, escaped)
+    if (!lang) {
+      return fallback
+    }
+    return fallback.replace(/^<pre>/u, `<pre data-lang="${escapeHtml(lang)}">`)
   }
 
   return renderer
@@ -113,7 +124,7 @@ export const renderMarkdown = (markdown: string, highlighter?: CodeHighlighter |
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
 
-  describe('renderMarkdown', () => {
+  describe('renderMarkdown raw HTML and fenced code', () => {
     it('raw HTML is escaped instead of emitted as executable markup', () => {
       const html = renderMarkdown('<script>alert(1)</script>\n\n<img src=x onerror="alert(1)">')
       expect(html).not.toContain('<script>')
@@ -124,10 +135,60 @@ if (import.meta.vitest) {
 
     it('HTML examples inside fenced code blocks remain code', () => {
       const html = renderMarkdown('```html\n<div onclick="alert(1)">x</div>\n```')
-      expect(html).toContain('<pre><code class="language-html">')
+      expect(html).toContain('<pre data-lang="html"><code class="language-html">')
       expect(html).toContain('&lt;div onclick=&quot;alert(1)&quot;&gt;x&lt;/div&gt;')
     })
 
+    it('言語識別子付きのフェンスは <pre data-lang="…"> が出る (MDXG §2.2 言語ラベル用フック)', () => {
+      const html = renderMarkdown('```ts\nconst x = 1\n```')
+      expect(html).toContain('<pre data-lang="ts"><code class="language-ts">')
+    })
+
+    it('言語識別子なしのフェンスには data-lang が付かない', () => {
+      const html = renderMarkdown('```\nplain code\n```')
+      expect(html).toMatch(/<pre><code>/u)
+      expect(html).not.toContain('data-lang')
+    })
+
+    it('data-lang の値は HTML escape される (属性インジェクション防止)', () => {
+      const html = renderMarkdown('```ts" onclick="alert(1)\nx\n```')
+      expect(html).not.toContain('onclick="alert(1)"')
+      expect(html).toContain('&quot;')
+    })
+
+    it('highlighter 成功時も Shiki 出力の <pre> 開始タグに data-lang が注入される', () => {
+      const highlighter: CodeHighlighter = {
+        highlight(code: string): string | null {
+          return `<pre class="shiki" style="--shiki-dark:#fff" tabindex="0"><code>${code}</code></pre>`
+        },
+      }
+      const html = renderMarkdown('```ts\nconst x = 1\n```', highlighter)
+      expect(html).toContain('<pre data-lang="ts" class="shiki"')
+    })
+
+    it('highlighter が null を返したフェンスでも fallback で data-lang が出る', () => {
+      const highlighter: CodeHighlighter = {
+        highlight(): string | null {
+          return null
+        },
+      }
+      const html = renderMarkdown('```nim\ndoSomething()\n```', highlighter)
+      expect(html).toContain('<pre data-lang="nim"><code class="language-nim">')
+    })
+
+    it('highlighter 成功時の data-lang も HTML escape される (属性インジェクション防止)', () => {
+      const highlighter: CodeHighlighter = {
+        highlight(code: string): string | null {
+          return `<pre class="shiki"><code>${code}</code></pre>`
+        },
+      }
+      const html = renderMarkdown('```ts" onclick="alert(1)\nx\n```', highlighter)
+      expect(html).not.toContain('onclick="alert(1)"')
+      expect(html).toContain('&quot;')
+    })
+  })
+
+  describe('renderMarkdown link allowlist', () => {
     it('http / https リンクは <a> として描画される', () => {
       const html = renderMarkdown('[ok](https://example.com)')
       expect(html).toContain('<a href="https://example.com"')
@@ -145,6 +206,7 @@ if (import.meta.vitest) {
       expect(html).not.toContain('javascript:')
       expect(html).toContain('click')
     })
+    /* eslint-enable no-script-url */
 
     it('相対 URL のリンクは <a> を出さず text だけ描画する', () => {
       const html = renderMarkdown('[neighbor](./other.md)')
@@ -157,7 +219,9 @@ if (import.meta.vitest) {
       expect(html).not.toMatch(/<a\b/)
       expect(html).toContain('mail')
     })
+  })
 
+  describe('renderMarkdown image allowlist', () => {
     it('https: / data: の画像は <img> として描画され referrerpolicy が付く', () => {
       const httpsImg = renderMarkdown('![alt](https://example.com/a.png)')
       expect(httpsImg).toContain('<img src="https://example.com/a.png"')
@@ -173,6 +237,7 @@ if (import.meta.vitest) {
       expect(html).toContain('insecure')
     })
 
+    /* eslint-disable no-script-url */
     it('相対 URL や javascript: の画像は <img> を出さず alt テキストだけ描画する', () => {
       const html = renderMarkdown('![diagram](./local.png)\n\n![bad](javascript:alert(1))')
       expect(html).not.toMatch(/<img\b/)
