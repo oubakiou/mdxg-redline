@@ -1,5 +1,5 @@
 // ブラウザ側 Shiki ハイライタの lazy singleton 初期化。
-// docs/mdxg-rendering-code-block.md §3.2 / §5.b に従い、`<script id="embedded-shiki-langs">` から
+// docs/mdxg-rendering-code-block.archive.md §3.2 / §5.b に従い、`<script id="embedded-shiki-langs">` から
 // CLI が事前注入した grammar JSON を JSON.parse → createHighlighterCoreSync で同期初期化する。
 // grammar が無い / 解析失敗時は null を返し、呼び出し側で plain text fallback に倒す。
 

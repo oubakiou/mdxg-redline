@@ -22,6 +22,11 @@ const isThemeHint = (value: string): value is ThemeHint =>
  * - `all`: 27 言語すべてを注入
  * - `none`: 注入しない (全コードブロックを plain text fallback)
  * - `list`: CSV で明示指定された正規名集合だけを注入 (エイリアスは正規化済み)
+ *
+ * 既定が `auto` なのは、配布者が何も指定しなくても配布物サイズが最小化される
+ * (仕様書系で +0 KB / コード混在レビューで +100〜300 KB) よう倒すため。
+ * `all` は +1〜1.5 MB gzip で重く、`none` は MDXG §2 [MUST] (シンタックス
+ * ハイライト) を満たさない。
  */
 export type ShikiLangsMode =
   | { kind: 'all' }

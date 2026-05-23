@@ -50,7 +50,7 @@ const emitGrammarJsonFiles = async (): Promise<void> => {
   )
 }
 
-// docs/mdxg-rendering-code-block.md §3 / §5.j に従い、Shiki 同梱言語のメタを再生成して
+// docs/mdxg-rendering-code-block.archive.md §3 / §5.j に従い、Shiki 同梱言語のメタを再生成して
 // `src/core/shiki-aliases.generated.ts` に書き出し、各正規名の grammar JSON を
 // `dist/shiki-langs/<lang>.json` として個別に emit する。
 // - 前者は CLI / browser 双方がコンパイル時に import する固定マップ (commit 対象)

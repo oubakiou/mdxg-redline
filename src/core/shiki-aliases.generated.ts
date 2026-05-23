@@ -2,7 +2,7 @@
 // 再生成: `node scripts/generate-shiki-aliases.mjs` または `npm run build`。
 // Shiki version: 4.0.2
 //
-// docs/mdxg-rendering-code-block.md §3.2 / §5.j が定める 28 言語の指定を
+// docs/mdxg-rendering-code-block.archive.md §3.2 / §5.j が定める 28 言語の指定を
 // Shiki bundledLanguagesInfo の正規名へ canonicalize し、エイリアスを併せて吐き出した結果。
 // CLI (--shiki-langs=<csv>) と browser 側 Shiki 初期化、scanFencedLangs が同じマップを参照する。
 
