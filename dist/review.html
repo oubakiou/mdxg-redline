@@ -299,6 +299,7 @@ XID_Start XIDS`.split(/\s/).map(e=>[Gl(e),e])),Nu=new Map([[`s`,K(383)],[K(383),
               class="btn btn-primary split-btn-main tooltipped"
               id="btn-send"
               data-tooltip="Choose an output folder and write the current feedback there"
+              disabled
             >
               Write feedback.json
             </button>
@@ -329,10 +330,12 @@ XID_Start XIDS`.split(/\s/).map(e=>[Gl(e),e])),Nu=new Map([[`s`,K(383)],[K(383),
               >
             </button>
             <div class="menu" id="menu-comments" role="menu">
-              <button class="menu-item" id="btn-copy" role="menuitem">Copy as JSON</button>
-              <button class="menu-item" id="btn-export" role="menuitem">Export as JSON</button>
+              <button class="menu-item" id="btn-copy" role="menuitem" disabled>Copy as JSON</button>
+              <button class="menu-item" id="btn-export" role="menuitem" disabled>
+                Export as JSON
+              </button>
               <div class="menu-divider"></div>
-              <button class="menu-item menu-item-danger" id="btn-clear" role="menuitem">
+              <button class="menu-item menu-item-danger" id="btn-clear" role="menuitem" disabled>
                 Discard all
               </button>
             </div>
