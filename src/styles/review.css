@@ -92,6 +92,7 @@ body > main.layout > aside.sidebar {
 }
 .doc-pane {
   padding: 40px;
+  position: relative;
 }
 @media (min-width: 1024px) {
   .doc-pane {
@@ -598,12 +599,52 @@ mark.cmt.active {
   display: none;
 }
 
-/* embedded-md ありの場合、描画完了まで .doc-pane を隠して白い空白を見せない。 */
-:root.has-embedded-md .doc-pane {
+/* embedded-md ありの場合、描画完了まで #doc を隠し、.doc-pane にスピナー + Loading… を見せる。 */
+:root.has-embedded-md #doc {
   visibility: hidden;
 }
-:root.has-embedded-md.doc-ready .doc-pane {
+:root.has-embedded-md.doc-ready #doc {
   visibility: visible;
+}
+
+:root.has-embedded-md .doc-pane::before,
+:root.has-embedded-md .doc-pane::after {
+  position: absolute;
+  left: 50%;
+}
+:root.has-embedded-md .doc-pane::before {
+  content: '';
+  top: calc(50% - 28px);
+  width: 24px;
+  height: 24px;
+  margin-left: -12px;
+  border: 2px solid var(--rule);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: doc-loading-spin 0.8s linear infinite;
+}
+:root.has-embedded-md .doc-pane::after {
+  content: 'Loading…';
+  top: calc(50% + 14px);
+  transform: translateX(-50%);
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+:root.has-embedded-md.doc-ready .doc-pane::before,
+:root.has-embedded-md.doc-ready .doc-pane::after {
+  content: none;
+}
+
+@keyframes doc-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root.has-embedded-md .doc-pane::before {
+    animation: none;
+  }
 }
 
 .empty-state {
