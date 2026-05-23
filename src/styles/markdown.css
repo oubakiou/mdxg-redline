@@ -187,9 +187,8 @@
 #doc .code-block-wrap > pre {
   margin-bottom: 0;
 }
-/* Copy button は常時表示。言語ラベルと並べた時にラベル右隣が空かないようにするため、
-   hover フェードイン挙動は採らない。代わりに非 hover 時は opacity 0.6 でやや控えめにし、
-   hover/focus で 1.0 に上げて操作可能性を強調する */
+/* Copy button は touch / no-hover 端末でも発見可能にするため常時表示。
+   非 hover 時は opacity 0.6 でやや控えめにし、hover/focus で 1.0 に上げる */
 #doc .code-copy-btn {
   position: absolute;
   top: 0.5rem;
@@ -210,23 +209,36 @@
 #doc .code-copy-btn:focus-visible {
   opacity: 1;
 }
-/* MDXG §2.2 言語ラベル。Copy button の左にうっすら常時表示し、
-   どの言語のフェンスかを視認できるようにする (data-lang は core/markdown.ts が付与)。
-   .code-copy-btn は内容が "Copy" / "Copied" で動くため、ラベルとの間隔は flex ではなく
-   ラベル側の right オフセットで近似する (Copy button: right 0.5rem + padding 含む幅約 3.5rem)。
-   pointer-events: none で button の hover/focus を遮らない */
+/* 言語ラベル付きの場合、wrap top がラベル上端に上がるため Copy button が pre から
+   飛び出して見える。ラベル高さ (padding 0.5rem + content ≒ 1.05rem + border 1px ≒ 1.55rem)
+   と margin-bottom: -1px の重なりを差し引いて pre 上端から 0.5rem 下に置く */
+#doc .code-lang-label ~ .code-copy-btn {
+  top: calc(2.05rem - 1px);
+}
+/* MDXG §2.2 言語ラベル。pre の直前に通常フローで置き、margin-bottom: -1px で pre の
+   top border 1px と重ねることでタブ下辺と pre 上辺をシームレスに接続する
+   (Zenn .code-block-filename を参考に absolute から通常フロー方式へ移行)。
+   隣接 pre の左上角 border-radius を 0 にしてタブと接する角の丸みを消す。
+   pointer-events: none でコピー範囲・選択範囲に影響しない */
 #doc .code-lang-label {
-  position: absolute;
-  top: 0.5rem;
-  right: 4.5rem;
-  padding: 0.25rem 0;
+  display: table;
+  max-width: 100%;
+  margin-bottom: -1px;
+  padding: 0.25rem 0.75rem;
   font: inherit;
   font-size: 0.75rem;
   line-height: 1.4;
   color: var(--doc-code-ink);
-  opacity: 0.55;
+  background-color: var(--doc-code-bg);
+  border: 1px solid var(--doc-code-rule);
+  border-bottom: none;
+  border-radius: 0.25rem 0.25rem 0 0;
   user-select: none;
   pointer-events: none;
+  position: relative;
+}
+#doc .code-lang-label + pre {
+  border-top-left-radius: 0;
 }
 /* #doc の max-width を超える広いテーブルが親レイアウトを破壊しないよう、
    markdown.ts の renderer.table が <table> を <div class="table-wrap"> で包む。

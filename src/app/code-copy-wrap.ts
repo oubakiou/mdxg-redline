@@ -66,7 +66,7 @@ const createCodeBlockWrap = (pre: HTMLElement): HTMLElement => {
 const appendWrapActions = (wrap: HTMLElement, pre: HTMLElement): void => {
   const { lang } = pre.dataset
   if (lang) {
-    wrap.appendChild(buildLangLabel(lang))
+    pre.before(buildLangLabel(lang))
   }
   wrap.appendChild(buildCopyButton(pre))
 }

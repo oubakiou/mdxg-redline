@@ -15,7 +15,7 @@ MDXG [§2 Code Block Rendering](./mdxg/01-rendering.md#2-code-block-renderingコ
 
 追加実装（MDXG §2.2 SHOULD 未満の実装例だが UX 上有用）：
 
-- 言語ラベル表示（コピーボタンと並べて表示）。`core/markdown.ts` の renderer が `<pre data-lang="<raw lang>">` を付与し、`app/code-copy-wrap.ts` の `wrapPreWithCopyButton` が wrap 時に `<span class="code-lang-label" aria-hidden="true">` を Copy button の隣に追加する。表示テキストは `normalizeLangIdentifier` で正規名に正規化（`ts` → `typescript`、`sh` → `bash`）し、27 言語ホワイトリスト外の識別子は生 lang を fallback で表示する。Shiki upgrade は `<pre>` 自身を残すため `data-lang` 属性は upgrade 前後で不変
+- 言語ラベル表示（コードブロック左上に「上に飛び出すタブ」として表示）。`core/markdown.ts` の renderer が `<pre data-lang="<raw lang>">` を付与し、`app/code-copy-wrap.ts` の `wrapPreWithCopyButton` が wrap 時に `<span class="code-lang-label" aria-hidden="true">` を `<pre>` の左上にタブ形状で配置する。表示テキストは `normalizeLangIdentifier` で正規名に正規化（`ts` → `typescript`、`sh` → `bash`）し、27 言語ホワイトリスト外の識別子は生 lang を fallback で表示する。Copy button は hover/focus 時のみ表示する従来挙動を維持し、タブとは独立に配置する。Shiki upgrade は `<pre>` 自身を残すため `data-lang` 属性は upgrade 前後で不変
 
 スコープ外（別タスクで扱う）：
 

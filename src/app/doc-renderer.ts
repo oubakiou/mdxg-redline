@@ -40,6 +40,29 @@ const cacheBlockOriginalHTML = (doc: HTMLElement): void => {
 }
 
 /**
+ * `<div class="code-block-wrap">` を中の `<pre>` で置き換えた innerHTML を返す。
+ *
+ * `el.innerHTML` をそのままキャッシュすると、後段の `reapplyAllMarks` が `el.innerHTML = original`
+ * で書き戻した際に wrap / Copy button が文字列パース由来の新 DOM として復元され、button の
+ * click ハンドラが失われる (ネストされた `<pre>` のみ顕在化。トップレベル `<pre>` の el は
+ * `<pre>` 自身で wrap を内側に含まない)。wrap を剥がした HTML をキャッシュすれば、巻き戻し後
+ * `injectCopyButtons` の「wrap が無ければ作る」分岐が走り button が正しく再生成される。
+ */
+const innerHTMLWithoutCodeBlockWrap = (el: HTMLElement): string => {
+  const cleaned = el.cloneNode(true)
+  if (!(cleaned instanceof Element)) {
+    return el.innerHTML
+  }
+  for (const wrap of cleaned.querySelectorAll('.code-block-wrap')) {
+    const pre = wrap.querySelector(':scope > pre')
+    if (pre) {
+      wrap.replaceWith(pre)
+    }
+  }
+  return cleaned.innerHTML
+}
+
+/**
  * Shiki upgrade 後の DOM 状態を blockOriginalHTML に焼き直す。
  * upgrade 後の reapplyAllMarks は blockOriginalHTML を innerHTML に書き戻すループなので、
  * Shiki span 入りの新 innerHTML をここで反映しておかないと巻き戻しでハイライトが消える。
@@ -48,7 +71,7 @@ const refreshBlockOriginalHTML = (doc: HTMLElement): void => {
   for (const el of doc.querySelectorAll<HTMLElement>('[data-block-id]')) {
     const id = el.dataset.blockId
     if (id) {
-      state.blockOriginalHTML.set(id, el.innerHTML)
+      state.blockOriginalHTML.set(id, innerHTMLWithoutCodeBlockWrap(el))
     }
   }
 }
