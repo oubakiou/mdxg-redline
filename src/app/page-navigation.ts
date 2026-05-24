@@ -11,6 +11,7 @@
 
 import type { Heading } from '../core/page-outline'
 import type { Page } from '../core/page-split'
+import { buildPageHashFragment } from './pages'
 import { escapeHtml } from '../core/escape'
 import { state } from './app-state'
 
@@ -40,8 +41,9 @@ const renderSequentialPrev = (page: Page | null): string => {
   if (page === null) {
     return ''
   }
+  const fragment = escapeHtml(buildPageHashFragment(page.slug))
   return (
-    `<a class="page-nav-sequential-link page-nav-sequential-prev" href="#${escapeHtml(page.slug)}" data-slug="${escapeHtml(page.slug)}" rel="prev">` +
+    `<a class="page-nav-sequential-link page-nav-sequential-prev" href="#${fragment}" data-slug="${fragment}" rel="prev">` +
     `<span class="page-nav-sequential-direction" aria-hidden="true">‹ Prev</span>` +
     `<span class="page-nav-sequential-title">${escapeHtml(page.title)}</span>` +
     `</a>`
@@ -52,8 +54,9 @@ const renderSequentialNext = (page: Page | null): string => {
   if (page === null) {
     return ''
   }
+  const fragment = escapeHtml(buildPageHashFragment(page.slug))
   return (
-    `<a class="page-nav-sequential-link page-nav-sequential-next" href="#${escapeHtml(page.slug)}" data-slug="${escapeHtml(page.slug)}" rel="next">` +
+    `<a class="page-nav-sequential-link page-nav-sequential-next" href="#${fragment}" data-slug="${fragment}" rel="next">` +
     `<span class="page-nav-sequential-direction" aria-hidden="true">Next ›</span>` +
     `<span class="page-nav-sequential-title">${escapeHtml(page.title)}</span>` +
     `</a>`
@@ -118,11 +121,11 @@ export const toPageItemViewModel = (page: Page, activePageIndex: number): PageIt
 }
 
 const renderOutlineHeading = (pageSlug: string, heading: Heading): string => {
-  const compositeSlug = `${pageSlug}__${heading.slug}`
+  const fragment = escapeHtml(buildPageHashFragment(pageSlug, heading.slug))
   const levelClass = `page-outline-link-level-${heading.level}`
   return (
     `<li class="page-outline-item">` +
-    `<a class="page-outline-link ${levelClass}" href="#${escapeHtml(compositeSlug)}" data-slug="${escapeHtml(compositeSlug)}" data-heading-slug="${escapeHtml(heading.slug)}">${escapeHtml(heading.text)}</a>` +
+    `<a class="page-outline-link ${levelClass}" href="#${fragment}" data-slug="${fragment}" data-heading-slug="${escapeHtml(heading.slug)}">${escapeHtml(heading.text)}</a>` +
     `</li>`
   )
 }
@@ -141,11 +144,15 @@ export const renderOutlineList = (page: Page): string => {
   return `<ul class="page-outline-list">${items}</ul>`
 }
 
-const renderPageItem = (vm: PageItemViewModel, outlineHtml: string): string =>
-  `<li class="${vm.itemClass} ${vm.depthClass}">` +
-  `<a class="page-nav-link" href="#${escapeHtml(vm.slug)}" data-slug="${escapeHtml(vm.slug)}"${vm.ariaCurrentAttr}>${escapeHtml(vm.title)}</a>${
-    outlineHtml
-  }</li>`
+const renderPageItem = (vm: PageItemViewModel, outlineHtml: string): string => {
+  const fragment = escapeHtml(buildPageHashFragment(vm.slug))
+  return (
+    `<li class="${vm.itemClass} ${vm.depthClass}">` +
+    `<a class="page-nav-link" href="#${fragment}" data-slug="${fragment}"${vm.ariaCurrentAttr}>${escapeHtml(vm.title)}</a>${
+      outlineHtml
+    }</li>`
+  )
+}
 
 // outline は active page のみ展開 (mdxg-virtual-pages.md §7.7 / §8.3 inline 展開方針)。
 // no-ternary を満たすため if 文で分岐する。
@@ -216,11 +223,15 @@ const findClickedSlug = (event: MouseEvent): string | null => {
 
 /**
  * `#page-nav` 配下のリンククリックを delegated listener で拾い、`onSlugClick(slug)` を呼ぶ。
- * 標準の anchor クリックで location.hash も同時に更新される動線なので preventDefault は呼ばず、
- * orchestrator 側は「クリック直後の state 確定 → render」を担当する。
+ * 通常クリック時は `event.preventDefault()` でブラウザのデフォルト anchor 遷移を抑止する。
+ * `href="#p:overview"` に対してブラウザは `id="p:overview"` 要素を探しに行くが、Stacked View では
+ * heading id (`<h4 id="1">` 等) が page slug と短絡的に一致する事故が起きうるため
+ * (`#1` → `id="1"` を持つ別 page 配下の見出しにジャンプ)、page slug を `p:` で名前空間化したのと
+ * 二重防御として preventDefault も入れる。URL hash の更新は `navigateToTarget` 側で
+ * `syncHashFromActivePage` 経由で行う。
  *
  * 修飾キー (Ctrl / Cmd / Shift / middle click) の場合はネイティブの「新規タブで開く」等を尊重し、
- * onSlugClick を呼ばずに pass-through する。
+ * preventDefault せず onSlugClick も呼ばずに pass-through する。
  */
 export const wirePageNavigation = (wiring: PageNavigationWiring): void => {
   const root = document.getElementById(PAGE_NAV_ROOT_ID)
@@ -235,6 +246,7 @@ export const wirePageNavigation = (wiring: PageNavigationWiring): void => {
     if (slug === null) {
       return
     }
+    event.preventDefault()
     wiring.onSlugClick(slug)
   })
 }
@@ -323,13 +335,13 @@ if (import.meta.vitest) {
       expect(html).toContain('page-outline-link-level-4')
     })
 
-    it('outline link の href / data-slug は composite (`<page>__<heading>`) 形式', () => {
+    it('outline link の href / data-slug は p: prefix + composite (`p:<page>__<heading>`) 形式', () => {
       const html = renderOutlineList({
         ...basePage,
         headings: [{ level: 3, slug: 'intro', sourceLineOffset: 2, text: 'Intro' }],
       })
-      expect(html).toContain('href="#overview__intro"')
-      expect(html).toContain('data-slug="overview__intro"')
+      expect(html).toContain('href="#p:overview__intro"')
+      expect(html).toContain('data-slug="p:overview__intro"')
       expect(html).toContain('data-heading-slug="intro"')
     })
 
@@ -377,14 +389,14 @@ if (import.meta.vitest) {
   })
 
   describe('buildSequentialControlsHtml (MDXG §9 統合)', () => {
-    it('prev / next 両方ある場合は両方のリンクと nav 要素を含む', () => {
+    it('prev / next 両方ある場合は両方のリンクと nav 要素を含む (href は p: prefix)', () => {
       const html = buildSequentialControlsHtml({
         next: dummyPage({ slug: 'next-page', title: 'Next Page' }),
         prev: dummyPage({ slug: 'prev-page', title: 'Prev Page' }),
       })
       expect(html).toContain('<nav class="page-nav-sequential"')
-      expect(html).toContain('href="#prev-page"')
-      expect(html).toContain('href="#next-page"')
+      expect(html).toContain('href="#p:prev-page"')
+      expect(html).toContain('href="#p:next-page"')
       expect(html).toContain('page-nav-sequential-prev')
       expect(html).toContain('page-nav-sequential-next')
     })

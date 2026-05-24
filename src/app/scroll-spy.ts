@@ -184,14 +184,32 @@ export const setActiveHeadingImmediately = (headingSlug: string | null): void =>
   setOutlineActiveByHeadingSlug(headingSlug)
 }
 
-/** `#doc` 配下にある `id="<slug>"` の要素までスムーズスクロールする (MDXG §8 outline anchor) */
-export const scrollToHeading = (headingSlug: string): void => {
+/**
+ * 指定 page の `<section class="virtual-page">` 配下にある `id="<slug>"` 要素までスクロールする
+ * (MDXG §8 outline anchor)。Stacked View では全 page の H3–H6 が DOM 上に並ぶため、heading slug が
+ * page をまたいで衝突する (非 ASCII fallback の `page-1` 等が複数 page で同じ値を取りうる)。
+ * `pageSlug` で section を 1 つに絞ることで正しい heading にスクロールできる。
+ *
+ * `behavior` は `auto` (instant) と `smooth` を caller が選ぶ。初期ロードは instant にして
+ * page-scroll-spy の初回 callback と競合させないようにする (review.ts の loadFromMarkdown)。
+ */
+export const scrollToHeading = (
+  headingSlug: string,
+  pageSlug: string,
+  behavior: ScrollBehavior = 'smooth'
+): void => {
   const doc = qs(`#${DOC_ID}`)
-  const target = doc.querySelector<HTMLElement>(selectorForId(headingSlug))
+  const section = doc.querySelector<HTMLElement>(
+    `section.virtual-page[data-page-slug="${pageSlug}"]`
+  )
+  if (section === null) {
+    return
+  }
+  const target = section.querySelector<HTMLElement>(selectorForId(headingSlug))
   if (target === null) {
     return
   }
-  target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  target.scrollIntoView({ behavior, block: 'start' })
 }
 
 // テスト用 resolveOffsetTop ファクトリ。テスト本体で fixture map を参照する純関数 callback を作る。

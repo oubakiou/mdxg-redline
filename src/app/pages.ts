@@ -15,6 +15,17 @@ import type { Page } from '../core/page-split'
 import { state } from './app-state'
 
 /**
+ * page slug 専用の hash prefix。`#p:<pageSlug>` の形で名前空間化することで、heading id
+ * (markdown 内の `## 1.` 等から派生する `id="1"` 等) と URL fragment が衝突するのを防ぐ。
+ *
+ * Stacked View は全 page の section と全 H3–H6 を同じ doc 内に並べるため、ブラウザの
+ * デフォルト anchor scroll (`href="#1"` → `id="1"` 要素にジャンプ) が走ると意図しない
+ * heading に飛ぶ事故が起きうる。click 側の `preventDefault` (page-navigation.ts) と組で
+ * 多重防御する。
+ */
+const PAGE_HASH_PREFIX = 'p:'
+
+/**
  * `state.pages` から指定 slug に一致する Page を返す。見つからなければ null。
  */
 export const findPageBySlug = (slug: string): Page | null => {
@@ -27,7 +38,10 @@ export const findPageBySlug = (slug: string): Page | null => {
 }
 
 /**
- * `location.hash` 文字列から slug を取り出す。`#foo` → `foo`、空 / `#` のみは null。
+ * `location.hash` 文字列から「prefix 剥がし後の slug 部分」を取り出す。
+ * - `#p:foo` → `foo`
+ * - `#foo` (prefix 無し) / `#` 単体 / 空文字 → null
+ *
  * 戻り値は composite hash (`page__heading`) 全体で、ページ部分と見出し部分の分離は
  * `parseHashSlug` で行う。
  */
@@ -35,12 +49,44 @@ export const slugFromHash = (hash: string): string | null => {
   if (!hash.startsWith('#')) {
     return null
   }
-  const slug = hash.slice(1)
-  if (slug.length === 0) {
+  const raw = hash.slice(1)
+  if (!raw.startsWith(PAGE_HASH_PREFIX)) {
     return null
   }
-  return slug
+  const stripped = raw.slice(PAGE_HASH_PREFIX.length)
+  if (stripped.length === 0) {
+    return null
+  }
+  return stripped
 }
+
+/**
+ * page-navigation や Sequential row の `href` / `data-slug` に乗せる fragment 文字列を組み立てる
+ * (先頭 `#` 抜き)。caller 側は `href="#${buildPageHashFragment(...)}"` の形で埋め込む。
+ */
+export const buildPageHashFragment = (
+  pageSlug: string,
+  headingSlug: string | null = null
+): string => {
+  if (headingSlug === null) {
+    return `${PAGE_HASH_PREFIX}${pageSlug}`
+  }
+  return `${PAGE_HASH_PREFIX}${pageSlug}__${headingSlug}`
+}
+
+/**
+ * `hash` が page-navigation 用の名前空間化された hash (`#p:...`) かを判定する。
+ *
+ * 本文内 markdown anchor (`[x](#some-heading)`) のクリックや手動 hash 編集で発火する
+ * prefix なし hash は、ブラウザのデフォルト anchor scroll で当該 id 要素にジャンプするだけで
+ * 十分なので、`navigateToTarget` には流さない (流すと `pageIndex: 0` フォールバックで意図せず
+ * 先頭ページに飛ぶ UX 回帰になる)。
+ *
+ * 空 hash (`""` / `"#"`) も「page hash ではない」扱いで、hashchange 時の navigate からは外す。
+ * 初期ロード時の hash 解決は `resolveTargetFromHash` / `resolveInitialActivePageIndex` が
+ * 直接ハンドルする (空なら page 0 フォールバック)。
+ */
+export const isPageHash = (hash: string): boolean => hash.startsWith(`#${PAGE_HASH_PREFIX}`)
 
 /**
  * URL fragment の `<page-slug>__<heading-slug>` (mdxg-virtual-pages.md §6.4) を分解する。
@@ -133,12 +179,8 @@ export const setActivePageIndex = (index: number): boolean => {
   return true
 }
 
-const buildHashString = (pageSlug: string, headingSlug: string | null): string => {
-  if (headingSlug === null) {
-    return `#${pageSlug}`
-  }
-  return `#${pageSlug}__${headingSlug}`
-}
+const buildHashString = (pageSlug: string, headingSlug: string | null): string =>
+  `#${buildPageHashFragment(pageSlug, headingSlug)}`
 
 /**
  * 現在 activePage の slug を `#<slug>` (heading 指定があれば `#<slug>__<heading-slug>`) で
@@ -191,41 +233,53 @@ if (import.meta.vitest) {
   })
 
   describe('slugFromHash', () => {
-    it('`#foo` → `foo`', () => {
-      expect(slugFromHash('#foo')).toBe('foo')
+    it('`#p:foo` → `foo` (prefix 剥がし)', () => {
+      expect(slugFromHash('#p:foo')).toBe('foo')
     })
 
-    it('`#` 単体 / 空文字 / `foo` (prefix 無し) は null', () => {
+    it('`#foo` (prefix 無し) は null (page hash として無効)', () => {
+      expect(slugFromHash('#foo')).toBeNull()
+    })
+
+    it('`#` 単体 / 空文字 / `p:foo` (`#` 無し) は null', () => {
       expect(slugFromHash('#')).toBeNull()
       expect(slugFromHash('')).toBeNull()
-      expect(slugFromHash('foo')).toBeNull()
+      expect(slugFromHash('p:foo')).toBeNull()
     })
 
-    it('複数 # / underscore 含む slug もそのまま返す', () => {
-      expect(slugFromHash('#page-1__section-a')).toBe('page-1__section-a')
+    it('`#p:` (prefix 直後が空) は null', () => {
+      expect(slugFromHash('#p:')).toBeNull()
+    })
+
+    it('prefix 剥がし後の slug 内の underscore は維持する (composite hash 用)', () => {
+      expect(slugFromHash('#p:page-1__section-a')).toBe('page-1__section-a')
     })
   })
 
   describe('parseHashSlug', () => {
-    it('`#page` → page だけ取り出して heading は null', () => {
-      expect(parseHashSlug('#overview')).toEqual({
+    it('`#p:page` → page だけ取り出して heading は null', () => {
+      expect(parseHashSlug('#p:overview')).toEqual({
         headingSlug: null,
         pageSlug: 'overview',
       })
     })
 
-    it('`#page__heading` → page と heading に分解する', () => {
-      expect(parseHashSlug('#overview__section-a')).toEqual({
+    it('`#p:page__heading` → page と heading に分解する', () => {
+      expect(parseHashSlug('#p:overview__section-a')).toEqual({
         headingSlug: 'section-a',
         pageSlug: 'overview',
       })
     })
 
-    it('`#page__` (空の heading) は heading=null', () => {
-      expect(parseHashSlug('#page__')).toEqual({
+    it('`#p:page__` (空の heading) は heading=null', () => {
+      expect(parseHashSlug('#p:page__')).toEqual({
         headingSlug: null,
         pageSlug: 'page',
       })
+    })
+
+    it('`#overview` (prefix 無し) は両方 null (heading id 衝突回避)', () => {
+      expect(parseHashSlug('#overview')).toEqual({ headingSlug: null, pageSlug: null })
     })
 
     it('空 / `#` のみは両方 null', () => {
@@ -234,7 +288,7 @@ if (import.meta.vitest) {
     })
 
     it('最初の `__` だけを区切りに使う (slug は本来 underscore を含まないが念のため)', () => {
-      expect(parseHashSlug('#a__b__c')).toEqual({
+      expect(parseHashSlug('#p:a__b__c')).toEqual({
         headingSlug: 'b__c',
         pageSlug: 'a',
       })
@@ -247,7 +301,7 @@ if (import.meta.vitest) {
         dummyPage({ index: 0, slug: 'intro' }),
         dummyPage({ index: 1, slug: 'overview' }),
       ]
-      expect(resolveTargetFromHash('#overview__section-b')).toEqual({
+      expect(resolveTargetFromHash('#p:overview__section-b')).toEqual({
         headingSlug: 'section-b',
         pageIndex: 1,
       })
@@ -255,15 +309,57 @@ if (import.meta.vitest) {
 
     it('page slug 不一致でも heading slug は保持しページは 0 にフォールバック', () => {
       state.pages = [dummyPage({ index: 0, slug: 'intro' })]
-      expect(resolveTargetFromHash('#missing__heading-x')).toEqual({
+      expect(resolveTargetFromHash('#p:missing__heading-x')).toEqual({
         headingSlug: 'heading-x',
         pageIndex: 0,
       })
     })
 
+    it('prefix 無し hash も page=0 にフォールバック (heading は heading-id 経由でブラウザが扱う想定)', () => {
+      state.pages = [dummyPage({ index: 0, slug: 'a' })]
+      expect(resolveTargetFromHash('#legacy')).toEqual({ headingSlug: null, pageIndex: 0 })
+    })
+
     it('hash 空なら page=0 / heading=null', () => {
       state.pages = [dummyPage({ index: 0, slug: 'a' })]
       expect(resolveTargetFromHash('')).toEqual({ headingSlug: null, pageIndex: 0 })
+    })
+  })
+
+  describe('buildPageHashFragment', () => {
+    it('heading 指定なしは prefix + page slug', () => {
+      expect(buildPageHashFragment('overview')).toBe('p:overview')
+    })
+
+    it('heading 指定ありは __ 区切りの composite fragment', () => {
+      expect(buildPageHashFragment('overview', 'section-a')).toBe('p:overview__section-a')
+    })
+
+    it('null を明示的に渡しても heading 指定なしと同じ', () => {
+      expect(buildPageHashFragment('a', null)).toBe('p:a')
+    })
+  })
+
+  describe('isPageHash', () => {
+    it('`#p:` で始まる hash は true', () => {
+      expect(isPageHash('#p:overview')).toBe(true)
+      expect(isPageHash('#p:overview__section-a')).toBe(true)
+    })
+
+    it('prefix 無し hash は false (本文内 markdown anchor 等は navigate しない)', () => {
+      expect(isPageHash('#overview')).toBe(false)
+      expect(isPageHash('#1')).toBe(false)
+      expect(isPageHash('#some-heading')).toBe(false)
+    })
+
+    it('空 / `#` 単体は false (hashchange での navigate からも外す)', () => {
+      expect(isPageHash('')).toBe(false)
+      expect(isPageHash('#')).toBe(false)
+    })
+
+    it('prefix が中途半端な値も false', () => {
+      expect(isPageHash('#p')).toBe(false)
+      expect(isPageHash('p:foo')).toBe(false)
     })
   })
 
@@ -290,7 +386,7 @@ if (import.meta.vitest) {
         dummyPage({ index: 0, slug: 'intro' }),
         dummyPage({ index: 1, slug: 'overview' }),
       ]
-      expect(resolveInitialActivePageIndex('#overview')).toBe(1)
+      expect(resolveInitialActivePageIndex('#p:overview')).toBe(1)
     })
 
     it('hash が空なら先頭ページ (0) にフォールバック', () => {
@@ -300,7 +396,12 @@ if (import.meta.vitest) {
 
     it('hash slug が見つからなければ先頭ページ (0) にフォールバック', () => {
       state.pages = [dummyPage({ index: 0, slug: 'a' })]
-      expect(resolveInitialActivePageIndex('#unknown')).toBe(0)
+      expect(resolveInitialActivePageIndex('#p:unknown')).toBe(0)
+    })
+
+    it('prefix 無し hash も先頭ページ (0) にフォールバック', () => {
+      state.pages = [dummyPage({ index: 0, slug: 'a' })]
+      expect(resolveInitialActivePageIndex('#legacy')).toBe(0)
     })
   })
 
