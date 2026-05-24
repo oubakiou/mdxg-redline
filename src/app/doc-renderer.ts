@@ -27,12 +27,15 @@ const showEmptyDocument = (doc: HTMLElement, wrap: HTMLElement): void => {
 /**
  * トップレベルブロックに連番 ID を付け、原 HTML をキャッシュする。
  * 以降の mark 再適用ではこのキャッシュをベースに HTML を巻き戻すため、レンダリング直後に必ず呼ぶ必要がある。
+ *
+ * `blockIdStart` は doc 全体での 1-origin index。Single Page 描画でも document スコープ blockId を
+ * 維持するため、active page の先頭ブロックが doc 全体で何番目かを caller が渡す。
  */
-const cacheBlockOriginalHTML = (doc: HTMLElement): void => {
+const cacheBlockOriginalHTML = (doc: HTMLElement, blockIdStart: number): void => {
   state.blockOriginalHTML.clear()
   for (const [index, el] of [...doc.children].entries()) {
     if (el instanceof HTMLElement) {
-      const id = `b${String(index + 1).padStart(3, '0')}`
+      const id = `b${String(blockIdStart + index).padStart(3, '0')}`
       el.dataset.blockId = id
       state.blockOriginalHTML.set(id, el.innerHTML)
     }
@@ -103,43 +106,42 @@ const getActivePageHeadingSlugs = (): readonly string[] => {
 }
 
 /**
- * page markdown に対して buildBlockAnchors を呼び、sourceLine を元 markdown 全体の
- * 1-origin 行番号にオフセットする。さらに、当該ページが H2 ページの場合は祖先 H1 の
- * 見出し文字列を headingPath の先頭に prepend する (mdxg-virtual-pages.md §9.3)。
- *
- * 元 markdown 全体の sourceLine 維持は feedback.json export スキーマ互換の前提
- * (DESIGN.md §5 / mdxg-virtual-pages.md §7.2 / §11)。
- * ancestorHeadingPath は splitIntoPages が事前に計算して Page に持たせている (§9.3)。
+ * 全 markdown の anchors のうち、active page が占める sourceLine 範囲
+ * `[sourceLineStart, sourceLineEnd]` に入る blockId 列を文書順で取り出す。
+ * Single Page 描画でも document スコープ blockId を維持するため、active page の先頭 blockId が
+ * doc 全体で何番目なのかを確定する起点になる。
  */
-interface AnchorDecoratorParams {
-  ancestor: readonly string[]
-  anchors: ReturnType<typeof buildBlockAnchors>
-  offset: number
-}
-
-const decorateAnchors = (params: AnchorDecoratorParams): void => {
-  for (const anchor of params.anchors.values()) {
-    anchor.sourceLine += params.offset
-    if (params.ancestor.length > 0) {
-      anchor.headingPath = [...params.ancestor, ...anchor.headingPath]
-    }
-  }
-}
-
-const buildBlockAnchorsForActivePage = (
-  pageMarkdown: string
-): ReturnType<typeof buildBlockAnchors> => {
-  const anchors = buildBlockAnchors(pageMarkdown)
+const collectActivePageBlockIds = (allAnchors: ReturnType<typeof buildBlockAnchors>): string[] => {
   const activePage = state.pages[state.activePageIndex]
   if (!activePage) {
-    return anchors
+    return [...allAnchors.keys()]
   }
-  decorateAnchors({
-    ancestor: activePage.ancestorHeadingPath,
-    anchors,
-    offset: activePage.sourceLineStart - 1,
-  })
-  return anchors
+  const matched: string[] = []
+  for (const [blockId, anchor] of allAnchors) {
+    if (
+      anchor.sourceLine >= activePage.sourceLineStart &&
+      anchor.sourceLine <= activePage.sourceLineEnd
+    ) {
+      matched.push(blockId)
+    }
+  }
+  return matched
+}
+
+/**
+ * `b001` 形式の blockId 文字列を数値 index に戻す。`b007` → 7 のような変換で、
+ * cacheBlockOriginalHTML の起点引数として連番計算に使う。
+ */
+const blockIdToIndex = (blockId: string): number => Number.parseInt(blockId.slice(1), 10)
+
+const resolveActivePageBlockIdStart = (
+  allAnchors: ReturnType<typeof buildBlockAnchors>
+): number => {
+  const blockIds = collectActivePageBlockIds(allAnchors)
+  if (blockIds.length === 0) {
+    return 1
+  }
+  return blockIdToIndex(blockIds[0])
 }
 
 /** markdown を HTML 化して #doc に流し込み、ブロック原 HTML と markdown 上のアンカーを更新する */
@@ -151,11 +153,12 @@ const mountRenderedDoc = (doc: HTMLElement, wrap: HTMLElement): void => {
   doc.innerHTML = renderMarkdown(pageMarkdown, null, {
     headingSlugs: getActivePageHeadingSlugs(),
   })
+  const allAnchors = buildBlockAnchors(state.markdown)
   // cacheBlockOriginalHTML を injectCopyButtons より先に呼び、トップレベル <pre> の場合に
   // blockId が <pre> 自身に付与されるよう順序を保つ (wrap 後だと block-id は <div> 側に移る)。
-  cacheBlockOriginalHTML(doc)
+  cacheBlockOriginalHTML(doc, resolveActivePageBlockIdStart(allAnchors))
   injectCopyButtons(doc)
-  state.blockAnchors = buildBlockAnchorsForActivePage(pageMarkdown)
+  state.blockAnchors = allAnchors
 }
 
 const extractLangFromCode = (code: HTMLElement): string | null => {

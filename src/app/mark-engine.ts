@@ -58,17 +58,14 @@ const pushIntoBucket = (byBlock: Map<string, Comment[]>, comment: Comment): void
 /**
  * state.comments を blockId キーでグルーピングする。
  *
- * Phase 5: 仮想ページ導入で blockId はページスコープ (`b001` から page 内連番) になったため、
- * 他ページのコメントを含めて groupBy すると同じ blockId が異なるブロックを指す可能性がある
- * (mdxg-virtual-pages.md §7.1)。`activePageIndex` でフィルタしてから group することで
- * 「現ページ DOM 上の blockId」と「現ページに属するコメント」だけが噛み合うことを保証する。
+ * blockId は文書全体で連番付与される (document スコープ) ので、page によるフィルタは行わない。
+ * Stacked View では全 page の DOM に対して該当 blockId の mark を貼る。Single Page 描画でも
+ * DOM 上に該当 blockId が無いコメントは applyMarksForBlock の `querySelector → null` で
+ * 自然に fail-soft され、見える形で表示されない。
  */
 const commentsGroupedByBlock = (): Map<string, Comment[]> => {
   const byBlock = new Map<string, Comment[]>()
-  const currentPageComments = state.comments.filter(
-    (comment): boolean => comment.pageIndex === state.activePageIndex
-  )
-  for (const comment of currentPageComments) {
+  for (const comment of state.comments) {
     pushIntoBucket(byBlock, comment)
   }
   return byBlock
