@@ -403,6 +403,8 @@ DESIGN.md §5 の `Comment` に、内部 state 用フィールドとして `page
 └──────────────────┴───────────────────────────────┴─────────────────┘
 ```
 
+右サイドバー (`<aside class="sidebar">`, Conversation) は本書とは独立に幅可変化されており、左端ドラッグで 240–640px の範囲でリサイズできる。`localStorage` で width / open 状態が永続化され、closed (= 0px) のときは sidebar 自体が消えて画面右端に縦タブだけが出る (DESIGN.md §4 / §7c)。Virtual Pages の 3 ペイン化はこの「右サイドバー幅は CSS 変数 `--sidebar-width` 経由」「closed の取り得る状態」を前提に組み立てる。
+
 ### 8.2 左サイドバー (Page Navigation, §7)
 
 - `<aside class="page-nav">` を `<main class="layout">` の左端に追加
@@ -549,7 +551,10 @@ Open file 経由でも同じく 1a–1f を経由する。
 
 ### 13.1 Conversation サイドバーの幅と TOC 追加後のレイアウト
 
-3 ペイン化により本文有効幅が縮む。CSS で 3 ペインの幅配分（例: 左 220px / 中央 flex / 右 320px）を決める必要がある。狭幅時の TOC 折りたたみは UI 実装着手時に UX 検証して決定。
+右サイドバー (Conversation) は本書とは独立に幅可変化済みで、240–640px の範囲でユーザーがドラッグ調整 + closed (= 0px) もあり得る（DESIGN.md §4 / §7c）。3 ペイン化に際してこの前提を維持しつつ、残る論点は次の 2 つ：
+
+- **(a) 左 `<aside class="page-nav">` の幅戦略** — 固定 220px とするか、右サイドバーと同様に CSS 変数 + ドラッグでリサイズ可能にするか。Page TOC は H1/H2 タイトル長で必要幅が大きく変わるため、長文タイトルが続く文書では固定 220px だと折り返しが頻発する。Conversation 側と挙動を揃えるなら可変だが、3 つの可変ペインが横に並ぶと中央 doc-pane の有効幅が安定しない難点もある。
+- **(b) 狭幅時の優先度** — viewport 幅が縮んだ場合、左 page-nav の折りたたみ・右 sidebar の closed・1 ペイン化への切替のうちどれを先に発火させるか。右 sidebar は既にユーザー操作で closed にできるので、自動切替は左 page-nav の折りたたみを先に出すのが自然そうだが、確定は UI 実装着手時の UX 検証に委ねる。
 
 ### 13.2 ページ slug 重複と docHash の関係
 

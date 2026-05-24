@@ -41,6 +41,8 @@ npx mdxg-redline <input.md>                       # writes alongside input.md an
 npx mdxg-redline <input.md> ./reviews             # writes into ./reviews
 npx mdxg-redline --no-open <input.md>             # generate only, do not open browser
 npx mdxg-redline --theme dark <input.md>          # pre-set the initial theme hint to dark on the generated HTML
+npx mdxg-redline --sidebar-width 480 <input.md>   # pre-set the initial comments-panel width to 480px
+npx mdxg-redline --sidebar-width 0 <input.md>     # start with the comments panel closed (only the edge tab visible)
 cat spec.md | npx mdxg-redline - --document-name spec.md   # read markdown from stdin
 npx mdxg-redline --help                           # print full usage and exit
 ```
@@ -48,6 +50,7 @@ npx mdxg-redline --help                           # print full usage and exit
 - The output filename is auto-derived as `<input-md-basename>-<docHash>-review.html` (the `output-dir` argument defaults to the input's directory; for stdin input it defaults to the current working directory)
 - Use `--document-name <name>` to override the document name (used for the `data-name` attribute and the output filename prefix). Required when reading from stdin if you want a meaningful filename
 - Use `--theme <system|light|dark>` to write a `<html data-theme>` attribute into the generated HTML. The receiving inline script always **prefers the user's UI toggle history (`localStorage`)** first, then this hint, then `prefers-color-scheme` (when omitted, the attribute is left off and existing behavior is preserved)
+- Use `--sidebar-width <0|240-640>` to write a `<html data-sidebar-width>` attribute into the generated HTML. `0` starts with the sidebar closed (only the edge tab visible); `240–640` starts open at the given width (in integer px). Like `--theme`, the receiving inline script always **prefers the user's UI resize / toggle history (`localStorage`)** first, then this hint, then the default (`360px` / open) (when omitted, the attribute is left off and existing behavior is preserved)
 - After generation, the default browser is launched via `$BROWSER` → `open` / `xdg-open` / `cmd.exe /c start`, in that order
 - When VS Code Remote Containers / Codespaces is detected, the CLI instead starts a tiny HTTP server on `127.0.0.1` at port `51729` (override with `MDXG_REDLINE_PORT`) and hands the host browser an `http://localhost:<port>/...` URL (since `file://` paths in the container are invisible to the host). If the preferred port is busy, the CLI falls back to a random port and prints a warning to stderr — **note that random ports may not be forwarded to the host browser if `forwardPorts` is not set to `auto`, so pin a known-free `MDXG_REDLINE_PORT` (or register it in `devcontainer.json` `forwardPorts`) for reliable host access**
 - Pass `--no-open` to suppress browser launch. The output path is always printed to stdout so CI scripts and agents can capture it
