@@ -212,7 +212,7 @@ bundle される npm 依存（ビルド時に `<script>` として inline）：
 ```ts
 {
   id: string // 8 文字のランダム ID
-  blockId: string // 例: "b003" — レンダリング時に付与。Virtual Pages 導入後は page スコープ連番
+  blockId: string // 例: "b003" — レンダリング時に付与。文書全体で連番 (document スコープ)
   pageIndex: number // 所属仮想ページの 0-origin index（state 内必須、export には含めない）
   quote: string // 選択されたテキスト原文（人間の参照用）
   comment: string // ユーザーのコメント
@@ -223,7 +223,7 @@ bundle される npm 依存（ビルド時に `<script>` として inline）：
 }
 ```
 
-`pageIndex` と `sourceLine` は MDXG §6–§9 Virtual Pages 統合のために必須化された (mdxg-virtual-pages.md §6.5 / §6.6)。`blockId` は仮想ページごとに `b001` から連番付与される (§7.1)。`sourceLine` は元 markdown 全体での行番号を維持することで feedback.json export スキーマと後段 LLM 互換を保つ。`pageIndex` は state 内専用で export には漏らさない。
+`pageIndex` と `sourceLine` は MDXG §6–§9 Virtual Pages 統合のために必須化された (mdxg-virtual-pages.md §6.5 / §6.6)。`blockId` は **Stacked View 採用 (mdxg-virtual-pages.md §14) に伴い、文書全体での連番 (document スコープ) に戻った** ── 全 page の `<section.virtual-page>` が常に DOM 上に並ぶため、page スコープのまま `b001` が複数 section に存在すると `querySelector` が衝突するのを構造的に避ける。`sourceLine` は元 markdown 全体での行番号を維持することで feedback.json export スキーマと後段 LLM 互換を保つ。`pageIndex` は state 内専用で export には漏らさない。新規 Comment 作成時の `pageIndex` は `selection.ts` が祖先 `<section.virtual-page>` の `data-page-index` から取得し、`PendingSelection` 経由で comment-modal に渡す。
 
 ### ドキュメント状態（メモリ内）
 
@@ -493,9 +493,9 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 | Rendering          | [§4 Images](./mdxg/01-rendering.md#4-images画像)                                                      | 部分   | URL allowlist で相対画像パスを弾く（信頼境界優先、§11）                              |
 | Rendering          | [§5 Tables](./mdxg/01-rendering.md#5-tables表)                                                        | 準拠   | `<div class="table-wrap">` で水平スクロール、親レイアウトを破壊しない                |
 | Document Structure | [§6 Virtual Pages](./mdxg/02-document-structure.md#6-virtual-pages仮想ページ)                         | 準拠   | core/page-split.ts で H1 / H2 境界分割 (ATX / setext / コードフェンス追跡)           |
-| Document Structure | [§7 Page Navigation](./mdxg/02-document-structure.md#7-page-navigationページナビゲーション)           | 準拠   | 左サイドバー TOC + active page ハイライト、location.hash 同期で履歴対応              |
+| Document Structure | [§7 Page Navigation](./mdxg/02-document-structure.md#7-page-navigationページナビゲーション)           | 準拠   | Stacked View: 全 page を縦に並べて連続スクロール、左 TOC + page scroll-spy で追従    |
 | Document Structure | [§8 Page Outline](./mdxg/02-document-structure.md#8-page-outlineページアウトライン)                   | 準拠   | active page 配下に H3–H6 inline 展開 + IntersectionObserver でスクロールスパイ       |
-| Document Structure | [§9 Sequential Navigation](./mdxg/02-document-structure.md#9-sequential-navigation逐次ナビゲーション) | 準拠   | 本文末尾の Prev / Next リンク、最初 / 最後ページで該当方向を hidden                  |
+| Document Structure | [§9 Sequential Navigation](./mdxg/02-document-structure.md#9-sequential-navigation逐次ナビゲーション) | 準拠   | 左 TOC 上部に Prev / Next row を統合、最初 / 最後ページで該当方向を omit             |
 | Document Structure | [§10 Search](./mdxg/02-document-structure.md#10-search検索)                                           | 未対応 | Virtual Pages 統合は完了。検索ハイライト用 `<mark>` とコメント用の共存設計が次の課題 |
 | Accessibility      | [§13 Keyboard Navigation](./mdxg/04-accessibility.md#13-keyboard-navigationキーボードナビゲーション)  | 部分   | アクセシブル名は網羅監査済み、ページナビ系のキーボード操作は未対応                   |
 
@@ -607,28 +607,30 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 
 #### §7 Page Navigation（準拠）
 
-- [MUST] 全ページをドキュメント順に閲覧: ✓（`app/page-navigation.ts` の `renderPageNavigation` が左サイドバー `<aside class="page-nav">` に `<ul>` で全ページを文書順に出力）
-- [MUST] 任意ページへの移動: ✓（TOC link クリック → `wirePageNavigation` 経由で `navigateToTarget` に流す）
-- [MUST] 現在ページの視覚的識別: ✓（active page には `aria-current="page"` と `.page-nav-item-active` (背景色 + 左 accent border + 太字)）
-- [MUST] 逐次移動の提供（詳細は §9）: ✓（本文末尾の Sequential Nav、§9 参照）
+- [MUST] 全ページをドキュメント順に閲覧: ✓（Stacked View: `app/doc-renderer.ts` が全 page を `<section class="virtual-page">` で連続描画。`app/page-navigation.ts` の `renderPageNavigation` が左サイドバー `<aside class="page-nav">` にも文書順 TOC を出力）
+- [MUST] 任意ページへの移動: ✓（TOC link クリック → `wirePageNavigation` 経由で `navigateToTarget` → 該当 section に `scrollIntoView`）
+- [MUST] 現在ページの視覚的識別: ✓（page scroll-spy で viewport 上部に来た section の `pageIndex` を `state.activePageIndex` に同期し、TOC entry に `aria-current="page"` と `.page-nav-item-active` (背景色 + 左 accent border + 太字)）
+- [MUST] 逐次移動の提供（詳細は §9）: ✓（左 TOC 上部に Prev / Next row を統合、§9 参照）
 
 **実装詳細**
 
+- **Stacked View**: doc-renderer は markdown 読み込み時に全 page を `<section class="virtual-page" data-page-index data-page-slug>` で 1 度に描画する。マウスホイールだけで全文を読み進められる Word 風レイアウト (mdxg-virtual-pages.md §14)。blockId は document スコープ連番に戻り (§7.1 撤回)、mark-engine は全 comments を活性 mark として保持する
+- **page scroll-spy**: `app/page-scroll-spy.ts` の `setupPageScrollSpy` が `IntersectionObserver` (`rootMargin: '0px 0px -75% 0px'`) で section を観測。viewport 上部に最も近い topmost section の `pageIndex` を `state.activePageIndex` に push し、`syncHashFromActivePage` で `location.hash` を更新。`setOnPageActivated(renderPageNavigation)` で TOC active 表示も追従する
 - **URL 同期**: `location.hash = '#<page-slug>'` の代入だけで履歴を管理。History API 不使用 (mdxg-virtual-pages.md §7.4)。ブラウザ戻る / 進むで前後ページに遷移できる
 - **hash 復元**: 初期ロード時 / hashchange で `resolveTargetFromHash` が page slug + heading slug を分解。hash が空 / 不正 / 不一致なら先頭ページ (index 0) にフォールバックする (§7.4)
-- **navigate orchestrator**: TOC / outline / Sequential Nav / hashchange / 初期ロードすべてが `navigateToTarget(target, pushHash)` に集約され、`renderAll()` 1 箇所で全 view を再描画する (Phase 3 で sequential-nav 抜けが起きた drift の構造的回避)
+- **navigate orchestrator**: TOC / outline / 統合 Sequential / hashchange / 初期ロードすべてが `navigateToTarget(target, pushHash)` に集約され、page 切替時は `scrollToActivePageSection` で該当 section に `scrollIntoView({ behavior: 'smooth' })`
 - **狭幅レスポンシブ**: `@media (max-width: 900px)` で page-nav 列を隠す (デスクトップ前提、モバイル UI は別ドキュメント)
 
 **リファレンス実装 (vercel-labs/mdxg)**
 
 - parser: `Page[]`（depth 1 / 2 順序保持）を提供。`packages/parser/src/index.ts`
-- web: 左サイドバー `<nav>` + `<ul ref={tocListRef}>` に depth でインデントしたページ一覧を出力。`activePageIndex` をハイライト（`border-l-primary` + `bg-primary/10`）、H1 配下の H2 グループはシェブロンで折りたたみ可能。Next.js Router で `pageHrefs` 経由の URL 同期、モバイル時は `vaul` Drawer に切替。`apps/web/src/components/mdxg-viewer.tsx`
+- web: 左サイドバー `<nav>` + `<ul ref={tocListRef}>` に depth でインデントしたページ一覧を出力。`activePageIndex` をハイライト（`border-l-primary` + `bg-primary/10`）、H1 配下の H2 グループはシェブロンで折りたたみ可能。Single Page 表示 (1 ページずつ render) で Next.js Router の `pageHrefs` 経由の URL 同期、モバイル時は `vaul` Drawer に切替。`apps/web/src/components/mdxg-viewer.tsx`
 
-**本実装との差異**: H1 配下の H2 折りたたみ caret は本実装では未実装 (TOC は flat list + depth インデント)。Next.js Router 相当は `location.hash` 直接書き換えで代替。
+**本実装との差異**: 本実装は **Stacked View 採用** (全 page を縦に並べて連続スクロール、Word 風シート)。リファレンス実装は Single Page (1 ページずつ表示)。H1 配下の H2 折りたたみ caret は本実装では未実装 (TOC は flat list + depth インデント)。Next.js Router 相当は `location.hash` 直接書き換えで代替。
 
 #### §8 Page Outline（準拠）
 
-- [MUST] アクティブページ内 H3–H6 のみ含める: ✓（`app/page-navigation.ts` の `renderOutlineList` が active page のみで展開、`core/page-outline.ts` の `extractPageHeadings` が H3–H6 だけ抽出）
+- [MUST] アクティブページ内 H3–H6 のみ含める: ✓（`app/page-navigation.ts` の `renderOutlineList` が active page (= page scroll-spy で同期される `state.activePageIndex`) のみで展開、`core/page-outline.ts` の `extractPageHeadings` が H3–H6 だけ抽出）
 - [MUST] 各見出しがナビゲート可能: ✓（`core/markdown.ts` の `MarkdownRenderOptions.headingSlugs` で H3–H6 に `id="<slug>"` を注入、outline link クリック → `scroll-spy.ts` の `scrollToHeading` で smooth `scrollIntoView`）
 - [SHOULD] 深さの視覚的伝達: ✓（`.page-outline-link-level-3` 〜 `-6` で段階インデント `padding-left: 32/44/56/68px`）
 - [SHOULD] 現在可視の見出しを示す（スクロールスパイ）: ✓（`app/scroll-spy.ts` の `IntersectionObserver` で `rootMargin: '0px 0px -75% 0px'` のトリガゾーンに入った topmost heading に `aria-current="location"`）
@@ -636,10 +638,11 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 
 **実装詳細**
 
+- **Stacked View での active page 追従**: page scroll-spy で `state.activePageIndex` が変わると `setOnPageActivated(renderPageNavigation)` 経由で outline 表示も自動切替される。マウスホイールでページ境界を跨ぐと TOC 配下の outline も current page のものに自動更新される
 - **URL fragment 形式**: ページ内見出しへの deep link は `#<page-slug>__<heading-slug>` (区切りは `__` 二連 underscore、本実装独自規約、mdxg-virtual-pages.md §6.4)。`pages.ts` の `parseHashSlug` / `resolveTargetFromHash` が page slug + heading slug に分解
 - **deep link スクロール**: 初期ロード / hashchange のいずれでも `scrollToHeadingIfPresent` 1 ヘルパに集約され、即時 `setActiveHeadingImmediately` で outline link をハイライトしてから smooth scroll
 - **pure な topmost 解決**: `pickTopmostHeading` は DOM 直接依存を排し callback (`resolveOffsetTop`) ベースに、node 環境でテスト可能 (`CSS.escape` を避けて attribute selector `[id="<slug>"]` を使う)
-- **observer lifecycle**: `renderAll` のたびに `setupScrollSpy` で teardown → 新規 attach (memory リーク防止)
+- **observer lifecycle**: `renderAll` のたびに `setupScrollSpy` / `setupPageScrollSpy` で teardown → 新規 attach (memory リーク防止)
 
 **リファレンス実装 (vercel-labs/mdxg)**
 
@@ -650,21 +653,22 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 
 #### §9 Sequential Navigation（準拠）
 
-- [SHOULD] 前 / 次ページのタイトル可視化: ✓（`app/sequential-nav.ts` の `.sequential-nav-title` に Prev / Next の隣接ページタイトルを表示）
-- [MUST] 適用不可コントロールの hidden / disabled: ✓（最初ページでは Prev リンクを DOM から omit、最後ページでは Next を omit。単一ページ / 0 ページでは `<nav>` 全体に `hidden` 属性）
-- [MUST] 少なくとも 1 箇所からのアクセス: ✓（本文末尾の `<nav class="sequential-nav">` で 1 箇所充足）
+- [SHOULD] 前 / 次ページのタイトル可視化: ✓（`app/page-navigation.ts` の `.page-nav-sequential-title` に Prev / Next の隣接ページタイトルを表示）
+- [MUST] 適用不可コントロールの hidden / disabled: ✓（最初ページでは Prev リンクを DOM から omit、最後ページでは Next を omit。単一ページ / 0 ページでは row 自体が空文字で出ない）
+- [MUST] 少なくとも 1 箇所からのアクセス: ✓（左 TOC 上部の `<nav class="page-nav-sequential">` で 1 箇所充足。加えて Stacked View ではマウスホイールだけでも前後ページに到達できるため、§9 [MUST] の「逐次移動の提供」は連続スクロール側にも実態が宿る）
 
 **実装詳細**
 
-- **配置**: `<section class="doc-pane">` 末尾 (`#doc` の直後) に固定で配置。flex + `margin-left: auto` で Prev=左 / Next=右 を維持し、片方欠落でも他方の位置は固定
-- **click 経路統合**: TOC / outline / Sequential Nav すべてが同じ `onCompositeSlugClick` → `navigateToTarget` に流れ、`renderAll` で全 view が同期する
+- **配置**: 左 TOC (`<aside class="page-nav">`) の `<ul>` 上端に Prev/Next row を `<nav class="page-nav-sequential">` として置く。flex + `margin-left: auto` で Prev=左 / Next=右 を維持し、片方欠落でも他方の位置は固定
+- **本文末尾の Sequential Nav は撤去**: Stacked View で全 page が連続表示されるため、本文末尾の `.sequential-nav` (`sequential-nav.ts`) は冗長と判断して撤去 (mdxg-virtual-pages.md §14)。TOC 上部に統合することで、レビュー中常に視界内にある Prev/Next タイトル表示 (§9 [SHOULD]) が確保される
+- **click 経路統合**: TOC / outline / 統合 Sequential row すべてが `findClickedSlug` (`page-navigation.ts`) → `onCompositeSlugClick` → `navigateToTarget` に流れ、page 切替時は該当 section に `scrollIntoView`
 
 **リファレンス実装 (vercel-labs/mdxg)**
 
 - parser: 該当責務なし
 - web: ツールバーの ‹ / › button（先頭 / 末尾で `disabled`、`aria-label` でタイトル明示）+ ページ末尾の "Previous / Next" タイトル付きリンクの 2 箇所からアクセス可能。`apps/web/src/components/mdxg-viewer.tsx`
 
-**本実装との差異**: ツールバー側 Prev / Next ボタンは未実装。本文末尾の 1 箇所で §9 [MUST] は充足。
+**本実装との差異**: 本実装は Stacked View での連続スクロール + TOC 上部の統合 Prev/Next row。リファレンス実装はツールバー Prev/Next + ページ末尾リンクの 2 箇所構成 (Single Page 表示前提)。
 
 #### §10 Search（未対応）
 
