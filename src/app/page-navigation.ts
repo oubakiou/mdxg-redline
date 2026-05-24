@@ -176,11 +176,13 @@ if (import.meta.vitest) {
 
   describe('toPageItemViewModel', () => {
     const basePage: Page = {
+      ancestorHeadingPath: [],
       depth: 1,
       headings: [],
       index: 0,
       markdown: '',
       slug: 'intro',
+      sourceLineEnd: 1,
       sourceLineStart: 1,
       title: 'Intro',
     }
@@ -210,11 +212,13 @@ if (import.meta.vitest) {
 
   describe('renderOutlineList (Phase 4 §8.3 inline outline)', () => {
     const basePage: Page = {
+      ancestorHeadingPath: [],
       depth: 1,
       headings: [],
       index: 0,
       markdown: '',
       slug: 'overview',
+      sourceLineEnd: 1,
       sourceLineStart: 1,
       title: 'Overview',
     }

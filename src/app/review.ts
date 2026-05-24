@@ -233,7 +233,9 @@ const dummyCommentForTest = (id: string): Comment => ({
   created: '',
   endOffset: 0,
   id,
+  pageIndex: 0,
   quote: '',
+  sourceLine: 1,
   startOffset: 0,
 })
 

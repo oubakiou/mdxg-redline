@@ -46,16 +46,30 @@ const applyMark = (blockEl: Element, comment: Comment): void => {
   wrapRangeWithMark(built, comment.id)
 }
 
-/** state.comments を blockId キーでグルーピングする。再描画時にブロック単位でまとめて処理するための前処理 */
+const pushIntoBucket = (byBlock: Map<string, Comment[]>, comment: Comment): void => {
+  const bucket = byBlock.get(comment.blockId)
+  if (bucket) {
+    bucket.push(comment)
+    return
+  }
+  byBlock.set(comment.blockId, [comment])
+}
+
+/**
+ * state.comments を blockId キーでグルーピングする。
+ *
+ * Phase 5: 仮想ページ導入で blockId はページスコープ (`b001` から page 内連番) になったため、
+ * 他ページのコメントを含めて groupBy すると同じ blockId が異なるブロックを指す可能性がある
+ * (mdxg-virtual-pages.md §7.1)。`activePageIndex` でフィルタしてから group することで
+ * 「現ページ DOM 上の blockId」と「現ページに属するコメント」だけが噛み合うことを保証する。
+ */
 const commentsGroupedByBlock = (): Map<string, Comment[]> => {
   const byBlock = new Map<string, Comment[]>()
-  for (const comment of state.comments) {
-    const bucket = byBlock.get(comment.blockId)
-    if (bucket) {
-      bucket.push(comment)
-    } else {
-      byBlock.set(comment.blockId, [comment])
-    }
+  const currentPageComments = state.comments.filter(
+    (comment): boolean => comment.pageIndex === state.activePageIndex
+  )
+  for (const comment of currentPageComments) {
+    pushIntoBucket(byBlock, comment)
   }
   return byBlock
 }
@@ -116,14 +130,17 @@ export const reapplyAllMarks = (): void => {
   }
 }
 
-// テスト用のダミーコメント生成 (overrides で必要なフィールドだけ上書きできる)
+// テスト用のダミーコメント生成 (overrides で必要なフィールドだけ上書きできる)。
+// Phase 5 で sourceLine / pageIndex が必須化されたため default 値を入れる。
 const dummyComment = (overrides: Partial<Comment> = {}): Comment => ({
   blockId: 'b001',
   comment: '',
   created: '',
   endOffset: 0,
   id: 'x',
+  pageIndex: 0,
   quote: '',
+  sourceLine: 1,
   startOffset: 0,
   ...overrides,
 })

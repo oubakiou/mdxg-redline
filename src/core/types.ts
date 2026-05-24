@@ -1,12 +1,27 @@
-/** 1 件分のコメント（位置情報＋本文＋メタ）。state.comments / 永続化 / エクスポート JSON で共通の形 */
+/**
+ * 1 件分のコメント（位置情報＋本文＋メタ）。
+ *
+ * `blockId` / `startOffset` / `endOffset` は内部 DOM anchor (mark を貼り直すのに必要)。
+ * `sourceLine` は元 markdown 全体での 1-origin 行番号で、export feedback.json にも出る位置参照。
+ * `pageIndex` は所属仮想ページの 0-origin index で、state 内では必須。export には含めない
+ * (LLM が解釈できない UI 内部 anchor は出力から除く方針、DESIGN.md §5 /
+ *  mdxg-virtual-pages.md §6.5 / §11 参照)。
+ *
+ * 不変条件 (§6.6):
+ * - sourceLine は 1 以上の整数。欠損 / 0 以下は破棄
+ * - pageIndex は `0 <= pageIndex < state.pages.length`。範囲外は破棄
+ * - blockId は当該ページスコープで `b001` から連番 (§7.1)
+ */
 export interface Comment {
-  id: string
-  quote: string
-  comment: string
   blockId: string
-  startOffset: number
-  endOffset: number
+  comment: string
   created: string
+  endOffset: number
+  id: string
+  pageIndex: number
+  quote: string
+  sourceLine: number
+  startOffset: number
 }
 
 /** 選択範囲を伴う保留状態。フローター・モーダルが共有する形 */

@@ -71,13 +71,17 @@ export const commentCountLabel = (count: number): string => {
   return `${count} comments`
 }
 
+// Phase 5 で pageIndex / sourceLine が必須化されたが、テストでは個別 case ごとに必要な値だけ
+// overrides で差し替えれば十分。固定 default で fixture を最小限に留める。
 const dummyCommentForTest = (id: string): Comment => ({
   blockId: '',
   comment: '',
   created: '',
   endOffset: 1,
   id,
+  pageIndex: 0,
   quote: '',
+  sourceLine: 1,
   startOffset: 0,
 })
 

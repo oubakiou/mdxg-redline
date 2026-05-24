@@ -104,12 +104,28 @@ const getActivePageHeadingSlugs = (): readonly string[] => {
 
 /**
  * page markdown に対して buildBlockAnchors を呼び、sourceLine を元 markdown 全体の
- * 1-origin 行番号にオフセットする。
+ * 1-origin 行番号にオフセットする。さらに、当該ページが H2 ページの場合は祖先 H1 の
+ * 見出し文字列を headingPath の先頭に prepend する (mdxg-virtual-pages.md §9.3)。
+ *
  * 元 markdown 全体の sourceLine 維持は feedback.json export スキーマ互換の前提
  * (DESIGN.md §5 / mdxg-virtual-pages.md §7.2 / §11)。
- * Phase 2 時点では headingPath にページ境界の H1/H2 ancestor が欠ける既知制約があるが
- * Phase 5 で修正予定 (mdxg-virtual-pages.md §9.3)。
+ * ancestorHeadingPath は splitIntoPages が事前に計算して Page に持たせている (§9.3)。
  */
+interface AnchorDecoratorParams {
+  ancestor: readonly string[]
+  anchors: ReturnType<typeof buildBlockAnchors>
+  offset: number
+}
+
+const decorateAnchors = (params: AnchorDecoratorParams): void => {
+  for (const anchor of params.anchors.values()) {
+    anchor.sourceLine += params.offset
+    if (params.ancestor.length > 0) {
+      anchor.headingPath = [...params.ancestor, ...anchor.headingPath]
+    }
+  }
+}
+
 const buildBlockAnchorsForActivePage = (
   pageMarkdown: string
 ): ReturnType<typeof buildBlockAnchors> => {
@@ -118,13 +134,11 @@ const buildBlockAnchorsForActivePage = (
   if (!activePage) {
     return anchors
   }
-  const offset = activePage.sourceLineStart - 1
-  if (offset === 0) {
-    return anchors
-  }
-  for (const anchor of anchors.values()) {
-    anchor.sourceLine += offset
-  }
+  decorateAnchors({
+    ancestor: activePage.ancestorHeadingPath,
+    anchors,
+    offset: activePage.sourceLineStart - 1,
+  })
   return anchors
 }
 

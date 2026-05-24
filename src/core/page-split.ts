@@ -13,14 +13,24 @@ import { resolveUniqueSlug, slugifyOrFallback } from './slugify'
 /**
  * 仮想ページ 1 枚分のデータ。
  * markdown は元 markdown の連続するサブストリングで、連結すると元 markdown と一致する。
- * sourceLineStart は 1-origin で、export feedback.json の sourceLine 計算の基準にもなる。
+ * sourceLineStart / sourceLineEnd は 1-origin で、当該ページの markdown 内行が
+ * `[sourceLineStart, sourceLineEnd]` の範囲を占める (両端含む)。export feedback.json の
+ * sourceLine 計算と、sourceLine → pageIndex の逆引き範囲チェックに使う。
+ *
+ * ancestorHeadingPath: 当該ページの祖先見出し (浅い順、ATX 表記、自身は含めない)。
+ * H1 ページ / Introduction では空配列、H2 ページでは直近の祖先 H1 を 1 要素含む。
+ * doc-renderer.ts が page スコープで build した blockAnchors の headingPath にこれを
+ * prepend することで、ページ境界の H1 / H2 を含む完全な祖先 path を export feedback.json に
+ * 反映する (mdxg-virtual-pages.md §9.3)。
  */
 export interface Page {
+  ancestorHeadingPath: readonly string[]
   depth: 1 | 2
   headings: Heading[]
   index: number
   markdown: string
   slug: string
+  sourceLineEnd: number
   sourceLineStart: number
   title: string
 }
@@ -33,6 +43,13 @@ interface PageBoundaryMarker {
 
 interface RawPage {
   depth: 1 | 2
+  /**
+   * §6.2 で導入される暗黙の "Introduction" ページかどうか。
+   * 暗黙 Intro は markdown ソースに対応する見出しトークンを持たないので、
+   * 後続 H2 ページの祖先 (ancestorHeadingPath) としては数えない (mdxg-virtual-pages.md §9.3)。
+   * ユーザーが実 H1 で "Introduction" と書いた場合はこのフラグは false で、通常の祖先扱いになる。
+   */
+  isIntroduction: boolean
   markdown: string
   sourceLineStart: number
   title: string
@@ -96,11 +113,18 @@ const buildIntroductionPage = (context: SliceContext, firstMarkerLine: number): 
   if (introMd.trim().length === 0) {
     return null
   }
-  return { depth: 1, markdown: introMd, sourceLineStart: 1, title: INTRODUCTION_TITLE }
+  return {
+    depth: 1,
+    isIntroduction: true,
+    markdown: introMd,
+    sourceLineStart: 1,
+    title: INTRODUCTION_TITLE,
+  }
 }
 
 const buildMarkerPage = (args: MarkerSliceArgs): RawPage => ({
   depth: args.marker.depth,
+  isIntroduction: false,
   markdown: sliceByLineRange(args.context, args.marker.lineIndex, args.endLine),
   sourceLineStart: args.marker.lineIndex + 1,
   title: args.marker.title,
@@ -132,7 +156,7 @@ const pushMarkerPages = (
 }
 
 const singlePageFallback = (markdown: string, fallbackTitle: string): RawPage[] => [
-  { depth: 1, markdown, sourceLineStart: 1, title: fallbackTitle },
+  { depth: 1, isIntroduction: false, markdown, sourceLineStart: 1, title: fallbackTitle },
 ]
 
 const sliceMarkdownByMarkers = (
@@ -154,18 +178,89 @@ const sliceMarkdownByMarkers = (
   return pages
 }
 
-const finalizePage = (raw: RawPage, index: number, usedSlugs: Set<string>): Page => {
-  const baseSlug = slugifyOrFallback(raw.title, `page-${index + 1}`)
-  const slug = resolveUniqueSlug(baseSlug, usedSlugs)
+interface FinalizeContext {
+  ancestorHeadingPath: readonly string[]
+  index: number
+  usedSlugs: Set<string>
+}
+
+/**
+ * RawPage が占有する元 markdown 行の末尾 (1-origin, 両端含む) を計算する。
+ * block-anchors.ts の `lineCursor` 増分 (newline 数を sourceLine に足す) と同じ counting に
+ * 揃え、当該ページ内ブロックが取り得る最大 sourceLine と一致させる。
+ *
+ * - 末尾改行あり / なしを `trailingDelta` で吸収
+ * - 空 markdown (markdown.length === 0) は `sourceLineStart - 1` を返し、`start > end` で
+ *   「行を占有しない」状態を表現する (findPageIndexBySourceLine の範囲チェックで自然に弾かれる)
+ */
+const trailingNewlineDelta = (markdown: string): number => {
+  if (markdown.endsWith('\n')) {
+    return 0
+  }
+  return 1
+}
+
+const computePageEndLine = (raw: RawPage): number => {
+  if (raw.markdown.length === 0) {
+    return raw.sourceLineStart - 1
+  }
+  const newlines = (raw.markdown.match(/\n/gu) || []).length
+  return raw.sourceLineStart + newlines + trailingNewlineDelta(raw.markdown) - 1
+}
+
+const finalizePage = (raw: RawPage, context: FinalizeContext): Page => {
+  const baseSlug = slugifyOrFallback(raw.title, `page-${context.index + 1}`)
+  const slug = resolveUniqueSlug(baseSlug, context.usedSlugs)
   return {
+    ancestorHeadingPath: context.ancestorHeadingPath,
     depth: raw.depth,
     headings: extractPageHeadings(raw.markdown),
-    index,
+    index: context.index,
     markdown: raw.markdown,
     slug,
+    sourceLineEnd: computePageEndLine(raw),
     sourceLineStart: raw.sourceLineStart,
     title: raw.title,
   }
+}
+
+/**
+ * 各 RawPage について「直近の祖先 H1 のタイトル」を計算し、headingPath 用の祖先配列を返す。
+ *
+ * - 暗黙の Introduction ページ (`isIntroduction === true`) は markdown ソースに対応する見出し
+ *   トークンを持たないため、後続 H2 の祖先には数えない
+ * - 実際のユーザー H1 ページが title="Introduction" の場合は通常通り祖先となる
+ *   (mdxg-virtual-pages.md §9.3 / §7.6)
+ * - ATX 表記 (`# Title`) で再構築する。setext H1 ("Title\n===") との混在を避けるための正規化で、
+ *   `block-anchors.ts` の `token.raw` 由来 headingPath と表記が一部分岐するが、後段 LLM が
+ *   読みやすい統一表記として ATX に揃える方針
+ */
+interface AncestorState {
+  mostRecentH1Title: string | null
+}
+
+const ancestorPathForH2 = (state: AncestorState): readonly string[] => {
+  if (state.mostRecentH1Title === null) {
+    return []
+  }
+  return [`# ${state.mostRecentH1Title}`]
+}
+
+const stepAncestor = (page: RawPage, state: AncestorState): readonly string[] => {
+  if (page.depth === 1) {
+    if (!page.isIntroduction) {
+      state.mostRecentH1Title = page.title
+    }
+    return []
+  }
+  return ancestorPathForH2(state)
+}
+
+const computeAncestorHeadingPaths = (
+  rawPages: readonly RawPage[]
+): readonly (readonly string[])[] => {
+  const state: AncestorState = { mostRecentH1Title: null }
+  return rawPages.map((page): readonly string[] => stepAncestor(page, state))
 }
 
 /**
@@ -173,14 +268,45 @@ const finalizePage = (raw: RawPage, index: number, usedSlugs: Set<string>): Page
  * - H1 / H2 (ATX / setext) で境界分割し、コードフェンス内見出しは境界として扱わない (§6.1)
  * - 見出し前の非空 content は "Introduction" ページとして先頭に追加 (§6.2 / §7.6)
  * - H1 / H2 が無い文書は `docName` (未指定なら "Document") を title とした単一ページに正規化 (§7.5)
- * - 各ページに slug (ASCII 限定 + fallback / -N suffix) と H3–H6 outline を埋め込む
+ * - 各ページに slug (ASCII 限定 + fallback / -N suffix)、H3–H6 outline、
+ *   祖先 H1 を含む ancestorHeadingPath (§9.3) を埋め込む
  */
+/**
+ * 元 markdown 全体の sourceLine (1-origin) から所属 page index を逆引きする。
+ * embedded-feedback / Open file 経由で読み込んだコメントに `pageIndex` を埋める用途
+ * (mdxg-virtual-pages.md §9.1)。
+ *
+ * - sourceLine < 1 → null (§6.6 invariant: sourceLine は 1 以上の正整数)
+ * - pages が空 → null
+ * - `sourceLineStart <= sourceLine <= sourceLineEnd` を満たす page の index を返す
+ * - どの page にも収まらない (sourceLine が doc 全体の範囲を超える / 別文書由来) → null
+ *   末尾ページへの吸着はせず破棄を選ぶ (mdxg-virtual-pages.md §6.6 / §9.1)
+ */
+export const findPageIndexBySourceLine = (
+  pages: readonly Page[],
+  sourceLine: number
+): number | null => {
+  if (sourceLine < 1 || pages.length === 0) {
+    return null
+  }
+  for (const [index, page] of pages.entries()) {
+    if (sourceLine >= page.sourceLineStart && sourceLine <= page.sourceLineEnd) {
+      return index
+    }
+  }
+  return null
+}
+
 export const splitIntoPages = (markdown: string, options: SplitOptions = {}): Page[] => {
   const fallbackTitle = options.docName ?? DEFAULT_FALLBACK_TITLE
   const markers = toBoundaryMarkers(scanHeadings(markdown))
   const rawPages = sliceMarkdownByMarkers(markdown, markers, fallbackTitle)
+  const ancestors = computeAncestorHeadingPaths(rawPages)
   const usedSlugs = new Set<string>()
-  return rawPages.map((raw, index): Page => finalizePage(raw, index, usedSlugs))
+  return rawPages.map(
+    (raw, index): Page =>
+      finalizePage(raw, { ancestorHeadingPath: ancestors[index], index, usedSlugs })
+  )
 }
 
 if (import.meta.vitest) {
@@ -350,6 +476,104 @@ if (import.meta.vitest) {
       const md = '# A\n\n### A.1\n\nbody\n\n## B\n\n### B.1\n'
       const pages = splitIntoPages(md)
       expect(pages[1].headings[0].sourceLineOffset).toBe(2)
+    })
+  })
+
+  describe('splitIntoPages: ancestorHeadingPath (§9.3)', () => {
+    it('H1 ページ自身の ancestorHeadingPath は空配列', () => {
+      const pages = splitIntoPages('# A\n\nbody\n')
+      expect(pages[0].ancestorHeadingPath).toEqual([])
+    })
+
+    it('H2 ページの ancestor は直前の H1 を含む', () => {
+      const pages = splitIntoPages('# Root\n\n## Sub\n\nbody\n')
+      expect(pages[1].ancestorHeadingPath).toEqual(['# Root'])
+    })
+
+    it('H1 を挟まずに H2 ページから始まる場合は ancestor 空', () => {
+      const pages = splitIntoPages('## A\n\nbody\n')
+      expect(pages[0].ancestorHeadingPath).toEqual([])
+    })
+
+    it('暗黙の Introduction ページは H2 の祖先として数えない', () => {
+      const pages = splitIntoPages('prelude\n\n## A\n\nbody\n')
+      expect(pages.map((page): string => page.title)).toEqual(['Introduction', 'A'])
+      expect(pages[0].ancestorHeadingPath).toEqual([])
+      // Introduction を挟んでいるが直前に H1 が無いので H2 "A" の ancestor も空
+      expect(pages[1].ancestorHeadingPath).toEqual([])
+    })
+
+    it('複数 H1 を挟むと H2 の ancestor は直近の H1 だけを指す', () => {
+      const pages = splitIntoPages('# First\n\n# Second\n\n## Sub\n\nbody\n')
+      expect(pages[2].ancestorHeadingPath).toEqual(['# Second'])
+    })
+
+    it('ユーザーが H1 で "Introduction" と書いた場合は通常の祖先扱いになる', () => {
+      const pages = splitIntoPages('# Introduction\n\n## Sub\n\nbody\n')
+      expect(pages[0].ancestorHeadingPath).toEqual([])
+      expect(pages[1].ancestorHeadingPath).toEqual(['# Introduction'])
+    })
+  })
+
+  describe('findPageIndexBySourceLine (Phase 5 §9.1 逆引き)', () => {
+    it('各ページの [sourceLineStart, sourceLineEnd] 範囲内の sourceLine をそのページに割り当てる', () => {
+      const pages = splitIntoPages('# A\n\nbody\n\n## B\n\nmore\n\n# C\n\ntail\n')
+      // # A は line 1-4, ## B は line 5-8, # C は line 9-11
+      expect(findPageIndexBySourceLine(pages, 1)).toBe(0)
+      expect(findPageIndexBySourceLine(pages, 3)).toBe(0)
+      expect(findPageIndexBySourceLine(pages, 5)).toBe(1)
+      expect(findPageIndexBySourceLine(pages, 8)).toBe(1)
+      expect(findPageIndexBySourceLine(pages, 9)).toBe(2)
+    })
+
+    it('Introduction を挟む場合も sourceLine 範囲で正しく割り当てる', () => {
+      const pages = splitIntoPages('prelude\n\n# A\n\nbody\n')
+      expect(pages.map((page): string => page.title)).toEqual(['Introduction', 'A'])
+      expect(findPageIndexBySourceLine(pages, 1)).toBe(0)
+      expect(findPageIndexBySourceLine(pages, 3)).toBe(1)
+    })
+
+    it('sourceLine < 1 は null (§6.6 invariant 違反)', () => {
+      const pages = splitIntoPages('# A\n')
+      expect(findPageIndexBySourceLine(pages, 0)).toBeNull()
+      expect(findPageIndexBySourceLine(pages, -5)).toBeNull()
+    })
+
+    it('pages 空配列は null', () => {
+      expect(findPageIndexBySourceLine([], 1)).toBeNull()
+    })
+
+    it('doc 全体の最終行を超える sourceLine は末尾ページへ吸着せず null (§6.6 / §9.1)', () => {
+      const pages = splitIntoPages('# A\n\nbody\n')
+      // # A は line 1-3 (markdown は "# A\n\nbody\n")
+      expect(findPageIndexBySourceLine(pages, 4)).toBeNull()
+      expect(findPageIndexBySourceLine(pages, 100)).toBeNull()
+    })
+
+    it('各ページの sourceLineEnd ぴったりは当該ページ、+1 で次ページ or null', () => {
+      const pages = splitIntoPages('# A\n\nbody\n\n## B\n\ntail\n')
+      // # A は line 1-4, ## B は line 5-7
+      expect(findPageIndexBySourceLine(pages, 4)).toBe(0)
+      expect(findPageIndexBySourceLine(pages, 5)).toBe(1)
+      expect(findPageIndexBySourceLine(pages, 7)).toBe(1)
+      expect(findPageIndexBySourceLine(pages, 8)).toBeNull()
+    })
+  })
+
+  describe('Page.sourceLineEnd (Phase 5 fix)', () => {
+    it('各ページが占有する元 markdown 行の末尾を 1-origin で持つ', () => {
+      const pages = splitIntoPages('# A\n\nbody\n\n## B\n\ntail\n')
+      // markdown 全体: line 1 "# A", line 2 "", line 3 "body", line 4 "", line 5 "## B", line 6 "", line 7 "tail", line 8 ""
+      // Page A markdown "# A\n\nbody\n\n" は line 1-4
+      expect(pages[0].sourceLineEnd).toBe(4)
+      // Page B markdown "## B\n\ntail\n" は line 5-7
+      expect(pages[1].sourceLineEnd).toBe(7)
+    })
+
+    it('末尾改行なし markdown でも end が正しく計算される', () => {
+      const pages = splitIntoPages('# A\n\nbody')
+      // line 1 "# A", line 2 "", line 3 "body"
+      expect(pages[0].sourceLineEnd).toBe(3)
     })
   })
 }

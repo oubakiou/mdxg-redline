@@ -162,11 +162,13 @@ export const syncHashFromActivePage = (headingSlug: string | null = null): void 
 // mark-engine.ts の dummyComment と同じく module scope に置く (vite が test ブロックを
 // dead-code 除去するため production bundle には残らない)。
 const dummyPage = (overrides: Partial<Page> = {}): Page => ({
+  ancestorHeadingPath: [],
   depth: 1,
   headings: [],
   index: 0,
   markdown: '',
   slug: 'page',
+  sourceLineEnd: 1,
   sourceLineStart: 1,
   title: 'Page',
   ...overrides,

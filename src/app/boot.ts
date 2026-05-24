@@ -1,8 +1,12 @@
 // --- Boot: workspace > embedded -------------------------------------------
 
+import {
+  type ImportedComment,
+  embeddedCommentsFromUnknown,
+  resolveImportedComments,
+} from '../core/feedback'
 import { markFeedbackWritten, state } from './app-state'
-import type { Comment } from '../core/types'
-import { embeddedCommentsFromUnknown } from '../core/feedback'
+import { findPageIndexBySourceLine } from '../core/page-split'
 import { reapplyAllMarks } from './mark-engine'
 import { renderSidebar } from './sidebar'
 import { restoreWorkspaceHandle } from './workspace'
@@ -19,9 +23,15 @@ export const elementText = (el: { textContent?: string | null } | null): string 
   return ''
 }
 
-/** 取り込んだコメント配列を state に流し込み、再描画まで実施する */
-const applyEmbeddedComments = (comments: Comment[]): void => {
-  state.comments = comments
+/**
+ * import 段階の ImportedComment[] を resolveImportedComments で Comment[] に格上げし、
+ * state にセットして再描画する。sourceLine が markdown 全体の範囲外なコメントは
+ * resolveImportedComments 内で破棄される (§6.6 / §9.1)。
+ */
+const applyEmbeddedComments = (imported: readonly ImportedComment[]): void => {
+  state.comments = resolveImportedComments(imported, (sourceLine): number | null =>
+    findPageIndexBySourceLine(state.pages, sourceLine)
+  )
   markFeedbackWritten()
   reapplyAllMarks()
   renderSidebar()

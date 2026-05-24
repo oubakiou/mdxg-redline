@@ -115,17 +115,46 @@ const updateOutputButtonsDisabled = (empty: boolean, dirty: boolean): void => {
   }
 }
 
+/**
+ * サイドバー上部の件数表示を組み立てる (Phase 5 / mdxg-virtual-pages.md §9.2)。
+ * - 単一ページ文書 (pages.length <= 1): `N` 形式 (this page = all なので冗長な括弧表示は避ける)
+ * - 複数ページ文書: `N / M` 形式 (N=this page, M=all)
+ */
+export const formatPageScopedCommentCount = (
+  thisPage: number,
+  total: number,
+  hasMultiplePages: boolean
+): string => {
+  if (!hasMultiplePages) {
+    return String(total)
+  }
+  return `${thisPage} / ${total}`
+}
+
+const commentBelongsToActivePage = (comment: Comment): boolean =>
+  comment.pageIndex === state.activePageIndex
+
+const updateSidebarHeader = (visibleCount: number, total: number): void => {
+  qs('#cmt-count').textContent = formatPageScopedCommentCount(
+    visibleCount,
+    total,
+    state.pages.length > 1
+  )
+  // dirty / 出力ボタンの有効化判定は「全コメント基準」で行う。export は全ページ分が対象なので
+  // this page だけ空でも全体に書き出せる comments があれば Write feedback.json は押せて良い。
+  updateOutputButtonsDisabled(total === 0, isFeedbackDirty())
+}
+
 export const renderSidebar = (): void => {
   const list = qs('#cmt-list')
-  const empty = state.comments.length === 0
-  qs('#cmt-count').textContent = String(state.comments.length)
-  updateOutputButtonsDisabled(empty, isFeedbackDirty())
-  if (empty) {
+  const visibleComments = state.comments.filter(commentBelongsToActivePage)
+  updateSidebarHeader(visibleComments.length, state.comments.length)
+  if (visibleComments.length === 0) {
     showEmptySidebar(list)
     return
   }
   list.innerHTML = ''
-  for (const comment of orderedComments(state.comments)) {
+  for (const comment of orderedComments(visibleComments)) {
     list.appendChild(createCommentCard(comment, renderSidebar))
   }
 }
@@ -147,7 +176,9 @@ const commentForTest = (id: string): Comment => ({
   created: '2026-05-17T00:00:00.000Z',
   endOffset: 4,
   id,
+  pageIndex: 0,
   quote: 'text',
+  sourceLine: 1,
   startOffset: 0,
 })
 
@@ -200,6 +231,21 @@ if (import.meta.vitest) {
         'known',
         'missing',
       ])
+    })
+  })
+
+  describe('formatPageScopedCommentCount (Phase 5 §9.2)', () => {
+    it('単一ページ文書では全コメント数のみ表示する (this page = all で冗長)', () => {
+      expect(formatPageScopedCommentCount(3, 3, false)).toBe('3')
+    })
+
+    it('複数ページ文書では this page / all 形式で表示する', () => {
+      expect(formatPageScopedCommentCount(1, 5, true)).toBe('1 / 5')
+      expect(formatPageScopedCommentCount(0, 5, true)).toBe('0 / 5')
+    })
+
+    it('this page と all が等しい複数ページ文書でも N / M 形式で出す (一貫性優先)', () => {
+      expect(formatPageScopedCommentCount(2, 2, true)).toBe('2 / 2')
     })
   })
 }

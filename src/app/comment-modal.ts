@@ -33,28 +33,75 @@ export const closeCommentModal = (): void => {
   modalState.pendingSelection = null
 }
 
-/** 保留中の選択範囲と本文からコメントオブジェクトを組み立てる純粋関数 */
-const commentFromSelection = (selection: PendingSelection, body: string): Comment => ({
+interface CommentContext {
+  activePageIndex: number
+  /** active page の sourceLineStart。blockAnchor 解決失敗時の sourceLine フォールバック先 */
+  activePageSourceLineStart: number
+  /** 現在 active page の blockAnchors。`sourceLine` の元 markdown 全体 1-origin 行番号を持つ */
+  blockAnchors: Map<string, { sourceLine: number }>
+}
+
+/**
+ * 保留中の選択範囲と本文からコメントオブジェクトを組み立てる純粋関数。
+ * Phase 5 で sourceLine (元 markdown 全体の行番号) と pageIndex を必須にしたため、
+ * blockAnchors と active page index を context として渡してもらう契約に変えた。
+ *
+ * 該当 blockAnchor が無い場合は active page の `sourceLineStart` にフォールバックする。
+ * §6.6 invariant `sourceLine >= 1` を保つことで、保存直後の state と reload 後の
+ * `isImportableComment` 検証で挙動が一致する (Phase 5 fix: 0 を返して silent drop していた回帰の修正)。
+ * 通常パスでは blockAnchors と DOM blockId が 1:1 なのでフォールバックは触らず、
+ * 構造的不整合があった場合の防御的経路として残す。
+ */
+const resolveSourceLine = (blockId: string, context: CommentContext): number => {
+  const anchor = context.blockAnchors.get(blockId)
+  if (!anchor) {
+    return context.activePageSourceLineStart
+  }
+  return anchor.sourceLine
+}
+
+const commentFromSelection = (
+  selection: PendingSelection,
+  body: string,
+  context: CommentContext
+): Comment => ({
   blockId: selection.blockId,
   comment: body,
   created: new Date().toISOString(),
   endOffset: selection.endOffset,
   id: uid(),
+  pageIndex: context.activePageIndex,
   quote: selection.quote,
+  sourceLine: resolveSourceLine(selection.blockId, context),
   startOffset: selection.startOffset,
 })
 
 /**
  * モーダルの「Save」ボタン押下時の処理。
  * 本文空 or 保留選択 null の場合は無視（誤コミット防止）。保存後に modal を閉じる前後で副作用を一通り回す。
+ * `state.blockAnchors` と `state.activePageIndex` を context として渡し、新規コメントに
+ * sourceLine (元 markdown 全体 1-origin) と pageIndex を埋める (mdxg-virtual-pages.md §6.5 / §9.1)。
  */
+const resolveActivePageSourceLineStart = (): number => {
+  const page = state.pages[state.activePageIndex]
+  if (!page) {
+    return 1
+  }
+  return page.sourceLineStart
+}
+
 const saveModalComment = async (): Promise<void> => {
   const body = qsInput('#modal-input').value.trim()
   const selection = modalState.pendingSelection
   if (!body || !selection) {
     return
   }
-  state.comments.push(commentFromSelection(selection, body))
+  const newComment = commentFromSelection(selection, body, {
+    activePageIndex: state.activePageIndex,
+    activePageSourceLineStart: resolveActivePageSourceLineStart(),
+    blockAnchors: state.blockAnchors,
+  })
+  state.comments.push(newComment)
   reapplyAllMarks()
   renderSidebar()
   closeCommentModal()
@@ -86,6 +133,15 @@ export const wireCommentModal = (): void => {
   qs('#modal-save').addEventListener('click', async (): Promise<void> => saveModalComment())
 }
 
+// テスト用 CommentContext fixture。固有の state を持たないため module scope に置く
+// (unicorn/consistent-function-scoping ルール対応)。
+const dummyContext = (overrides: Partial<CommentContext> = {}): CommentContext => ({
+  activePageIndex: 0,
+  activePageSourceLineStart: 1,
+  blockAnchors: new Map(),
+  ...overrides,
+})
+
 if (import.meta.vitest) {
   const { describe, it, expect } = import.meta.vitest
 
@@ -97,7 +153,7 @@ if (import.meta.vitest) {
         quote: '引用テキスト',
         startOffset: 10,
       }
-      const result = commentFromSelection(selection, 'コメント本文')
+      const result = commentFromSelection(selection, 'コメント本文', dummyContext())
       expect(result.blockId).toBe('b001')
       expect(result.startOffset).toBe(10)
       expect(result.endOffset).toBe(20)
@@ -111,9 +167,38 @@ if (import.meta.vitest) {
 
     it('id は呼び出しごとに異なる', () => {
       const sel = { blockId: 'b', endOffset: 1, quote: 'q', startOffset: 0 }
-      const first = commentFromSelection(sel, 'x')
-      const second = commentFromSelection(sel, 'x')
+      const first = commentFromSelection(sel, 'x', dummyContext())
+      const second = commentFromSelection(sel, 'x', dummyContext())
       expect(first.id).not.toBe(second.id)
+    })
+
+    it('pageIndex は context.activePageIndex から取り込まれる (§6.5)', () => {
+      const sel = { blockId: 'b001', endOffset: 1, quote: 'q', startOffset: 0 }
+      const result = commentFromSelection(sel, 'x', dummyContext({ activePageIndex: 3 }))
+      expect(result.pageIndex).toBe(3)
+    })
+
+    it('sourceLine は blockAnchors から逆引きする (元 markdown 全体の 1-origin 維持)', () => {
+      const sel = { blockId: 'b002', endOffset: 1, quote: 'q', startOffset: 0 }
+      const result = commentFromSelection(
+        sel,
+        'x',
+        dummyContext({ blockAnchors: new Map([['b002', { sourceLine: 42 }]]) })
+      )
+      expect(result.sourceLine).toBe(42)
+    })
+
+    it('blockAnchor が見つからなければ activePageSourceLineStart にフォールバック (§6.6 invariant sourceLine>=1 を維持)', () => {
+      const sel = { blockId: 'b999', endOffset: 1, quote: 'q', startOffset: 0 }
+      const result = commentFromSelection(sel, 'x', dummyContext({ activePageSourceLineStart: 42 }))
+      expect(result.sourceLine).toBe(42)
+    })
+
+    it('default dummyContext のフォールバックは 1 (sourceLine >= 1 不変条件を満たす)', () => {
+      const sel = { blockId: 'b999', endOffset: 1, quote: 'q', startOffset: 0 }
+      const result = commentFromSelection(sel, 'x', dummyContext())
+      expect(result.sourceLine).toBe(1)
+      expect(result.sourceLine).toBeGreaterThanOrEqual(1)
     })
   })
 }

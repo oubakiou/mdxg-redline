@@ -133,11 +133,13 @@ export const wireSequentialNav = (wiring: SequentialNavWiring): void => {
 
 // テスト用ダミー Page (in-source test 内でも outer scope に置く既存 pattern)
 const dummyPage = (overrides: Partial<Page> = {}): Page => ({
+  ancestorHeadingPath: [],
   depth: 1,
   headings: [],
   index: 0,
   markdown: '',
   slug: 'page',
+  sourceLineEnd: 1,
   sourceLineStart: 1,
   title: 'Page',
   ...overrides,
