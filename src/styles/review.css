@@ -751,6 +751,15 @@ mark.cmt.active {
   display: flex;
   justify-content: space-between;
 }
+.cmt-page-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--paper-edge);
+  border: 1px solid var(--rule-muted);
+  color: var(--ink-soft);
+  font-size: 10px;
+}
 .cmt-del {
   color: var(--ink-faint);
   cursor: pointer;

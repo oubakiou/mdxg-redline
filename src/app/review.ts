@@ -12,7 +12,12 @@ import {
   setActivePageIndex,
   syncHashFromActivePage,
 } from './pages'
-import { activateSidebarMark, renderSidebar } from './sidebar'
+import {
+  activateSidebarMark,
+  configureSidebarCommentNavigation,
+  focusCommentMarkAfterNavigate,
+  renderSidebar,
+} from './sidebar'
 import {
   buildReviewExportPayload,
   commentCountLabel as formatCommentCount,
@@ -147,10 +152,22 @@ const onCompositeSlugClick = (compositeSlug: string): void => {
   navigateToTarget(resolveTargetFromHash(`#${compositeSlug}`), true)
 }
 
+/**
+ * サイドバーに表示された別ページのコメントカードがクリックされた時の遷移 orchestrator。
+ * navigateToTarget で activePageIndex を切り替えると renderAll が走り、mark-engine が
+ * 新ページの comments を mark 化する。同じ tick で focusCommentMarkAfterNavigate を呼べば
+ * 描画済みの mark を見つけてハイライト + smoothScroll できる。
+ */
+const navigateToComment = (comment: Comment): void => {
+  navigateToTarget({ headingSlug: null, pageIndex: comment.pageIndex }, true)
+  focusCommentMarkAfterNavigate(comment.id)
+}
+
 if (!import.meta.vitest) {
   initSidebarResize()
   wireFloater()
   wireCommentModal()
+  configureSidebarCommentNavigation(navigateToComment)
 
   const commentsMenu = createDropdownMenu({
     buttonId: '#btn-comments-menu',

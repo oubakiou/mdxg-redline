@@ -5,6 +5,18 @@ import { escapeHtml } from '../core/escape'
 import { reapplyAllMarks } from './mark-engine'
 import { smoothScrollToCenter } from './scroll'
 
+/**
+ * 別ページのコメントカードをクリックされた際に呼ばれる navigate ハンドラ。
+ * sidebar は navigateToTarget を直接知らない (循環参照回避) ため、review.ts 側から注入する。
+ */
+let onNavigateToCommentPage: ((comment: Comment) => void) | null = null
+
+export const configureSidebarCommentNavigation = (
+  handler: ((comment: Comment) => void) | null
+): void => {
+  onNavigateToCommentPage = handler
+}
+
 /** mark とカード両方の active 状態を一括解除（ハイライト切り替え時の前処理） */
 const clearActiveComments = (): void => {
   for (const el of document.querySelectorAll('mark.cmt.active, .cmt-card.active')) {
@@ -13,33 +25,33 @@ const clearActiveComments = (): void => {
 }
 
 /**
- * 文書中の出現順（mark 要素の DOM 順）でコメント ID → インデックスを引けるマップ。
- * サイドバーで「上から順に並べる」並び替えのキーに使う。
+ * 全コメントを文書順 (pageIndex → sourceLine → startOffset) に並べたコピーを返す。
+ * mark の DOM 順に依存しないため、サイドバーが全ページのコメントを表示するモードでも
+ * 別ページの mark が DOM 上に存在しない (mark-engine が activePageIndex でフィルタする)
+ * ことに影響されずに決定論的な順序が得られる。
  */
-const commentOrderMap = (): Map<string, number> => {
-  const order = new Map<string, number>()
-  const marks = [...document.querySelectorAll<HTMLElement>('mark.cmt')]
-  for (const [index, mark] of marks.entries()) {
-    const id = mark.dataset.commentId
-    if (id) {
-      order.set(id, index)
+const orderedComments = (comments: Comment[]): Comment[] =>
+  [...comments].toSorted((left, right): number => {
+    if (left.pageIndex !== right.pageIndex) {
+      return left.pageIndex - right.pageIndex
     }
-  }
-  return order
-}
+    if (left.sourceLine !== right.sourceLine) {
+      return left.sourceLine - right.sourceLine
+    }
+    return left.startOffset - right.startOffset
+  })
 
-/**
- * コメント配列を文書出現順に並べたコピーを返す。
- * mark が DOM 上に存在しないコメント（mark 化に失敗した分）は順位 999 として末尾側に寄せる。
- */
-const orderedComments = (comments: Comment[]): Comment[] => {
-  const order = commentOrderMap()
-  return [...comments].toSorted(
-    (left, right): number => (order.get(left.id) ?? 999) - (order.get(right.id) ?? 999)
-  )
+const requestNavigateToCommentPage = (comment: Comment): void => {
+  if (onNavigateToCommentPage !== null) {
+    onNavigateToCommentPage(comment)
+  }
 }
 
 const focusCommentCard = (card: HTMLElement, comment: Comment): void => {
+  if (comment.pageIndex !== state.activePageIndex) {
+    requestNavigateToCommentPage(comment)
+    return
+  }
   const mark = document.querySelector(`mark.cmt[data-comment-id="${comment.id}"]`)
   if (!mark) {
     return
@@ -51,6 +63,39 @@ const focusCommentCard = (card: HTMLElement, comment: Comment): void => {
 }
 
 /**
+ * navigateToTarget 後の DOM 再描画完了直後に呼ぶ「mark をハイライトしつつ本文を mark までスクロール」。
+ * 別ページからのジャンプ経路で focusCommentCard と同等の見た目に揃える。
+ */
+export const focusCommentMarkAfterNavigate = (commentId: string): void => {
+  const mark = document.querySelector(`mark.cmt[data-comment-id="${commentId}"]`)
+  if (!(mark instanceof HTMLElement)) {
+    return
+  }
+  clearActiveComments()
+  mark.classList.add('active')
+  const card = document.querySelector(`.cmt-card[data-id="${commentId}"]`)
+  if (card instanceof HTMLElement) {
+    card.classList.add('active')
+  }
+  smoothScrollToCenter(mark)
+}
+
+/**
+ * 複数ページ文書のサイドバーが全コメントを混ぜて表示する際、各カードがどのページに属するかを
+ * 識別できるよう meta 行先頭にページタイトルバッジを付ける。単一ページ文書では冗長なため省く。
+ */
+const pageBadgeHTML = (comment: Comment): string => {
+  if (state.pages.length <= 1) {
+    return ''
+  }
+  const page = state.pages[comment.pageIndex]
+  if (!page) {
+    return ''
+  }
+  return `<span class="cmt-page-badge">${escapeHtml(page.title)}</span> · `
+}
+
+/**
  * カード 1 枚分の HTML を生成。
  * `escapeHtml` で quote / body を必ずエスケープすることが、ユーザー由来テキストを innerHTML に流す際の前提。
  */
@@ -58,7 +103,7 @@ const commentCardHTML = (comment: Comment): string => `
   <div class="cmt-quote">“${escapeHtml(comment.quote)}”</div>
   <div class="cmt-body">${escapeHtml(comment.comment)}</div>
   <div class="cmt-meta">
-    <span>${comment.blockId} · ${new Date(comment.created).toLocaleString()}</span>
+    <span>${pageBadgeHTML(comment)}${comment.blockId} · ${new Date(comment.created).toLocaleString()}</span>
     <button class="cmt-del" data-del="${comment.id}" aria-label="Delete comment">Delete</button>
   </div>`
 
@@ -115,46 +160,20 @@ const updateOutputButtonsDisabled = (empty: boolean, dirty: boolean): void => {
   }
 }
 
-/**
- * サイドバー上部の件数表示を組み立てる (Phase 5 / mdxg-virtual-pages.md §9.2)。
- * - 単一ページ文書 (pages.length <= 1): `N` 形式 (this page = all なので冗長な括弧表示は避ける)
- * - 複数ページ文書: `N / M` 形式 (N=this page, M=all)
- */
-export const formatPageScopedCommentCount = (
-  thisPage: number,
-  total: number,
-  hasMultiplePages: boolean
-): string => {
-  if (!hasMultiplePages) {
-    return String(total)
-  }
-  return `${thisPage} / ${total}`
-}
-
-const commentBelongsToActivePage = (comment: Comment): boolean =>
-  comment.pageIndex === state.activePageIndex
-
-const updateSidebarHeader = (visibleCount: number, total: number): void => {
-  qs('#cmt-count').textContent = formatPageScopedCommentCount(
-    visibleCount,
-    total,
-    state.pages.length > 1
-  )
-  // dirty / 出力ボタンの有効化判定は「全コメント基準」で行う。export は全ページ分が対象なので
-  // this page だけ空でも全体に書き出せる comments があれば Write feedback.json は押せて良い。
+const updateSidebarHeader = (total: number): void => {
+  qs('#cmt-count').textContent = String(total)
   updateOutputButtonsDisabled(total === 0, isFeedbackDirty())
 }
 
 export const renderSidebar = (): void => {
   const list = qs('#cmt-list')
-  const visibleComments = state.comments.filter(commentBelongsToActivePage)
-  updateSidebarHeader(visibleComments.length, state.comments.length)
-  if (visibleComments.length === 0) {
+  updateSidebarHeader(state.comments.length)
+  if (state.comments.length === 0) {
     showEmptySidebar(list)
     return
   }
   list.innerHTML = ''
-  for (const comment of orderedComments(visibleComments)) {
+  for (const comment of orderedComments(state.comments)) {
     list.appendChild(createCommentCard(comment, renderSidebar))
   }
 }
@@ -183,11 +202,7 @@ const commentForTest = (id: string): Comment => ({
 })
 
 if (import.meta.vitest) {
-  const { afterEach, describe, expect, it, vi } = import.meta.vitest
-
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
+  const { describe, expect, it } = import.meta.vitest
 
   describe('commentCardHTML', () => {
     it('quote と comment を HTML エスケープして描画する', () => {
@@ -204,48 +219,28 @@ if (import.meta.vitest) {
   })
 
   describe('orderedComments', () => {
-    it('本文 mark の DOM 順にコメントを並べる', () => {
-      vi.stubGlobal('document', {
-        querySelectorAll: () => [
-          { dataset: { commentId: 'second' } },
-          { dataset: { commentId: 'first' } },
-        ],
-      })
+    it('pageIndex → sourceLine → startOffset の順で並ぶ (DOM 非依存)', () => {
+      const page0Top = { ...commentForTest('p0-top'), pageIndex: 0, sourceLine: 1, startOffset: 0 }
+      const page0Bottom = {
+        ...commentForTest('p0-bot'),
+        pageIndex: 0,
+        sourceLine: 10,
+        startOffset: 0,
+      }
+      const page1Top = { ...commentForTest('p1-top'), pageIndex: 1, sourceLine: 3, startOffset: 0 }
+      // 入力順を意図的にシャッフルしても出力は文書順に揃う
+      expect(
+        orderedComments([page1Top, page0Bottom, page0Top]).map((comment): string => comment.id)
+      ).toEqual(['p0-top', 'p0-bot', 'p1-top'])
+    })
 
-      const first = commentForTest('first')
-      const second = commentForTest('second')
-      expect(orderedComments([first, second]).map((comment): string => comment.id)).toEqual([
-        'second',
-        'first',
+    it('同じ sourceLine 内では startOffset 順に並ぶ', () => {
+      const left = { ...commentForTest('left'), pageIndex: 0, sourceLine: 5, startOffset: 2 }
+      const right = { ...commentForTest('right'), pageIndex: 0, sourceLine: 5, startOffset: 18 }
+      expect(orderedComments([right, left]).map((comment): string => comment.id)).toEqual([
+        'left',
+        'right',
       ])
-    })
-
-    it('mark が存在しないコメントは末尾に寄せる', () => {
-      vi.stubGlobal('document', {
-        querySelectorAll: () => [{ dataset: { commentId: 'known' } }],
-      })
-
-      const known = commentForTest('known')
-      const missing = commentForTest('missing')
-      expect(orderedComments([missing, known]).map((comment): string => comment.id)).toEqual([
-        'known',
-        'missing',
-      ])
-    })
-  })
-
-  describe('formatPageScopedCommentCount (Phase 5 §9.2)', () => {
-    it('単一ページ文書では全コメント数のみ表示する (this page = all で冗長)', () => {
-      expect(formatPageScopedCommentCount(3, 3, false)).toBe('3')
-    })
-
-    it('複数ページ文書では this page / all 形式で表示する', () => {
-      expect(formatPageScopedCommentCount(1, 5, true)).toBe('1 / 5')
-      expect(formatPageScopedCommentCount(0, 5, true)).toBe('0 / 5')
-    })
-
-    it('this page と all が等しい複数ページ文書でも N / M 形式で出す (一貫性優先)', () => {
-      expect(formatPageScopedCommentCount(2, 2, true)).toBe('2 / 2')
     })
   })
 }
