@@ -111,6 +111,13 @@
     <input type="file" id="file-md" accept=".md,.markdown,text/markdown,text/plain" hidden />
 
     <main class="layout">
+      <!-- 左サイドバー: 仮想ページ TOC (MDXG §7 Page Navigation)。
+           state.pages が空の間は CSS 側の :root:not(.has-pages) ルールで列ごと隠れる。
+           page-nav-list 配下の <ul> は page-navigation.ts が描画する。 -->
+      <aside class="page-nav" id="page-nav" aria-label="Document pages">
+        <div id="page-nav-list"></div>
+      </aside>
+
       <section class="doc-pane">
         <div id="doc-wrap">
           <!-- 初期表示の素の空状態。手元の markdown を 1 ファイル単発で見るユースケース向け。

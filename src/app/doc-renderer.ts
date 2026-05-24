@@ -76,17 +76,56 @@ const refreshBlockOriginalHTML = (doc: HTMLElement): void => {
   }
 }
 
+/**
+ * 現在 activePage の markdown を返す。pages が未確定 (loadFromMarkdown 前) のときは
+ * state.markdown 全体を返して既存の単一ページ render 経路と互換にする。
+ */
+const getActivePageMarkdown = (): string => {
+  const page = state.pages[state.activePageIndex]
+  if (!page) {
+    return state.markdown
+  }
+  return page.markdown
+}
+
+/**
+ * page markdown に対して buildBlockAnchors を呼び、sourceLine を元 markdown 全体の
+ * 1-origin 行番号にオフセットする。
+ * 元 markdown 全体の sourceLine 維持は feedback.json export スキーマ互換の前提
+ * (DESIGN.md §5 / mdxg-virtual-pages.md §7.2 / §11)。
+ * Phase 2 時点では headingPath にページ境界の H1/H2 ancestor が欠ける既知制約があるが
+ * Phase 5 で修正予定 (mdxg-virtual-pages.md §9.3)。
+ */
+const buildBlockAnchorsForActivePage = (
+  pageMarkdown: string
+): ReturnType<typeof buildBlockAnchors> => {
+  const anchors = buildBlockAnchors(pageMarkdown)
+  const activePage = state.pages[state.activePageIndex]
+  if (!activePage) {
+    return anchors
+  }
+  const offset = activePage.sourceLineStart - 1
+  if (offset === 0) {
+    return anchors
+  }
+  for (const anchor of anchors.values()) {
+    anchor.sourceLine += offset
+  }
+  return anchors
+}
+
 /** markdown を HTML 化して #doc に流し込み、ブロック原 HTML と markdown 上のアンカーを更新する */
 const mountRenderedDoc = (doc: HTMLElement, wrap: HTMLElement): void => {
   wrap.style.display = 'none'
   // C 案: 初期 render は highlighter を渡さず marked の plain 出力で paint を稼ぐ。
   // ハイライトは scheduleShikiUpgrade で paint 後に追いかける。
-  doc.innerHTML = renderMarkdown(state.markdown, null)
+  const pageMarkdown = getActivePageMarkdown()
+  doc.innerHTML = renderMarkdown(pageMarkdown, null)
   // cacheBlockOriginalHTML を injectCopyButtons より先に呼び、トップレベル <pre> の場合に
   // blockId が <pre> 自身に付与されるよう順序を保つ (wrap 後だと block-id は <div> 側に移る)。
   cacheBlockOriginalHTML(doc)
   injectCopyButtons(doc)
-  state.blockAnchors = buildBlockAnchors(state.markdown)
+  state.blockAnchors = buildBlockAnchorsForActivePage(pageMarkdown)
 }
 
 const extractLangFromCode = (code: HTMLElement): string | null => {

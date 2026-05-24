@@ -14,8 +14,15 @@ import {
 import { changeOutputFolder, writeFeedback } from './workspace'
 import { closeCommentModal, wireCommentModal } from './comment-modal'
 import { computeDocHash, formatLoadedStatus } from '../core/embed'
+import {
+  findPageBySlug,
+  resolveInitialActivePageIndex,
+  setActivePageIndex,
+  syncHashFromActivePage,
+} from './pages'
 import { markFeedbackUnsaved, state } from './app-state'
 import { qs, toast } from './dom-utils'
+import { renderPageNavigation, wirePageNavigation } from './page-navigation'
 import { boot } from './boot'
 import { createDropdownMenu } from './menu'
 import { initSidebarResize } from './sidebar-resize'
@@ -24,13 +31,20 @@ import { splitIntoPages } from '../core/page-split'
 import { wireFloater } from './floater'
 import { wireToolbar } from './toolbar'
 
+/** loadFromMarkdown / navigateToPage 双方で使う「現状の state を全 view に流す」共通処理 */
+const renderAll = (): void => {
+  renderDoc()
+  renderPageNavigation()
+  renderSidebar()
+}
+
 /**
  * markdown 本文を取り込んで state を構築・描画・ステータス更新する中心ルーチン。
  * 永続化レイヤは workspace-handle のみ（詳細は DESIGN.md §7）。
  *
- * MDXG Virtual Pages 用に markdown 読み込み時点で `state.pages` を確定し、`activePageIndex` を 0
- * にリセットする (docs/mdxg-virtual-pages.md §10 起動シーケンス step 1c)。Phase 1 では UI は
- * 単一ページ render のままで `pages` は state 上に保持されるだけ。
+ * MDXG Virtual Pages 用に markdown 読み込み時点で `state.pages` を確定し、`activePageIndex` は
+ * `location.hash` を参照して解決する (docs/mdxg-virtual-pages.md §10 起動シーケンス step 1c–1d)。
+ * Phase 2 ではこれに加え renderPageNavigation で左サイドバー TOC を描画する。
  */
 export const loadFromMarkdown = async (name: string, text: string): Promise<void> => {
   state.docName = name
@@ -38,11 +52,34 @@ export const loadFromMarkdown = async (name: string, text: string): Promise<void
   state.docHash = await computeDocHash(text)
   state.comments = []
   state.pages = splitIntoPages(text, { docName: name })
-  state.activePageIndex = 0
+  state.activePageIndex = resolveInitialActivePageIndex(globalThis.location.hash)
   markFeedbackUnsaved()
-  renderDoc()
-  renderSidebar()
+  renderAll()
   qs('#status').textContent = formatLoadedStatus(name, state.docHash)
+}
+
+/**
+ * ページ切替の orchestrator。state.activePageIndex を切り替えて DOM の再描画と hash 同期をまとめて行う。
+ * - `pushHash = true` (TOC クリック等): hash も書き換える → hashchange が同 page を再要求しても idempotent
+ * - `pushHash = false` (hashchange 由来): hash は既に変更済みなので書き換えない
+ * `setActivePageIndex` が false を返す (範囲外 / 同 index) ときは何もしない (重複 render 防止)。
+ */
+const navigateToPage = (index: number, pushHash: boolean): void => {
+  if (!setActivePageIndex(index)) {
+    return
+  }
+  if (pushHash) {
+    syncHashFromActivePage()
+  }
+  renderDoc()
+  renderPageNavigation()
+  renderSidebar()
+  // ページ切替時は新ページの top にスクロールする (mdxg-virtual-pages.md §13.4)。
+  // 同一ページのコメント mark へのジャンプ等の特殊ケースは Phase 5 で扱う。
+  const pane = document.querySelector('.doc-pane')
+  if (pane instanceof HTMLElement) {
+    pane.scrollTop = 0
+  }
 }
 
 export const buildExportPayload = (): ExportPayload => buildReviewExportPayload(state)
@@ -101,6 +138,31 @@ if (!import.meta.vitest) {
   qs('#btn-change-output').addEventListener('click', async (): Promise<void> => {
     sendMenu.close()
     await changeOutputFolder()
+  })
+
+  // 左サイドバー TOC のクリック → navigateToPage(idx, pushHash=true)。
+  // anchor の標準クリックで location.hash も同時に更新されるが、hashchange より先に
+  // 即時 navigate して active 状態の反映遅延を回避する。重複 navigation は
+  // setActivePageIndex の idempotent ガードで吸収される。
+  wirePageNavigation({
+    onSlugClick: (slug): void => {
+      const page = findPageBySlug(slug)
+      if (page === null) {
+        return
+      }
+      navigateToPage(page.index, true)
+    },
+  })
+
+  // ブラウザの戻る / 進む or 直接 URL 編集経由の hash 変更を反映する。
+  // pushHash=false にすることで navigateToPage 側で hash を再度書き戻さない (無限ループ防止)。
+  //
+  // 解決ロジックは初期ロードと同じ `resolveInitialActivePageIndex` を再利用することで、
+  // 「hash が空 / 不正 / 該当 slug 不在ならページ 0」という方針を初期ロードと hashchange の
+  // 両経路で一致させる (mdxg-virtual-pages.md §7.4 / pages.ts header コメント参照)。
+  // 同 index への遷移は setActivePageIndex の idempotent ガードで no-op。
+  globalThis.addEventListener('hashchange', (): void => {
+    navigateToPage(resolveInitialActivePageIndex(globalThis.location.hash), false)
   })
 
   boot({
