@@ -20,18 +20,25 @@ import { boot } from './boot'
 import { createDropdownMenu } from './menu'
 import { initSidebarResize } from './sidebar-resize'
 import { renderDoc } from './doc-renderer'
+import { splitIntoPages } from '../core/page-split'
 import { wireFloater } from './floater'
 import { wireToolbar } from './toolbar'
 
 /**
  * markdown 本文を取り込んで state を構築・描画・ステータス更新する中心ルーチン。
  * 永続化レイヤは workspace-handle のみ（詳細は DESIGN.md §7）。
+ *
+ * MDXG Virtual Pages 用に markdown 読み込み時点で `state.pages` を確定し、`activePageIndex` を 0
+ * にリセットする (docs/mdxg-virtual-pages.md §10 起動シーケンス step 1c)。Phase 1 では UI は
+ * 単一ページ render のままで `pages` は state 上に保持されるだけ。
  */
 export const loadFromMarkdown = async (name: string, text: string): Promise<void> => {
   state.docName = name
   state.markdown = text
   state.docHash = await computeDocHash(text)
   state.comments = []
+  state.pages = splitIntoPages(text, { docName: name })
+  state.activePageIndex = 0
   markFeedbackUnsaved()
   renderDoc()
   renderSidebar()
