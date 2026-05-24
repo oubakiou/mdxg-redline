@@ -18,6 +18,7 @@ import { markFeedbackUnsaved, state } from './app-state'
 import { qs, toast } from './dom-utils'
 import { boot } from './boot'
 import { createDropdownMenu } from './menu'
+import { initSidebarResize } from './sidebar-resize'
 import { renderDoc } from './doc-renderer'
 import { wireFloater } from './floater'
 import { wireToolbar } from './toolbar'
@@ -42,6 +43,7 @@ export const buildExportPayload = (): ExportPayload => buildReviewExportPayload(
 export const commentCountLabel = (): string => formatCommentCount(state.comments.length)
 
 if (!import.meta.vitest) {
+  initSidebarResize()
   wireFloater()
   wireCommentModal()
 

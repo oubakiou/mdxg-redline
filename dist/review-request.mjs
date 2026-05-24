@@ -130,12 +130,31 @@ var HELP_FLAGS = new Set(["--help", "-h"]);
 var DOCUMENT_NAME_FLAG = "--document-name";
 var THEME_FLAG = "--theme";
 var SHIKI_LANGS_FLAG = "--shiki-langs";
+var SIDEBAR_WIDTH_FLAG = "--sidebar-width";
 var THEME_VALUES = [
 	"system",
 	"light",
 	"dark"
 ];
 var isThemeHint = (value) => THEME_VALUES.includes(value);
+var SIDEBAR_WIDTH_MIN = 240;
+var SIDEBAR_WIDTH_MAX = 640;
+var isValidSidebarWidthHint = (value) => {
+	if (!Number.isFinite(value) || !Number.isInteger(value)) return false;
+	if (value === 0) return true;
+	return value >= SIDEBAR_WIDTH_MIN && value <= SIDEBAR_WIDTH_MAX;
+};
+/**
+* `--sidebar-width` の値を整数 (0 or 240–640) にパースする。
+* 範囲外・非数値・小数は null (CLI 側で invalid 扱い)。
+*/
+var parseSidebarWidthValue = (raw) => {
+	const trimmed = raw.trim();
+	if (trimmed === "") return null;
+	const num = Number(trimmed);
+	if (!isValidSidebarWidthHint(num)) return null;
+	return num;
+};
 var parseShikiLangsKeyword = (trimmed) => {
 	if (trimmed === "auto") return { kind: "auto" };
 	if (trimmed === "all") return { kind: "all" };
@@ -192,6 +211,16 @@ Options:
                                  (e.g. ts,js,py). Aliases are normalized to
                                  canonical names; unsupported entries are
                                  silently ignored.
+  --sidebar-width <px>   Set the initial comments-panel width hint for the
+                         generated HTML. One of:
+                           0         Start with the sidebar closed (only the
+                                     edge tab is visible until the user opens
+                                     it).
+                           240–640   Start open with the given width in pixels.
+                         Written as a <html data-sidebar-width> attribute and
+                         used only when the viewer has no localStorage
+                         preference yet (the user's UI history always wins).
+                         Omit to leave the attribute off entirely.
   --no-open              Generate the HTML but do not launch a browser.
   -h, --help             Print this help and exit. Takes precedence over all
                          other arguments and flags when present.
@@ -208,9 +237,11 @@ var INITIAL_PARTITION_STATE = {
 	open: true,
 	pendingDocName: false,
 	pendingShikiLangs: false,
+	pendingSidebarWidth: false,
 	pendingTheme: false,
 	positional: [],
 	shikiLangs: null,
+	sidebarWidth: null,
 	themeHint: null,
 	valid: true
 };
@@ -247,11 +278,30 @@ var consumeShikiLangsValue = (acc, token) => {
 		shikiLangs: parseShikiLangsValue(token)
 	};
 };
-var consumeFlag = (acc, token) => {
+var consumeSidebarWidthValue = (acc, token) => {
+	if (token.startsWith("--")) return {
+		...acc,
+		valid: false
+	};
+	const parsed = parseSidebarWidthValue(token);
+	if (parsed === null) return {
+		...acc,
+		valid: false
+	};
+	return {
+		...acc,
+		pendingSidebarWidth: false,
+		sidebarWidth: parsed
+	};
+};
+var consumeStandaloneFlag = (acc, token) => {
 	if (token === NO_OPEN_FLAG) return {
 		...acc,
 		open: false
 	};
+	return null;
+};
+var consumeValueFlag = (acc, token) => {
 	if (token === DOCUMENT_NAME_FLAG) return {
 		...acc,
 		pendingDocName: true
@@ -264,6 +314,17 @@ var consumeFlag = (acc, token) => {
 		...acc,
 		pendingShikiLangs: true
 	};
+	if (token === SIDEBAR_WIDTH_FLAG) return {
+		...acc,
+		pendingSidebarWidth: true
+	};
+	return null;
+};
+var consumeFlag = (acc, token) => {
+	const standalone = consumeStandaloneFlag(acc, token);
+	if (standalone !== null) return standalone;
+	const valueFlag = consumeValueFlag(acc, token);
+	if (valueFlag !== null) return valueFlag;
 	return {
 		...acc,
 		valid: false
@@ -273,6 +334,7 @@ var consumePendingValue = (acc, token) => {
 	if (acc.pendingDocName) return consumeDocNameValue(acc, token);
 	if (acc.pendingTheme) return consumeThemeValue(acc, token);
 	if (acc.pendingShikiLangs) return consumeShikiLangsValue(acc, token);
+	if (acc.pendingSidebarWidth) return consumeSidebarWidthValue(acc, token);
 	return null;
 };
 var stepArg = (acc, token) => {
@@ -289,24 +351,32 @@ var attachPartitionOptionals = (result, state) => {
 	if (state.documentName !== null) result.documentName = state.documentName;
 	if (state.themeHint !== null) result.themeHint = state.themeHint;
 	if (state.shikiLangs !== null) result.shikiLangs = state.shikiLangs;
+	if (state.sidebarWidth !== null) result.sidebarWidth = state.sidebarWidth;
 };
+var isPartitionValid = (state) => state.valid && !state.pendingDocName && !state.pendingTheme && !state.pendingShikiLangs && !state.pendingSidebarWidth;
 var partitionArgs = (argv) => {
 	const state = argv.reduce(stepArg, INITIAL_PARTITION_STATE);
-	const valid = state.valid && !state.pendingDocName && !state.pendingTheme && !state.pendingShikiLangs;
 	const result = {
 		open: state.open,
 		positional: state.positional,
-		valid
+		valid: isPartitionValid(state)
 	};
 	attachPartitionOptionals(result, state);
 	return result;
 };
-var attachRunOptionals = (result, parts) => {
+var attachRunStringOptionals = (result, parts) => {
 	const [, outputDir] = parts.positional;
 	if (typeof outputDir === "string") result.outputDir = outputDir;
 	if (typeof parts.documentName === "string") result.documentName = parts.documentName;
 	if (typeof parts.themeHint === "string") result.themeHint = parts.themeHint;
+};
+var attachRunNonStringOptionals = (result, parts) => {
 	if (parts.shikiLangs) result.shikiLangs = parts.shikiLangs;
+	if (typeof parts.sidebarWidth === "number") result.sidebarWidth = parts.sidebarWidth;
+};
+var attachRunOptionals = (result, parts) => {
+	attachRunStringOptionals(result, parts);
+	attachRunNonStringOptionals(result, parts);
 };
 var buildRunArgs = (parts) => {
 	const [inputPath] = parts.positional;
@@ -411,6 +481,7 @@ var EMBEDDED_SHIKI_LANGS_RE = /(<script\b(?=[^>]*\bid="embedded-shiki-langs")(?=
 var DATA_NAME_RE = /\bdata-name="[^"]*"/;
 var HTML_TAG_RE = /<html\b[^>]*>/i;
 var DATA_THEME_RE = /\bdata-theme="[^"]*"/;
+var DATA_SIDEBAR_WIDTH_RE = /\bdata-sidebar-width="[^"]*"/;
 var replaceDataName = (openingTag, escapedName) => {
 	if (DATA_NAME_RE.test(openingTag)) return openingTag.replace(DATA_NAME_RE, `data-name="${escapedName}"`);
 	return openingTag.replace(/>$/, ` data-name="${escapedName}">`);
@@ -418,6 +489,10 @@ var replaceDataName = (openingTag, escapedName) => {
 var replaceDataTheme = (openingTag, escapedTheme) => {
 	if (DATA_THEME_RE.test(openingTag)) return openingTag.replace(DATA_THEME_RE, `data-theme="${escapedTheme}"`);
 	return openingTag.replace(/>$/, ` data-theme="${escapedTheme}">`);
+};
+var replaceDataSidebarWidth = (openingTag, escapedValue) => {
+	if (DATA_SIDEBAR_WIDTH_RE.test(openingTag)) return openingTag.replace(DATA_SIDEBAR_WIDTH_RE, `data-sidebar-width="${escapedValue}"`);
+	return openingTag.replace(/>$/, ` data-sidebar-width="${escapedValue}">`);
 };
 /**
 * `<html>` 開きタグに `data-theme="<themeHint>"` を挿入する。属性が既にあれば上書き。
@@ -430,6 +505,19 @@ var upsertHtmlDataTheme = (reviewHtml, themeHint) => {
 	if (!match) throw new Error("review.html に <html> タグが見つかりません");
 	const [tag] = match;
 	const newTag = replaceDataTheme(tag, escapeHtml(themeHint));
+	return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length);
+};
+/**
+* `<html>` 開きタグに `data-sidebar-width="<value>"` を挿入する。属性が既にあれば上書き。
+* inline script はこの属性を localStorage より低い優先度で初期値ヒントとして使う。
+* 値の正当性 (0 or 240–640) は CLI 側でバリデーション済み前提だが、属性 escape 経路は
+* data-theme と揃える。
+*/
+var upsertHtmlDataSidebarWidth = (reviewHtml, value) => {
+	const match = HTML_TAG_RE.exec(reviewHtml);
+	if (!match) throw new Error("review.html に <html> タグが見つかりません");
+	const [tag] = match;
+	const newTag = replaceDataSidebarWidth(tag, escapeHtml(String(value)));
 	return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length);
 };
 /**
@@ -647,6 +735,10 @@ var applyThemeHint = (html, themeHint) => {
 	if (typeof themeHint !== "string") return html;
 	return upsertHtmlDataTheme(html, themeHint);
 };
+var applySidebarWidthHint = (html, sidebarWidth) => {
+	if (typeof sidebarWidth !== "number") return html;
+	return upsertHtmlDataSidebarWidth(html, sidebarWidth);
+};
 /**
 * `--shiki-langs` の指定 (未指定時は auto と同じ) から注入対象の正規名集合を決める pure 関数。
 * - auto / 未指定: markdown を scan して使用されている grammar を集める
@@ -681,7 +773,7 @@ var applyShikiLangs = async (html, args, ctx) => {
 	return rewriteEmbeddedShikiLangs(html, await loadShikiGrammars(resolveShikiLangSet(args.shikiLangs, ctx.markdown), ctx.scriptDir));
 };
 var composeReviewHtml = async (args, ctx) => {
-	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyShikiLangs(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args, ctx), formatLoadedStatus(ctx.docName, ctx.docHash)));
+	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyShikiLangs(applySidebarWidthHint(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args.sidebarWidth), args, ctx), formatLoadedStatus(ctx.docName, ctx.docHash)));
 };
 var runEmbed = async (args) => {
 	const ctx = await prepareEmbed(args);

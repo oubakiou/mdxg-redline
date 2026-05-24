@@ -68,6 +68,7 @@ body {
   font-family: var(--font-system);
   font-size: 14px;
   line-height: 1.5;
+  margin: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -85,10 +86,18 @@ body > main.layout > aside.sidebar {
   min-height: 0;
 }
 
-/* Main layout: doc pane (flexible) + sidebar (fixed 360px) */
+/* Main layout: doc pane (flexible) + sidebar (default 360px, user-resizable).
+   --sidebar-width は inline script / sidebar-width.ts が <html> に書き込む。
+   closed 状態 (html.sidebar-closed) では 0px に上書きされ、sidebar が完全に消える。 */
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: minmax(0, 1fr) var(--sidebar-width, 360px);
+}
+:root.sidebar-closed {
+  --sidebar-width: 0px;
+}
+:root.sidebar-closed .sidebar {
+  display: none;
 }
 .doc-pane {
   padding: 40px;
@@ -103,6 +112,93 @@ body > main.layout > aside.sidebar {
   background: var(--paper-edge);
   border-left: 1px solid var(--rule);
   padding: 32px 24px;
+  position: relative;
+}
+
+/* Resize handle: sidebar 左端に貼り付く 6px 帯の col-resize エリア。
+   border-left との視覚競合を避けるため、ハンドル本体は透明で、hover/active 時のみ
+   accent カラーで 2px ラインを表示する (VS Code / GitHub web の split pane と同じ慣行)。
+   pointer-events を確保するため width は 8px、見た目の中央 (3px 幅) に色を出す。 */
+.sidebar-resize-handle {
+  position: absolute;
+  inset: 0 auto 0 -4px;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 50;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+.sidebar-resize-handle::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+.sidebar-resize-handle:hover::after,
+.sidebar-resize-handle:focus-visible::after,
+.sidebar-resize-handle.dragging::after {
+  background: var(--accent);
+}
+.sidebar-resize-handle:focus {
+  outline: none;
+}
+
+/* ドラッグ中は body 全体で text 選択 / col-resize 表示を強制 */
+body.sidebar-resizing {
+  user-select: none;
+  cursor: col-resize;
+}
+body.sidebar-resizing * {
+  cursor: col-resize !important;
+}
+
+/* Toggle tab: closed 状態のときだけ画面右端の toolbar 直下に出現する細長いタブ。
+   クリックで前回幅で sidebar を復元し、左にドラッグで連続的に幅を広げられる。
+   open 状態のときは display:none で完全に隠す (sidebar 自体で十分認識できるため)。
+   right は --doc-scrollbar-offset (= scrollbar 幅 + viewport 右端ギャップ) で計算され、
+   scrollbar 有無や OS 標準幅に依存せず scrollbar の左に貼り付く
+   (sidebar-resize.ts の resolveScrollbarOffset + resolveViewportRightGap 参照)。 */
+.sidebar-toggle-tab {
+  position: fixed;
+  top: 50%;
+  right: var(--doc-scrollbar-offset, 0px);
+  transform: translateY(-50%);
+  width: 14px;
+  height: 72px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper-edge);
+  border: 1px solid var(--rule);
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  z-index: 50;
+  box-shadow: var(--shadow-medium);
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  font-family: var(--font-system);
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.sidebar-toggle-tab:hover,
+.sidebar-toggle-tab:focus-visible {
+  background: var(--paper);
+  color: var(--ink);
+  outline: none;
+}
+.sidebar-toggle-tab.dragging {
+  background: var(--paper);
+  color: var(--ink);
+}
+:root.sidebar-closed .sidebar-toggle-tab {
+  display: flex;
 }
 .sidebar-header {
   display: flex;
@@ -713,5 +809,15 @@ mark.cmt.active {
   }
   [data-block-id]:hover::before {
     display: none;
+  }
+
+  /* Mobile view では sidebar が縦積み (1 列レイアウト) になるので、横幅リサイズ
+     も開閉タブも無意味。両方とも隠して、closed 状態でも sidebar が見えるように戻す。 */
+  .sidebar-resize-handle,
+  .sidebar-toggle-tab {
+    display: none;
+  }
+  :root.sidebar-closed .sidebar {
+    display: block;
   }
 }

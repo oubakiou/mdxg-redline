@@ -141,6 +141,7 @@ const EMBEDDED_SHIKI_LANGS_RE =
 const DATA_NAME_RE = /\bdata-name="[^"]*"/
 const HTML_TAG_RE = /<html\b[^>]*>/i
 const DATA_THEME_RE = /\bdata-theme="[^"]*"/
+const DATA_SIDEBAR_WIDTH_RE = /\bdata-sidebar-width="[^"]*"/
 
 // data-name が無い既存テンプレートでも安全に補えるように、置換と挿入を関数として分離する。
 // 関数化により rewriteReviewHtml 側を no-ternary / prefer-ternary 双方に抵触せず保てる。
@@ -160,6 +161,13 @@ const replaceDataTheme = (openingTag: string, escapedTheme: string): string => {
   return openingTag.replace(/>$/, ` data-theme="${escapedTheme}">`)
 }
 
+const replaceDataSidebarWidth = (openingTag: string, escapedValue: string): string => {
+  if (DATA_SIDEBAR_WIDTH_RE.test(openingTag)) {
+    return openingTag.replace(DATA_SIDEBAR_WIDTH_RE, `data-sidebar-width="${escapedValue}"`)
+  }
+  return openingTag.replace(/>$/, ` data-sidebar-width="${escapedValue}">`)
+}
+
 /**
  * `<html>` 開きタグに `data-theme="<themeHint>"` を挿入する。属性が既にあれば上書き。
  * inline script はこの属性を localStorage より低い優先度で初期値ヒントとして使う。
@@ -173,6 +181,22 @@ export const upsertHtmlDataTheme = (reviewHtml: string, themeHint: string): stri
   }
   const [tag] = match
   const newTag = replaceDataTheme(tag, escapeHtml(themeHint))
+  return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length)
+}
+
+/**
+ * `<html>` 開きタグに `data-sidebar-width="<value>"` を挿入する。属性が既にあれば上書き。
+ * inline script はこの属性を localStorage より低い優先度で初期値ヒントとして使う。
+ * 値の正当性 (0 or 240–640) は CLI 側でバリデーション済み前提だが、属性 escape 経路は
+ * data-theme と揃える。
+ */
+export const upsertHtmlDataSidebarWidth = (reviewHtml: string, value: number): string => {
+  const match = HTML_TAG_RE.exec(reviewHtml)
+  if (!match) {
+    throw new Error('review.html に <html> タグが見つかりません')
+  }
+  const [tag] = match
+  const newTag = replaceDataSidebarWidth(tag, escapeHtml(String(value)))
   return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length)
 }
 
@@ -368,6 +392,37 @@ if (import.meta.vitest) {
       const html = baseHtml
       rewriteReviewHtml(html, 'x', 'y.md')
       expect(html).toBe(baseHtml)
+    })
+  })
+
+  describe('upsertHtmlDataSidebarWidth', () => {
+    it('data-sidebar-width 属性を <html> タグに挿入する', () => {
+      const html = '<html lang="ja"><body></body></html>'
+      const out = upsertHtmlDataSidebarWidth(html, 320)
+      expect(out).toContain('<html lang="ja" data-sidebar-width="320">')
+    })
+
+    it('0 (closed 指定) も書き込める', () => {
+      const html = '<html></html>'
+      const out = upsertHtmlDataSidebarWidth(html, 0)
+      expect(out).toContain('data-sidebar-width="0"')
+    })
+
+    it('既存の data-sidebar-width 属性を上書きする', () => {
+      const html = '<html lang="ja" data-sidebar-width="240"><body></body></html>'
+      const out = upsertHtmlDataSidebarWidth(html, 480)
+      expect(out).toContain('data-sidebar-width="480"')
+      expect(out).not.toContain('data-sidebar-width="240"')
+    })
+
+    it('<html> タグが無いと Error を投げる', () => {
+      expect(() => upsertHtmlDataSidebarWidth('<body></body>', 320)).toThrow(/<html>/)
+    })
+
+    it('元文字列を破壊しない', () => {
+      const html = '<html><body></body></html>'
+      upsertHtmlDataSidebarWidth(html, 360)
+      expect(html).toBe('<html><body></body></html>')
     })
   })
 

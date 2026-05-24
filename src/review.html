@@ -29,6 +29,36 @@
           document.documentElement.classList.add('has-embedded-md')
         }
       } catch (e) {}
+      // --- Sidebar width / open state (FOUC 防止のため stylesheet より前で確定する) ---
+      // 優先順位 P1: localStorage > <html data-sidebar-width> > default 360 (open)。
+      // theme と同じく、壊れた値 (旧バージョン / 他アプリの混入 / 手動編集) で初期描画と
+      // 後続ランタイムがズレないよう、240–640 の数値・open/closed ホワイトリストで検証する
+      // (sidebar-width.ts の isValidStoredWidth / isSidebarOpenState と同じ判定)。
+      try {
+        var sbWidthRaw = localStorage.getItem('mdxg-redline.sidebar-width')
+        var sbOpenRaw = localStorage.getItem('mdxg-redline.sidebar-open')
+        var sbHintRaw = document.documentElement.getAttribute('data-sidebar-width')
+        var sbWidthNum = sbWidthRaw === null ? NaN : Number(sbWidthRaw)
+        var sbWidth =
+          isFinite(sbWidthNum) && sbWidthNum >= 240 && sbWidthNum <= 640 ? sbWidthNum : null
+        var sbOpen = sbOpenRaw === 'open' || sbOpenRaw === 'closed' ? sbOpenRaw : null
+        var sbHintNum = sbHintRaw === null || sbHintRaw === '' ? NaN : Number(sbHintRaw)
+        var sbHintWidth = null
+        var sbHintOpen = null
+        if (sbHintNum === 0) {
+          sbHintOpen = 'closed'
+        } else if (isFinite(sbHintNum) && sbHintNum >= 240 && sbHintNum <= 640) {
+          sbHintWidth = sbHintNum
+          sbHintOpen = 'open'
+        }
+        var effWidth = sbWidth !== null ? sbWidth : sbHintWidth !== null ? sbHintWidth : 360
+        var effOpen = sbOpen !== null ? sbOpen : sbHintOpen !== null ? sbHintOpen : 'open'
+        document.documentElement.style.setProperty(
+          '--sidebar-width',
+          effOpen === 'open' ? effWidth + 'px' : '0px'
+        )
+        if (effOpen === 'closed') document.documentElement.classList.add('sidebar-closed')
+      } catch (e) {}
     </script>
     <link rel="stylesheet" href="./styles/review.css" />
     <link rel="stylesheet" href="./styles/markdown.css" />
@@ -95,6 +125,18 @@
       </section>
 
       <aside class="sidebar">
+        <!-- ドラッグで横幅変更。SIDEBAR_MIN_WIDTH (240px) 未満まで縮めると snap で
+             closed 状態になる (sidebar-resize.ts)。aria-orientation / aria-valuenow は
+             sidebar-resize.ts が同期する。 -->
+        <div
+          class="sidebar-resize-handle"
+          id="sidebar-resize-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize comments panel"
+          aria-controls="cmt-list"
+          tabindex="0"
+        ></div>
         <div class="sidebar-header">
           <!-- GitHub の Merge pull request 風 split button。
                隣接した 2 ボタンの border を内側で潰し、caret 側の半透明 border-left で
@@ -151,6 +193,21 @@
         </div>
       </aside>
     </main>
+
+    <!-- closed 状態のときだけ画面右端の toolbar 直下に出現する開閉タブ。クリックで前回幅復元、
+         左へドラッグで連続的に幅を広げられる。doc-pane の scrollbar / sidebar 幅に応じて
+         右オフセットが動的に変わる仕組みは sidebar-resize.ts の resolveScrollbarOffset +
+         resolveViewportRightGap を参照。 -->
+    <button
+      type="button"
+      class="sidebar-toggle-tab"
+      id="sidebar-toggle-tab"
+      aria-label="Show comments panel"
+      aria-expanded="false"
+      aria-controls="cmt-list"
+    >
+      <span aria-hidden="true">‹</span>
+    </button>
 
     <div id="floater"><span aria-hidden="true">＋</span> Comment</div>
 
