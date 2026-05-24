@@ -2,8 +2,8 @@ import { isFeedbackDirty, state } from './app-state'
 import { qs, toast } from './dom-utils'
 import type { Comment } from '../core/types'
 import { escapeHtml } from '../core/escape'
+import { instantScrollToCenter } from './scroll'
 import { reapplyAllMarks } from './mark-engine'
-import { smoothScrollToCenter } from './scroll'
 
 /**
  * 別ページのコメントカードをクリックされた際に呼ばれる navigate ハンドラ。
@@ -59,7 +59,7 @@ const focusCommentCard = (card: HTMLElement, comment: Comment): void => {
   clearActiveComments()
   mark.classList.add('active')
   card.classList.add('active')
-  smoothScrollToCenter(mark)
+  instantScrollToCenter(mark)
 }
 
 /**
@@ -77,7 +77,7 @@ export const focusCommentMarkAfterNavigate = (commentId: string): void => {
   if (card instanceof HTMLElement) {
     card.classList.add('active')
   }
-  smoothScrollToCenter(mark)
+  instantScrollToCenter(mark)
 }
 
 /**
@@ -185,7 +185,7 @@ export const activateSidebarMark = (mark: HTMLElement): void => {
   const card = document.querySelector(`.cmt-card[data-id="${id}"]`)
   if (card) {
     card.classList.add('active')
-    smoothScrollToCenter(card)
+    instantScrollToCenter(card)
   }
 }
 
