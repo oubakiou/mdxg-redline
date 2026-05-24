@@ -23,6 +23,7 @@ import {
 import { markFeedbackUnsaved, state } from './app-state'
 import { qs, toast } from './dom-utils'
 import { renderPageNavigation, wirePageNavigation } from './page-navigation'
+import { renderSequentialNav, wireSequentialNav } from './sequential-nav'
 import { boot } from './boot'
 import { createDropdownMenu } from './menu'
 import { initSidebarResize } from './sidebar-resize'
@@ -35,6 +36,7 @@ import { wireToolbar } from './toolbar'
 const renderAll = (): void => {
   renderDoc()
   renderPageNavigation()
+  renderSequentialNav()
   renderSidebar()
 }
 
@@ -63,6 +65,11 @@ export const loadFromMarkdown = async (name: string, text: string): Promise<void
  * - `pushHash = true` (TOC クリック等): hash も書き換える → hashchange が同 page を再要求しても idempotent
  * - `pushHash = false` (hashchange 由来): hash は既に変更済みなので書き換えない
  * `setActivePageIndex` が false を返す (範囲外 / 同 index) ときは何もしない (重複 render 防止)。
+ *
+ * 再描画は必ず `renderAll()` 経由にする。インラインに `renderDoc / renderPageNavigation / ...`
+ * を列挙すると、新しい view (Sequential Nav, Page Outline 等) が増えるたびに各 navigate 経路の
+ * 列挙を更新し忘れる drift を生むため (Phase 3 の sequential-nav 抜けが典型例)、
+ * 単一の真の源として `renderAll` 1 箇所に集約する。
  */
 const navigateToPage = (index: number, pushHash: boolean): void => {
   if (!setActivePageIndex(index)) {
@@ -71,9 +78,7 @@ const navigateToPage = (index: number, pushHash: boolean): void => {
   if (pushHash) {
     syncHashFromActivePage()
   }
-  renderDoc()
-  renderPageNavigation()
-  renderSidebar()
+  renderAll()
   // ページ切替時は新ページの top にスクロールする (mdxg-virtual-pages.md §13.4)。
   // 同一ページのコメント mark へのジャンプ等の特殊ケースは Phase 5 で扱う。
   const pane = document.querySelector('.doc-pane')
@@ -140,19 +145,19 @@ if (!import.meta.vitest) {
     await changeOutputFolder()
   })
 
-  // 左サイドバー TOC のクリック → navigateToPage(idx, pushHash=true)。
+  // 左サイドバー TOC / 本文末尾 Sequential Nav どちらのクリックも同じ orchestrator に流す。
   // anchor の標準クリックで location.hash も同時に更新されるが、hashchange より先に
   // 即時 navigate して active 状態の反映遅延を回避する。重複 navigation は
   // setActivePageIndex の idempotent ガードで吸収される。
-  wirePageNavigation({
-    onSlugClick: (slug): void => {
-      const page = findPageBySlug(slug)
-      if (page === null) {
-        return
-      }
-      navigateToPage(page.index, true)
-    },
-  })
+  const onSlugClickFromNav = (slug: string): void => {
+    const page = findPageBySlug(slug)
+    if (page === null) {
+      return
+    }
+    navigateToPage(page.index, true)
+  }
+  wirePageNavigation({ onSlugClick: onSlugClickFromNav })
+  wireSequentialNav({ onSlugClick: onSlugClickFromNav })
 
   // ブラウザの戻る / 進む or 直接 URL 編集経由の hash 変更を反映する。
   // pushHash=false にすることで navigateToPage 側で hash を再度書き戻さない (無限ループ防止)。

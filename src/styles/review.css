@@ -158,6 +158,60 @@ body > main.layout > aside.sidebar {
   border-left-color: var(--accent);
   font-weight: 600;
 }
+
+/* Sequential Navigation (本文末尾の前 / 次ページリンク、MDXG §9)。
+   flex + margin-left:auto により Prev は左、Next は常に右に貼り付く。
+   片方だけある場合 (最初 / 最後ページ) でも残り側の位置が動かない。 */
+.sequential-nav {
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+  margin-top: 64px;
+  padding-top: 24px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--font-system);
+}
+.sequential-nav[hidden] {
+  display: none;
+}
+.sequential-nav-link {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  color: var(--ink);
+  text-decoration: none;
+  background: var(--paper);
+  transition:
+    background 0.1s ease,
+    border-color 0.1s ease;
+}
+.sequential-nav-link:hover,
+.sequential-nav-link:focus-visible {
+  background: var(--paper-edge);
+  border-color: var(--accent);
+  outline: none;
+}
+.sequential-nav-next {
+  text-align: right;
+  margin-left: auto;
+}
+.sequential-nav-direction {
+  font-size: 12px;
+  color: var(--ink-soft);
+  letter-spacing: 0;
+}
+.sequential-nav-title {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .doc-pane {
   padding: 40px;
   position: relative;

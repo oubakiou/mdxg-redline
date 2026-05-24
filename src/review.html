@@ -129,6 +129,10 @@
           </div>
         </div>
         <div id="doc"></div>
+        <!-- MDXG §9 Sequential Navigation: 本文末尾の前 / 次ページリンク。
+             sequential-nav.ts が renderSequentialNav() で innerHTML を書き直す。
+             state.pages 未確定 / 単一ページのときは hidden 属性で消える。 -->
+        <nav class="sequential-nav" id="sequential-nav" aria-label="Page navigation" hidden></nav>
       </section>
 
       <aside class="sidebar">
