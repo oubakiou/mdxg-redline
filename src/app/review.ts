@@ -30,6 +30,7 @@ import { qs, toast } from './dom-utils'
 import { renderPageNavigation, wirePageNavigation } from './page-navigation'
 import { renderSequentialNav, wireSequentialNav } from './sequential-nav'
 import { scrollToHeading, setActiveHeadingImmediately, setupScrollSpy } from './scroll-spy'
+import { setOnPageActivated, setupPageScrollSpy } from './page-scroll-spy'
 import { boot } from './boot'
 import { createDropdownMenu } from './menu'
 import { initSidebarResize } from './sidebar-resize'
@@ -48,6 +49,7 @@ const renderAll = (): void => {
   renderSequentialNav()
   renderSidebar()
   setupScrollSpy()
+  setupPageScrollSpy()
 }
 
 /**
@@ -179,6 +181,9 @@ if (!import.meta.vitest) {
   wireFloater()
   wireCommentModal()
   configureSidebarCommentNavigation(navigateToComment)
+  // page scroll-spy が activePageIndex を更新した直後の TOC active 表示更新。
+  // renderPageNavigation は state を再読込して描き直すだけなので、scroll 中の頻発でも軽い。
+  setOnPageActivated((): void => renderPageNavigation())
 
   const commentsMenu = createDropdownMenu({
     buttonId: '#btn-comments-menu',
