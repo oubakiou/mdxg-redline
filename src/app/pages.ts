@@ -28,6 +28,8 @@ export const findPageBySlug = (slug: string): Page | null => {
 
 /**
  * `location.hash` 文字列から slug を取り出す。`#foo` → `foo`、空 / `#` のみは null。
+ * 戻り値は composite hash (`page__heading`) 全体で、ページ部分と見出し部分の分離は
+ * `parseHashSlug` で行う。
  */
 export const slugFromHash = (hash: string): string | null => {
   if (!hash.startsWith('#')) {
@@ -41,20 +43,78 @@ export const slugFromHash = (hash: string): string | null => {
 }
 
 /**
+ * URL fragment の `<page-slug>__<heading-slug>` (mdxg-virtual-pages.md §6.4) を分解する。
+ * - `#page` → `{ pageSlug: 'page', headingSlug: null }`
+ * - `#page__heading` → `{ pageSlug: 'page', headingSlug: 'heading' }`
+ * - 空 / `#` のみ → `{ pageSlug: null, headingSlug: null }`
+ * `__` は最初に現れる位置で 1 度だけ分割する (slug は ASCII [a-z0-9-]+ なので underscore は
+ * 通常含まれないが、念のため最初の `__` のみを区切りとして扱う)。
+ */
+export interface ParsedHash {
+  headingSlug: string | null
+  pageSlug: string | null
+}
+
+const nullIfEmpty = (text: string): string | null => {
+  if (text.length === 0) {
+    return null
+  }
+  return text
+}
+
+export const parseHashSlug = (hash: string): ParsedHash => {
+  const raw = slugFromHash(hash)
+  if (raw === null) {
+    return { headingSlug: null, pageSlug: null }
+  }
+  const sepIndex = raw.indexOf('__')
+  if (sepIndex === -1) {
+    return { headingSlug: null, pageSlug: raw }
+  }
+  return {
+    headingSlug: nullIfEmpty(raw.slice(sepIndex + 2)),
+    pageSlug: raw.slice(0, sepIndex),
+  }
+}
+
+/**
  * 起動時 / loadFromMarkdown 後、`location.hash` を参照して activePageIndex を解決する。
  * hash が空 / 不正 / 不一致なら先頭ページ (index 0) を返す
  * (mdxg-virtual-pages.md §7.4: hash が空 / 不正なら activePageIndex = 0)。
+ * composite hash (`page__heading`) を渡しても page 部分だけで解決する。
  */
 export const resolveInitialActivePageIndex = (hash: string): number => {
-  const slug = slugFromHash(hash)
-  if (slug === null) {
+  const { pageSlug } = parseHashSlug(hash)
+  if (pageSlug === null) {
     return 0
   }
-  const page = findPageBySlug(slug)
+  const page = findPageBySlug(pageSlug)
   if (page === null) {
     return 0
   }
   return page.index
+}
+
+/**
+ * navigate target を hash から組み立てる helper。composite hash の page 部分は
+ * `resolveInitialActivePageIndex` と完全に一致するロジックで解決し、heading 部分はそのまま渡す
+ * (見つからなくても scroll しないだけなので解決時点では検証しない)。
+ */
+export interface NavigateTarget {
+  headingSlug: string | null
+  pageIndex: number
+}
+
+export const resolveTargetFromHash = (hash: string): NavigateTarget => {
+  const { headingSlug, pageSlug } = parseHashSlug(hash)
+  if (pageSlug === null) {
+    return { headingSlug, pageIndex: 0 }
+  }
+  const page = findPageBySlug(pageSlug)
+  if (page === null) {
+    return { headingSlug, pageIndex: 0 }
+  }
+  return { headingSlug, pageIndex: page.index }
 }
 
 /**
@@ -73,16 +133,24 @@ export const setActivePageIndex = (index: number): boolean => {
   return true
 }
 
+const buildHashString = (pageSlug: string, headingSlug: string | null): string => {
+  if (headingSlug === null) {
+    return `#${pageSlug}`
+  }
+  return `#${pageSlug}__${headingSlug}`
+}
+
 /**
- * 現在 activePage の slug を `#<slug>` 形式で `location.hash` にセットする。
+ * 現在 activePage の slug を `#<slug>` (heading 指定があれば `#<slug>__<heading-slug>`) で
+ * `location.hash` にセットする。
  * 既に同じ hash なら何もしない (重複の history entry を作らない / 無限 hashchange を避ける)。
  */
-export const syncHashFromActivePage = (): void => {
+export const syncHashFromActivePage = (headingSlug: string | null = null): void => {
   const page = state.pages[state.activePageIndex]
   if (!page) {
     return
   }
-  const desiredHash = `#${page.slug}`
+  const desiredHash = buildHashString(page.slug, headingSlug)
   if (globalThis.location.hash === desiredHash) {
     return
   }
@@ -133,6 +201,67 @@ if (import.meta.vitest) {
 
     it('複数 # / underscore 含む slug もそのまま返す', () => {
       expect(slugFromHash('#page-1__section-a')).toBe('page-1__section-a')
+    })
+  })
+
+  describe('parseHashSlug', () => {
+    it('`#page` → page だけ取り出して heading は null', () => {
+      expect(parseHashSlug('#overview')).toEqual({
+        headingSlug: null,
+        pageSlug: 'overview',
+      })
+    })
+
+    it('`#page__heading` → page と heading に分解する', () => {
+      expect(parseHashSlug('#overview__section-a')).toEqual({
+        headingSlug: 'section-a',
+        pageSlug: 'overview',
+      })
+    })
+
+    it('`#page__` (空の heading) は heading=null', () => {
+      expect(parseHashSlug('#page__')).toEqual({
+        headingSlug: null,
+        pageSlug: 'page',
+      })
+    })
+
+    it('空 / `#` のみは両方 null', () => {
+      expect(parseHashSlug('')).toEqual({ headingSlug: null, pageSlug: null })
+      expect(parseHashSlug('#')).toEqual({ headingSlug: null, pageSlug: null })
+    })
+
+    it('最初の `__` だけを区切りに使う (slug は本来 underscore を含まないが念のため)', () => {
+      expect(parseHashSlug('#a__b__c')).toEqual({
+        headingSlug: 'b__c',
+        pageSlug: 'a',
+      })
+    })
+  })
+
+  describe('resolveTargetFromHash', () => {
+    it('composite hash から page index と heading slug を解決', () => {
+      state.pages = [
+        dummyPage({ index: 0, slug: 'intro' }),
+        dummyPage({ index: 1, slug: 'overview' }),
+      ]
+      expect(resolveTargetFromHash('#overview__section-b')).toEqual({
+        headingSlug: 'section-b',
+        pageIndex: 1,
+      })
+    })
+
+    it('page slug 不一致でも heading slug は保持しページは 0 にフォールバック', () => {
+      state.pages = [dummyPage({ index: 0, slug: 'intro' })]
+      expect(resolveTargetFromHash('#missing__heading-x')).toEqual({
+        headingSlug: 'heading-x',
+        pageIndex: 0,
+      })
+    })
+
+    it('hash 空なら page=0 / heading=null', () => {
+      state.pages = [dummyPage({ index: 0, slug: 'a' })]
+      expect(resolveTargetFromHash('')).toEqual({ headingSlug: null, pageIndex: 0 })
     })
   })
 

@@ -159,6 +159,66 @@ body > main.layout > aside.sidebar {
   font-weight: 600;
 }
 
+/* Page Outline (active page 配下の H3–H6 inline 展開、MDXG §8)。
+   active page の li 配下に <ul class="page-outline-list"> としてぶら下がる。
+   level に応じた左 padding でインデントし、scroll-spy が aria-current="location" を付ける。 */
+.page-outline-list {
+  list-style: none;
+  margin: 4px 0 8px 0;
+  padding: 0;
+  font-size: 12px;
+}
+.page-outline-item {
+  margin: 1px 0;
+}
+.page-outline-link {
+  display: block;
+  padding: 2px 8px 2px 32px;
+  border-radius: 4px;
+  color: var(--ink-soft);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  word-break: break-word;
+  transition:
+    background 0.1s ease,
+    border-color 0.1s ease,
+    color 0.1s ease;
+}
+.page-outline-link:hover,
+.page-outline-link:focus-visible {
+  background: var(--paper);
+  color: var(--ink);
+  outline: none;
+}
+.page-outline-link[aria-current='location'] {
+  color: var(--ink);
+  border-left-color: var(--accent);
+  font-weight: 500;
+}
+/* H3–H6 のレベルに応じた追加インデント。base が 32px なのは、page-nav-link の
+   左 padding と border-accent の幅を引き継いで visual に揃えるため。 */
+.page-outline-link-level-3 {
+  padding-left: 32px;
+}
+.page-outline-link-level-4 {
+  padding-left: 44px;
+}
+.page-outline-link-level-5 {
+  padding-left: 56px;
+}
+.page-outline-link-level-6 {
+  padding-left: 68px;
+}
+
+/* scroll-margin-top: heading に scroll した際、本文上端ちょうどではなく少し下げて
+   見出し全体が見えるようにする。コードブロック直前の見出し等で特に効く。 */
+#doc h3[id],
+#doc h4[id],
+#doc h5[id],
+#doc h6[id] {
+  scroll-margin-top: 24px;
+}
+
 /* Sequential Navigation (本文末尾の前 / 次ページリンク、MDXG §9)。
    flex + margin-left:auto により Prev は左、Next は常に右に貼り付く。
    片方だけある場合 (最初 / 最後ページ) でも残り側の位置が動かない。 */

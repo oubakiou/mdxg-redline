@@ -6,6 +6,12 @@
 // 本ファイルは loadFromMarkdown orchestrator と、上記モジュールを組み合わせる wiring に専念する。
 
 import type { Comment, ExportPayload } from '../core/types'
+import {
+  type NavigateTarget,
+  resolveTargetFromHash,
+  setActivePageIndex,
+  syncHashFromActivePage,
+} from './pages'
 import { activateSidebarMark, renderSidebar } from './sidebar'
 import {
   buildReviewExportPayload,
@@ -14,16 +20,11 @@ import {
 import { changeOutputFolder, writeFeedback } from './workspace'
 import { closeCommentModal, wireCommentModal } from './comment-modal'
 import { computeDocHash, formatLoadedStatus } from '../core/embed'
-import {
-  findPageBySlug,
-  resolveInitialActivePageIndex,
-  setActivePageIndex,
-  syncHashFromActivePage,
-} from './pages'
 import { markFeedbackUnsaved, state } from './app-state'
 import { qs, toast } from './dom-utils'
 import { renderPageNavigation, wirePageNavigation } from './page-navigation'
 import { renderSequentialNav, wireSequentialNav } from './sequential-nav'
+import { scrollToHeading, setActiveHeadingImmediately, setupScrollSpy } from './scroll-spy'
 import { boot } from './boot'
 import { createDropdownMenu } from './menu'
 import { initSidebarResize } from './sidebar-resize'
@@ -32,12 +33,54 @@ import { splitIntoPages } from '../core/page-split'
 import { wireFloater } from './floater'
 import { wireToolbar } from './toolbar'
 
-/** loadFromMarkdown / navigateToPage 双方で使う「現状の state を全 view に流す」共通処理 */
+/**
+ * loadFromMarkdown / navigateToTarget 双方で使う「現状の state を全 view に流す」共通処理。
+ * scroll-spy も DOM が新しくなった直後に組み直す (古い observer はリーク防止のため teardown)。
+ */
 const renderAll = (): void => {
   renderDoc()
   renderPageNavigation()
   renderSequentialNav()
   renderSidebar()
+  setupScrollSpy()
+}
+
+const scrollDocToTop = (): void => {
+  const pane = document.querySelector('.doc-pane')
+  if (pane instanceof HTMLElement) {
+    pane.scrollTop = 0
+  }
+}
+
+// loadFromMarkdown / navigateToTarget 両方で使う「heading slug 指定なら即時ハイライト + smooth scroll」。
+// 初期ロード / 遷移後 / hashchange のいずれでも同じ振る舞いになる単一の真の源として共有する。
+const scrollToHeadingIfPresent = (headingSlug: string | null): void => {
+  if (headingSlug === null) {
+    return
+  }
+  // observer 待ちにせず即座に outline link をハイライト (scroll-spy が後追いで update する)
+  setActiveHeadingImmediately(headingSlug)
+  scrollToHeading(headingSlug)
+}
+
+interface LoadResult {
+  docHash: string
+  target: NavigateTarget
+}
+
+// loadFromMarkdown を 10 statements 以内に収めるため state 初期化部分を別関数に切り出す。
+// docHash は state.docHash に書き込んだ後 caller でも `formatLoadedStatus` に渡したい一方、
+// state.docHash の型が `string | null` のため TypeScript narrow を維持するには戻り値経由が手早い。
+const initStateFromMarkdown = async (name: string, text: string): Promise<LoadResult> => {
+  state.docName = name
+  state.markdown = text
+  const docHash = await computeDocHash(text)
+  state.docHash = docHash
+  state.comments = []
+  state.pages = splitIntoPages(text, { docName: name })
+  const target = resolveTargetFromHash(globalThis.location.hash)
+  state.activePageIndex = target.pageIndex
+  return { docHash, target }
 }
 
 /**
@@ -46,50 +89,63 @@ const renderAll = (): void => {
  *
  * MDXG Virtual Pages 用に markdown 読み込み時点で `state.pages` を確定し、`activePageIndex` は
  * `location.hash` を参照して解決する (docs/mdxg-virtual-pages.md §10 起動シーケンス step 1c–1d)。
- * Phase 2 ではこれに加え renderPageNavigation で左サイドバー TOC を描画する。
+ * 初期ロード時の deep link `#<page>__<heading>` は render 後に `scrollToHeadingIfPresent`
+ * で heading 部分まで反映する (hashchange 経路と挙動を一致させる)。
  */
 export const loadFromMarkdown = async (name: string, text: string): Promise<void> => {
-  state.docName = name
-  state.markdown = text
-  state.docHash = await computeDocHash(text)
-  state.comments = []
-  state.pages = splitIntoPages(text, { docName: name })
-  state.activePageIndex = resolveInitialActivePageIndex(globalThis.location.hash)
+  const { docHash, target } = await initStateFromMarkdown(name, text)
   markFeedbackUnsaved()
   renderAll()
-  qs('#status').textContent = formatLoadedStatus(name, state.docHash)
+  qs('#status').textContent = formatLoadedStatus(name, docHash)
+  scrollToHeadingIfPresent(target.headingSlug)
+}
+
+// navigateToTarget が 11 statements を超えるため、heading 指定無しの分岐を別関数に切り出す。
+const handleHeadinglessTarget = (pageChanged: boolean): void => {
+  if (pageChanged) {
+    scrollDocToTop()
+  }
 }
 
 /**
- * ページ切替の orchestrator。state.activePageIndex を切り替えて DOM の再描画と hash 同期をまとめて行う。
- * - `pushHash = true` (TOC クリック等): hash も書き換える → hashchange が同 page を再要求しても idempotent
+ * ページ + 任意の heading への遷移 orchestrator。state.activePageIndex を切り替えて DOM 再描画と
+ * hash 同期、対象 heading へのスクロールをまとめて行う。
+ * - `pushHash = true` (TOC / outline / Sequential クリック): hash も書き換える
  * - `pushHash = false` (hashchange 由来): hash は既に変更済みなので書き換えない
- * `setActivePageIndex` が false を返す (範囲外 / 同 index) ときは何もしない (重複 render 防止)。
+ * - `target.headingSlug` 指定時は render 後に該当 heading までスムーズスクロール、
+ *   無指定 + ページ変更時は doc-pane を top に戻す (mdxg-virtual-pages.md §13.4)
  *
- * 再描画は必ず `renderAll()` 経由にする。インラインに `renderDoc / renderPageNavigation / ...`
- * を列挙すると、新しい view (Sequential Nav, Page Outline 等) が増えるたびに各 navigate 経路の
- * 列挙を更新し忘れる drift を生むため (Phase 3 の sequential-nav 抜けが典型例)、
- * 単一の真の源として `renderAll` 1 箇所に集約する。
+ * 再描画は必ず `renderAll()` 経由にする。view 追加時の drift を構造的に防ぐ単一の真の源
+ * (Phase 3 で sequential-nav 抜けが起きた回帰の再発防止)。
  */
-const navigateToPage = (index: number, pushHash: boolean): void => {
-  if (!setActivePageIndex(index)) {
-    return
+const navigateToTarget = (target: NavigateTarget, pushHash: boolean): void => {
+  const pageChanged = setActivePageIndex(target.pageIndex)
+  if (pageChanged) {
+    renderAll()
   }
   if (pushHash) {
-    syncHashFromActivePage()
+    syncHashFromActivePage(target.headingSlug)
   }
-  renderAll()
-  // ページ切替時は新ページの top にスクロールする (mdxg-virtual-pages.md §13.4)。
-  // 同一ページのコメント mark へのジャンプ等の特殊ケースは Phase 5 で扱う。
-  const pane = document.querySelector('.doc-pane')
-  if (pane instanceof HTMLElement) {
-    pane.scrollTop = 0
+  if (target.headingSlug === null) {
+    handleHeadinglessTarget(pageChanged)
+    return
   }
+  scrollToHeadingIfPresent(target.headingSlug)
 }
 
 export const buildExportPayload = (): ExportPayload => buildReviewExportPayload(state)
 
 export const commentCountLabel = (): string => formatCommentCount(state.comments.length)
+
+/**
+ * TOC / outline / Sequential Nav いずれのクリックでも、anchor の `data-slug` は
+ * `<page-slug>` か `<page-slug>__<heading-slug>` の composite 形式。
+ * composite slug を `resolveTargetFromHash` に流すことで page index + heading slug を一度に解決し、
+ * navigateToTarget に渡す。
+ */
+const onCompositeSlugClick = (compositeSlug: string): void => {
+  navigateToTarget(resolveTargetFromHash(`#${compositeSlug}`), true)
+}
 
 if (!import.meta.vitest) {
   initSidebarResize()
@@ -145,29 +201,20 @@ if (!import.meta.vitest) {
     await changeOutputFolder()
   })
 
-  // 左サイドバー TOC / 本文末尾 Sequential Nav どちらのクリックも同じ orchestrator に流す。
+  // 左サイドバー TOC / outline link / 本文末尾 Sequential Nav のクリックを 1 つの handler に統一。
   // anchor の標準クリックで location.hash も同時に更新されるが、hashchange より先に
   // 即時 navigate して active 状態の反映遅延を回避する。重複 navigation は
   // setActivePageIndex の idempotent ガードで吸収される。
-  const onSlugClickFromNav = (slug: string): void => {
-    const page = findPageBySlug(slug)
-    if (page === null) {
-      return
-    }
-    navigateToPage(page.index, true)
-  }
-  wirePageNavigation({ onSlugClick: onSlugClickFromNav })
-  wireSequentialNav({ onSlugClick: onSlugClickFromNav })
+  wirePageNavigation({ onSlugClick: onCompositeSlugClick })
+  wireSequentialNav({ onSlugClick: onCompositeSlugClick })
 
   // ブラウザの戻る / 進む or 直接 URL 編集経由の hash 変更を反映する。
-  // pushHash=false にすることで navigateToPage 側で hash を再度書き戻さない (無限ループ防止)。
+  // pushHash=false にすることで navigateToTarget 側で hash を再度書き戻さない (無限ループ防止)。
   //
-  // 解決ロジックは初期ロードと同じ `resolveInitialActivePageIndex` を再利用することで、
-  // 「hash が空 / 不正 / 該当 slug 不在ならページ 0」という方針を初期ロードと hashchange の
-  // 両経路で一致させる (mdxg-virtual-pages.md §7.4 / pages.ts header コメント参照)。
-  // 同 index への遷移は setActivePageIndex の idempotent ガードで no-op。
+  // composite hash (`#page__heading`) の場合は heading scroll も同時に解決される
+  // (resolveTargetFromHash が page index + heading slug を取り出す)。
   globalThis.addEventListener('hashchange', (): void => {
-    navigateToPage(resolveInitialActivePageIndex(globalThis.location.hash), false)
+    navigateToTarget(resolveTargetFromHash(globalThis.location.hash), false)
   })
 
   boot({

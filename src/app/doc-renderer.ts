@@ -89,6 +89,20 @@ const getActivePageMarkdown = (): string => {
 }
 
 /**
+ * 現在 activePage の H3–H6 outline slug 列を返す。
+ * `renderMarkdown` の `headingSlugs` オプションに渡すことで、H3–H6 に
+ * `id="<slug>"` を出現順で注入し、Page Outline の URL fragment スクロール先になる
+ * (Phase 4 / MDXG §8)。
+ */
+const getActivePageHeadingSlugs = (): readonly string[] => {
+  const page = state.pages[state.activePageIndex]
+  if (!page) {
+    return []
+  }
+  return page.headings.map((heading): string => heading.slug)
+}
+
+/**
  * page markdown に対して buildBlockAnchors を呼び、sourceLine を元 markdown 全体の
  * 1-origin 行番号にオフセットする。
  * 元 markdown 全体の sourceLine 維持は feedback.json export スキーマ互換の前提
@@ -120,7 +134,9 @@ const mountRenderedDoc = (doc: HTMLElement, wrap: HTMLElement): void => {
   // C 案: 初期 render は highlighter を渡さず marked の plain 出力で paint を稼ぐ。
   // ハイライトは scheduleShikiUpgrade で paint 後に追いかける。
   const pageMarkdown = getActivePageMarkdown()
-  doc.innerHTML = renderMarkdown(pageMarkdown, null)
+  doc.innerHTML = renderMarkdown(pageMarkdown, null, {
+    headingSlugs: getActivePageHeadingSlugs(),
+  })
   // cacheBlockOriginalHTML を injectCopyButtons より先に呼び、トップレベル <pre> の場合に
   // blockId が <pre> 自身に付与されるよう順序を保つ (wrap 後だと block-id は <div> 側に移る)。
   cacheBlockOriginalHTML(doc)
