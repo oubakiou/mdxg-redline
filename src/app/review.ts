@@ -28,7 +28,6 @@ import { computeDocHash, formatLoadedStatus } from '../core/embed'
 import { markFeedbackUnsaved, state } from './app-state'
 import { qs, toast } from './dom-utils'
 import { renderPageNavigation, wirePageNavigation } from './page-navigation'
-import { renderSequentialNav, wireSequentialNav } from './sequential-nav'
 import { scrollToHeading, setActiveHeadingImmediately, setupScrollSpy } from './scroll-spy'
 import { setOnPageActivated, setupPageScrollSpy } from './page-scroll-spy'
 import { boot } from './boot'
@@ -46,7 +45,6 @@ import { wireToolbar } from './toolbar'
 const renderAll = (): void => {
   renderDoc()
   renderPageNavigation()
-  renderSequentialNav()
   renderSidebar()
   setupScrollSpy()
   setupPageScrollSpy()
@@ -234,12 +232,11 @@ if (!import.meta.vitest) {
     await changeOutputFolder()
   })
 
-  // 左サイドバー TOC / outline link / 本文末尾 Sequential Nav のクリックを 1 つの handler に統一。
-  // anchor の標準クリックで location.hash も同時に更新されるが、hashchange より先に
-  // 即時 navigate して active 状態の反映遅延を回避する。重複 navigation は
+  // 左サイドバー TOC / outline link / TOC 上部の Prev/Next sequential row のクリックを
+  // 1 つの handler に統一。anchor の標準クリックで location.hash も同時に更新されるが、
+  // hashchange より先に即時 navigate して active 状態の反映遅延を回避する。重複 navigation は
   // setActivePageIndex の idempotent ガードで吸収される。
   wirePageNavigation({ onSlugClick: onCompositeSlugClick })
-  wireSequentialNav({ onSlugClick: onCompositeSlugClick })
 
   // ブラウザの戻る / 進む or 直接 URL 編集経由の hash 変更を反映する。
   // pushHash=false にすることで navigateToTarget 側で hash を再度書き戻さない (無限ループ防止)。

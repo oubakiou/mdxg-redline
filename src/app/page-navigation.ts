@@ -1,6 +1,8 @@
 // 左サイドバー TOC (`<aside class="page-nav">`) の描画と click 配線。
-// MDXG §7 Page Navigation [MUST] (Phase 2/3) + §8 Page Outline (Phase 4) を担う。
-// active page の li 内に H3–H6 outline を inline 展開する形式 (mdxg-virtual-pages.md §7.7 / §8.3)。
+// MDXG §7 Page Navigation [MUST] (Phase 2/3) + §8 Page Outline (Phase 4)
+// + §9 Sequential Navigation を担う (Stacked View では本文末尾の Prev/Next を撤去し、
+// TOC 上部に Prev/Next row を統合)。active page の li 内に H3–H6 outline を inline 展開する
+// 形式 (mdxg-virtual-pages.md §7.7 / §8.3)。
 //
 // クリック時の navigateTo 動作は review.ts の orchestrator に注入する形にし、本モジュールは
 // 「クリックされた slug を通知する」ところまでで責務を区切る (page-nav.ts ⇔ doc-renderer.ts
@@ -11,6 +13,65 @@ import type { Heading } from '../core/page-outline'
 import type { Page } from '../core/page-split'
 import { escapeHtml } from '../core/escape'
 import { state } from './app-state'
+
+interface SequentialControlsViewModel {
+  next: Page | null
+  prev: Page | null
+}
+
+/**
+ * activePageIndex の前後ページを Page | null として取り出す。最初 / 最後ページではそれぞれ
+ * null になり、render 側で omit する判断に使う (MDXG §9.1 [MUST]: 適用できないコントロールは
+ * hidden 派)。
+ */
+export const toSequentialControlsViewModel = (
+  pages: readonly Page[],
+  activePageIndex: number
+): SequentialControlsViewModel => {
+  const prev = pages[activePageIndex - 1]
+  const next = pages[activePageIndex + 1]
+  return {
+    next: next ?? null,
+    prev: prev ?? null,
+  }
+}
+
+const renderSequentialPrev = (page: Page | null): string => {
+  if (page === null) {
+    return ''
+  }
+  return (
+    `<a class="page-nav-sequential-link page-nav-sequential-prev" href="#${escapeHtml(page.slug)}" data-slug="${escapeHtml(page.slug)}" rel="prev">` +
+    `<span class="page-nav-sequential-direction" aria-hidden="true">‹ Prev</span>` +
+    `<span class="page-nav-sequential-title">${escapeHtml(page.title)}</span>` +
+    `</a>`
+  )
+}
+
+const renderSequentialNext = (page: Page | null): string => {
+  if (page === null) {
+    return ''
+  }
+  return (
+    `<a class="page-nav-sequential-link page-nav-sequential-next" href="#${escapeHtml(page.slug)}" data-slug="${escapeHtml(page.slug)}" rel="next">` +
+    `<span class="page-nav-sequential-direction" aria-hidden="true">Next ›</span>` +
+    `<span class="page-nav-sequential-title">${escapeHtml(page.title)}</span>` +
+    `</a>`
+  )
+}
+
+/**
+ * TOC 上部に置く Prev/Next row の HTML を組み立てる。prev / next 両方 null (空 / 単一ページ) なら
+ * 空文字を返し、caller 側で row 自体を出さない。
+ */
+export const buildSequentialControlsHtml = (viewModel: SequentialControlsViewModel): string => {
+  if (viewModel.prev === null && viewModel.next === null) {
+    return ''
+  }
+  return `<nav class="page-nav-sequential" aria-label="Sequential page navigation">${renderSequentialPrev(
+    viewModel.prev
+  )}${renderSequentialNext(viewModel.next)}</nav>`
+}
 
 const PAGE_NAV_LIST_ID = 'page-nav-list'
 const PAGE_NAV_ROOT_ID = 'page-nav'
@@ -100,6 +161,14 @@ const renderPageWithOutline = (page: Page, activePageIndex: number): string => {
   return renderPageItem(vm, resolveOutlineHtml(page, activePageIndex))
 }
 
+const buildPageNavBodyHtml = (pages: readonly Page[], activePageIndex: number): string => {
+  const sequentialHtml = buildSequentialControlsHtml(
+    toSequentialControlsViewModel(pages, activePageIndex)
+  )
+  const items = pages.map((page): string => renderPageWithOutline(page, activePageIndex)).join('')
+  return `${sequentialHtml}<ul class="page-nav-list">${items}</ul>`
+}
+
 /**
  * `state.pages` を TOC として描画する。`html.has-pages` クラスを toggle して
  * 「ページ未確定時は page-nav 列を消す」CSS layout を切り替える (styles/review.css 側で `:root.has-pages` を分岐)。
@@ -115,10 +184,7 @@ export const renderPageNavigation = (): void => {
     list.innerHTML = ''
     return
   }
-  const items = state.pages
-    .map((page): string => renderPageWithOutline(page, state.activePageIndex))
-    .join('')
-  list.innerHTML = `<ul class="page-nav-list">${items}</ul>`
+  list.innerHTML = buildPageNavBodyHtml(state.pages, state.activePageIndex)
 }
 
 interface PageNavigationWiring {
@@ -135,7 +201,9 @@ const findClickedSlug = (event: MouseEvent): string | null => {
   if (!(event.target instanceof Element)) {
     return null
   }
-  const link = event.target.closest('a.page-nav-link, a.page-outline-link')
+  const link = event.target.closest(
+    'a.page-nav-link, a.page-outline-link, a.page-nav-sequential-link'
+  )
   if (!(link instanceof HTMLAnchorElement)) {
     return null
   }
@@ -170,6 +238,21 @@ export const wirePageNavigation = (wiring: PageNavigationWiring): void => {
     wiring.onSlugClick(slug)
   })
 }
+
+// テスト用 fixture。consistent-function-scoping ルールで module-level に置く
+// (vitest gate 外でも参照されない静的関数。production には影響しない)。
+const dummyPage = (overrides: Partial<Page> = {}): Page => ({
+  ancestorHeadingPath: [],
+  depth: 1,
+  headings: [],
+  index: 0,
+  markdown: '',
+  slug: 'page',
+  sourceLineEnd: 1,
+  sourceLineStart: 1,
+  title: 'Page',
+  ...overrides,
+})
 
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
@@ -257,6 +340,76 @@ if (import.meta.vitest) {
       })
       expect(html).toContain('a &amp; b &lt;x&gt;')
       expect(html).not.toContain('<x>')
+    })
+  })
+
+  describe('toSequentialControlsViewModel (MDXG §9 統合)', () => {
+    it('中間ページでは前後どちらも返す', () => {
+      const pages = [
+        dummyPage({ index: 0, slug: 'a', title: 'A' }),
+        dummyPage({ index: 1, slug: 'b', title: 'B' }),
+        dummyPage({ index: 2, slug: 'c', title: 'C' }),
+      ]
+      const vm = toSequentialControlsViewModel(pages, 1)
+      expect(vm.prev && vm.prev.title).toBe('A')
+      expect(vm.next && vm.next.title).toBe('C')
+    })
+
+    it('最初ページでは prev が null (§9.1 [MUST] Prev hidden の根拠)', () => {
+      const pages = [dummyPage({ index: 0, slug: 'a' }), dummyPage({ index: 1, slug: 'b' })]
+      const vm = toSequentialControlsViewModel(pages, 0)
+      expect(vm.prev).toBeNull()
+      expect(vm.next).not.toBeNull()
+    })
+
+    it('最後ページでは next が null (§9.1 [MUST] Next hidden の根拠)', () => {
+      const pages = [dummyPage({ index: 0, slug: 'a' }), dummyPage({ index: 1, slug: 'b' })]
+      const vm = toSequentialControlsViewModel(pages, 1)
+      expect(vm.prev).not.toBeNull()
+      expect(vm.next).toBeNull()
+    })
+
+    it('単一ページでは prev / next 両方 null', () => {
+      const vm = toSequentialControlsViewModel([dummyPage({ index: 0, slug: 'a' })], 0)
+      expect(vm.prev).toBeNull()
+      expect(vm.next).toBeNull()
+    })
+  })
+
+  describe('buildSequentialControlsHtml (MDXG §9 統合)', () => {
+    it('prev / next 両方ある場合は両方のリンクと nav 要素を含む', () => {
+      const html = buildSequentialControlsHtml({
+        next: dummyPage({ slug: 'next-page', title: 'Next Page' }),
+        prev: dummyPage({ slug: 'prev-page', title: 'Prev Page' }),
+      })
+      expect(html).toContain('<nav class="page-nav-sequential"')
+      expect(html).toContain('href="#prev-page"')
+      expect(html).toContain('href="#next-page"')
+      expect(html).toContain('page-nav-sequential-prev')
+      expect(html).toContain('page-nav-sequential-next')
+    })
+
+    it('片方のみのときはそのリンクだけ出る', () => {
+      const html = buildSequentialControlsHtml({
+        next: null,
+        prev: dummyPage({ slug: 'prev', title: 'Prev' }),
+      })
+      expect(html).toContain('page-nav-sequential-prev')
+      expect(html).not.toContain('page-nav-sequential-next')
+    })
+
+    it('両方 null なら空文字 (row 自体を出さない)', () => {
+      expect(buildSequentialControlsHtml({ next: null, prev: null })).toBe('')
+    })
+
+    it('title / slug は HTML escape される (属性インジェクション防止)', () => {
+      const html = buildSequentialControlsHtml({
+        next: null,
+        prev: dummyPage({ slug: 'a"onmouseover="alert(1)', title: 'A & B <x>' }),
+      })
+      expect(html).toContain('A &amp; B &lt;x&gt;')
+      expect(html).not.toContain('onmouseover="alert(1)"')
+      expect(html).toContain('&quot;')
     })
   })
 }
