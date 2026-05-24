@@ -50,10 +50,21 @@ const renderAll = (): void => {
   setupScrollSpy()
 }
 
-const scrollDocToTop = (): void => {
-  const pane = document.querySelector('.doc-pane')
-  if (pane instanceof HTMLElement) {
-    pane.scrollTop = 0
+/**
+ * Stacked View で、現在 activePage の `<section.virtual-page>` を doc-pane のスクロール先頭に揃える。
+ * 全 page が常に DOM 上に並んでいるため、doc-pane.scrollTop=0 ではなく該当 section への
+ * `scrollIntoView` で位置合わせする (mdxg-virtual-pages.md §13.4 の Stacked 解決)。
+ */
+const scrollToActivePageSection = (): void => {
+  const activePage = state.pages[state.activePageIndex]
+  if (!activePage) {
+    return
+  }
+  const section = document.querySelector<HTMLElement>(
+    `section.virtual-page[data-page-slug="${activePage.slug}"]`
+  )
+  if (section) {
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 }
 
@@ -108,7 +119,7 @@ export const loadFromMarkdown = async (name: string, text: string): Promise<void
 // navigateToTarget が 11 statements を超えるため、heading 指定無しの分岐を別関数に切り出す。
 const handleHeadinglessTarget = (pageChanged: boolean): void => {
   if (pageChanged) {
-    scrollDocToTop()
+    scrollToActivePageSection()
   }
 }
 

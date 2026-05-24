@@ -273,12 +273,15 @@ body > main.layout > aside.sidebar {
   white-space: nowrap;
 }
 .doc-pane {
-  padding: 40px;
+  padding: 32px 24px;
   position: relative;
+  /* Stacked View では各 .virtual-page が白い「紙のシート」として浮き上がる前提なので、
+     doc-pane 側は薄いグレーの「机面」として背景を持つ (Word / Pages の慣行)。 */
+  background: var(--paper-edge);
 }
 @media (min-width: 1024px) {
   .doc-pane {
-    padding: 48px 64px;
+    padding: 40px 32px;
   }
 }
 .sidebar {

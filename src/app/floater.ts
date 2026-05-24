@@ -8,10 +8,13 @@ import { qs } from './dom-utils'
 /**
  * data-payload に乗せる保存可能サブセット。`SelectionInfo` から rect を除いた構造で、
  * 引数の型をこれに絞ることでテスト fixture が DOMRect を作る必要を無くす。
+ * pageIndex は selection.ts が祖先 `<section.virtual-page>` から解決した値で、
+ * comment-modal 側で新規 Comment の `pageIndex` (§6.5) に直接埋め込む。
  */
 interface FloaterPayloadInfo {
   blockId: string
   endOffset: number
+  pageIndex: number
   quote: string
   startOffset: number
 }
@@ -35,6 +38,7 @@ const selectionFloaterPayload = (info: FloaterPayloadInfo): string =>
   JSON.stringify({
     blockId: info.blockId,
     endOffset: info.endOffset,
+    pageIndex: info.pageIndex,
     quote: info.quote,
     startOffset: info.startOffset,
   })
@@ -78,12 +82,13 @@ if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
 
   describe('selectionFloaterPayload', () => {
-    it('blockId / endOffset / quote / startOffset の JSON 文字列を返す (rect は含めない)', () => {
+    it('blockId / endOffset / pageIndex / quote / startOffset の JSON 文字列を返す (rect は含めない)', () => {
       // toEqual が exact match のため、不要フィールド (rect 等) が混入しないことも同時に検証される
       const parsed: unknown = JSON.parse(
         selectionFloaterPayload({
           blockId: 'b001',
           endOffset: 20,
+          pageIndex: 2,
           quote: 'text',
           startOffset: 10,
         })
@@ -91,6 +96,7 @@ if (import.meta.vitest) {
       expect(parsed).toEqual({
         blockId: 'b001',
         endOffset: 20,
+        pageIndex: 2,
         quote: 'text',
         startOffset: 10,
       })

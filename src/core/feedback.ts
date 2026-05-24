@@ -117,10 +117,12 @@ export const parsePendingSelection = (raw: string): PendingSelection | null => {
   if (!isRecord(parsed)) {
     return null
   }
-  const { blockId, endOffset, quote, startOffset } = parsed
+  const { blockId, endOffset, pageIndex, quote, startOffset } = parsed
   if (
     !isNonEmptyString(blockId) ||
     !isFiniteNumber(endOffset) ||
+    !isFiniteNumber(pageIndex) ||
+    pageIndex < 0 ||
     typeof quote !== 'string' ||
     !isFiniteNumber(startOffset) ||
     startOffset < 0 ||
@@ -128,7 +130,7 @@ export const parsePendingSelection = (raw: string): PendingSelection | null => {
   ) {
     return null
   }
-  return { blockId, endOffset, quote, startOffset }
+  return { blockId, endOffset, pageIndex, quote, startOffset }
 }
 
 // テスト用の妥当な Comment fixture。各テストで一部だけ壊して type guard の境界を確認する。
@@ -224,16 +226,47 @@ if (import.meta.vitest) {
     it('parses a valid pending selection', () => {
       expect(
         parsePendingSelection(
-          JSON.stringify({ blockId: 'b001', endOffset: 4, quote: 'text', startOffset: 0 })
+          JSON.stringify({
+            blockId: 'b001',
+            endOffset: 4,
+            pageIndex: 2,
+            quote: 'text',
+            startOffset: 0,
+          })
         )
-      ).toEqual({ blockId: 'b001', endOffset: 4, quote: 'text', startOffset: 0 })
+      ).toEqual({ blockId: 'b001', endOffset: 4, pageIndex: 2, quote: 'text', startOffset: 0 })
     })
 
     it('returns null for invalid JSON or invalid offsets', () => {
       expect(parsePendingSelection('{')).toBeNull()
       expect(
         parsePendingSelection(
-          JSON.stringify({ blockId: 'b001', endOffset: 0, quote: 'text', startOffset: 0 })
+          JSON.stringify({
+            blockId: 'b001',
+            endOffset: 0,
+            pageIndex: 0,
+            quote: 'text',
+            startOffset: 0,
+          })
+        )
+      ).toBeNull()
+    })
+
+    it('returns null when pageIndex is missing or negative (§6.6 invariant)', () => {
+      expect(
+        parsePendingSelection(
+          JSON.stringify({ blockId: 'b001', endOffset: 4, quote: 'text', startOffset: 0 })
+        )
+      ).toBeNull()
+      expect(
+        parsePendingSelection(
+          JSON.stringify({
+            blockId: 'b001',
+            endOffset: 4,
+            pageIndex: -1,
+            quote: 'text',
+            startOffset: 0,
+          })
         )
       ).toBeNull()
     })

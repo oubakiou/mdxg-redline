@@ -11,6 +11,7 @@
 
 import { buildBlockAnchors } from '../core/block-anchors'
 import type { HighlighterCore } from 'shiki/core'
+import type { Page } from '../core/page-split'
 import { getOrCreateHighlighter, highlightFenceWithShiki } from './shiki'
 import { injectCopyButtons } from './code-copy-wrap'
 import { qs } from './dom-utils'
@@ -25,19 +26,21 @@ const showEmptyDocument = (doc: HTMLElement, wrap: HTMLElement): void => {
 }
 
 /**
- * トップレベルブロックに連番 ID を付け、原 HTML をキャッシュする。
+ * Stacked View 配下の全 `<section.virtual-page>` の子ブロックを文書順に走査し、
+ * `b001` から連番の blockId を付与しつつ原 HTML をキャッシュする。
  * 以降の mark 再適用ではこのキャッシュをベースに HTML を巻き戻すため、レンダリング直後に必ず呼ぶ必要がある。
- *
- * `blockIdStart` は doc 全体での 1-origin index。Single Page 描画でも document スコープ blockId を
- * 維持するため、active page の先頭ブロックが doc 全体で何番目かを caller が渡す。
  */
-const cacheBlockOriginalHTML = (doc: HTMLElement, blockIdStart: number): void => {
+const cacheBlockOriginalHTML = (doc: HTMLElement): void => {
   state.blockOriginalHTML.clear()
-  for (const [index, el] of [...doc.children].entries()) {
-    if (el instanceof HTMLElement) {
-      const id = `b${String(blockIdStart + index).padStart(3, '0')}`
-      el.dataset.blockId = id
-      state.blockOriginalHTML.set(id, el.innerHTML)
+  let blockIndex = 0
+  for (const section of doc.querySelectorAll<HTMLElement>(':scope > section.virtual-page')) {
+    for (const el of section.children) {
+      if (el instanceof HTMLElement) {
+        blockIndex += 1
+        const id = `b${String(blockIndex).padStart(3, '0')}`
+        el.dataset.blockId = id
+        state.blockOriginalHTML.set(id, el.innerHTML)
+      }
     }
   }
 }
@@ -80,85 +83,40 @@ const refreshBlockOriginalHTML = (doc: HTMLElement): void => {
 }
 
 /**
- * 現在 activePage の markdown を返す。pages が未確定 (loadFromMarkdown 前) のときは
- * state.markdown 全体を返して既存の単一ページ render 経路と互換にする。
+ * 1 ページ分の markdown を `<section class="virtual-page">` に描画する。
+ * dataset.pageIndex / pageSlug は scroll-spy / TOC click / selection の page 帰属解決に使う。
+ * heading slug は当該 page の H3–H6 だけを渡すため、ページを跨いだ slug 衝突は起こらない
+ * (page-split.ts の outline 抽出で per-page 一意化済み)。
  */
-const getActivePageMarkdown = (): string => {
-  const page = state.pages[state.activePageIndex]
-  if (!page) {
-    return state.markdown
-  }
-  return page.markdown
+const renderPageSection = (page: Page): HTMLElement => {
+  const section = document.createElement('section')
+  section.className = 'virtual-page'
+  section.dataset.pageIndex = String(page.index)
+  section.dataset.pageSlug = page.slug
+  section.innerHTML = renderMarkdown(page.markdown, null, {
+    headingSlugs: page.headings.map((heading): string => heading.slug),
+  })
+  return section
 }
 
 /**
- * 現在 activePage の H3–H6 outline slug 列を返す。
- * `renderMarkdown` の `headingSlugs` オプションに渡すことで、H3–H6 に
- * `id="<slug>"` を出現順で注入し、Page Outline の URL fragment スクロール先になる
- * (Phase 4 / MDXG §8)。
+ * Stacked View: 全 page を `<section.virtual-page>` で連続描画する。
+ * ブロック原 HTML と markdown 上のアンカーは doc 全体で 1 度だけ計算し、
+ * mark-engine が page を跨いだ document スコープ blockId で動けるようにする。
  */
-const getActivePageHeadingSlugs = (): readonly string[] => {
-  const page = state.pages[state.activePageIndex]
-  if (!page) {
-    return []
-  }
-  return page.headings.map((heading): string => heading.slug)
-}
-
-/**
- * 全 markdown の anchors のうち、active page が占める sourceLine 範囲
- * `[sourceLineStart, sourceLineEnd]` に入る blockId 列を文書順で取り出す。
- * Single Page 描画でも document スコープ blockId を維持するため、active page の先頭 blockId が
- * doc 全体で何番目なのかを確定する起点になる。
- */
-const collectActivePageBlockIds = (allAnchors: ReturnType<typeof buildBlockAnchors>): string[] => {
-  const activePage = state.pages[state.activePageIndex]
-  if (!activePage) {
-    return [...allAnchors.keys()]
-  }
-  const matched: string[] = []
-  for (const [blockId, anchor] of allAnchors) {
-    if (
-      anchor.sourceLine >= activePage.sourceLineStart &&
-      anchor.sourceLine <= activePage.sourceLineEnd
-    ) {
-      matched.push(blockId)
-    }
-  }
-  return matched
-}
-
-/**
- * `b001` 形式の blockId 文字列を数値 index に戻す。`b007` → 7 のような変換で、
- * cacheBlockOriginalHTML の起点引数として連番計算に使う。
- */
-const blockIdToIndex = (blockId: string): number => Number.parseInt(blockId.slice(1), 10)
-
-const resolveActivePageBlockIdStart = (
-  allAnchors: ReturnType<typeof buildBlockAnchors>
-): number => {
-  const blockIds = collectActivePageBlockIds(allAnchors)
-  if (blockIds.length === 0) {
-    return 1
-  }
-  return blockIdToIndex(blockIds[0])
-}
-
-/** markdown を HTML 化して #doc に流し込み、ブロック原 HTML と markdown 上のアンカーを更新する */
 const mountRenderedDoc = (doc: HTMLElement, wrap: HTMLElement): void => {
   wrap.style.display = 'none'
   // C 案: 初期 render は highlighter を渡さず marked の plain 出力で paint を稼ぐ。
   // ハイライトは scheduleShikiUpgrade で paint 後に追いかける。
-  const pageMarkdown = getActivePageMarkdown()
-  doc.innerHTML = renderMarkdown(pageMarkdown, null, {
-    headingSlugs: getActivePageHeadingSlugs(),
-  })
-  const allAnchors = buildBlockAnchors(state.markdown)
+  doc.innerHTML = ''
+  for (const page of state.pages) {
+    doc.appendChild(renderPageSection(page))
+  }
   // cacheBlockOriginalHTML を injectCopyButtons より先に呼び、トップレベル <pre> の場合に
   // blockId が <pre> 自身に付与されるよう順序を保つ (wrap 後だと block-id は <div> 側に移る)。
-  cacheBlockOriginalHTML(doc, resolveActivePageBlockIdStart(allAnchors))
+  cacheBlockOriginalHTML(doc)
   injectCopyButtons(doc)
-  state.blockAnchors = allAnchors
+  state.blockAnchors = buildBlockAnchors(state.markdown)
 }
 
 const extractLangFromCode = (code: HTMLElement): string | null => {

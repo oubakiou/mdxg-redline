@@ -33,6 +33,7 @@
   --doc-code-ink: #d4d4d4;
   --doc-thead-bg: #f2f2f2;
   --doc-checkbox-accent: #0031d8;
+  --doc-page-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.05);
 
   font-family: var(--doc-font-system);
   font-size: 1.125rem;
@@ -40,17 +41,27 @@
   line-height: 1.7;
   letter-spacing: 0.02em;
   color: var(--doc-ink);
-  background-color: var(--doc-paper);
-  max-width: 860px;
-  margin: 0 auto;
-  padding: 2rem;
-  border: 1px solid var(--doc-border);
-  border-radius: 6px;
 }
 /* embedded markdown 無しで開いた経路では renderDoc が呼ばれず #doc が空のまま残るため、
-   :empty で空枠 (padding + border + 背景) を畳む。markdown 描画後は子要素が入って自動で外れる */
+   :empty で空枠を畳む。markdown 描画後は子要素 (.virtual-page) が入って自動で外れる */
 #doc:empty {
   display: none;
+}
+
+/* Stacked View: 各仮想ページを「紙のシート」として連続描画する (Word 風の縦並びページ)。
+   max-width / padding / 白背景 / 影は紙のシートとしての見た目で、.doc-pane 側の暗い
+   背景に対して浮き上がるレイアウトになる。ページ間は margin-bottom で区切る。 */
+.virtual-page {
+  max-width: 860px;
+  margin: 0 auto 32px;
+  padding: 48px 64px;
+  background-color: var(--doc-paper);
+  border: 1px solid var(--doc-border);
+  border-radius: 6px;
+  box-shadow: var(--doc-page-shadow);
+}
+.virtual-page:last-child {
+  margin-bottom: 0;
 }
 #doc h1,
 #doc h2,
@@ -313,4 +324,6 @@
   --doc-code-ink: #d4d4d4;
   --doc-thead-bg: #262626;
   --doc-checkbox-accent: #9db7f9;
+  /* dark の box-shadow は黒の影だと暗背景上で消えるので落として border に頼る */
+  --doc-page-shadow: 0 0 0 transparent;
 }

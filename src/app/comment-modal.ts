@@ -34,28 +34,26 @@ export const closeCommentModal = (): void => {
 }
 
 interface CommentContext {
-  activePageIndex: number
-  /** active page の sourceLineStart。blockAnchor 解決失敗時の sourceLine フォールバック先 */
-  activePageSourceLineStart: number
-  /** 現在 active page の blockAnchors。`sourceLine` の元 markdown 全体 1-origin 行番号を持つ */
+  /** 全 markdown の blockAnchors。`sourceLine` の元 markdown 全体 1-origin 行番号を持つ */
   blockAnchors: Map<string, { sourceLine: number }>
+  /** blockAnchor 解決失敗時の sourceLine フォールバック先 (祖先 page の sourceLineStart) */
+  fallbackSourceLine: number
 }
 
 /**
  * 保留中の選択範囲と本文からコメントオブジェクトを組み立てる純粋関数。
- * Phase 5 で sourceLine (元 markdown 全体の行番号) と pageIndex を必須にしたため、
- * blockAnchors と active page index を context として渡してもらう契約に変えた。
+ * `pageIndex` は selection の祖先 `<section.virtual-page>` から解決済みの値を直接受け取る
+ * (selection.ts の `pageIndexForBlock`、§6.5)。
  *
- * 該当 blockAnchor が無い場合は active page の `sourceLineStart` にフォールバックする。
- * §6.6 invariant `sourceLine >= 1` を保つことで、保存直後の state と reload 後の
- * `isImportableComment` 検証で挙動が一致する (Phase 5 fix: 0 を返して silent drop していた回帰の修正)。
- * 通常パスでは blockAnchors と DOM blockId が 1:1 なのでフォールバックは触らず、
- * 構造的不整合があった場合の防御的経路として残す。
+ * 該当 blockAnchor が無い場合は `fallbackSourceLine` (= selection 祖先 page の `sourceLineStart`)
+ * にフォールバックする。§6.6 invariant `sourceLine >= 1` を保つことで、保存直後の state と
+ * reload 後の `isImportableComment` 検証で挙動が一致する。通常パスでは blockAnchors と DOM
+ * blockId が 1:1 なのでフォールバックは触らず、構造的不整合があった場合の防御的経路として残す。
  */
 const resolveSourceLine = (blockId: string, context: CommentContext): number => {
   const anchor = context.blockAnchors.get(blockId)
   if (!anchor) {
-    return context.activePageSourceLineStart
+    return context.fallbackSourceLine
   }
   return anchor.sourceLine
 }
@@ -70,7 +68,7 @@ const commentFromSelection = (
   created: new Date().toISOString(),
   endOffset: selection.endOffset,
   id: uid(),
-  pageIndex: context.activePageIndex,
+  pageIndex: selection.pageIndex,
   quote: selection.quote,
   sourceLine: resolveSourceLine(selection.blockId, context),
   startOffset: selection.startOffset,
@@ -79,11 +77,11 @@ const commentFromSelection = (
 /**
  * モーダルの「Save」ボタン押下時の処理。
  * 本文空 or 保留選択 null の場合は無視（誤コミット防止）。保存後に modal を閉じる前後で副作用を一通り回す。
- * `state.blockAnchors` と `state.activePageIndex` を context として渡し、新規コメントに
- * sourceLine (元 markdown 全体 1-origin) と pageIndex を埋める (mdxg-virtual-pages.md §6.5 / §9.1)。
+ * 新規コメントの sourceLine フォールバックは selection 祖先 page の sourceLineStart を使う
+ * (§6.5 / §9.1)。
  */
-const resolveActivePageSourceLineStart = (): number => {
-  const page = state.pages[state.activePageIndex]
+const resolveSelectionPageSourceLineStart = (pageIndex: number): number => {
+  const page = state.pages[pageIndex]
   if (!page) {
     return 1
   }
@@ -97,9 +95,8 @@ const saveModalComment = async (): Promise<void> => {
     return
   }
   const newComment = commentFromSelection(selection, body, {
-    activePageIndex: state.activePageIndex,
-    activePageSourceLineStart: resolveActivePageSourceLineStart(),
     blockAnchors: state.blockAnchors,
+    fallbackSourceLine: resolveSelectionPageSourceLineStart(selection.pageIndex),
   })
   state.comments.push(newComment)
   reapplyAllMarks()
@@ -133,12 +130,20 @@ export const wireCommentModal = (): void => {
   qs('#modal-save').addEventListener('click', async (): Promise<void> => saveModalComment())
 }
 
-// テスト用 CommentContext fixture。固有の state を持たないため module scope に置く
+// テスト用 CommentContext / PendingSelection fixture。固有の state を持たないため module scope に置く
 // (unicorn/consistent-function-scoping ルール対応)。
 const dummyContext = (overrides: Partial<CommentContext> = {}): CommentContext => ({
-  activePageIndex: 0,
-  activePageSourceLineStart: 1,
   blockAnchors: new Map(),
+  fallbackSourceLine: 1,
+  ...overrides,
+})
+
+const dummySelection = (overrides: Partial<PendingSelection> = {}): PendingSelection => ({
+  blockId: 'b001',
+  endOffset: 1,
+  pageIndex: 0,
+  quote: 'q',
+  startOffset: 0,
   ...overrides,
 })
 
@@ -147,12 +152,12 @@ if (import.meta.vitest) {
 
   describe('commentFromSelection', () => {
     it('選択範囲と本文から正しいコメントを組み立てる', () => {
-      const selection = {
+      const selection = dummySelection({
         blockId: 'b001',
         endOffset: 20,
         quote: '引用テキスト',
         startOffset: 10,
-      }
+      })
       const result = commentFromSelection(selection, 'コメント本文', dummyContext())
       expect(result.blockId).toBe('b001')
       expect(result.startOffset).toBe(10)
@@ -166,20 +171,20 @@ if (import.meta.vitest) {
     })
 
     it('id は呼び出しごとに異なる', () => {
-      const sel = { blockId: 'b', endOffset: 1, quote: 'q', startOffset: 0 }
+      const sel = dummySelection({ blockId: 'b' })
       const first = commentFromSelection(sel, 'x', dummyContext())
       const second = commentFromSelection(sel, 'x', dummyContext())
       expect(first.id).not.toBe(second.id)
     })
 
-    it('pageIndex は context.activePageIndex から取り込まれる (§6.5)', () => {
-      const sel = { blockId: 'b001', endOffset: 1, quote: 'q', startOffset: 0 }
-      const result = commentFromSelection(sel, 'x', dummyContext({ activePageIndex: 3 }))
+    it('pageIndex は selection から取り込まれる (§6.5、Stacked View では祖先 section 由来)', () => {
+      const sel = dummySelection({ pageIndex: 3 })
+      const result = commentFromSelection(sel, 'x', dummyContext())
       expect(result.pageIndex).toBe(3)
     })
 
     it('sourceLine は blockAnchors から逆引きする (元 markdown 全体の 1-origin 維持)', () => {
-      const sel = { blockId: 'b002', endOffset: 1, quote: 'q', startOffset: 0 }
+      const sel = dummySelection({ blockId: 'b002' })
       const result = commentFromSelection(
         sel,
         'x',
@@ -188,14 +193,14 @@ if (import.meta.vitest) {
       expect(result.sourceLine).toBe(42)
     })
 
-    it('blockAnchor が見つからなければ activePageSourceLineStart にフォールバック (§6.6 invariant sourceLine>=1 を維持)', () => {
-      const sel = { blockId: 'b999', endOffset: 1, quote: 'q', startOffset: 0 }
-      const result = commentFromSelection(sel, 'x', dummyContext({ activePageSourceLineStart: 42 }))
+    it('blockAnchor が見つからなければ fallbackSourceLine にフォールバック (§6.6 invariant sourceLine>=1 を維持)', () => {
+      const sel = dummySelection({ blockId: 'b999' })
+      const result = commentFromSelection(sel, 'x', dummyContext({ fallbackSourceLine: 42 }))
       expect(result.sourceLine).toBe(42)
     })
 
     it('default dummyContext のフォールバックは 1 (sourceLine >= 1 不変条件を満たす)', () => {
-      const sel = { blockId: 'b999', endOffset: 1, quote: 'q', startOffset: 0 }
+      const sel = dummySelection({ blockId: 'b999' })
       const result = commentFromSelection(sel, 'x', dummyContext())
       expect(result.sourceLine).toBe(1)
       expect(result.sourceLine).toBeGreaterThanOrEqual(1)

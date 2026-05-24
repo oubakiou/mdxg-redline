@@ -28,6 +28,11 @@ export interface Comment {
 export interface PendingSelection {
   blockId: string
   endOffset: number
+  /**
+   * Stacked View で選択範囲の祖先 `<section.virtual-page>` から取得した所属 page index。
+   * 新規 Comment の `pageIndex` 必須化 (§6.5) を満たすため selection 段階で確定させる。
+   */
+  pageIndex: number
   quote: string
   startOffset: number
 }
