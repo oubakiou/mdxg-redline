@@ -609,7 +609,7 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 
 - [MUST] 全ページをドキュメント順に閲覧: ✓（Stacked View: `app/doc-renderer.ts` が全 page を `<section class="virtual-page">` で連続描画。`app/page-navigation.ts` の `renderPageNavigation` が左サイドバー `<aside class="page-nav">` にも文書順 TOC を出力）
 - [MUST] 任意ページへの移動: ✓（TOC link クリック → `wirePageNavigation` 経由で `navigateToTarget` → 該当 section に `scrollIntoView`）
-- [MUST] 現在ページの視覚的識別: ✓（page scroll-spy で viewport 上部に来た section の `pageIndex` を `state.activePageIndex` に同期し、TOC entry に `aria-current="page"` と `.page-nav-item-active` (背景色 + 左 accent border + 太字)）
+- [MUST] 現在ページの視覚的識別: ✓（page scroll-spy で viewport 上部に来た section の `pageIndex` を `state.activePageIndex` に同期し、TOC entry に `aria-current="page"` と `.page-nav-item-active` (背景色 + 4 辺 accent border + 太字)）
 - [MUST] 逐次移動の提供（詳細は §9）: ✓（左 TOC 上部に Prev / Next row を統合、§9 参照）
 
 **実装詳細**

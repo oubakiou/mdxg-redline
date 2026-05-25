@@ -126,6 +126,15 @@ body > main.layout > aside.sidebar {
 }
 .page-nav-item {
   margin: 2px 0;
+  /* active 時に 4 辺の枠線で「現在ページ + その配下の H3-H6 outline」をまとめて囲む。
+     枠線を li に置くことで link と page-outline-list が同じ枠内に収まる。全 li に透明な
+     border を予約しておくことで active ⇄ 非 active 切替時にレイアウトがガタつかない */
+  border: 2px solid transparent;
+  border-radius: 4px;
+  transition: border-color 0.1s ease;
+}
+.page-nav-item-active {
+  border-color: var(--accent);
 }
 .page-nav-link {
   display: block;
@@ -133,10 +142,8 @@ body > main.layout > aside.sidebar {
   border-radius: 4px;
   color: inherit;
   text-decoration: none;
-  border-left: 2px solid transparent;
   transition:
     background 0.1s ease,
-    border-color 0.1s ease,
     color 0.1s ease;
   /* 長いタイトルが折り返さないよう、行末でフェードする truncate にしない方が
      レビュアーが全タイトルを読めるので、ここでは折り返しを許容する */
@@ -155,7 +162,6 @@ body > main.layout > aside.sidebar {
 .page-nav-item-active .page-nav-link {
   background: var(--paper);
   color: var(--ink);
-  border-left-color: var(--accent);
   font-weight: 600;
 }
 
@@ -177,11 +183,9 @@ body > main.layout > aside.sidebar {
   border-radius: 4px;
   color: var(--ink-soft);
   text-decoration: none;
-  border-left: 2px solid transparent;
   word-break: break-word;
   transition:
     background 0.1s ease,
-    border-color 0.1s ease,
     color 0.1s ease;
 }
 .page-outline-link:hover,
@@ -190,9 +194,10 @@ body > main.layout > aside.sidebar {
   color: var(--ink);
   outline: none;
 }
+/* current 表示はテキスト色 + 太字のみで控えめに。page active の 4 辺 accent border が
+   主役で、サブ見出しは枠内の階層下位なのでハイライトを抑えて competing しないようにする */
 .page-outline-link[aria-current='location'] {
-  color: var(--ink);
-  border-left-color: var(--accent);
+  color: var(--accent);
   font-weight: 500;
 }
 /* H3–H6 のレベルに応じた追加インデント。base が 32px なのは、page-nav-link の
