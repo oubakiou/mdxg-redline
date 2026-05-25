@@ -6,7 +6,9 @@
 // ので別 observer インスタンスを持つ。topmost 解決アルゴリズム自体は heading 用と相似。
 //
 // 設計判断:
-// - `rootMargin: '0px 0px -75% 0px'` でビューポート上 25% を「現在位置」と定義する
+// - `rootMargin: '-5% 0px -95% 0px'` で viewport の上から 5% の線を「現在位置」と定義する。
+//   TOC クリック時に section top を同じ 5% の位置に揃える `alignSectionTopInPane` の挙動と
+//   整合させ、navigate 直後に上半分に残った前ページが topmost と誤判定されないようにする
 // - state.activePageIndex 変更時のみ TOC active 表示と hash を更新する (no-op の再描画を避ける)
 // - hash 更新は `syncHashFromActivePage` 経由で、既に同じ hash なら no-op (無限 hashchange 防止)
 // - 観測 → state 更新 → hashchange イベント発火 → navigateToTarget → setActivePageIndex で
@@ -163,7 +165,7 @@ export const setupPageScrollSpy = (): void => {
     (entries): void => handleIntersection(targets.doc, entries),
     {
       root: targets.pane,
-      rootMargin: '0px 0px -75% 0px',
+      rootMargin: '-5% 0px -95% 0px',
     }
   )
   for (const section of targets.sections) {

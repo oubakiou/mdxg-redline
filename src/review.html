@@ -59,6 +59,13 @@
         )
         if (effOpen === 'closed') document.documentElement.classList.add('sidebar-closed')
       } catch (e) {}
+      // 起動時の viewport 高さを 1 度だけ計測し、`.virtual-page` の min-height に使う。
+      // 以後のリサイズには追従せず「紙のシートの初期サイズ」を固定する。
+      try {
+        var ivh = window.innerHeight
+        if (ivh > 0)
+          document.documentElement.style.setProperty('--initial-viewport-height', ivh + 'px')
+      } catch (e) {}
     </script>
     <link rel="stylesheet" href="./styles/review.css" />
     <link rel="stylesheet" href="./styles/markdown.css" />

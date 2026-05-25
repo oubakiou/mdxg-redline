@@ -52,7 +52,12 @@
    max-width / padding / 白背景 / 影は紙のシートとしての見た目で、.doc-pane 側の暗い
    背景に対して浮き上がるレイアウトになる。ページ間は margin-bottom で区切る。 */
 .virtual-page {
+  box-sizing: border-box;
   max-width: 860px;
+  /* 起動時の viewport 縦幅から 160px 引いた値を最低高さとする。app-header
+     (約 50px) + 紙シートの margin-bottom (32px) + 余白で、次ページの上枠線が
+     viewport 下端に覗く高さになる。 */
+  min-height: calc(var(--initial-viewport-height, 100vh) - 160px);
   margin: 0 auto 32px;
   padding: 48px 64px;
   background-color: var(--doc-paper);

@@ -51,10 +51,40 @@ const renderAll = (): void => {
   setupPageScrollSpy()
 }
 
+/** activePage に対応する `<section.virtual-page>` を DOM から取り出す。 */
+const findActivePageSection = (): HTMLElement | null => {
+  const activePage = state.pages[state.activePageIndex]
+  if (!activePage) {
+    return null
+  }
+  return document.querySelector<HTMLElement>(
+    `section.virtual-page[data-page-slug="${activePage.slug}"]`
+  )
+}
+
 /**
- * Stacked View で、現在 activePage の `<section.virtual-page>` を doc-pane のスクロール先頭に揃える。
- * 全 page が常に DOM 上に並んでいるため、doc-pane.scrollTop=0 ではなく該当 section への
- * `scrollIntoView` で位置合わせする (mdxg-virtual-pages.md §13.4 の Stacked 解決)。
+ * section の上枠を pane の上から SECTION_TOP_RATIO の位置に揃える。section top を viewport top
+ * にぴったり貼り付けるとページ境界の認識が弱いため、上端寄りの細い余白を確保して「次ページが
+ * 始まった」感覚を与える。page-scroll-spy の rootMargin 判定線とも揃える
+ * (`page-scroll-spy.ts` の `-5% 0px -95% 0px` と同じ比率)。
+ */
+const SECTION_TOP_RATIO = 0.05
+const alignSectionTopInPane = (
+  section: HTMLElement,
+  pane: HTMLElement,
+  behavior: ScrollBehavior
+): void => {
+  const sectionRect = section.getBoundingClientRect()
+  const paneRect = pane.getBoundingClientRect()
+  const targetScrollTop =
+    pane.scrollTop + (sectionRect.top - paneRect.top) - pane.clientHeight * SECTION_TOP_RATIO
+  pane.scrollTo({ behavior, top: targetScrollTop })
+}
+
+/**
+ * Stacked View で、現在 activePage の `<section.virtual-page>` を doc-pane のスクロール位置に
+ * 揃える。実位置の決定は `alignSectionTopInPane` に委譲する。doc-pane が無い旧経路 (テスト
+ * fixture 等) では `scrollIntoView` にフォールバックする。
  *
  * 初期ロードは `auto` (instant) で呼ぶ。smooth では scroll 完了まで複数 frame かかり、その間に
  * page-scroll-spy の初回 IntersectionObserver callback が「先頭 section が intersecting」と
@@ -62,16 +92,16 @@ const renderAll = (): void => {
  * 確定するため、observer 初回時点で正しい topmost が選ばれる。
  */
 const scrollToActivePageSection = (behavior: ScrollBehavior = 'smooth'): void => {
-  const activePage = state.pages[state.activePageIndex]
-  if (!activePage) {
+  const section = findActivePageSection()
+  if (!section) {
     return
   }
-  const section = document.querySelector<HTMLElement>(
-    `section.virtual-page[data-page-slug="${activePage.slug}"]`
-  )
-  if (section) {
+  const pane = section.closest<HTMLElement>('.doc-pane')
+  if (!pane) {
     section.scrollIntoView({ behavior, block: 'start' })
+    return
   }
+  alignSectionTopInPane(section, pane, behavior)
 }
 
 /**
