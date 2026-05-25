@@ -818,6 +818,73 @@ mark.cmt.active {
   color: #1a1a1a;
 }
 
+/* Search highlight (MDXG §10)。cmt mark とは異なり border 無しのフラットなハイライトで、
+   current match (`search-hl-current`) は accent 縁取り + 太い背景でフォーカス位置を示す。
+   cmt mark の内側にネストした場合も視覚分離されるよう、search-hl 単独のスタイルだけを
+   inset で表現する (cmt の border-bottom と背景は影響を受けず両方見える)。 */
+mark.search-hl {
+  background: var(--highlight-soft);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+mark.search-hl.search-hl-current {
+  background: var(--highlight);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+:root.dark mark.search-hl.search-hl-current {
+  color: #1a1a1a;
+}
+
+/* Search bar (MDXG §10 Search の起動 UI)。
+   app-header 直下に sticky で出すと doc-pane のスクロールに追従しないため、
+   ヘッダー帯と同じレイヤーに固定配置する。`.open` クラスで visibility 切替。
+   z-index は app-header (.app-header) よりわずかに高く、modal よりは低い帯。 */
+.search-bar {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 24px;
+  background: var(--paper-edge);
+  border-bottom: 1px solid var(--rule);
+  flex-shrink: 0;
+}
+.search-bar.open {
+  display: flex;
+}
+.search-input {
+  flex: 1;
+  min-width: 200px;
+  max-width: 520px;
+  padding: 6px 10px;
+  font-family: var(--font-system);
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+.search-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+.search-count {
+  font-family: var(--font-system);
+  font-size: 12px;
+  color: var(--ink-soft);
+  min-width: 80px;
+  text-align: right;
+  user-select: none;
+}
+.search-action {
+  padding: 4px 8px;
+  font-size: 14px;
+  line-height: 1;
+}
+
 /* Tooltip (Primer 風).
    ネイティブ title 属性は表示まで 1-2 秒の遅延があり、ブラウザ設定によっては出ないため、
    data-tooltip 属性 + ::after 擬似要素で即時かつ統一されたスタイルで表示する。

@@ -3,6 +3,7 @@
 // 「Save」で state.comments に追加し、関連 UI を更新する。
 
 import type { Comment, PendingSelection } from '../core/types'
+import { closeSearch, isSearchOpen } from './search'
 import { qs, qsInput, toast, uid } from './dom-utils'
 import { parsePendingSelection } from '../core/feedback'
 import { reapplyAllMarks } from './mark-engine'
@@ -18,8 +19,18 @@ const modalState: { pendingSelection: PendingSelection | null } = {
   pendingSelection: null,
 }
 
-/** 選択範囲を保留状態にセットしてモーダルを開く。focus は CSS transition 後を狙って 50ms 遅延 */
+/**
+ * 選択範囲を保留状態にセットしてモーダルを開く。focus は CSS transition 後を狙って 50ms 遅延。
+ *
+ * 検索バーが開いていれば閉じる (DESIGN.md §12 「選択範囲 → コメント生成フロー中の検索 mark 退避」)。
+ * 検索 mark を残したままコメント作成すると、新規 cmt mark が search-hl の内側にネストして
+ * 見た目が混乱しうるのと、検索 hl が残った DOM 上での `range.surroundContents` 失敗経路を
+ * 構造的に避けるための予防的クリア。
+ */
 const openModal = (sel: PendingSelection): void => {
+  if (isSearchOpen()) {
+    closeSearch()
+  }
   modalState.pendingSelection = sel
   qs('#modal-quote').textContent = `“${sel.quote}”`
   qsInput('#modal-input').value = ''

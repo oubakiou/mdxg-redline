@@ -46,25 +46,64 @@ const cacheBlockOriginalHTML = (doc: HTMLElement): void => {
 }
 
 /**
- * `<div class="code-block-wrap">` を中の `<pre>` で置き換えた innerHTML を返す。
+ * blockOriginalHTML に焼き込まない動的装飾要素のセレクタ。
  *
- * `el.innerHTML` をそのままキャッシュすると、後段の `reapplyAllMarks` が `el.innerHTML = original`
- * で書き戻した際に wrap / Copy button が文字列パース由来の新 DOM として復元され、button の
- * click ハンドラが失われる (ネストされた `<pre>` のみ顕在化。トップレベル `<pre>` の el は
- * `<pre>` 自身で wrap を内側に含まない)。wrap を剥がした HTML をキャッシュすれば、巻き戻し後
- * `injectCopyButtons` の「wrap が無ければ作る」分岐が走り button が正しく再生成される。
+ * - `mark.cmt`: state.comments を reapplyAllMarks で都度貼り直すため、blockOriginalHTML には
+ *   素の本文を保ちたい。焼き込むと巻き戻し時に cmt が DOM 上に残り、新規 cmt が重ねて貼られて
+ *   二重 mark になる
+ * - `mark.search-hl`: 検索バー open 中のみ DOM に貼られる短命装飾。焼き込むと closeSearch 後の
+ *   reapplyAllMarks で復元され、検索を閉じてもハイライトが残る (本ファイル冒頭の検索 UX 不変条件)
+ *
+ * 焼き込み時の clone から unwrap して、blockOriginalHTML を「動的装飾を含まない素のレンダリング
+ * 結果 (Shiki span 入り)」に揃える。
  */
-const innerHTMLWithoutCodeBlockWrap = (el: HTMLElement): string => {
-  const cleaned = el.cloneNode(true)
-  if (!(cleaned instanceof Element)) {
-    return el.innerHTML
+const DYNAMIC_MARK_SELECTORS: readonly string[] = ['mark.cmt', 'mark.search-hl']
+
+const unwrapElement = (target: Element): void => {
+  while (target.firstChild) {
+    target.before(target.firstChild)
   }
+  target.remove()
+}
+
+/** clone した subtree から code-block-wrap を剥がす (前処理 1) */
+const replaceCodeBlockWraps = (cleaned: Element): void => {
   for (const wrap of cleaned.querySelectorAll('.code-block-wrap')) {
     const pre = wrap.querySelector(':scope > pre')
     if (pre) {
       wrap.replaceWith(pre)
     }
   }
+}
+
+/** clone した subtree から cmt / search-hl mark を unwrap する (前処理 2) */
+const stripDynamicMarks = (cleaned: Element): void => {
+  for (const selector of DYNAMIC_MARK_SELECTORS) {
+    for (const mark of cleaned.querySelectorAll(selector)) {
+      unwrapElement(mark)
+    }
+  }
+}
+
+/**
+ * `<div class="code-block-wrap">` を中の `<pre>` で置き換え、cmt / search-hl mark を unwrap した
+ * innerHTML を返す。reapplyAllMarks の巻き戻し前提として、装飾要素を blockOriginalHTML に
+ * 焼き込まないキャッシュ値を生成する。
+ *
+ * code-block-wrap を剥がす理由: `el.innerHTML` をそのままキャッシュすると、後段の reapplyAllMarks
+ * が `el.innerHTML = original` で書き戻した際に wrap / Copy button が文字列パース由来の新 DOM
+ * として復元され、button の click ハンドラが失われる (ネストされた `<pre>` のみ顕在化。トップ
+ * レベル `<pre>` の el は `<pre>` 自身で wrap を内側に含まない)。wrap を剥がした HTML を
+ * キャッシュすれば、巻き戻し後 `injectCopyButtons` の「wrap が無ければ作る」分岐が走り button が
+ * 正しく再生成される。
+ */
+const innerHTMLForOriginalCache = (el: HTMLElement): string => {
+  const cleaned = el.cloneNode(true)
+  if (!(cleaned instanceof Element)) {
+    return el.innerHTML
+  }
+  replaceCodeBlockWraps(cleaned)
+  stripDynamicMarks(cleaned)
   return cleaned.innerHTML
 }
 
@@ -77,7 +116,7 @@ const refreshBlockOriginalHTML = (doc: HTMLElement): void => {
   for (const el of doc.querySelectorAll<HTMLElement>('[data-block-id]')) {
     const id = el.dataset.blockId
     if (id) {
-      state.blockOriginalHTML.set(id, innerHTMLWithoutCodeBlockWrap(el))
+      state.blockOriginalHTML.set(id, innerHTMLForOriginalCache(el))
     }
   }
 }

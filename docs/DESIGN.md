@@ -489,19 +489,19 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 
 下表は準拠状況のサマリ。詳細要件と本実装の挙動、リファレンス実装 (`vercel-labs/mdxg` の `packages/parser` / `apps/web`) との対比は表の下に `#### §X` 節として並べる。表セル内では markdown のリスト記法が書けず raw HTML 列挙も §11 の方針で escape されるため、詳細はセクション節に展開する形にしている。
 
-| 分類               | MDXG セクション                                                                                       | 現状   | 要約                                                                                 |
-| ------------------ | ----------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------ |
-| Rendering          | [§1 Theming](./mdxg/01-rendering.md#1-themingテーマ)                                                  | 準拠   | 3 状態 toggle で `prefers-color-scheme` 追従、DADS primitive から自前 dark トークン  |
-| Rendering          | [§2 Code Block Rendering](./mdxg/01-rendering.md#2-code-block-renderingコードブロック描画)            | 準拠   | Shiki dual theme で 27 言語ハイライト、Copy button 動的注入、`html.dark` 連動        |
-| Rendering          | [§3 Task Lists](./mdxg/01-rendering.md#3-task-listsタスクリスト)                                      | 準拠   | marked GFM デフォルトで読み取り専用 checkbox を描画                                  |
-| Rendering          | [§4 Images](./mdxg/01-rendering.md#4-images画像)                                                      | 部分   | URL allowlist で相対画像パスを弾く（信頼境界優先、§11）                              |
-| Rendering          | [§5 Tables](./mdxg/01-rendering.md#5-tables表)                                                        | 準拠   | `<div class="table-wrap">` で水平スクロール、親レイアウトを破壊しない                |
-| Document Structure | [§6 Virtual Pages](./mdxg/02-document-structure.md#6-virtual-pages仮想ページ)                         | 準拠   | core/page-split.ts で H1 / H2 境界分割 (ATX / setext / コードフェンス追跡)           |
-| Document Structure | [§7 Page Navigation](./mdxg/02-document-structure.md#7-page-navigationページナビゲーション)           | 準拠   | Stacked View: 全 page を縦に並べて連続スクロール、左 TOC + page scroll-spy で追従    |
-| Document Structure | [§8 Page Outline](./mdxg/02-document-structure.md#8-page-outlineページアウトライン)                   | 準拠   | active page 配下に H3–H6 inline 展開 + IntersectionObserver でスクロールスパイ       |
-| Document Structure | [§9 Sequential Navigation](./mdxg/02-document-structure.md#9-sequential-navigation逐次ナビゲーション) | 準拠   | 左 TOC 上部に Prev / Next row を統合、最初 / 最後ページで該当方向を omit             |
-| Document Structure | [§10 Search](./mdxg/02-document-structure.md#10-search検索)                                           | 未対応 | Virtual Pages 統合は完了。検索ハイライト用 `<mark>` とコメント用の共存設計が次の課題 |
-| Accessibility      | [§13 Keyboard Navigation](./mdxg/04-accessibility.md#13-keyboard-navigationキーボードナビゲーション)  | 準拠   | アクセシブル名 + 左 TOC の Tab 巡回 + ↑↓/Home/End + Enter で navigate + 自動 focus   |
+| 分類               | MDXG セクション                                                                                       | 現状 | 要約                                                                                |
+| ------------------ | ----------------------------------------------------------------------------------------------------- | ---- | ----------------------------------------------------------------------------------- |
+| Rendering          | [§1 Theming](./mdxg/01-rendering.md#1-themingテーマ)                                                  | 準拠 | 3 状態 toggle で `prefers-color-scheme` 追従、DADS primitive から自前 dark トークン |
+| Rendering          | [§2 Code Block Rendering](./mdxg/01-rendering.md#2-code-block-renderingコードブロック描画)            | 準拠 | Shiki dual theme で 27 言語ハイライト、Copy button 動的注入、`html.dark` 連動       |
+| Rendering          | [§3 Task Lists](./mdxg/01-rendering.md#3-task-listsタスクリスト)                                      | 準拠 | marked GFM デフォルトで読み取り専用 checkbox を描画                                 |
+| Rendering          | [§4 Images](./mdxg/01-rendering.md#4-images画像)                                                      | 部分 | URL allowlist で相対画像パスを弾く（信頼境界優先、§11）                             |
+| Rendering          | [§5 Tables](./mdxg/01-rendering.md#5-tables表)                                                        | 準拠 | `<div class="table-wrap">` で水平スクロール、親レイアウトを破壊しない               |
+| Document Structure | [§6 Virtual Pages](./mdxg/02-document-structure.md#6-virtual-pages仮想ページ)                         | 準拠 | core/page-split.ts で H1 / H2 境界分割 (ATX / setext / コードフェンス追跡)          |
+| Document Structure | [§7 Page Navigation](./mdxg/02-document-structure.md#7-page-navigationページナビゲーション)           | 準拠 | Stacked View: 全 page を縦に並べて連続スクロール、左 TOC + page scroll-spy で追従   |
+| Document Structure | [§8 Page Outline](./mdxg/02-document-structure.md#8-page-outlineページアウトライン)                   | 準拠 | active page 配下に H3–H6 inline 展開 + IntersectionObserver でスクロールスパイ      |
+| Document Structure | [§9 Sequential Navigation](./mdxg/02-document-structure.md#9-sequential-navigation逐次ナビゲーション) | 準拠 | 左 TOC 上部に Prev / Next row を統合、最初 / 最後ページで該当方向を omit            |
+| Document Structure | [§10 Search](./mdxg/02-document-structure.md#10-search検索)                                           | 準拠 | `/` で起動、case-insensitive substring match、`search-hl` mark で cmt mark と共存   |
+| Accessibility      | [§13 Keyboard Navigation](./mdxg/04-accessibility.md#13-keyboard-navigationキーボードナビゲーション)  | 準拠 | アクセシブル名 + 左 TOC の Tab 巡回 + ↑↓/Home/End + Enter で navigate + 自動 focus  |
 
 #### §1 Theming（準拠）
 
@@ -674,21 +674,33 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 
 **本実装との差異**: 本実装は Stacked View での連続スクロール + TOC 上部の統合 Prev/Next row。リファレンス実装はツールバー Prev/Next + ページ末尾リンクの 2 箇所構成 (Single Page 表示前提)。
 
-#### §10 Search（未対応）
+#### §10 Search（準拠）
 
-- [MUST] 検索の起動: 未対応
-- [MUST] レンダリング後テキストへの検索: 未対応
-- [MUST] 現在マッチのハイライト + スクロールイン: 未対応
-- [MUST] 次 / 前のマッチ移動: 未対応
-- [MUST] ページ境界を跨ぐマッチ位置の保持: 未対応
-- [MUST] 他ページの特定マッチへの正確な着地: 未対応
-- [SHOULD] マッチ件数の表示: 未対応
-- [SHOULD] ページ境界跨ぎ時の自動ナビゲート: 未対応
+- [MUST] 検索の起動: ✓（`/` キー or toolbar 検索ボタン (`#btn-search`) で `openSearch()` を呼ぶ。`/` は `handleAffordanceKeys` 経由で `g` / `?` と同じ isEditableTarget / hasNoModifier ガードを通す。Cmd/Ctrl+F は触らない設計で、ユーザーは「ブラウザ標準のサイト検索」と「ドキュメント検索」を使い分けられる）
+- [MUST] レンダリング後テキストへの検索: ✓（`app/search.ts` の `collectSearchMatches` が全 `<section.virtual-page>` を走査し、各 `[data-block-id]` ブロックで `textSegments` の textContent を平坦化 → `core/search.ts` の `findMatchesInText` で case-insensitive substring match）
+- [MUST] 現在マッチのハイライト + スクロールイン: ✓（current match に `search-hl-current` クラスを付与、`scrollIntoView({ behavior: 'auto', block: 'center' })` で doc-pane 内を instant スクロール。本実装の他の navigate 経路 (`scrollToHeading` / `alignSectionTopInPane`) と挙動を揃え、Enter 連打での逐次検索が smooth アニメーションに追い付かず「次マッチを見失う」事象を避ける）
+- [MUST] 次 / 前のマッチ移動: ✓（input 上の `Enter` / `Shift+Enter`、`#search-next` / `#search-prev` ボタンが `nextMatch` / `prevMatch` を呼ぶ。`core/search.ts` の `nextMatchIndex` / `prevMatchIndex` が末尾/先頭でループ）
+- [MUST] ページ境界を跨ぐマッチ位置の保持: ✓（Stacked View で全 page の `<section>` が同時に DOM 上にあり、page 切替で `<mark class="search-hl">` が消えないよう `mark-engine.setOnMarksReapplied(reapplySearchHighlights)` で reapply 経路に hook を register。Shiki upgrade / renderAll / コメント追加 / 削除のいずれの reapply 後も search ハイライトが復元される）
+- [MUST] 他ページの特定マッチへの正確な着地: ✓（`navigateToCurrentMatch` が `state.activePageIndex !== match.pageIndex` のときに `configureSearchNavigation` 経由で `navigateToTarget({ pageIndex }, false)` を呼ぶ。hash は更新しない (検索終了後 Esc で元の hash に戻れる) ）
+- [SHOULD] マッチ件数の表示: ✓（`#search-count` に `formatMatchCount` の "i of N" / "N matches" / "No results" を `aria-live="polite"` で表示）
+- [SHOULD] ページ境界跨ぎ時の自動ナビゲート: ✓（[MUST] の他ページ着地と同じ経路で `navigateToTarget` を呼び、page 切替後の DOM 更新 → 再貼付 → `scrollIntoView` の流れが 1 系統に統合される）
+
+**実装詳細**
+
+- **共存設計**: cmt mark との共存は「同じ text node 内に 2 種の `<mark>` をネストする」許容方式。`mark.cmt` は border-bottom と背景色、`mark.search-hl` は背景色 + outline で視覚分離し、両方が同時に効いている部分も読み取れる。`mark` タグは textContent に現れないため §6 anchoring の startOffset / endOffset 不変条件は破られない (textSegments は深さ優先で text node を平坦化するため、cmt mark 内の text node も拾われる)
+- **オフセット計算の競合回避**: search mark の wrap 順序は同一ブロック内で `start` 降順、後ろから `<mark>` を貼り付けることで前方マッチのオフセットがズレない (mark-engine.ts の cmt mark 適用と同じパターン)
+- **選択範囲 → コメント生成中の退避**: `comment-modal.ts` の `openModal` が `isSearchOpen()` を確認し、open なら `closeSearch()` を呼んでから modal を開く。検索 mark を残したまま新規 cmt mark を貼ると `range.surroundContents` が境界エラーで失敗する経路を構造的に塞ぎ、UI 上も「コメント中は検索 mark が消える」予期可能な挙動になる
+- **マッチング**: case-insensitive substring (`text.toLowerCase()` と `query.toLowerCase()` を `String#indexOf` で照合)。オーバーラップは含めない (`from = match.end`)。ASCII / かな / 漢字では `lowerCase.length === original.length` が保たれるため、index は元 text 上の文字 index としてそのまま使える
+- **ハイライトの寿命管理**: `setSearchQuery` / `closeSearch` のいずれも `reapplyAllMarks()` を呼んで cmt mark のみの状態にリセットし、`onMarksReapplied` で改めて search を貼り直す (matches が空なら no-op)。これにより「クエリ変更時に古いハイライトが残る」「閉じてもハイライトが消えない」事故が起きない
+- **blockOriginalHTML への焼き込み防止**: `doc-renderer.ts` の `innerHTMLForOriginalCache` が clone した subtree から `mark.cmt` と `mark.search-hl` を unwrap してから innerHTML を採取する。`refreshBlockOriginalHTML` (Shiki upgrade 後の blockOriginalHTML 再構築) がこれを通すことで、検索中にページ切替や Shiki upgrade が走っても search mark が `blockOriginalHTML` に焼き込まれず、`closeSearch → reapplyAllMarks → el.innerHTML = original` でハイライトが復活する経路を構造的に塞ぐ (cmt 側にも同じ焼き込みリスクがあったため同時に対処)
+- **input の autocomplete 抑止**: ブラウザの履歴サジェストが検索バー上に出るのを避けるため `autocomplete="off"` / `spellcheck="false"` を付ける (UI コンポーネントとしてのノイズ低減)
 
 **リファレンス実装 (vercel-labs/mdxg)**
 
 - parser: 該当責務なし（`Page.markdown` を提供して web 側に検索素材を渡す形）
 - web: Cmd / Ctrl+F でトリガ。`globalMatches` で全 `pages` の `title + markdown` を lowercase 比較で集約、`Enter` / `Shift+Enter` で前後移動、`"N of M"` の件数表示。ページ境界跨ぎ時は自動で `navigateTo`、ハイライトは `highlightTextNodes` で text node に `<mark class="search-hl">` を挿入し `current` マッチに `scrollIntoView({ behavior: "smooth" })`。`apps/web/src/components/mdxg-viewer.tsx` / `globals.css` の `mark.search-hl`
+
+**本実装との差異**: 起動キーはリファレンス実装の Cmd/Ctrl+F ではなく `/` 単独 (本実装は `g` / `?` と同じ affordance スキーマで揃えた)。マッチ集約はリファレンス実装が `title + markdown` をソースに使うのに対し、本実装は **レンダリング済み DOM の textContent** を `textSegments` 経由で集める (cmt mark の境界・Shiki span ・Copy ボタン除外などの DOM 上の skip ルールを再利用して、検索対象を「画面に出ているテキスト」に揃える)。reapply hook を mark-engine に統合する設計は本実装独自で、Shiki upgrade / コメント追加 / 削除すべての経路で search 状態が自動復元される。
 
 #### §13 Keyboard Navigation（準拠）
 
@@ -725,7 +737,7 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 
 優先順序：
 
-1. **§10 Search** — MDXG [MUST] 全項目が未対応。リファレンス実装は `globalMatches` で全ページから集約 → `highlightTextNodes` で text node に `<mark class="search-hl">` を挿入する方式。MDXG Redline は既にコメントの `<mark class="cmt">` が DOM に常駐するため、**検索ハイライト用 `<mark>` とコメントハイライト用 `<mark>` の共存設計**（クラス分離 + 既存 blockId オフセット再計算との競合回避 + 選択範囲 → コメント生成フロー中の検索 mark 退避）が前提条件として追加で必要
+すべての MDXG セクションが準拠 (§4 Images は信頼境界の都合で部分対応のまま、[対応外として割り切る項目](#対応外として割り切る項目) 参照)。追加で取り組む候補は[その他の拡張候補](#その他の拡張候補)を参照。
 
 ### 規格に明文規定がない領域での判断
 
@@ -880,7 +892,9 @@ npm test            # = vp test
 - `app/comments-resize.ts`：keyboard step / `widthFromPointer` (viewport 右端からの距離) / `resolveScrollbarOffset` (要素の `offsetWidth - clientWidth` から実描画上の scrollbar 幅を取る) / `resolveViewportRightGap` (viewport 右端と box の境界差) の helper 群
 - `app/page-nav-width.ts`：左 TOC 幅・開閉状態の pure な解決ロジック（comments-width.ts と対称、値域は 180–480、key は `mdxg-redline.page-nav-*`）
 - `app/page-nav-resize.ts`：左 TOC の右端ハンドルのドラッグ・開閉タブの wiring（comments-resize.ts と対称、widthFromPointer は viewport 左端からの距離）
+- `app/search.ts`：検索 UI モジュールの health check + `resolveInitialCurrentIndex` の境界条件
 - `core/escape.ts`：5 文字 (`& < > " '`) を HTML 実体参照に置換 (XSS 防御)
+- `core/search.ts`：`findMatchesInText` (case-insensitive substring / オーバーラップ非含む) / `nextMatchIndex` / `prevMatchIndex` / `formatMatchCount` の純粋ロジック
 - `core/feedback.ts`：外部 JSON / pending selection の型ガード
 - `core/markdown.ts`：raw HTML escape とコードブロック維持
 - `core/review-export.ts`：feedback JSON payload / ファイル名 / 件数表示
@@ -981,6 +995,8 @@ mdxg-redline/
 │   │   │                     MDXG §6 Virtual Pages の中核 pure module
 │   │   ├── scan-fenced-langs.ts  markdown 内のフェンス言語識別子を集約し Shiki 正規名集合に
 │   │   │                     正規化する pure module。CLI `--shiki-langs auto` から呼ばれる
+│   │   ├── search.ts        case-insensitive substring match (findMatchesInText) +
+│   │   │                     next/prev/format 件数の純粋ロジック (MDXG §10 Search)
 │   │   ├── shiki-aliases.generated.ts  Shiki bundledLanguagesInfo から自動生成 (commit 対象)。
 │   │   │                     SHIKI_SUPPORTED_LANGS (27 正規名) + ALIAS_TO_CANONICAL を export。
 │   │   │                     vite.config.ts の mdxg-shiki-assets plugin が再生成する
@@ -1019,6 +1035,11 @@ mdxg-redline/
 │   │   ├── help-modal.ts    キーボードショートカット help モーダル (`?` で toggle、§13 affordance)。
 │   │   │                     modal HTML は static (src/review.html) で、open/close と
 │   │   │                     wiring のみ担当
+│   │   ├── search.ts        検索 UI / DOM 操作 (MDXG §10 Search)。collectSearchMatches で全 page
+│   │   │                     を走査し `<mark class="search-hl">` を text node に挿入。
+│   │   │                     `setOnMarksReapplied(reapplySearchHighlights)` で reapply 経路に hook
+│   │   │                     を register し、Shiki upgrade / renderAll / コメント追加・削除のいずれ
+│   │   │                     でも search 状態が維持される。cmt mark との視覚分離は CSS で確保
 │   │   ├── scroll.ts        固定 duration smooth scroll
 │   │   ├── storage.ts       IndexedDB の薄いラッパ（`workspace-handle` 永続化専用）
 │   │   ├── workspace.ts     File System Access API 連携の orchestrator

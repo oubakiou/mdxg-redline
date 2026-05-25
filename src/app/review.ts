@@ -33,6 +33,14 @@ import { qs, toast } from './dom-utils'
 // `qs` (q) より前に置けと言うが、既存の import block 全体は元々その制約に従っていない。
 // この 1 行のためだけに block を並べ直すと diff が広がるため、当該行のみ無効化する。
 // eslint-disable-next-line sort-imports
+import {
+  closeSearch,
+  configureSearchNavigation,
+  isSearchOpen,
+  openSearch,
+  reapplySearchHighlights,
+  wireSearchBar,
+} from './search'
 import { focusNavigatedLink, renderPageNavigation, wirePageNavigation } from './page-navigation'
 import { scrollToHeading, setActiveHeadingImmediately, setupScrollSpy } from './scroll-spy'
 import { setOnPageActivated, setupPageScrollSpy } from './page-scroll-spy'
@@ -41,6 +49,7 @@ import { createDropdownMenu } from './menu'
 import { initCommentsResize } from './comments-resize'
 import { initPageNavResize } from './page-nav-resize'
 import { renderDoc } from './doc-renderer'
+import { setOnMarksReapplied } from './mark-engine'
 import { splitIntoPages } from '../core/page-split'
 import { wireFloater } from './floater'
 import { wireToolbar } from './toolbar'
@@ -288,6 +297,9 @@ if (!import.meta.vitest) {
     closeHelpModal()
     commentsMenu.close()
     sendMenu.close()
+    if (isSearchOpen()) {
+      closeSearch()
+    }
   }
   const handleModalSaveKey = (): void => {
     if (qs('#modal').classList.contains('open')) {
@@ -311,6 +323,30 @@ if (!import.meta.vitest) {
   //
   // `event.repeat` ガードは押しっぱなしによる連続発火を塞ぐ (`?` キーで modal が点滅する
   // 不具合の根本対策、再押下 toggle を期待しない GitHub / VS Code 流の挙動)。
+  // `?` は Shift+/ で生成される。hasNoModifier は使えないので event.key で直接判定する。
+  // open 専用にすることで「リピートで open/close を繰り返してチカチカする」現象を構造的に塞ぐ。
+  // 閉じる経路は Esc / Close ボタン / バックドロップクリック / toolbar `?` ボタンの toggle に集約。
+  const tryHandleHelpKey = (event: KeyboardEvent): boolean => {
+    if (event.key !== '?') {
+      return false
+    }
+    event.preventDefault()
+    openHelpModal()
+    return true
+  }
+
+  // `/` キーで検索バーを開く (MDXG §10)。修飾キー無しの単独 `/` のみ受け付け、textarea / input /
+  // contenteditable 中はスキップ済み。ブラウザ標準の Cmd+F は触らず、ユーザーが「サイトを
+  // 横断する標準検索」と「ドキュメント検索」を使い分けられるようにする。
+  const tryHandleSearchKey = (event: KeyboardEvent): boolean => {
+    if (event.key !== '/' || !hasNoModifier(event)) {
+      return false
+    }
+    event.preventDefault()
+    openSearch()
+    return true
+  }
+
   const handleAffordanceKeys = (event: KeyboardEvent): void => {
     if (shouldSkipAffordanceKey(event)) {
       return
@@ -320,13 +356,10 @@ if (!import.meta.vitest) {
       handleFocusTOCKey()
       return
     }
-    // `?` は Shift+/ で生成される。hasNoModifier は使えないので event.key で直接判定する。
-    // open 専用にすることで「リピートで open/close を繰り返してチカチカする」現象を構造的に塞ぐ。
-    // 閉じる経路は Esc / Close ボタン / バックドロップクリック / toolbar `?` ボタンの toggle に集約。
-    if (event.key === '?') {
-      event.preventDefault()
-      openHelpModal()
+    if (tryHandleHelpKey(event)) {
+      return
     }
+    tryHandleSearchKey(event)
   }
 
   document.addEventListener('keydown', (event): void => {
@@ -359,6 +392,16 @@ if (!import.meta.vitest) {
     commentCountLabel,
     loadFromMarkdown,
   })
+
+  // search (MDXG §10) の wiring。reapply hook は mark-engine から呼ばれるため、cmt mark の
+  // 再貼付経路 (Shiki upgrade / renderAll / コメント追加 / 削除) を通っても search 状態が維持される。
+  // navigate コールバックは「current match の page に hash 更新無しで navigate」を渡す。
+  setOnMarksReapplied(reapplySearchHighlights)
+  configureSearchNavigation((pageIndex: number): void => {
+    navigateToTarget({ headingSlug: null, pageIndex }, false)
+  })
+  wireSearchBar()
+  qs('#btn-search').addEventListener('click', openSearch)
 
   qs('#btn-help').addEventListener('click', toggleHelpModal)
   qs('#btn-send').addEventListener('click', async (): Promise<void> => writeFeedback())

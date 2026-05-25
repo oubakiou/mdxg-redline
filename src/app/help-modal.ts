@@ -124,6 +124,7 @@ if (import.meta.vitest) {
   const expectedKbdKeys: readonly string[] = [
     'g',
     '?',
+    '/',
     'Esc',
     'Tab',
     'Enter',

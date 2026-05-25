@@ -12,14 +12,14 @@ interface SelectionState {
 }
 
 /** ブロック内テキストノードを平坦化した 1 区間 */
-interface TextSegment {
+export interface TextSegment {
   start: number
   end: number
   node: Text
 }
 
 /** 保存値オフセットから解決した DOM 上の両端ノード＋オフセット */
-interface TextRangeEndpoints {
+export interface TextRangeEndpoints {
   startNode: Text
   startOff: number
   endNode: Text
@@ -57,7 +57,7 @@ const shouldSkipForTextSegments = (node: Node): boolean => {
   return SKIP_TEXT_SEGMENT_CLASSES.some((cls): boolean => node.classList.contains(cls))
 }
 
-const textSegments = (blockEl: Element): TextSegment[] => {
+export const textSegments = (blockEl: Element): TextSegment[] => {
   const segments: TextSegment[] = []
   const visit = (node: Node): void => {
     if (shouldSkipForTextSegments(node)) {
@@ -102,8 +102,10 @@ const resolveSegmentOffsets = (
 /**
  * 保存値 (startOffset, endOffset) を DOM 上の (startNode, startOff)/(endNode, endOff) に解決する。
  * テキスト構造が変わって解決できない場合は null を返し、呼び出し側は該当 mark をスキップする（fail-soft）。
+ *
+ * `app/search.ts` から match の `[start, end)` を Range に直す経路でも再利用する。
  */
-const textRangeFromOffsets = (
+export const textRangeFromOffsets = (
   blockEl: Element,
   startOffset: number,
   endOffset: number

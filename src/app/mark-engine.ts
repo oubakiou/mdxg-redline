@@ -115,6 +115,18 @@ const applyMarksForBlock = ({
 }
 
 /**
+ * `reapplyAllMarks` の末尾で呼ばれる callback。search.ts が search-hl の再貼付を register する。
+ * cmt mark を貼り直すたびに search ハイライトを上書き再構築する経路を構造的に揃え、
+ * Shiki upgrade / renderAll / コメント追加 / 削除のいずれの reapply 経路でも search が維持される。
+ *
+ * Wire は `setOnMarksReapplied` で 1 つだけ。空 callback の登録解除は null を渡せばよい。
+ */
+let onMarksReapplied: (() => void) | null = null
+export const setOnMarksReapplied = (callback: (() => void) | null): void => {
+  onMarksReapplied = callback
+}
+
+/**
  * すべてのブロックに対して mark を貼り直す。
  * コメントの追加・削除があるたび「キャッシュ済み原 HTML へ戻す → 全 mark 再生成」というラウンドトリップを取り、
  * 差分管理を避けて単純化している（コメント件数は実用上それほど多くならない想定）。
@@ -124,6 +136,9 @@ export const reapplyAllMarks = (): void => {
   const byBlock = commentsGroupedByBlock()
   for (const [bid, original] of state.blockOriginalHTML) {
     applyMarksForBlock({ blockId: bid, byBlock, doc, original })
+  }
+  if (onMarksReapplied !== null) {
+    onMarksReapplied()
   }
 }
 

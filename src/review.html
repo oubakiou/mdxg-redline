@@ -140,6 +140,14 @@
         <button class="btn" id="btn-load">Open file</button>
         <button
           class="btn btn-ghost tooltipped"
+          id="btn-search"
+          aria-label="Search the document"
+          data-tooltip="Search (/)"
+        >
+          <span aria-hidden="true">⌕</span>
+        </button>
+        <button
+          class="btn btn-ghost tooltipped"
           id="btn-help"
           aria-label="Show keyboard shortcuts"
           data-tooltip="Keyboard shortcuts (?)"
@@ -156,6 +164,50 @@
         </button>
       </div>
     </header>
+
+    <!-- Search bar (MDXG §10)。デフォルト hidden (`.open` class で表示)。
+         `/` キー or toolbar 検索ボタンで起動、Esc / × ボタンで閉じる。Enter / Shift+Enter で
+         next / prev、入力欄外の Prev / Next ボタンも同経路を呼ぶ (search.ts 参照)。
+         input の autocomplete を off にしてブラウザの履歴サジェストを抑制する。 -->
+    <div class="search-bar" id="search-bar" role="search" aria-label="Document search">
+      <input
+        type="text"
+        id="search-input"
+        class="search-input"
+        placeholder="Find in document"
+        aria-label="Search query"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <span class="search-count" id="search-count" aria-live="polite"></span>
+      <button
+        type="button"
+        class="btn btn-ghost search-action"
+        id="search-prev"
+        aria-label="Previous match"
+        data-tooltip="Previous (⇧Enter)"
+      >
+        <span aria-hidden="true">↑</span>
+      </button>
+      <button
+        type="button"
+        class="btn btn-ghost search-action"
+        id="search-next"
+        aria-label="Next match"
+        data-tooltip="Next (Enter)"
+      >
+        <span aria-hidden="true">↓</span>
+      </button>
+      <button
+        type="button"
+        class="btn btn-ghost search-action"
+        id="search-close"
+        aria-label="Close search"
+        data-tooltip="Close (Esc)"
+      >
+        <span aria-hidden="true">×</span>
+      </button>
+    </div>
 
     <input type="file" id="file-md" accept=".md,.markdown,text/markdown,text/plain" hidden />
 
@@ -341,10 +393,14 @@
             <dd>Jump to first / last TOC entry</dd>
             <dt><kbd>Enter</kbd></dt>
             <dd>Navigate to the focused entry</dd>
+            <dt><kbd>/</kbd></dt>
+            <dd>Open search</dd>
+            <dt><kbd>Enter</kbd> / <kbd>⇧</kbd><kbd>Enter</kbd></dt>
+            <dd>Next / previous search match (while search is open)</dd>
             <dt><kbd>?</kbd></dt>
             <dd>Show this help</dd>
             <dt><kbd>Esc</kbd></dt>
-            <dd>Close any open modal or menu</dd>
+            <dd>Close any open modal, menu, or search</dd>
           </dl>
         </div>
         <footer class="modal-actions">
