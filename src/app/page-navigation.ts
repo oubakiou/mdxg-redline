@@ -2,7 +2,7 @@
 // MDXG §7 Page Navigation [MUST] (Phase 2/3) + §8 Page Outline (Phase 4)
 // + §9 Sequential Navigation を担う (Stacked View では本文末尾の Prev/Next を撤去し、
 // TOC 上部に Prev/Next row を統合)。active page の li 内に H3–H6 outline を inline 展開する
-// 形式 (mdxg-virtual-pages.md §7.7 / §8.3)。
+// 形式 (mdxg-virtual-pages.archive.md §7.7 / §8.3)。
 //
 // クリック時の navigateTo 動作は review.ts の orchestrator に注入する形にし、本モジュールは
 // 「クリックされた slug を通知する」ところまでで責務を区切る (page-nav.ts ⇔ doc-renderer.ts
@@ -154,7 +154,7 @@ const renderPageItem = (vm: PageItemViewModel, outlineHtml: string): string => {
   )
 }
 
-// outline は active page のみ展開 (mdxg-virtual-pages.md §7.7 / §8.3 inline 展開方針)。
+// outline は active page のみ展開 (mdxg-virtual-pages.archive.md §7.7 / §8.3 inline 展開方針)。
 // no-ternary を満たすため if 文で分岐する。
 const resolveOutlineHtml = (page: Page, activePageIndex: number): string => {
   if (page.index !== activePageIndex) {

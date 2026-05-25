@@ -1,7 +1,7 @@
 // 左サイドバー (page-nav) 幅 + open/closed 状態の単一の真実の源と、優先順位 P1
 // (localStorage > CLI hint > default) の決定ロジック。comments-width.ts と並列に保つ:
 // 右サイドバーと左サイドバーで storage key / 値域 / default が異なるため共通化は避け、
-// 対称な 2 ファイルとして保持する (DESIGN.md §7c / mdxg-virtual-pages.md §13.1 (a))。
+// 対称な 2 ファイルとして保持する (DESIGN.md §7c / mdxg-virtual-pages.archive.md §13.1 (a))。
 
 export type PageNavOpenState = 'open' | 'closed'
 

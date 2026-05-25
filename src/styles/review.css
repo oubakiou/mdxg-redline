@@ -1094,7 +1094,7 @@ mark.cmt.active {
     grid-template-columns: 1fr;
   }
   /* Mobile view では page-nav 列は隠す (TOC は Phase 2 ではデスクトップ前提、
-     モバイル UI は mdxg-virtual-pages.md §12 対応外として割り切る)。 */
+     モバイル UI は mdxg-virtual-pages.archive.md §12 対応外として割り切る)。 */
   .page-nav {
     display: none;
   }

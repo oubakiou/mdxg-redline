@@ -11,7 +11,7 @@ import { feedbackSignature } from '../core/review-export'
  * アプリ全体の現在状態。レンダリング・保存・サイドバー描画はすべてこの 1 箇所を参照する単一の真の源として扱う。
  * docHash は markdown 本文の SHA-256 先頭 8 バイト hex で、保存キーや workspace 取り込みの版差分検知に用いる。
  *
- * pages / activePageIndex は MDXG §6–§9 Virtual Pages 用 (docs/mdxg-virtual-pages.md)。
+ * pages / activePageIndex は MDXG §6–§9 Virtual Pages 用 (docs/mdxg-virtual-pages.archive.md)。
  * pages は markdown 読み込み時に確定し以降 read-only、activePageIndex は UI 切替で動く。
  * Phase 1 では UI は単一スクロール維持で、`pages` は state 上に乗っているだけ。
  */

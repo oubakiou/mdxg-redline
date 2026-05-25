@@ -103,7 +103,7 @@ const detectSetextDepth = (line: string): 1 | 2 | null => {
 // list / blockquote 等の他 block type かどうかの厳密判定は本実装では行わず、
 // 「直前行が非空白かつ ATX 見出し / フェンス open でない」ことを setext-eligible と扱う簡易判定にする。
 // CommonMark の正確な block 判定までは追わないため、ごく稀な edge case (リスト直下の `---` 等) で
-// 設計上ズレが残り得るが、レビュー対象 markdown でほぼ問題にならない (mdxg-virtual-pages.md §13.3)。
+// 設計上ズレが残り得るが、レビュー対象 markdown でほぼ問題にならない (mdxg-virtual-pages.archive.md §13.3)。
 interface PrevLineState {
   setextEligible: boolean
   title: string

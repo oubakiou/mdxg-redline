@@ -550,30 +550,30 @@ Open file 経由でも同じく 1a–1f を経由する。
 
 ## 13. Open Questions
 
-実装着手前に追加で詰めるべき論点。確定したものは順次本文に取り込む。
+実装着手前に追加で詰めるべき論点として整理した節。Phase 5 完了 + Stacked View 稼働後の UX 調整時点で **全項目 (§13.1–§13.5) 解決済み**。各項目の結論は本書 §14 / DESIGN.md の対応箇所と整合させてある。
 
 ### 13.1 Conversation サイドバーの幅と TOC 追加後のレイアウト
 
 右サイドバー (Conversation) は本書とは独立に幅可変化済みで、280–640px の範囲でユーザーがドラッグ調整 + closed (= 0px) もあり得る（DESIGN.md §4 / §7c）。3 ペイン化に際してこの前提を維持しつつ、残る論点は次の 2 つ：
 
 - **(a) 左 `<aside class="page-nav">` の幅戦略 (解決済み)** — ✓ 右サイドバーと対称に CSS 変数 + ドラッグでリサイズ可能にする方式で実装した。値域は 180–480px、default 220px、closed (= 0px) も対応。`localStorage` で width / open 状態を永続化し、`<html data-page-nav-width>` 属性 (CLI `--page-nav-width`) を低優先度のヒントとして読む P1 解決 (DESIGN.md §7c / §3)。実装は `app/page-nav-width.ts` (pure) + `app/page-nav-resize.ts` (DOM wiring) で comments-width.ts / comments-resize.ts と対称な 2 ファイル構成。
-- **(b) 狭幅時の優先度** — viewport 幅が縮んだ場合、左 page-nav の折りたたみ・右 comments panel の closed・1 ペイン化への切替のうちどれを先に発火させるか。右 comments panel は既にユーザー操作で closed にできるので、自動切替は左 page-nav の折りたたみを先に出すのが自然そうだが、確定は UI 実装着手時の UX 検証に委ねる。
+- **(b) 狭幅時の優先度 (解決済み)** — ✓ `@media (max-width: 900px)` の 1 段で 1 ペイン縦積みに切替える方針で実装した (`src/styles/review.css` の mobile breakpoint)。`.layout` を `grid-template-columns: 1fr` に倒し、`.page-nav` は `display: none`、`.comments` は通常フローへ。中間段 (page-nav だけ折りたたんで残り 2 ペイン) は導入しない。閾値は当面 900px 固定で、モバイル UI 最適化は §12 通り別ドキュメントに切り出す。
 
-### 13.2 ページ slug 重複と docHash の関係
+### 13.2 ページ slug 重複と docHash の関係 (解決済み)
 
-同じ markdown を別ラウンドで読み込んだ際、見出し変更でスラッグが変わると以前生成した URL hash が無効化される。`docHash` が変われば別ドキュメントとして扱うのが本ツールの設計（DESIGN.md §6）であり、hash も失効するのが整合的。明示的な「古い hash → 新しい slug への移行」は実装しない方針で良いか確認が必要。
+> **✓ 「移行しない」方針で確定**。同じ markdown を別ラウンドで読み込んだ際、見出し変更でスラッグが変わると以前生成した URL hash は無効化される。`docHash` が変われば別ドキュメントとして扱うのが本ツールの設計 (DESIGN.md §6) であり、hash も失効するのが整合的。明示的な「古い hash → 新しい slug への移行」は実装しない。`resolveTargetFromHash` (`app/pages.ts`) も slug 不一致時は先頭ページ (index 0) にフォールバックする (§7.4) のでこの方針と一貫する。
 
-### 13.3 setext 見出し（`===` / `---`）の検出範囲
+### 13.3 setext 見出し（`===` / `---`）の検出範囲 (解決済み)
 
-MDXG §6.1 は ATX / setext 両形式を [MUST] とする。setext は直前行に空でないテキストが必要で、コードフェンス内では無効。`core/page-split.ts` の正規表現または lexer 統合の判定をどちらにするかをパーサ実装時に決定。
+> **✓ 行単位の自前 scanner で確定**。`core/page-outline.ts` の `scanHeadings` が ATX (`detectAtxHeading`) と setext (`detectSetextDepth`) を同じステートマシン内で処理し、`FenceState` (backtick / tilde fence の追跡、CommonMark §4.5) でフェンス内の `#` / `=` / `-` を境界候補から除外する。`marked.lexer` 統合は採らず、行 scanner で page-split / page-outline / block-anchors すべてを通せる pure な実装にした。in-source test (`src/core/page-outline.ts` の `scanHeadings` / `extractPageHeadings` / `src/core/page-split.ts` の `フェンス追跡`) で ATX / setext / フェンス内 / 段差付き ATX 等の境界を網羅する。
 
 ### 13.4 ページ切替時のスクロール位置 (解決済み)
 
 > **✓ Stacked View 移行で解決** — §14.4 参照。`scrollToActivePageSection` で該当 `<section.virtual-page>` を取り、`alignSectionTopInPane` が section top を doc-pane の上から 5% の位置に揃える (instant)。コメントパネル → 別ページコメントへのジャンプは `navigateToCommentPage` → `focusCommentMarkAfterNavigate` の組で、mark には `instantScrollToCenter` で位置合わせする。
 
-### 13.5 リファレンス実装の `splitIntoChunks` バグ修正の差分検証
+### 13.5 リファレンス実装の `splitIntoChunks` バグ修正の差分検証 (解決済み)
 
-リファレンス実装にあるコードフェンス追跡漏れバグ（フェンス内 `#` を見出し検出）を本実装では最初から修正して実装する。リファレンス実装と分割結果が異なる入力例を test fixture として残し、意図的な差分であることを明示する。
+> **✓ in-source test で確定**。`core/page-split.ts` の `splitIntoPages: フェンス追跡` describe にフェンス内 `# / ##` を含む入力で「フェンス内見出しはページ境界として扱わない」ことを assert する test を置き、`core/page-outline.ts` の `scanHeadings` / `extractPageHeadings` describe にも backtick fence / tilde fence それぞれのフェンス内 ATX を弾く test を置いている。リファレンス実装 (`vercel-labs/mdxg`) の `splitIntoChunks` は同じ入力でフェンス内 `#` を H1 として拾うため、これらの test は意図的な差分の regression guard となる。詳細な対比は DESIGN.md §12 §6 Virtual Pages の「本実装との差異」を参照。
 
 ---
 
