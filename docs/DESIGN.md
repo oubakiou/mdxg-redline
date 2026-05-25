@@ -705,9 +705,8 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 
 優先順序：
 
-1. ~~**§6 / §7 / §8 / §9 Virtual Pages 系**~~ — 完了 (`docs/mdxg-virtual-pages.archive.md` の Phase 1–5 で実装、上記 §6–§9 詳細参照)
-2. **§13 残り（ページナビ矢印 / Enter / フォーカス受け取り / 逐次ナビのキーボード操作）** — Virtual Pages のページモデル成立済みのため次の対象。リファレンス実装の `handleTocKeyDown`（↑↓ で項目移動 / ←→ で H1 配下の折りたたみ・親へフォーカス / Enter で navigate / `activePageIndex` 変化時の自動 focus）がそのまま参考になる
-3. **§10 Search** — Virtual Pages 統合済みのため次に着手可能。リファレンス実装は `globalMatches` で全ページから集約 → `highlightTextNodes` で text node に `<mark class="search-hl">` を挿入する方式。MDXG Redline は既にコメントの `<mark class="cmt">` が DOM に常駐するため、**検索ハイライト用 `<mark>` とコメントハイライト用 `<mark>` の共存設計**（クラス分離 + 既存 blockId オフセット再計算との競合回避 + 選択範囲 → コメント生成フロー中の検索 mark 退避）が前提条件として追加で必要
+1. **§13 残り（ページナビ矢印 / Enter / フォーカス受け取り / 逐次ナビのキーボード操作）** — アクセシブル名は網羅済みだが MDXG [MUST] のキーボード操作が未対応。リファレンス実装の `handleTocKeyDown`（↑↓ で項目移動 / ←→ で H1 配下の折りたたみ・親へフォーカス / Enter で navigate / `activePageIndex` 変化時の自動 focus）がそのまま参考になる
+2. **§10 Search** — MDXG [MUST] 全項目が未対応。リファレンス実装は `globalMatches` で全ページから集約 → `highlightTextNodes` で text node に `<mark class="search-hl">` を挿入する方式。MDXG Redline は既にコメントの `<mark class="cmt">` が DOM に常駐するため、**検索ハイライト用 `<mark>` とコメントハイライト用 `<mark>` の共存設計**（クラス分離 + 既存 blockId オフセット再計算との競合回避 + 選択範囲 → コメント生成フロー中の検索 mark 退避）が前提条件として追加で必要
 
 ### 規格に明文規定がない領域での判断
 
