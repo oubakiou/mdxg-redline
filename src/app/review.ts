@@ -28,7 +28,11 @@ import { closeCommentModal, wireCommentModal } from './comment-modal'
 import { computeDocHash, formatLoadedStatus } from '../core/embed'
 import { markFeedbackUnsaved, state } from './app-state'
 import { qs, toast } from './dom-utils'
-import { renderPageNavigation, wirePageNavigation } from './page-navigation'
+// sort-imports は declaration を first specifier (`focusNavigatedLink` = f) で比較するため
+// `qs` (q) より前に置けと言うが、既存の import block 全体は元々その制約に従っていない。
+// この 1 行のためだけに block を並べ直すと diff が広がるため、当該行のみ無効化する。
+// eslint-disable-next-line sort-imports
+import { focusNavigatedLink, renderPageNavigation, wirePageNavigation } from './page-navigation'
 import { scrollToHeading, setActiveHeadingImmediately, setupScrollSpy } from './scroll-spy'
 import { setOnPageActivated, setupPageScrollSpy } from './page-scroll-spy'
 import { boot } from './boot'
@@ -181,13 +185,16 @@ export const loadFromMarkdown = async (name: string, text: string): Promise<void
  * hash 同期、対象 heading へのスクロールをまとめて行う。
  * - `pushHash = true` (TOC / outline / Sequential クリック): hash も書き換える
  * - `pushHash = false` (hashchange 由来): hash は既に変更済みなので書き換えない
+ * - `focusTOC = true` はキーボード由来の navigate (Enter on TOC link) で立てる。対象 link に
+ *   フォーカスを戻し、roving tabindex の current 位置も同時に更新する (§13 [SHOULD] フォーカス管理)。
+ *   click 由来 / hashchange / scroll-spy 由来では false のままで、フォーカスを奪わない
  * - scroll 動作は `scrollToTargetAfterRender` に集約 (heading 指定 / page section / 同一 page 内
  *   no-op の 3 分岐) し、instant (`auto`) で位置遷移する
  *
  * 再描画は必ず `renderAll()` 経由にする。view 追加時の drift を構造的に防ぐ単一の真の源
  * (Phase 3 で sequential-nav 抜けが起きた回帰の再発防止)。
  */
-const navigateToTarget = (target: NavigateTarget, pushHash: boolean): void => {
+const navigateToTarget = (target: NavigateTarget, pushHash: boolean, focusTOC = false): void => {
   const pageChanged = setActivePageIndex(target.pageIndex)
   if (pageChanged) {
     renderAll()
@@ -196,6 +203,12 @@ const navigateToTarget = (target: NavigateTarget, pushHash: boolean): void => {
     syncHashFromActivePage(target.headingSlug)
   }
   scrollToTargetAfterRender(target, pageChanged, 'auto')
+  if (focusTOC) {
+    const activePage = state.pages[state.activePageIndex]
+    if (activePage) {
+      focusNavigatedLink(activePage.slug, target.headingSlug)
+    }
+  }
 }
 
 export const buildExportPayload = (): ExportPayload => buildReviewExportPayload(state)
@@ -207,9 +220,14 @@ export const commentCountLabel = (): string => formatCommentCount(state.comments
  * `<page-slug>` か `<page-slug>__<heading-slug>` の composite 形式。
  * composite slug を `resolveTargetFromHash` に流すことで page index + heading slug を一度に解決し、
  * navigateToTarget に渡す。
+ *
+ * `keyboardActivated` は wirePageNavigation の click delegate が `MouseEvent.detail === 0` で識別した
+ * 「キーボード Enter で `<a>` がブラウザに dispatch させた synthetic click」を指し、navigate 後に
+ * TOC の対象 link へフォーカスを戻すかの判断に使う (§13 [SHOULD])。マウスクリックでは false の
+ * ままでフォーカスを動かさず、本文側に居るユーザーの邪魔をしない。
  */
-const onCompositeSlugClick = (compositeSlug: string): void => {
-  navigateToTarget(resolveTargetFromHash(`#${compositeSlug}`), true)
+const onCompositeSlugClick = (compositeSlug: string, keyboardActivated: boolean): void => {
+  navigateToTarget(resolveTargetFromHash(`#${compositeSlug}`), true, keyboardActivated)
 }
 
 /**

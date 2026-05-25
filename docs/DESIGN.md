@@ -501,7 +501,7 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 | Document Structure | [§8 Page Outline](./mdxg/02-document-structure.md#8-page-outlineページアウトライン)                   | 準拠   | active page 配下に H3–H6 inline 展開 + IntersectionObserver でスクロールスパイ       |
 | Document Structure | [§9 Sequential Navigation](./mdxg/02-document-structure.md#9-sequential-navigation逐次ナビゲーション) | 準拠   | 左 TOC 上部に Prev / Next row を統合、最初 / 最後ページで該当方向を omit             |
 | Document Structure | [§10 Search](./mdxg/02-document-structure.md#10-search検索)                                           | 未対応 | Virtual Pages 統合は完了。検索ハイライト用 `<mark>` とコメント用の共存設計が次の課題 |
-| Accessibility      | [§13 Keyboard Navigation](./mdxg/04-accessibility.md#13-keyboard-navigationキーボードナビゲーション)  | 部分   | アクセシブル名は網羅監査済み、ページナビ系のキーボード操作は未対応                   |
+| Accessibility      | [§13 Keyboard Navigation](./mdxg/04-accessibility.md#13-keyboard-navigationキーボードナビゲーション)  | 準拠   | アクセシブル名 + 左 TOC の Tab 巡回 + ↑↓/Home/End + Enter で navigate + 自動 focus   |
 
 #### §1 Theming（準拠）
 
@@ -690,23 +690,32 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 - parser: 該当責務なし（`Page.markdown` を提供して web 側に検索素材を渡す形）
 - web: Cmd / Ctrl+F でトリガ。`globalMatches` で全 `pages` の `title + markdown` を lowercase 比較で集約、`Enter` / `Shift+Enter` で前後移動、`"N of M"` の件数表示。ページ境界跨ぎ時は自動で `navigateTo`、ハイライトは `highlightTextNodes` で text node に `<mark class="search-hl">` を挿入し `current` マッチに `scrollIntoView({ behavior: "smooth" })`。`apps/web/src/components/mdxg-viewer.tsx` / `globals.css` の `mark.search-hl`
 
-#### §13 Keyboard Navigation（部分）
+#### §13 Keyboard Navigation（準拠）
 
-- [MUST] ページナビコントロールの矢印キー操作: 未対応（ページ概念なし）
-- [MUST] Enter 等でのページ移動: 未対応
-- [SHOULD] アクティブページがフォーカスを受け取る: 未対応
-- [SHOULD] 逐次ナビゲーションのキーボードアクセス: 未対応
+- [MUST] ページナビコントロールの矢印キー操作: ✓（`#page-nav` 配下の `keydown` handler で ↑/↓ は前後 link へ、Home/End で先頭/末尾の link へフォーカスを移動。詳細は下記）
+- [MUST] Enter 等でのページ移動: ✓（`<a>` の標準挙動でブラウザが synthetic click を発火し、既存 click delegate が `navigateToTarget` を呼ぶ）
+- [SHOULD] アクティブページがフォーカスを受け取る: ✓（キーボード Enter で navigate した時に `focusNavigatedLink` が対象 TOC link にフォーカスを戻す。マウスクリック / hashchange / page scroll-spy 由来ではフォーカスを動かさない、下記）
+- [SHOULD] 逐次ナビゲーションのキーボードアクセス: ✓（TOC 上部の Prev / Next row も `a.page-nav-sequential-link` として focusable group に含まれ、Tab / ↑/↓ + Enter で同じ経路で動作）
 - [MUST] 全インタラクティブ要素のアクセシブル名: ✓（網羅監査済み。装飾文字 `▾` / `＋` を `<span aria-hidden="true">` で覆い、`#modal` (コメント入力) に `role="dialog"` / `aria-modal="true"` / `aria-labelledby` を付与、`#modal-input` `<textarea>` に `aria-labelledby="modal-input-label"` で「Add a review comment」をアクセシブル名として束ね、コメントパネルの `.cmt-del` に `aria-label="Delete comment"` を追加。アイコン only な `#btn-theme` / `#btn-send-menu` は既存の `aria-label` で要件充足）
+
+**実装詳細**
+
+- **flat tab order**: 全 TOC link (`page-nav-link` / `page-outline-link` / `page-nav-sequential-link`) は `tabindex` 属性を持たない (デフォルト 0 で tab order に乗る)。Tab で TOC 内の link を順次巡回でき、もう一度 Tab で TOC を抜けて doc-pane / comments-pane へ進む。リファレンス実装 (vercel-labs/mdxg の各 `<li>` への `tabIndex={0}`) と同じ方針。WAI-ARIA APG が推奨する roving tabindex (1 tab stop に集約) は本実装では採用しない (TOC 内移動を Tab で完結させたいユーザー直感を優先し、↑/↓ 巡回は補助 hotkey として共存させる)
+- **↑/↓/Home/End**: `wirePageNavigation` 内の `keydown` listener が `FOCUSABLE_LINK_SELECTOR` で集めた link 配列を DOM 順 (sequential → page-nav → outline) で巡回する。両端では index を clamp し、`preventDefault()` でブラウザのスクロールを止める。`Ctrl` / `Cmd` / `Shift` / `Alt` 修飾キー付きはスキップ
+- **キーボード由来の判別**: click delegate は `MouseEvent.detail === 0` を「キーボード Enter から `<a>` がブラウザに dispatch させた synthetic click」と判定する。実マウス click は `detail >= 1` になるため誤判定しない。flag は `onSlugClick(slug, keyboardActivated)` で review.ts に伝わり、`navigateToTarget` の `focusTOC` パラメータを通って `focusNavigatedLink` に到達する
+- **navigate 後の自動 focus**: `focusNavigatedLink(pageSlug, headingSlug)` が target を `[data-slug]` で一致検索し、`focusLinkAtIndex` 経由で `focus()` する。tabindex 操作は行わない (全 link が tab order に乗っているため)
+- **スクロールスパイ由来は focus を動かさない**: `setOnPageActivated` callback は `renderPageNavigation` を呼ぶだけで、`focusNavigatedLink` には踏み込まない。本文を読みながらスクロールしている最中に TOC へフォーカスが奪われると UX が大きく悪化するため、明示的なキーボード navigate (Enter) 経由でのみフォーカス移動する設計判断
 
 **リファレンス実装 (vercel-labs/mdxg)**
 
 - parser: 該当責務なし
 - web: TOC リストの各 `<li>` に `tabIndex={0}` + `handleTocKeyDown` を付与し、↑/↓ で項目移動、←/→ で H1 配下グループの折りたたみ / 親 H1 へのフォーカス移動、Enter で `navigateTo`。`useEffect` で `activePageIndex` 変化時に当該 TOC アイテムへ自動フォーカス。アイコン only 系 button（prev / next / sidebar toggle）には `aria-label`。`apps/web/src/components/mdxg-viewer.tsx`
 
+**本実装との差異**: tab order / 矢印キー / Enter の挙動は本実装も同方針 (flat tab order + keydown handler)。←/→ で H1 配下グループを折りたたむ挙動は本実装に H2 page 折りたたみ機能が無いため未実装。`activePageIndex` 変化時の自動フォーカスはリファレンス実装が無条件で行うのに対し、本実装は **キーボード Enter 由来のみ**に絞る (scroll-spy 由来の頻発フォーカス移動を避ける設計判断)。
+
 優先順序：
 
-1. **§13 残り（ページナビ矢印 / Enter / フォーカス受け取り / 逐次ナビのキーボード操作）** — アクセシブル名は網羅済みだが MDXG [MUST] のキーボード操作が未対応。リファレンス実装の `handleTocKeyDown`（↑↓ で項目移動 / ←→ で H1 配下の折りたたみ・親へフォーカス / Enter で navigate / `activePageIndex` 変化時の自動 focus）がそのまま参考になる
-2. **§10 Search** — MDXG [MUST] 全項目が未対応。リファレンス実装は `globalMatches` で全ページから集約 → `highlightTextNodes` で text node に `<mark class="search-hl">` を挿入する方式。MDXG Redline は既にコメントの `<mark class="cmt">` が DOM に常駐するため、**検索ハイライト用 `<mark>` とコメントハイライト用 `<mark>` の共存設計**（クラス分離 + 既存 blockId オフセット再計算との競合回避 + 選択範囲 → コメント生成フロー中の検索 mark 退避）が前提条件として追加で必要
+1. **§10 Search** — MDXG [MUST] 全項目が未対応。リファレンス実装は `globalMatches` で全ページから集約 → `highlightTextNodes` で text node に `<mark class="search-hl">` を挿入する方式。MDXG Redline は既にコメントの `<mark class="cmt">` が DOM に常駐するため、**検索ハイライト用 `<mark>` とコメントハイライト用 `<mark>` の共存設計**（クラス分離 + 既存 blockId オフセット再計算との競合回避 + 選択範囲 → コメント生成フロー中の検索 mark 退避）が前提条件として追加で必要
 
 ### 規格に明文規定がない領域での判断
 

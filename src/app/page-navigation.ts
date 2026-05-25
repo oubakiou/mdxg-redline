@@ -195,22 +195,28 @@ export const renderPageNavigation = (): void => {
 }
 
 interface PageNavigationWiring {
-  onSlugClick: (slug: string) => void
+  /**
+   * `keyboardActivated=true` は `MouseEvent.detail === 0` で識別したキーボード由来の Enter (`<a>`
+   * 標準挙動でブラウザが synthetic click を fire する) を指す。caller は navigate 後に TOC の
+   * 該当 link へフォーカスを戻すかの判断にこれを使う (§13 [SHOULD] フォーカス管理)。
+   */
+  onSlugClick: (slug: string, keyboardActivated: boolean) => void
 }
 
-// page-nav 配下の click delegated handler が拾うリンクは 2 種類:
+const FOCUSABLE_LINK_SELECTOR = 'a.page-nav-link, a.page-outline-link, a.page-nav-sequential-link'
+
+// page-nav 配下の click delegated handler が拾うリンクは 3 種類:
 //   - a.page-nav-link: page entry 自体への遷移 (data-slug は `<page-slug>`)
 //   - a.page-outline-link: active page の H3–H6 outline (data-slug は `<page-slug>__<heading-slug>`)
-// 両方とも data-slug を持ち、callback には composite slug 形式で渡すため共通化できる。
+//   - a.page-nav-sequential-link: TOC 上部の Prev / Next row
+// 全て data-slug を持ち、callback には composite slug 形式で渡すため共通化できる。
 // outline を selector に含めないと、同一 hash クリック時 (= 既に active な heading の outline
 // link をもう一度押した時) に hashchange が発火せず即時 navigate も走らないため反応無しになる。
 const findClickedSlug = (event: MouseEvent): string | null => {
   if (!(event.target instanceof Element)) {
     return null
   }
-  const link = event.target.closest(
-    'a.page-nav-link, a.page-outline-link, a.page-nav-sequential-link'
-  )
+  const link = event.target.closest(FOCUSABLE_LINK_SELECTOR)
   if (!(link instanceof HTMLAnchorElement)) {
     return null
   }
@@ -221,9 +227,162 @@ const findClickedSlug = (event: MouseEvent): string | null => {
   return slug
 }
 
+const queryFocusableLinks = (root: HTMLElement): HTMLAnchorElement[] => [
+  ...root.querySelectorAll<HTMLAnchorElement>(FOCUSABLE_LINK_SELECTOR),
+]
+
+const resolveDownIndex = (count: number, currentIndex: number): number => {
+  if (currentIndex < 0) {
+    return 0
+  }
+  return Math.min(currentIndex + 1, count - 1)
+}
+
+const resolveUpIndex = (count: number, currentIndex: number): number => {
+  if (currentIndex < 0) {
+    return count - 1
+  }
+  return Math.max(currentIndex - 1, 0)
+}
+
 /**
- * `#page-nav` 配下のリンククリックを delegated listener で拾い、`onSlugClick(slug)` を呼ぶ。
- * 通常クリック時は `event.preventDefault()` でブラウザのデフォルト anchor 遷移を抑止する。
+ * `links` の中で `current` がいる位置の前後 index を計算する pure helper。
+ * `current` が見つからない場合 (currentIndex < 0) は方向に応じて先頭 / 末尾を返す (TOC 内に
+ * focus が無い状態で ↑/↓ を押された時のフォールバック)。両端では index を clamp してそれ以上
+ * 動かさない。
+ */
+export const resolveNextFocusIndex = (
+  count: number,
+  currentIndex: number,
+  direction: 'down' | 'up' | 'home' | 'end'
+): number => {
+  if (count === 0) {
+    return -1
+  }
+  if (direction === 'home') {
+    return 0
+  }
+  if (direction === 'end') {
+    return count - 1
+  }
+  if (direction === 'down') {
+    return resolveDownIndex(count, currentIndex)
+  }
+  return resolveUpIndex(count, currentIndex)
+}
+
+const directionFromKey = (key: string): 'down' | 'up' | 'home' | 'end' | null => {
+  if (key === 'ArrowDown') {
+    return 'down'
+  }
+  if (key === 'ArrowUp') {
+    return 'up'
+  }
+  if (key === 'Home') {
+    return 'home'
+  }
+  if (key === 'End') {
+    return 'end'
+  }
+  return null
+}
+
+/**
+ * `links[nextIndex]` にフォーカスを移す。link は全て tabindex なし (デフォルト 0) で tab order
+ * に乗っているため、tabindex の付け替えは行わず focus() のみ呼ぶ。`nextIndex` が範囲外なら
+ * 何もしない (resolveNextFocusIndex が両端で clamp + 空リストで -1 を返すケースのフォールバック)。
+ */
+const focusLinkAtIndex = (links: readonly HTMLAnchorElement[], nextIndex: number): void => {
+  const target = links[nextIndex]
+  if (!target) {
+    return
+  }
+  target.focus()
+}
+
+const buildFocusSelector = (pageSlug: string, headingSlug: string | null): string => {
+  const fragment = buildPageHashFragment(pageSlug, headingSlug)
+  if (headingSlug === null) {
+    return `a.page-nav-link[data-slug="${CSS.escape(fragment)}"]`
+  }
+  return `a.page-outline-link[data-slug="${CSS.escape(fragment)}"]`
+}
+
+/**
+ * navigate 後に「対象の TOC link」にフォーカスを移す。キーボード由来の Enter で navigate した時
+ * 限定で呼ぶ (click 由来やスクロールスパイ由来でフォーカスを奪うと UX が崩れるため、§13 [SHOULD])。
+ *
+ * 対象解決ルール:
+ *   - heading 指定あり: 該当 page 配下の outline link を `[data-slug]` で一致検索
+ *   - heading 指定なし: active page の page-nav-link を `[data-slug]` で一致検索
+ * 該当が見つからなければ何もしない (page が消えた等の race を許容)。
+ */
+const focusTargetInRoot = (root: HTMLElement, target: HTMLAnchorElement): void => {
+  const links = queryFocusableLinks(root)
+  const index = links.indexOf(target)
+  if (index === -1) {
+    return
+  }
+  focusLinkAtIndex(links, index)
+}
+
+export const focusNavigatedLink = (pageSlug: string, headingSlug: string | null): void => {
+  const root = document.getElementById(PAGE_NAV_ROOT_ID)
+  if (!(root instanceof HTMLElement)) {
+    return
+  }
+  const target = root.querySelector<HTMLAnchorElement>(buildFocusSelector(pageSlug, headingSlug))
+  if (target === null) {
+    return
+  }
+  focusTargetInRoot(root, target)
+}
+
+const resolveCurrentFocusableLink = (target: EventTarget | null): HTMLAnchorElement | null => {
+  if (!(target instanceof Element)) {
+    return null
+  }
+  const link = target.closest(FOCUSABLE_LINK_SELECTOR)
+  if (!(link instanceof HTMLAnchorElement)) {
+    return null
+  }
+  return link
+}
+
+interface KeyDownContext {
+  current: HTMLAnchorElement
+  direction: 'down' | 'up' | 'home' | 'end'
+}
+
+const resolveKeyDownContext = (event: KeyboardEvent): KeyDownContext | null => {
+  if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+    return null
+  }
+  const direction = directionFromKey(event.key)
+  if (direction === null) {
+    return null
+  }
+  const current = resolveCurrentFocusableLink(event.target)
+  if (current === null) {
+    return null
+  }
+  return { current, direction }
+}
+
+const onPageNavKeyDown = (root: HTMLElement, event: KeyboardEvent): void => {
+  const ctx = resolveKeyDownContext(event)
+  if (ctx === null) {
+    return
+  }
+  event.preventDefault()
+  const links = queryFocusableLinks(root)
+  const nextIndex = resolveNextFocusIndex(links.length, links.indexOf(ctx.current), ctx.direction)
+  focusLinkAtIndex(links, nextIndex)
+}
+
+/**
+ * `#page-nav` 配下のリンククリックを delegated listener で拾い、`onSlugClick(slug, keyboardActivated)`
+ * を呼ぶ。通常クリック時は `event.preventDefault()` でブラウザのデフォルト anchor 遷移を抑止する。
  * `href="#p:overview"` に対してブラウザは `id="p:overview"` 要素を探しに行くが、Stacked View では
  * heading id (`<h4 id="1">` 等) が page slug と短絡的に一致する事故が起きうるため
  * (`#1` → `id="1"` を持つ別 page 配下の見出しにジャンプ)、page slug を `p:` で名前空間化したのと
@@ -232,6 +391,11 @@ const findClickedSlug = (event: MouseEvent): string | null => {
  *
  * 修飾キー (Ctrl / Cmd / Shift / middle click) の場合はネイティブの「新規タブで開く」等を尊重し、
  * preventDefault せず onSlugClick も呼ばずに pass-through する。
+ *
+ * keydown handler は ↑/↓/Home/End で TOC 内の focusable link 群を巡回する (§13 [MUST] 矢印キー)。
+ * link 自体は全て tab order に乗っているので Tab でも順次巡回できる (矢印キーは追加の便宜)。
+ * Enter は `<a>` の標準挙動でブラウザが synthetic click を fire し既存 click delegate が拾うため
+ * 別途キーハンドラを書かない。
  */
 export const wirePageNavigation = (wiring: PageNavigationWiring): void => {
   const root = document.getElementById(PAGE_NAV_ROOT_ID)
@@ -247,7 +411,12 @@ export const wirePageNavigation = (wiring: PageNavigationWiring): void => {
       return
     }
     event.preventDefault()
-    wiring.onSlugClick(slug)
+    // synthetic click from keyboard Enter on <a> sets detail=0; real mouse clicks set detail>=1.
+    const keyboardActivated = event.detail === 0
+    wiring.onSlugClick(slug, keyboardActivated)
+  })
+  root.addEventListener('keydown', (event): void => {
+    onPageNavKeyDown(root, event)
   })
 }
 
@@ -302,6 +471,41 @@ if (import.meta.vitest) {
       const vm = toPageItemViewModel(basePage, 1)
       expect(vm.ariaCurrentAttr).toBe('')
       expect(vm.itemClass).toBe('page-nav-item')
+    })
+  })
+
+  describe('resolveNextFocusIndex (§13 [MUST] 矢印キーのフォーカス移動)', () => {
+    it('count=0 では -1 を返す (focusable 0 件)', () => {
+      expect(resolveNextFocusIndex(0, -1, 'down')).toBe(-1)
+      expect(resolveNextFocusIndex(0, 0, 'home')).toBe(-1)
+    })
+
+    it("'home' は currentIndex に関わらず 0", () => {
+      expect(resolveNextFocusIndex(5, 3, 'home')).toBe(0)
+      expect(resolveNextFocusIndex(5, -1, 'home')).toBe(0)
+    })
+
+    it("'end' は currentIndex に関わらず末尾", () => {
+      expect(resolveNextFocusIndex(5, 0, 'end')).toBe(4)
+      expect(resolveNextFocusIndex(5, -1, 'end')).toBe(4)
+    })
+
+    it("'down' は +1 し末尾で clamp", () => {
+      expect(resolveNextFocusIndex(5, 2, 'down')).toBe(3)
+      expect(resolveNextFocusIndex(5, 4, 'down')).toBe(4)
+    })
+
+    it("'down' で currentIndex < 0 (TOC 外から ↓) は先頭にフォールバック", () => {
+      expect(resolveNextFocusIndex(5, -1, 'down')).toBe(0)
+    })
+
+    it("'up' は -1 し先頭で clamp", () => {
+      expect(resolveNextFocusIndex(5, 2, 'up')).toBe(1)
+      expect(resolveNextFocusIndex(5, 0, 'up')).toBe(0)
+    })
+
+    it("'up' で currentIndex < 0 (TOC 外から ↑) は末尾にフォールバック", () => {
+      expect(resolveNextFocusIndex(5, -1, 'up')).toBe(4)
     })
   })
 
