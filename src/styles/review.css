@@ -324,8 +324,9 @@ body.page-nav-resizing * {
 
 /* Sequential Navigation (TOC 上部の前 / 次ページ row、MDXG §9)。
    Stacked View では本文末尾ではなく page-nav サイドバー先頭に統合配置する。
-   flex + margin-left:auto により Prev は左、Next は常に右に貼り付き、
-   片方だけある場合 (最初 / 最後ページ) でも残り側の位置が動かない。 */
+   各 link は親幅の半分から gap の半分 (4px) を引いた固有幅で、片方が無い (最初 /
+   最後ページ) でも残った link が広がらず、Prev は左半分・Next は右半分の定位置に
+   貼り付く (margin-left: auto を Next に持たせて右寄せを保証)。 */
 .page-nav-sequential {
   display: flex;
   gap: 8px;
@@ -338,7 +339,10 @@ body.page-nav-resizing * {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  flex: 1 1 0;
+  /* box-sizing: border-box を付けないと content-box デフォルトで padding 20px + border 2px が
+     flex-basis に加算され、2 つ並べると親幅を 44px 超過してサイドバーからはみ出す。 */
+  box-sizing: border-box;
+  flex: 0 0 calc(50% - 4px);
   min-width: 0;
   padding: 6px 10px;
   border: 1px solid var(--rule);
