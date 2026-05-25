@@ -22,7 +22,6 @@ import {
 } from './page-nav-width'
 
 const MOBILE_BREAKPOINT_PX = 900
-const CLICK_DRAG_THRESHOLD_PX = 4
 
 const currentState: PageNavState = {
   open: 'open',
@@ -37,10 +36,6 @@ interface DragContext {
 let dragContext: DragContext | null = null
 let activePointerId: number | null = null
 let activeElement: HTMLElement | null = null
-// eslint-disable-next-line prefer-const -- promotion / 終了でフラグを書き換えるため
-let dragPromoted = false
-// eslint-disable-next-line prefer-const -- promote / click で書き換えるため
-let suppressNextClick = false
 
 const isMobileView = (): boolean => globalThis.innerWidth <= MOBILE_BREAKPOINT_PX
 
@@ -96,27 +91,16 @@ interface DragStartInput {
   pointerId: number
 }
 
-const beginDragTracking = (input: DragStartInput): void => {
+// handle (page-nav 右端) は pointerdown 時点でクリック動作の余地がないため即ドラッグ開始する。
+// tab は click 専用 (onToggleClick) で drag を担わないため、開閉トグルとの混在による
+// 1 回目クリック抑止 bug は構造的に塞いである (comments-resize.ts と同じ責務分担)。
+const startDrag = (input: DragStartInput): void => {
   dragContext = { startWidth: currentState.width, startX: input.clientX }
   activePointerId = input.pointerId
   activeElement = input.element
-  dragPromoted = false
-}
-
-const promoteToFullDrag = (): void => {
-  if (activeElement === null || activePointerId === null) {
-    return
-  }
-  activeElement.setPointerCapture(activePointerId)
-  activeElement.classList.add('dragging')
+  input.element.setPointerCapture(input.pointerId)
+  input.element.classList.add('dragging')
   document.body.classList.add('page-nav-resizing')
-  dragPromoted = true
-  suppressNextClick = true
-}
-
-const startDrag = (input: DragStartInput): void => {
-  beginDragTracking(input)
-  promoteToFullDrag()
 }
 
 const endDrag = (): void => {
@@ -132,7 +116,6 @@ const endDrag = (): void => {
   dragContext = null
   activePointerId = null
   activeElement = null
-  dragPromoted = false
 }
 
 const dragSnapToClosed = (): void => {
@@ -167,30 +150,9 @@ const onHandlePointerDown = (event: PointerEvent): void => {
   startDrag({ clientX: event.clientX, element: event.currentTarget, pointerId: event.pointerId })
 }
 
-const onTogglePointerDown = (event: PointerEvent): void => {
-  if (isMobileView() || !isPrimaryButton(event)) {
-    return
-  }
-  if (!(event.currentTarget instanceof HTMLElement)) {
-    return
-  }
-  beginDragTracking({
-    clientX: event.clientX,
-    element: event.currentTarget,
-    pointerId: event.pointerId,
-  })
-}
-
 const onPointerMove = (event: PointerEvent): void => {
   if (dragContext === null || activePointerId !== event.pointerId) {
     return
-  }
-  if (!dragPromoted) {
-    const moved = Math.abs(event.clientX - dragContext.startX)
-    if (moved < CLICK_DRAG_THRESHOLD_PX) {
-      return
-    }
-    promoteToFullDrag()
   }
   handleDragMove(event.clientX)
 }
@@ -199,9 +161,8 @@ const onPointerUp = (event: PointerEvent): void => {
   if (dragContext === null || activePointerId !== event.pointerId) {
     return
   }
-  const wasPromoted = dragPromoted
   endDrag()
-  if (wasPromoted && currentState.open === 'open') {
+  if (currentState.open === 'open') {
     writeStoredPageNavWidth(currentState.width)
   }
 }
@@ -213,16 +174,15 @@ const onPointerCancel = (event: PointerEvent): void => {
   endDrag()
 }
 
+// タブは closed のときしか可視ではないため、動作は「closed → open に復元」のみ。
+// pointerdown を扱わず click のみに集約することで、タッチ・トラックパッドで起きがちな
+// 数 px のジッタが drag 昇格を誤発火させて 1 回目の click が抑止される bug を構造的に塞ぐ。
 const onToggleClick = (event: MouseEvent): void => {
   if (isMobileView()) {
     return
   }
-  if (suppressNextClick) {
-    suppressNextClick = false
-    return
-  }
-  event.preventDefault()
   if (currentState.open === 'closed') {
+    event.preventDefault()
     setOpenState('open')
   }
 }
@@ -247,10 +207,6 @@ const wireHandle = (handle: HTMLElement): void => {
 }
 
 const wireToggleTab = (tab: HTMLElement): void => {
-  tab.addEventListener('pointerdown', onTogglePointerDown)
-  tab.addEventListener('pointermove', onPointerMove)
-  tab.addEventListener('pointerup', onPointerUp)
-  tab.addEventListener('pointercancel', onPointerCancel)
   tab.addEventListener('click', onToggleClick)
 }
 

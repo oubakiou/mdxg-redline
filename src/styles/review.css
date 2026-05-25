@@ -97,7 +97,11 @@ body > main.layout > aside.comments {
   display: grid;
   grid-template-columns: var(--page-nav-width, 220px) minmax(0, 1fr) var(--comments-width, 360px);
 }
-:root:not(.has-pages) .layout {
+/* `.page-nav` が display:none になると grid auto-placement で doc-pane が 1 列目 (= 0px の
+   列) に詰められて本文が消える。`.has-pages` 無し時と同様に、closed 時も `.layout` を
+   2 列 grid に切り替えて、doc-pane を `1fr` の列に正しく配置する。 */
+:root:not(.has-pages) .layout,
+:root.page-nav-closed .layout {
   grid-template-columns: minmax(0, 1fr) var(--comments-width, 360px);
 }
 :root:not(.has-pages) .page-nav {
