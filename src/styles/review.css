@@ -290,8 +290,10 @@ body.page-nav-resizing * {
   color: var(--ink);
   outline: none;
 }
-/* current 表示はテキスト色 + 太字のみで控えめに。page active の 4 辺 accent border が
-   主役で、サブ見出しは枠内の階層下位なのでハイライトを抑えて competing しないようにする */
+/* current 表示は accent color + font-weight: 500 (medium)。page active の 4 辺 accent border が
+   主役で、サブ見出しは枠内の階層下位なのでハイライトを抑えて competing しないようにする。
+   text-decoration: underline はリンク標準の見た目と被って「クリック可能」性が過剰に伝わるため
+   font-weight 側で強調する (medium のカーニング差で隣接 link の横位置が微小に揺れるのは許容)。 */
 .page-outline-link[aria-current='location'] {
   color: var(--accent);
   font-weight: 500;

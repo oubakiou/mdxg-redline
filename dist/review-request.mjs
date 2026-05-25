@@ -138,7 +138,7 @@ var THEME_VALUES = [
 	"dark"
 ];
 var isThemeHint = (value) => THEME_VALUES.includes(value);
-var COMMENTS_WIDTH_MIN = 240;
+var COMMENTS_WIDTH_MIN = 280;
 var COMMENTS_WIDTH_MAX = 640;
 var PAGE_NAV_WIDTH_MIN = 180;
 var PAGE_NAV_WIDTH_MAX = 480;
@@ -153,7 +153,7 @@ var isValidPageNavWidthHint = (value) => {
 	return value >= PAGE_NAV_WIDTH_MIN && value <= PAGE_NAV_WIDTH_MAX;
 };
 /**
-* `--comments-width` の値を整数 (0 or 240–640) にパースする。
+* `--comments-width` の値を整数 (0 or 280–640) にパースする。
 * 範囲外・非数値・小数は null (CLI 側で invalid 扱い)。
 */
 var parseCommentsWidthValue = (raw) => {
@@ -235,7 +235,7 @@ Options:
                            0         Start with the comments panel closed (only the
                                      edge tab is visible until the user opens
                                      it).
-                           240–640   Start open with the given width in pixels.
+                           280–640   Start open with the given width in pixels.
                          Written as a <html data-comments-width> attribute and
                          used only when the viewer has no localStorage
                          preference yet (the user's UI history always wins).

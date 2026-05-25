@@ -19,7 +19,7 @@ MDXG Redline は、LLM エージェントが人間レビュワーから「長文
 - **読み取り専用**: 原文 markdown を改変しない
 - **Virtual Pages (Stacked View)**: H1 / H2 で区切られたページを縦に紙シート状に並べて連続スクロール (Word / Pages 風)。左サイドバー TOC + 現在ページ配下の H3–H6 outline + Prev/Next で MDXG §6–§9 に準拠
 - **シンタックスハイライト**: Shiki (`github-light` + `github-dark`) で 27 言語のフェンスコードを描画、コードブロックには Copy button を動的注入
-- **両サイドバー幅可変**: 左 TOC (180–480px) と右 Conversation (240–640px) は独立にドラッグでリサイズ + 開閉可能。状態は `localStorage` に保存、配布側は `--page-nav-width` / `--comments-width` ヒントで初期値を指定可能
+- **両サイドバー幅可変**: 左 TOC (180–480px) と右 Conversation (280–640px) は独立にドラッグでリサイズ + 開閉可能。状態は `localStorage` に保存、配布側は `--page-nav-width` / `--comments-width` ヒントで初期値を指定可能
 - **ライト / ダーク両対応**: `prefers-color-scheme` を初期値に、toolbar の 3 状態トグルで `system → light → dark` を循環。設定は `localStorage` に保存され、配布側は `--theme` ヒントで初期値を指定可能
 
 ## 使い方
@@ -55,7 +55,7 @@ npx mdxg-redline --help                           # 使い方ヘルプを表示
 - 出力ファイル名は `<入力 MD basename>-<docHash>-review.html` で自動決定（`output-dir` 省略時は入力と同じディレクトリ、stdin 入力時は cwd）
 - `--document-name <name>` で docName（`data-name` 属性 / 出力ファイル名 prefix）を上書きできる。stdin 入力時に意味のあるファイル名を付けたい場合に推奨
 - `--theme <system|light|dark>` で生成 HTML の `<html data-theme>` 属性を上書き。受信側 inline script は **ユーザーが UI でトグルした履歴 (`localStorage`) を最優先**し、次にこのヒント、最後に `prefers-color-scheme` の順で実 theme を決定する（未指定時は属性を付けず既存挙動を維持）
-- `--comments-width <0|240-640>` で生成 HTML の `<html data-comments-width>` 属性を上書き。`0` は起動時 closed（画面右端の縦タブのみ表示）、`240–640` は open かつその幅 (px 整数)。`--theme` と同じく **ユーザーが UI でリサイズ・開閉した履歴 (`localStorage`) を最優先**し、次にこのヒント、最後に既定値 (`360px` / open) の順で決定する（未指定時は属性を付けず既存挙動を維持）
+- `--comments-width <0|280-640>` で生成 HTML の `<html data-comments-width>` 属性を上書き。`0` は起動時 closed（画面右端の縦タブのみ表示）、`280–640` は open かつその幅 (px 整数)。`--theme` と同じく **ユーザーが UI でリサイズ・開閉した履歴 (`localStorage`) を最優先**し、次にこのヒント、最後に既定値 (`360px` / open) の順で決定する（未指定時は属性を付けず既存挙動を維持）
 - `--page-nav-width <0|180-480>` で生成 HTML の `<html data-page-nav-width>` 属性を上書き。`0` は起動時 closed（画面左端の縦タブのみ表示）、`180–480` は open かつその幅 (px 整数)。`--comments-width` と対称で `localStorage` を最優先、次にこのヒント、最後に既定値 (`220px` / open) の順で決定する
 - 生成後、既定で `$BROWSER` → `open` / `xdg-open` / `cmd.exe /c start` の優先順で標準ブラウザを開く
 - VS Code Remote Containers / Codespaces を検知した場合のみ、`127.0.0.1` のデフォルトポート `51729` に軽量 HTTP サーバーを立ててホスト側ブラウザに転送する（`MDXG_REDLINE_PORT` で上書き可）。`file://` がホストから見えない環境向けの fallback。衝突時はランダムポートへ fallback して stderr に警告を出すが、**ランダムポートは `forwardPorts: "auto"` 設定でないとホスト側ブラウザから到達できない可能性がある**ため、空きが確定しているポートを `MDXG_REDLINE_PORT` で固定するか、`devcontainer.json` の `forwardPorts` に登録するのが推奨

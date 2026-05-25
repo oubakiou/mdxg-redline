@@ -20,9 +20,9 @@ const isThemeHint = (value: string): value is ThemeHint =>
 
 // --comments-width に渡せる範囲は comments-width.ts と揃える。
 // 0  → 起動時 closed (画面右端タブのみ表示)
-// 240–640 → open 状態でその幅
-// 範囲外 (1–239 / 641+) は invalid。
-const COMMENTS_WIDTH_MIN = 240
+// 280–640 → open 状態でその幅
+// 範囲外 (1–279 / 641+) は invalid。
+const COMMENTS_WIDTH_MIN = 280
 const COMMENTS_WIDTH_MAX = 640
 
 // --page-nav-width に渡せる範囲は page-nav-width.ts と揃える。
@@ -52,7 +52,7 @@ const isValidPageNavWidthHint = (value: number): boolean => {
 }
 
 /**
- * `--comments-width` の値を整数 (0 or 240–640) にパースする。
+ * `--comments-width` の値を整数 (0 or 280–640) にパースする。
  * 範囲外・非数値・小数は null (CLI 側で invalid 扱い)。
  */
 export const parseCommentsWidthValue = (raw: string): number | null => {
@@ -174,7 +174,7 @@ Options:
                            0         Start with the comments panel closed (only the
                                      edge tab is visible until the user opens
                                      it).
-                           240–640   Start open with the given width in pixels.
+                           280–640   Start open with the given width in pixels.
                          Written as a <html data-comments-width> attribute and
                          used only when the viewer has no localStorage
                          preference yet (the user's UI history always wins).
@@ -206,7 +206,7 @@ export interface RunArgs {
   /** --page-nav-width で指定された数値 (0 or 180–480)。未指定なら省略 */
   pageNavWidth?: number
   shikiLangs?: ShikiLangsMode
-  /** --comments-width で指定された数値 (0 or 240–640)。未指定なら省略 */
+  /** --comments-width で指定された数値 (0 or 280–640)。未指定なら省略 */
   commentsWidth?: number
   themeHint?: ThemeHint
 }
@@ -283,7 +283,7 @@ const consumeShikiLangsValue = (acc: PartitionState, token: string): PartitionSt
   return { ...acc, pendingShikiLangs: false, shikiLangs: parseShikiLangsValue(token) }
 }
 
-// --comments-width の値位置。0 or 240–640 の整数のみ valid。`-` 始まりや範囲外は invalid。
+// --comments-width の値位置。0 or 280–640 の整数のみ valid。`-` 始まりや範囲外は invalid。
 const consumeCommentsWidthValue = (acc: PartitionState, token: string): PartitionState => {
   if (token.startsWith('--')) {
     return { ...acc, valid: false }
@@ -821,8 +821,8 @@ if (import.meta.vitest) {
       expect(parseCommentsWidthValue('0')).toBe(0)
     })
 
-    it('240–640 の整数文字列は数値を返す', () => {
-      expect(parseCommentsWidthValue('240')).toBe(240)
+    it('280–640 の整数文字列は数値を返す', () => {
+      expect(parseCommentsWidthValue('280')).toBe(280)
       expect(parseCommentsWidthValue('360')).toBe(360)
       expect(parseCommentsWidthValue('640')).toBe(640)
     })
@@ -831,9 +831,9 @@ if (import.meta.vitest) {
       expect(parseCommentsWidthValue('  360  ')).toBe(360)
     })
 
-    it('範囲外 (1–239 / 641+ / 負数) は null', () => {
+    it('範囲外 (1–279 / 641+ / 負数) は null', () => {
       expect(parseCommentsWidthValue('1')).toBeNull()
-      expect(parseCommentsWidthValue('239')).toBeNull()
+      expect(parseCommentsWidthValue('279')).toBeNull()
       expect(parseCommentsWidthValue('641')).toBeNull()
       expect(parseCommentsWidthValue('-100')).toBeNull()
     })
@@ -882,8 +882,8 @@ if (import.meta.vitest) {
       expect(parseArgs(['--comments-width', '--no-open', 'spec.md'])).toEqual({ mode: 'invalid' })
     })
 
-    it('--comments-width 範囲外 (239 / 641) は invalid', () => {
-      expect(parseArgs(['--comments-width', '239', 'spec.md'])).toEqual({ mode: 'invalid' })
+    it('--comments-width 範囲外 (279 / 641) は invalid', () => {
+      expect(parseArgs(['--comments-width', '279', 'spec.md'])).toEqual({ mode: 'invalid' })
       expect(parseArgs(['--comments-width', '641', 'spec.md'])).toEqual({ mode: 'invalid' })
     })
 

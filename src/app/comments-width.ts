@@ -7,7 +7,7 @@ export type CommentsOpenState = 'open' | 'closed'
 
 export interface CommentsState {
   open: CommentsOpenState
-  /** 開いている時の幅 (240–640)。closed のときも「次に開いた時の幅」として保持する */
+  /** 開いている時の幅 (280–640)。closed のときも「次に開いた時の幅」として保持する */
   width: number
 }
 
@@ -15,7 +15,7 @@ const WIDTH_STORAGE_KEY = 'mdxg-redline.comments-width'
 const OPEN_STORAGE_KEY = 'mdxg-redline.comments-open'
 const OPEN_VALUES = ['open', 'closed'] as const
 
-export const COMMENTS_MIN_WIDTH = 240
+export const COMMENTS_MIN_WIDTH = 280
 export const COMMENTS_MAX_WIDTH = 640
 export const COMMENTS_DEFAULT_WIDTH = 360
 /** これ未満までドラッグされたら snap で closed にする閾値 (= COMMENTS_MIN_WIDTH と同値) */
@@ -24,14 +24,14 @@ export const COMMENTS_SNAP_THRESHOLD = COMMENTS_MIN_WIDTH
 export const isCommentsOpenState = (value: unknown): value is CommentsOpenState =>
   typeof value === 'string' && (OPEN_VALUES as readonly string[]).includes(value)
 
-/** 240–640 範囲の整数か判定する type guard。localStorage / data 属性読み込み時の防御に使う */
+/** 280–640 範囲の整数か判定する type guard。localStorage / data 属性読み込み時の防御に使う */
 export const isValidStoredCommentsWidth = (value: unknown): value is number =>
   typeof value === 'number' &&
   Number.isFinite(value) &&
   value >= COMMENTS_MIN_WIDTH &&
   value <= COMMENTS_MAX_WIDTH
 
-/** ドラッグ中の draft 値を 240–640 の整数にクランプする (Math.round で px 単位に正規化) */
+/** ドラッグ中の draft 値を 280–640 の整数にクランプする (Math.round で px 単位に正規化) */
 export const clampCommentsWidth = (value: number): number => {
   if (!Number.isFinite(value)) {
     return COMMENTS_DEFAULT_WIDTH
@@ -53,7 +53,7 @@ export const shouldSnapCommentsToClosed = (draftWidth: number): boolean =>
 /**
  * CLI ヒント (data-comments-width 属性) の生文字列を CommentsHint にパースする pure 関数。
  *   "0"        → closed (width はデフォルト 360 を後段で適用)
- *   "240"-"640" → open (その幅)
+ *   "280"-"640" → open (その幅)
  *   その他 / 範囲外 / 非数値 → null (CLI hint 無効)
  *
  * 戻り値の `width: null` (=closed 指定) は resolveEffectiveCommentsState 側で
@@ -207,15 +207,15 @@ if (import.meta.vitest) {
   })
 
   describe('isValidStoredCommentsWidth', () => {
-    it('240-640 の整数は true', () => {
-      expect(isValidStoredCommentsWidth(240)).toBe(true)
+    it('280-640 の整数は true', () => {
+      expect(isValidStoredCommentsWidth(280)).toBe(true)
       expect(isValidStoredCommentsWidth(360)).toBe(true)
       expect(isValidStoredCommentsWidth(640)).toBe(true)
     })
 
-    it('範囲外 (0 / 239 / 641) は false', () => {
+    it('範囲外 (0 / 279 / 641) は false', () => {
       expect(isValidStoredCommentsWidth(0)).toBe(false)
-      expect(isValidStoredCommentsWidth(239)).toBe(false)
+      expect(isValidStoredCommentsWidth(279)).toBe(false)
       expect(isValidStoredCommentsWidth(641)).toBe(false)
     })
 
@@ -233,10 +233,10 @@ if (import.meta.vitest) {
       expect(clampCommentsWidth(360.6)).toBe(361)
     })
 
-    it('下限未満は 240 にクランプ', () => {
-      expect(clampCommentsWidth(0)).toBe(240)
-      expect(clampCommentsWidth(-100)).toBe(240)
-      expect(clampCommentsWidth(239)).toBe(240)
+    it('下限未満は 280 にクランプ', () => {
+      expect(clampCommentsWidth(0)).toBe(280)
+      expect(clampCommentsWidth(-100)).toBe(280)
+      expect(clampCommentsWidth(279)).toBe(280)
     })
 
     it('上限超過は 640 にクランプ', () => {
@@ -251,14 +251,14 @@ if (import.meta.vitest) {
   })
 
   describe('shouldSnapCommentsToClosed', () => {
-    it('閾値 (240) 未満は true', () => {
+    it('閾値 (280) 未満は true', () => {
       expect(shouldSnapCommentsToClosed(0)).toBe(true)
-      expect(shouldSnapCommentsToClosed(200)).toBe(true)
-      expect(shouldSnapCommentsToClosed(239.9)).toBe(true)
+      expect(shouldSnapCommentsToClosed(240)).toBe(true)
+      expect(shouldSnapCommentsToClosed(279.9)).toBe(true)
     })
 
     it('閾値以上は false', () => {
-      expect(shouldSnapCommentsToClosed(240)).toBe(false)
+      expect(shouldSnapCommentsToClosed(280)).toBe(false)
       expect(shouldSnapCommentsToClosed(360)).toBe(false)
       expect(shouldSnapCommentsToClosed(800)).toBe(false)
     })
@@ -279,14 +279,14 @@ if (import.meta.vitest) {
       expect(parseCommentsHint('0')).toEqual({ open: 'closed', width: null })
     })
 
-    it('240-640 の数値文字列は open (その幅)', () => {
-      expect(parseCommentsHint('240')).toEqual({ open: 'open', width: 240 })
+    it('280-640 の数値文字列は open (その幅)', () => {
+      expect(parseCommentsHint('280')).toEqual({ open: 'open', width: 280 })
       expect(parseCommentsHint('360')).toEqual({ open: 'open', width: 360 })
       expect(parseCommentsHint('640')).toEqual({ open: 'open', width: 640 })
     })
 
     it('範囲外 / 非数値は null', () => {
-      expect(parseCommentsHint('239')).toBeNull()
+      expect(parseCommentsHint('279')).toBeNull()
       expect(parseCommentsHint('641')).toBeNull()
       expect(parseCommentsHint('auto')).toBeNull()
       expect(parseCommentsHint('360px')).toBeNull()
@@ -299,7 +299,7 @@ if (import.meta.vitest) {
         open: 'open',
         width: 320,
       })
-      expect(resolveEffectiveCommentsState(480, 'closed', { open: 'open', width: 240 })).toEqual({
+      expect(resolveEffectiveCommentsState(480, 'closed', { open: 'open', width: 280 })).toEqual({
         open: 'closed',
         width: 480,
       })

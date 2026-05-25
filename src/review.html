@@ -32,7 +32,7 @@
       // --- Comments panel width / open state (FOUC 防止のため stylesheet より前で確定する) ---
       // 優先順位 P1: localStorage > <html data-comments-width> > default 360 (open)。
       // theme と同じく、壊れた値 (旧バージョン / 他アプリの混入 / 手動編集) で初期描画と
-      // 後続ランタイムがズレないよう、240–640 の数値・open/closed ホワイトリストで検証する
+      // 後続ランタイムがズレないよう、280–640 の数値・open/closed ホワイトリストで検証する
       // (comments-width.ts の isValidStoredCommentsWidth / isCommentsOpenState と同じ判定)。
       try {
         var sbWidthRaw = localStorage.getItem('mdxg-redline.comments-width')
@@ -40,14 +40,14 @@
         var sbHintRaw = document.documentElement.getAttribute('data-comments-width')
         var sbWidthNum = sbWidthRaw === null ? NaN : Number(sbWidthRaw)
         var sbWidth =
-          isFinite(sbWidthNum) && sbWidthNum >= 240 && sbWidthNum <= 640 ? sbWidthNum : null
+          isFinite(sbWidthNum) && sbWidthNum >= 280 && sbWidthNum <= 640 ? sbWidthNum : null
         var sbOpen = sbOpenRaw === 'open' || sbOpenRaw === 'closed' ? sbOpenRaw : null
         var sbHintNum = sbHintRaw === null || sbHintRaw === '' ? NaN : Number(sbHintRaw)
         var sbHintWidth = null
         var sbHintOpen = null
         if (sbHintNum === 0) {
           sbHintOpen = 'closed'
-        } else if (isFinite(sbHintNum) && sbHintNum >= 240 && sbHintNum <= 640) {
+        } else if (isFinite(sbHintNum) && sbHintNum >= 280 && sbHintNum <= 640) {
           sbHintWidth = sbHintNum
           sbHintOpen = 'open'
         }
@@ -178,7 +178,7 @@
       </section>
 
       <aside class="comments">
-        <!-- ドラッグで横幅変更。SIDEBAR_MIN_WIDTH (240px) 未満まで縮めると snap で
+        <!-- ドラッグで横幅変更。COMMENTS_MIN_WIDTH (280px) 未満まで縮めると snap で
              closed 状態になる (comments-resize.ts)。aria-orientation / aria-valuenow は
              comments-resize.ts が同期する。 -->
         <div

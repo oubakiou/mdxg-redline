@@ -406,7 +406,7 @@ DESIGN.md §5 の `Comment` に、内部 state 用フィールドとして `page
 └──────────────────┴───────────────────────────────┴─────────────────┘
 ```
 
-右サイドバー (`<aside class="comments">`, Conversation) は本書とは独立に幅可変化されており、左端ドラッグで 240–640px の範囲でリサイズできる。`localStorage` で width / open 状態が永続化され、closed (= 0px) のときは comments panel 自体が消えて画面右端に縦タブだけが出る (DESIGN.md §4 / §7c)。Virtual Pages の 3 ペイン化はこの「右サイドバー幅は CSS 変数 `--comments-width` 経由」「closed の取り得る状態」を前提に組み立てる。
+右サイドバー (`<aside class="comments">`, Conversation) は本書とは独立に幅可変化されており、左端ドラッグで 280–640px の範囲でリサイズできる。`localStorage` で width / open 状態が永続化され、closed (= 0px) のときは comments panel 自体が消えて画面右端に縦タブだけが出る (DESIGN.md §4 / §7c)。Virtual Pages の 3 ペイン化はこの「右サイドバー幅は CSS 変数 `--comments-width` 経由」「closed の取り得る状態」を前提に組み立てる。
 
 ### 8.2 左サイドバー (Page Navigation, §7)
 
@@ -554,7 +554,7 @@ Open file 経由でも同じく 1a–1f を経由する。
 
 ### 13.1 Conversation サイドバーの幅と TOC 追加後のレイアウト
 
-右サイドバー (Conversation) は本書とは独立に幅可変化済みで、240–640px の範囲でユーザーがドラッグ調整 + closed (= 0px) もあり得る（DESIGN.md §4 / §7c）。3 ペイン化に際してこの前提を維持しつつ、残る論点は次の 2 つ：
+右サイドバー (Conversation) は本書とは独立に幅可変化済みで、280–640px の範囲でユーザーがドラッグ調整 + closed (= 0px) もあり得る（DESIGN.md §4 / §7c）。3 ペイン化に際してこの前提を維持しつつ、残る論点は次の 2 つ：
 
 - **(a) 左 `<aside class="page-nav">` の幅戦略 (解決済み)** — ✓ 右サイドバーと対称に CSS 変数 + ドラッグでリサイズ可能にする方式で実装した。値域は 180–480px、default 220px、closed (= 0px) も対応。`localStorage` で width / open 状態を永続化し、`<html data-page-nav-width>` 属性 (CLI `--page-nav-width`) を低優先度のヒントとして読む P1 解決 (DESIGN.md §7c / §3)。実装は `app/page-nav-width.ts` (pure) + `app/page-nav-resize.ts` (DOM wiring) で comments-width.ts / comments-resize.ts と対称な 2 ファイル構成。
 - **(b) 狭幅時の優先度** — viewport 幅が縮んだ場合、左 page-nav の折りたたみ・右 comments panel の closed・1 ペイン化への切替のうちどれを先に発火させるか。右 comments panel は既にユーザー操作で closed にできるので、自動切替は左 page-nav の折りたたみを先に出すのが自然そうだが、確定は UI 実装着手時の UX 検証に委ねる。
