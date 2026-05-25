@@ -86,11 +86,11 @@ sequenceDiagram
     participant Browser as ブラウザ
     participant Reviewer as レビュワー
     loop 各ラウンド
-      Agent->>Folder: npx mdxg-redline で<br/>&lt;mdFileName&gt;-&lt;docHash&gt;-review.html を生成
+      Agent->>Folder: npx mdxg-redline で<br/>mdFileName-docHash-review.html を生成
       Folder->>Browser: CLI が標準ブラウザを自動起動
       Reviewer->>Browser: 選択 → コメント記入
       Reviewer->>Browser: Write feedback.json をクリック
-      Browser->>Folder: &lt;mdFileName&gt;-&lt;docHash&gt;-feedback.json を書き出し
+      Browser->>Folder: mdFileName-docHash-feedback.json を書き出し
       Folder->>Agent: 同一プレフィックスで review/feedback を対応付け
       Note over Agent: 改訂版 markdown を生成 → 次ラウンドへ
     end

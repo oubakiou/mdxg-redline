@@ -86,11 +86,11 @@ sequenceDiagram
     participant Browser as Browser
     participant Reviewer as Reviewer
     loop Each round
-      Agent->>Folder: Generate &lt;mdFileName&gt;-&lt;docHash&gt;-review.html<br/>via npx mdxg-redline
+      Agent->>Folder: Generate mdFileName-docHash-review.html<br/>via npx mdxg-redline
       Folder->>Browser: CLI auto-launches the default browser
       Reviewer->>Browser: Select text → add comments
       Reviewer->>Browser: Click Write feedback.json
-      Browser->>Folder: Write &lt;mdFileName&gt;-&lt;docHash&gt;-feedback.json
+      Browser->>Folder: Write mdFileName-docHash-feedback.json
       Folder->>Agent: Pair review/feedback by shared prefix
       Note over Agent: Generate revised markdown → next round
     end
