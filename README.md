@@ -40,33 +40,61 @@ Open `review.html` in your browser, load markdown via `Open file`, select text �
 When an LLM agent needs to request a review from a human, or for one-off reviews of a single local markdown file, the bundled CLI builds a review HTML with the markdown already embedded and opens it in your default browser.
 
 ```bash
-npx mdxg-redline <input.md>                       # writes alongside input.md and opens browser
-npx mdxg-redline <input.md> ./reviews             # writes into ./reviews
-npx mdxg-redline --no-open <input.md>             # generate only, do not open browser
-npx mdxg-redline --theme dark <input.md>          # pre-set the initial theme hint to dark on the generated HTML
-npx mdxg-redline --comments-width 480 <input.md>   # pre-set the initial comments-panel width to 480px
-npx mdxg-redline --comments-width 0 <input.md>     # start with the comments panel closed (only the edge tab visible)
-npx mdxg-redline --page-nav-width 280 <input.md>  # pre-set the initial left-pages-panel width to 280px
-npx mdxg-redline --page-nav-width 0 <input.md>    # start with the left pages panel closed (only the edge tab visible)
+npx mdxg-redline <input.md>                                # writes alongside input.md and opens browser
+npx mdxg-redline <input.md> ./reviews                      # writes into ./reviews
+npx mdxg-redline --no-open <input.md>                      # generate only, do not open browser
 cat spec.md | npx mdxg-redline - --document-name spec.md   # read markdown from stdin
-npx mdxg-redline --help                           # print full usage and exit
+npx mdxg-redline --help                                    # print full usage and exit
 ```
 
-- The output filename is auto-derived as `<input-md-basename>-<docHash>-review.html` (the `output-dir` argument defaults to the input's directory; for stdin input it defaults to the current working directory)
-- Use `--document-name <name>` to override the document name (used for the `data-name` attribute and the output filename prefix). Required when reading from stdin if you want a meaningful filename
-- Use `--theme <system|light|dark>` to write a `<html data-theme>` attribute into the generated HTML. The receiving inline script always **prefers the user's UI toggle history (`localStorage`)** first, then this hint, then `prefers-color-scheme` (when omitted, the attribute is left off and existing behavior is preserved)
-- Use `--comments-width <0|280-640>` to write a `<html data-comments-width>` attribute into the generated HTML. `0` starts with the comments panel closed (only the edge tab visible); `280–640` starts open at the given width (in integer px). Like `--theme`, the receiving inline script always **prefers the user's UI resize / toggle history (`localStorage`)** first, then this hint, then the default (`360px` / open) (when omitted, the attribute is left off and existing behavior is preserved)
-- Use `--page-nav-width <0|180-480>` to write a `<html data-page-nav-width>` attribute (the left pages-panel counterpart of `--comments-width`). `0` starts with the panel closed (only the left edge tab visible); `180–480` starts open at the given width. Same precedence: `localStorage` > this hint > default (`220px` / open)
-- After generation, the default browser is launched via `$BROWSER` → `open` / `xdg-open` / `cmd.exe /c start`, in that order
+#### Options
+
+| Option                                   | Description                                                                                                                                                                            | Default            |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| `--no-open`                              | Suppress browser launch. The output path is always printed to stdout so CI scripts and agents can capture it                                                                           | (launches browser) |
+| `--document-name <name>`                 | Override the document name (used for the `data-name` attribute and the output filename prefix). Recommended when reading from stdin to get a meaningful filename                       | input MD basename  |
+| `--theme <system\|light\|dark>`          | Initial theme hint for the generated HTML (`<html data-theme>`)                                                                                                                        | unset              |
+| `--comments-width <0\|280-640>`          | Initial width of the comments panel (px). `0` starts with the panel closed (only the right edge tab visible)                                                                           | `360` / open       |
+| `--page-nav-width <0\|180-480>`          | Initial width of the left pages panel (px). `0` starts with the panel closed (only the left edge tab visible)                                                                          | `220` / open       |
+| `--shiki-langs <auto\|all\|none\|<csv>>` | Shiki grammar injection mode. `auto` scans the markdown for fenced languages, `all` injects all 27, `none` skips injection (plain text fallback), `<csv>` takes a list like `ts,js,py` | `auto`             |
+| `--help`                                 | Print the usage help and exit                                                                                                                                                          | —                  |
+
+**UI hint precedence**: Values written by `--theme` / `--comments-width` / `--page-nav-width` are evaluated by the receiving inline script as **`localStorage` (the user's UI interaction history) > CLI hint > default (`prefers-color-scheme` / default width)**. When the CLI option is omitted, the attribute itself is not emitted and the default decision path runs unchanged.
+
+#### Output
+
+- Filename is auto-derived as `<input-md-basename>-<docHash>-review.html` (per §8 file-naming protocol)
+- `output-dir` defaults to the input's directory (or cwd when reading from stdin)
+
+#### Browser launch
+
+- By default the CLI launches the system browser via `$BROWSER` → `open` (macOS) → `xdg-open` (Linux) → `cmd.exe /c start` (Windows), in that order
 - When VS Code Remote Containers / Codespaces is detected, the CLI instead starts a tiny HTTP server on `127.0.0.1` at port `51729` (override with `MDXG_REDLINE_PORT`) and hands the host browser an `http://localhost:<port>/...` URL (since `file://` paths in the container are invisible to the host). If the preferred port is busy, the CLI falls back to a random port and prints a warning to stderr — **note that random ports may not be forwarded to the host browser if `forwardPorts` is not set to `auto`, so pin a known-free `MDXG_REDLINE_PORT` (or register it in `devcontainer.json` `forwardPorts`) for reliable host access**
-- Pass `--no-open` to suppress browser launch. The output path is always printed to stdout so CI scripts and agents can capture it
-- Requires Node.js 20+ (see `engines.node` in `package.json`)
+
+Requires Node.js 20+ (see `engines.node` in `package.json`)
 
 See [docs/DESIGN.md §3 User flow](docs/DESIGN.md#3-ユーザーフロー) and [§8 Workspace protocol](docs/DESIGN.md#8-ワークスペースプロトコル) for escape handling and the file-naming protocol.
 
 ### Standard loop between an LLM agent and a reviewer (Chromium-based browsers recommended)
 
 For workflows where an agent and a reviewer iterate multiple times on the same machine.
+
+```mermaid
+sequenceDiagram
+    participant Agent as LLM Agent
+    participant Folder as Shared folder
+    participant Browser as Browser
+    participant Reviewer as Reviewer
+    loop Each round
+      Agent->>Folder: Generate &lt;mdFileName&gt;-&lt;docHash&gt;-review.html<br/>via npx mdxg-redline
+      Folder->>Browser: CLI auto-launches the default browser
+      Reviewer->>Browser: Select text → add comments
+      Reviewer->>Browser: Click Write feedback.json
+      Browser->>Folder: Write &lt;mdFileName&gt;-&lt;docHash&gt;-feedback.json
+      Folder->>Agent: Pair review/feedback by shared prefix
+      Note over Agent: Generate revised markdown → next round
+    end
+```
 
 1. The agent runs `npx mdxg-redline <input.md> <folder>` to generate `<mdFileName>-<docHash>-review.html` in a shared folder (`mdFileName` is the basename with the `.md` / `.markdown` extension stripped; `docHash` is the first 16 hex chars of SHA-256 over the markdown body)
 2. The CLI launches the default browser with that HTML. The reviewer writes comments
@@ -96,6 +124,15 @@ See [docs/DESIGN.md §8 Workspace Protocol](docs/DESIGN.md#8-ワークスペー�
     },
   ],
 }
+```
+
+## Excluding generated artifacts from git
+
+When the output directory (the CLI's `output-dir` or the folder chosen via `Write feedback.json`) lives inside a git repository, add the following patterns to `.gitignore` so that review artifacts are not accidentally committed:
+
+```gitignore
+*-review.html
+*-feedback.json
 ```
 
 ## MDXG compliance status

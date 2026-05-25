@@ -40,33 +40,61 @@ MDXG Redline は、LLM エージェントが人間レビュワーから「長文
 LLM エージェントから人間にレビューを依頼する場合や、手元の markdown 1 ファイルを単発レビューしたい場合に、同梱 CLI で markdown を埋め込んだ HTML を生成してそのままブラウザで開けます。
 
 ```bash
-npx mdxg-redline <input.md>                       # input.md と同じディレクトリに書き、ブラウザを起動
-npx mdxg-redline <input.md> ./reviews             # ./reviews に書き出す
-npx mdxg-redline --no-open <input.md>             # 生成のみ、ブラウザは起動しない
-npx mdxg-redline --theme dark <input.md>          # 配布 HTML 初回起動時の theme ヒントを dark に指定
-npx mdxg-redline --comments-width 480 <input.md>   # コメントパネルの初期幅を 480px に指定
-npx mdxg-redline --comments-width 0 <input.md>     # コメントパネルを閉じた状態で起動 (画面右端の縦タブのみ)
-npx mdxg-redline --page-nav-width 280 <input.md>  # 左サイドバー (ページ TOC) の初期幅を 280px に指定
-npx mdxg-redline --page-nav-width 0 <input.md>    # 左サイドバーを閉じた状態で起動 (画面左端の縦タブのみ)
+npx mdxg-redline <input.md>                                # input.md と同じディレクトリに書き、ブラウザを起動
+npx mdxg-redline <input.md> ./reviews                      # ./reviews に書き出す
+npx mdxg-redline --no-open <input.md>                      # 生成のみ、ブラウザは起動しない
 cat spec.md | npx mdxg-redline - --document-name spec.md   # stdin から markdown を読み込む
-npx mdxg-redline --help                           # 使い方ヘルプを表示
+npx mdxg-redline --help                                    # 使い方ヘルプを表示
 ```
 
-- 出力ファイル名は `<入力 MD basename>-<docHash>-review.html` で自動決定（`output-dir` 省略時は入力と同じディレクトリ、stdin 入力時は cwd）
-- `--document-name <name>` で docName（`data-name` 属性 / 出力ファイル名 prefix）を上書きできる。stdin 入力時に意味のあるファイル名を付けたい場合に推奨
-- `--theme <system|light|dark>` で生成 HTML の `<html data-theme>` 属性を上書き。受信側 inline script は **ユーザーが UI でトグルした履歴 (`localStorage`) を最優先**し、次にこのヒント、最後に `prefers-color-scheme` の順で実 theme を決定する（未指定時は属性を付けず既存挙動を維持）
-- `--comments-width <0|280-640>` で生成 HTML の `<html data-comments-width>` 属性を上書き。`0` は起動時 closed（画面右端の縦タブのみ表示）、`280–640` は open かつその幅 (px 整数)。`--theme` と同じく **ユーザーが UI でリサイズ・開閉した履歴 (`localStorage`) を最優先**し、次にこのヒント、最後に既定値 (`360px` / open) の順で決定する（未指定時は属性を付けず既存挙動を維持）
-- `--page-nav-width <0|180-480>` で生成 HTML の `<html data-page-nav-width>` 属性を上書き。`0` は起動時 closed（画面左端の縦タブのみ表示）、`180–480` は open かつその幅 (px 整数)。`--comments-width` と対称で `localStorage` を最優先、次にこのヒント、最後に既定値 (`220px` / open) の順で決定する
-- 生成後、既定で `$BROWSER` → `open` / `xdg-open` / `cmd.exe /c start` の優先順で標準ブラウザを開く
-- VS Code Remote Containers / Codespaces を検知した場合のみ、`127.0.0.1` のデフォルトポート `51729` に軽量 HTTP サーバーを立ててホスト側ブラウザに転送する（`MDXG_REDLINE_PORT` で上書き可）。`file://` がホストから見えない環境向けの fallback。衝突時はランダムポートへ fallback して stderr に警告を出すが、**ランダムポートは `forwardPorts: "auto"` 設定でないとホスト側ブラウザから到達できない可能性がある**ため、空きが確定しているポートを `MDXG_REDLINE_PORT` で固定するか、`devcontainer.json` の `forwardPorts` に登録するのが推奨
-- `--no-open` で自動起動を抑止。stdout には常に生成パスが出るので CI / エージェントから拾える
-- 動作要件は Node.js 20+（`package.json` の `engines.node`）
+#### オプション
+
+| オプション                               | 説明                                                                                                                                                                        | 既定値              |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| `--no-open`                              | ブラウザの自動起動を抑止（出力パスは常に stdout に出るので CI / エージェントから拾える）                                                                                    | （起動する）        |
+| `--document-name <name>`                 | docName（`data-name` 属性 / 出力ファイル名 prefix）を上書き。stdin 入力時に意味のあるファイル名を付けたい場合に推奨                                                         | 入力 MD の basename |
+| `--theme <system\|light\|dark>`          | 配布 HTML 初回起動時のテーマヒント（`<html data-theme>`）                                                                                                                   | 未指定              |
+| `--comments-width <0\|280-640>`          | コメントパネルの初期幅 (px)。`0` は closed 起動（画面右端の縦タブのみ表示）                                                                                                 | `360` / open        |
+| `--page-nav-width <0\|180-480>`          | 左サイドバー (ページ TOC) の初期幅 (px)。`0` は closed 起動（画面左端の縦タブのみ表示）                                                                                     | `220` / open        |
+| `--shiki-langs <auto\|all\|none\|<csv>>` | Shiki grammar の注入モード。`auto` は markdown 内のフェンス言語を自動抽出、`all` は 27 言語全部、`none` は注入しない（plain text fallback）、`<csv>` は `ts,js,py` 等を指定 | `auto`              |
+| `--help`                                 | 使い方ヘルプを表示して終了                                                                                                                                                  | —                   |
+
+**UI ヒントの優先順位**: `--theme` / `--comments-width` / `--page-nav-width` で配布 HTML に書き込まれる値は、受信側 inline script で **`localStorage`（ユーザーが UI 上で操作した履歴）> CLI ヒント > 既定値（`prefers-color-scheme` / 既定幅）** の順で評価される。CLI 未指定時はそもそも属性を出力せず既定挙動を保つ。
+
+#### 出力
+
+- ファイル名は `<入力 MD basename>-<docHash>-review.html` で自動決定（§8 ファイル命名規約）
+- `output-dir` 省略時は入力 MD と同じディレクトリ（stdin 入力時は cwd）
+
+#### ブラウザ起動
+
+- 既定で `$BROWSER` → `open` (macOS) → `xdg-open` (Linux) → `cmd.exe /c start` (Windows) の優先順で標準ブラウザを起動
+- VS Code Remote Containers / Codespaces 検知時のみ、`127.0.0.1` の `51729` 番ポートに軽量 HTTP サーバーを立ててホスト側ブラウザに転送する（`MDXG_REDLINE_PORT` で変更可）。`file://` がホストから見えない環境向けの fallback。衝突時はランダムポートへ fallback して stderr に警告を出すが、**ランダムポートは `forwardPorts: "auto"` 設定でないとホスト側ブラウザから到達できない可能性がある**ため、空きが確定しているポートを `MDXG_REDLINE_PORT` で固定するか、`devcontainer.json` の `forwardPorts` に登録するのが推奨
+
+動作要件: Node.js 20+（`package.json` の `engines.node`）
 
 詳細・エスケープ仕様・命名規約は [docs/DESIGN.md §3 ユーザーフロー](docs/DESIGN.md#3-ユーザーフロー) と [§8 ワークスペースプロトコル](docs/DESIGN.md#8-ワークスペースプロトコル) を参照。
 
 ### LLM エージェントとレビュワーの標準ループ（Chromium 系推奨）
 
 エージェントとレビュワーが同一マシンで複数往復するワークフロー用。
+
+```mermaid
+sequenceDiagram
+    participant Agent as LLM エージェント
+    participant Folder as 共有フォルダ
+    participant Browser as ブラウザ
+    participant Reviewer as レビュワー
+    loop 各ラウンド
+      Agent->>Folder: npx mdxg-redline で<br/>&lt;mdFileName&gt;-&lt;docHash&gt;-review.html を生成
+      Folder->>Browser: CLI が標準ブラウザを自動起動
+      Reviewer->>Browser: 選択 → コメント記入
+      Reviewer->>Browser: Write feedback.json をクリック
+      Browser->>Folder: &lt;mdFileName&gt;-&lt;docHash&gt;-feedback.json を書き出し
+      Folder->>Agent: 同一プレフィックスで review/feedback を対応付け
+      Note over Agent: 改訂版 markdown を生成 → 次ラウンドへ
+    end
+```
 
 1. エージェントが `npx mdxg-redline <input.md> <folder>` で `<mdFileName>-<docHash>-review.html` をワークスペースフォルダに生成する（`mdFileName` は元 MD basename から `.md` / `.markdown` 拡張子を除いたもの、`docHash` は本文 SHA-256 の先頭 16 桁 hex）
 2. CLI が標準ブラウザで HTML を自動起動。レビュワーがコメントを記入する
@@ -96,6 +124,15 @@ npx mdxg-redline --help                           # 使い方ヘルプを表示
     },
   ],
 }
+```
+
+## 生成物を git 管理から除外する
+
+生成物の書き出し先（CLI の `output-dir` や `Write feedback.json` で選んだフォルダ）が git 管理下にある場合、`.gitignore` に次のパターンを追加するとレビュー成果物の誤コミットを防げる。
+
+```gitignore
+*-review.html
+*-feedback.json
 ```
 
 ## MDXG 準拠状況
