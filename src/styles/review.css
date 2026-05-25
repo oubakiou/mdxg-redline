@@ -81,6 +81,7 @@ body > main.layout {
   min-height: 0;
 }
 body > main.layout > section,
+body > main.layout > aside.page-nav,
 body > main.layout > aside.sidebar {
   overflow-y: auto;
   min-height: 0;
@@ -984,6 +985,7 @@ mark.cmt.active {
     flex: none;
   }
   body > main.layout > section,
+  body > main.layout > aside.page-nav,
   body > main.layout > aside.sidebar {
     overflow-y: visible;
   }
