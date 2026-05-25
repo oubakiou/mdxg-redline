@@ -8,7 +8,7 @@ import {
 import { markFeedbackWritten, state } from './app-state'
 import { findPageIndexBySourceLine } from '../core/page-split'
 import { reapplyAllMarks } from './mark-engine'
-import { renderSidebar } from './sidebar'
+import { renderComments } from './comments'
 import { restoreWorkspaceHandle } from './workspace'
 
 interface BootRuntime {
@@ -34,7 +34,7 @@ const applyEmbeddedComments = (imported: readonly ImportedComment[]): void => {
   )
   markFeedbackWritten()
   reapplyAllMarks()
-  renderSidebar()
+  renderComments()
 }
 
 /**

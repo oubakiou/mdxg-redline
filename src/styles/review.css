@@ -82,23 +82,23 @@ body > main.layout {
 }
 body > main.layout > section,
 body > main.layout > aside.page-nav,
-body > main.layout > aside.sidebar {
+body > main.layout > aside.comments {
   overflow-y: auto;
   min-height: 0;
 }
 
-/* Main layout: page-nav (default 220px, user-resizable) + doc pane (flexible) + sidebar
-   (default 360px, user-resizable)。--page-nav-width / --sidebar-width は inline script /
-   page-nav-width.ts / sidebar-width.ts が <html> に書き込む。
-   closed 状態 (html.page-nav-closed / html.sidebar-closed) では 0px に上書きされ、各 aside
+/* Main layout: page-nav (default 220px, user-resizable) + doc pane (flexible) + comments
+   panel (default 360px, user-resizable)。--page-nav-width / --comments-width は inline script /
+   page-nav-width.ts / comments-width.ts が <html> に書き込む。
+   closed 状態 (html.page-nav-closed / html.comments-closed) では 0px に上書きされ、各 aside
    が完全に消える。ページ未確定 (state.pages が空) のときは :root:not(.has-pages) ルールで
    1 列目を消す。 */
 .layout {
   display: grid;
-  grid-template-columns: var(--page-nav-width, 220px) minmax(0, 1fr) var(--sidebar-width, 360px);
+  grid-template-columns: var(--page-nav-width, 220px) minmax(0, 1fr) var(--comments-width, 360px);
 }
 :root:not(.has-pages) .layout {
-  grid-template-columns: minmax(0, 1fr) var(--sidebar-width, 360px);
+  grid-template-columns: minmax(0, 1fr) var(--comments-width, 360px);
 }
 :root:not(.has-pages) .page-nav {
   display: none;
@@ -109,10 +109,10 @@ body > main.layout > aside.sidebar {
 :root.page-nav-closed .page-nav {
   display: none;
 }
-:root.sidebar-closed {
-  --sidebar-width: 0px;
+:root.comments-closed {
+  --comments-width: 0px;
 }
-:root.sidebar-closed .sidebar {
+:root.comments-closed .comments {
   display: none;
 }
 
@@ -128,7 +128,7 @@ body > main.layout > aside.sidebar {
   position: relative;
 }
 
-/* Resize handle: page-nav 右端に貼り付く 8px 帯の col-resize エリア (sidebar-resize-handle と
+/* Resize handle: page-nav 右端に貼り付く 8px 帯の col-resize エリア (comments-resize-handle と
    対称、左右反転)。border-right との視覚競合を避けるため透明で、hover/active 時のみ accent
    ラインを表示する。 */
 .page-nav-resize-handle {
@@ -167,7 +167,7 @@ body.page-nav-resizing * {
 }
 
 /* Toggle tab: page-nav が closed の時だけ画面左端の縦中央に出現する細長いタブ。
-   sidebar-toggle-tab と対称 (左端 / 右開きの矢印)。scrollbar 補正は左側には不要なので
+   comments-toggle-tab と対称 (左端 / 右開きの矢印)。scrollbar 補正は左側には不要なので
    left は 0 固定。 */
 .page-nav-toggle-tab {
   position: fixed;
@@ -378,18 +378,18 @@ body.page-nav-resizing * {
     padding: 40px 32px;
   }
 }
-.sidebar {
+.comments {
   background: var(--paper-edge);
   border-left: 1px solid var(--rule);
   padding: 32px 24px;
   position: relative;
 }
 
-/* Resize handle: sidebar 左端に貼り付く 6px 帯の col-resize エリア。
+/* Resize handle: comments panel 左端に貼り付く 6px 帯の col-resize エリア。
    border-left との視覚競合を避けるため、ハンドル本体は透明で、hover/active 時のみ
    accent カラーで 2px ラインを表示する (VS Code / GitHub web の split pane と同じ慣行)。
    pointer-events を確保するため width は 8px、見た目の中央 (3px 幅) に色を出す。 */
-.sidebar-resize-handle {
+.comments-resize-handle {
   position: absolute;
   inset: 0 auto 0 -4px;
   width: 8px;
@@ -398,7 +398,7 @@ body.page-nav-resizing * {
   background: transparent;
   transition: background 0.15s ease;
 }
-.sidebar-resize-handle::after {
+.comments-resize-handle::after {
   content: '';
   position: absolute;
   inset: 0 auto 0 50%;
@@ -407,31 +407,31 @@ body.page-nav-resizing * {
   background: transparent;
   transition: background 0.15s ease;
 }
-.sidebar-resize-handle:hover::after,
-.sidebar-resize-handle:focus-visible::after,
-.sidebar-resize-handle.dragging::after {
+.comments-resize-handle:hover::after,
+.comments-resize-handle:focus-visible::after,
+.comments-resize-handle.dragging::after {
   background: var(--accent);
 }
-.sidebar-resize-handle:focus {
+.comments-resize-handle:focus {
   outline: none;
 }
 
 /* ドラッグ中は body 全体で text 選択 / col-resize 表示を強制 */
-body.sidebar-resizing {
+body.comments-resizing {
   user-select: none;
   cursor: col-resize;
 }
-body.sidebar-resizing * {
+body.comments-resizing * {
   cursor: col-resize !important;
 }
 
 /* Toggle tab: closed 状態のときだけ画面右端の toolbar 直下に出現する細長いタブ。
-   クリックで前回幅で sidebar を復元し、左にドラッグで連続的に幅を広げられる。
-   open 状態のときは display:none で完全に隠す (sidebar 自体で十分認識できるため)。
+   クリックで前回幅で comments panel を復元し、左にドラッグで連続的に幅を広げられる。
+   open 状態のときは display:none で完全に隠す (panel 自体で十分認識できるため)。
    right は --doc-scrollbar-offset (= scrollbar 幅 + viewport 右端ギャップ) で計算され、
    scrollbar 有無や OS 標準幅に依存せず scrollbar の左に貼り付く
-   (sidebar-resize.ts の resolveScrollbarOffset + resolveViewportRightGap 参照)。 */
-.sidebar-toggle-tab {
+   (comments-resize.ts の resolveScrollbarOffset + resolveViewportRightGap 参照)。 */
+.comments-toggle-tab {
   position: fixed;
   top: 50%;
   right: var(--doc-scrollbar-offset, 0px);
@@ -457,32 +457,32 @@ body.sidebar-resizing * {
     background 0.15s ease,
     color 0.15s ease;
 }
-.sidebar-toggle-tab:hover,
-.sidebar-toggle-tab:focus-visible {
+.comments-toggle-tab:hover,
+.comments-toggle-tab:focus-visible {
   background: var(--paper);
   color: var(--ink);
   outline: none;
 }
-.sidebar-toggle-tab.dragging {
+.comments-toggle-tab.dragging {
   background: var(--paper);
   color: var(--ink);
 }
-:root.sidebar-closed .sidebar-toggle-tab {
+:root.comments-closed .comments-toggle-tab {
   display: flex;
 }
-.sidebar-header {
+.comments-header {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 16px;
   /* primary btn の実高さ (line-height 20 + padding 5*2 + border 1*2 = 32px) を確保し、
-     comments count の表示有無で sidebar-header の高さが揺れないようにする */
+     comments count の表示有無で comments-header の高さが揺れないようにする */
   min-height: 32px;
 }
-.sidebar-header .menu-wrap {
+.comments-header .menu-wrap {
   margin-left: auto;
 }
-.sidebar-header .btn-ghost {
+.comments-header .btn-ghost {
   font-size: 13px;
   font-weight: 400;
   padding: 2px 8px;
@@ -490,16 +490,16 @@ body.sidebar-resizing * {
   border: 1px solid var(--rule-muted);
   background: var(--paper);
 }
-.sidebar-header .btn-ghost:hover {
+.comments-header .btn-ghost:hover {
   color: var(--ink);
   background: var(--paper-edge);
   border-color: var(--rule);
 }
-.sidebar-header .menu-caret {
+.comments-header .menu-caret {
   margin-left: 6px;
   color: var(--ink-soft);
 }
-.sidebar-hint {
+.comments-hint {
   color: var(--ink-faint);
 }
 .label {
@@ -803,7 +803,7 @@ mark.cmt.active {
   border-top: 5px solid var(--floater-bg);
 }
 
-/* Sidebar comments (GitHub PR review card style) */
+/* Comments panel cards (GitHub PR review card style) */
 .cmt-card {
   border: 1px solid var(--rule);
   border-radius: 6px;
@@ -1077,7 +1077,7 @@ mark.cmt.active {
   }
   body > main.layout > section,
   body > main.layout > aside.page-nav,
-  body > main.layout > aside.sidebar {
+  body > main.layout > aside.comments {
     overflow-y: visible;
   }
   .layout {
@@ -1091,7 +1091,7 @@ mark.cmt.active {
   :root:not(.has-pages) .layout {
     grid-template-columns: 1fr;
   }
-  .sidebar {
+  .comments {
     border-left: none;
     border-top: 1px solid var(--rule);
   }
@@ -1099,16 +1099,16 @@ mark.cmt.active {
     display: none;
   }
 
-  /* Mobile view では sidebar が縦積み (1 列レイアウト) になるので、横幅リサイズ
-     も開閉タブも無意味。両方とも隠して、closed 状態でも sidebar が見えるように戻す。
+  /* Mobile view では comments panel が縦積み (1 列レイアウト) になるので、横幅リサイズ
+     も開閉タブも無意味。両方とも隠して、closed 状態でも panel が見えるように戻す。
      page-nav 側は mobile では完全に非表示なので resize/toggle も合わせて隠す。 */
-  .sidebar-resize-handle,
-  .sidebar-toggle-tab,
+  .comments-resize-handle,
+  .comments-toggle-tab,
   .page-nav-resize-handle,
   .page-nav-toggle-tab {
     display: none;
   }
-  :root.sidebar-closed .sidebar {
+  :root.comments-closed .comments {
     display: block;
   }
 }

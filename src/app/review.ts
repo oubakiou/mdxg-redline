@@ -1,7 +1,7 @@
 // DOM エントリポイント。
 // 各責務は別モジュールに切り出し済み:
 //   状態 (app-state) / DOM helper (dom-utils) / mark 反映 (mark-engine) / markdown 描画 (doc-renderer) /
-//   サイドバー (sidebar) / floater (floater) / コメント入力モーダル (comment-modal) /
+//   コメントパネル (comments) / floater (floater) / コメント入力モーダル (comment-modal) /
 //   ドロップダウンメニュー (menu) / toolbar (toolbar) / boot (boot)
 // 本ファイルは loadFromMarkdown orchestrator と、上記モジュールを組み合わせる wiring に専念する。
 
@@ -14,11 +14,11 @@ import {
   syncHashFromActivePage,
 } from './pages'
 import {
-  activateSidebarMark,
-  configureSidebarCommentNavigation,
+  activateCommentsMark,
+  configureCommentsNavigation,
   focusCommentMarkAfterNavigate,
-  renderSidebar,
-} from './sidebar'
+  renderComments,
+} from './comments'
 import {
   buildReviewExportPayload,
   commentCountLabel as formatCommentCount,
@@ -33,8 +33,8 @@ import { scrollToHeading, setActiveHeadingImmediately, setupScrollSpy } from './
 import { setOnPageActivated, setupPageScrollSpy } from './page-scroll-spy'
 import { boot } from './boot'
 import { createDropdownMenu } from './menu'
+import { initCommentsResize } from './comments-resize'
 import { initPageNavResize } from './page-nav-resize'
-import { initSidebarResize } from './sidebar-resize'
 import { renderDoc } from './doc-renderer'
 import { splitIntoPages } from '../core/page-split'
 import { wireFloater } from './floater'
@@ -47,7 +47,7 @@ import { wireToolbar } from './toolbar'
 const renderAll = (): void => {
   renderDoc()
   renderPageNavigation()
-  renderSidebar()
+  renderComments()
   setupScrollSpy()
   setupPageScrollSpy()
 }
@@ -224,11 +224,11 @@ const navigateToComment = (comment: Comment): void => {
 }
 
 if (!import.meta.vitest) {
-  initSidebarResize()
+  initCommentsResize()
   initPageNavResize()
   wireFloater()
   wireCommentModal()
-  configureSidebarCommentNavigation(navigateToComment)
+  configureCommentsNavigation(navigateToComment)
   // page scroll-spy が activePageIndex を更新した直後の TOC active 表示更新。
   // renderPageNavigation は state を再読込して描き直すだけなので、scroll 中の頻発でも軽い。
   setOnPageActivated((): void => renderPageNavigation())
@@ -267,7 +267,7 @@ if (!import.meta.vitest) {
     if (!(mark instanceof HTMLElement)) {
       return
     }
-    activateSidebarMark(mark)
+    activateCommentsMark(mark)
   })
 
   wireToolbar({

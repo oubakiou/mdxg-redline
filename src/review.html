@@ -29,15 +29,15 @@
           document.documentElement.classList.add('has-embedded-md')
         }
       } catch (e) {}
-      // --- Sidebar width / open state (FOUC 防止のため stylesheet より前で確定する) ---
-      // 優先順位 P1: localStorage > <html data-sidebar-width> > default 360 (open)。
+      // --- Comments panel width / open state (FOUC 防止のため stylesheet より前で確定する) ---
+      // 優先順位 P1: localStorage > <html data-comments-width> > default 360 (open)。
       // theme と同じく、壊れた値 (旧バージョン / 他アプリの混入 / 手動編集) で初期描画と
       // 後続ランタイムがズレないよう、240–640 の数値・open/closed ホワイトリストで検証する
-      // (sidebar-width.ts の isValidStoredWidth / isSidebarOpenState と同じ判定)。
+      // (comments-width.ts の isValidStoredCommentsWidth / isCommentsOpenState と同じ判定)。
       try {
-        var sbWidthRaw = localStorage.getItem('mdxg-redline.sidebar-width')
-        var sbOpenRaw = localStorage.getItem('mdxg-redline.sidebar-open')
-        var sbHintRaw = document.documentElement.getAttribute('data-sidebar-width')
+        var sbWidthRaw = localStorage.getItem('mdxg-redline.comments-width')
+        var sbOpenRaw = localStorage.getItem('mdxg-redline.comments-open')
+        var sbHintRaw = document.documentElement.getAttribute('data-comments-width')
         var sbWidthNum = sbWidthRaw === null ? NaN : Number(sbWidthRaw)
         var sbWidth =
           isFinite(sbWidthNum) && sbWidthNum >= 240 && sbWidthNum <= 640 ? sbWidthNum : null
@@ -54,14 +54,14 @@
         var effWidth = sbWidth !== null ? sbWidth : sbHintWidth !== null ? sbHintWidth : 360
         var effOpen = sbOpen !== null ? sbOpen : sbHintOpen !== null ? sbHintOpen : 'open'
         document.documentElement.style.setProperty(
-          '--sidebar-width',
+          '--comments-width',
           effOpen === 'open' ? effWidth + 'px' : '0px'
         )
-        if (effOpen === 'closed') document.documentElement.classList.add('sidebar-closed')
+        if (effOpen === 'closed') document.documentElement.classList.add('comments-closed')
       } catch (e) {}
       // --- Page-nav width / open state (FOUC 防止のため stylesheet より前で確定する) ---
       // 優先順位 P1: localStorage > <html data-page-nav-width> > default 220 (open)。
-      // sidebar と同じ書きぶりで、壊れた値 (旧バージョン / 他アプリの混入 / 手動編集) に対しては
+      // comments panel と同じ書きぶりで、壊れた値 (旧バージョン / 他アプリの混入 / 手動編集) に対しては
       // 180–480 の数値・open/closed ホワイトリストで検証 (page-nav-width.ts と同じ判定)。
       try {
         var pnWidthRaw = localStorage.getItem('mdxg-redline.page-nav-width')
@@ -177,19 +177,19 @@
         <div id="doc"></div>
       </section>
 
-      <aside class="sidebar">
+      <aside class="comments">
         <!-- ドラッグで横幅変更。SIDEBAR_MIN_WIDTH (240px) 未満まで縮めると snap で
-             closed 状態になる (sidebar-resize.ts)。aria-orientation / aria-valuenow は
-             sidebar-resize.ts が同期する。 -->
+             closed 状態になる (comments-resize.ts)。aria-orientation / aria-valuenow は
+             comments-resize.ts が同期する。 -->
         <div
-          class="sidebar-resize-handle"
-          id="sidebar-resize-handle"
+          class="comments-resize-handle"
+          id="comments-resize-handle"
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize comments panel"
           aria-controls="cmt-list"
         ></div>
-        <div class="sidebar-header">
+        <div class="comments-header">
           <!-- GitHub の Merge pull request 風 split button。
                隣接した 2 ボタンの border を内側で潰し、caret 側の半透明 border-left で
                「分割されているが 1 つの UI」として読ませる (CSS .split-btn-caret 参照) -->
@@ -241,19 +241,19 @@
           </div>
         </div>
         <div id="cmt-list">
-          <div class="label sidebar-hint">Select text in the file to add a review comment.</div>
+          <div class="label comments-hint">Select text in the file to add a review comment.</div>
         </div>
       </aside>
     </main>
 
     <!-- closed 状態のときだけ画面右端の toolbar 直下に出現する開閉タブ。クリックで前回幅復元、
-         左へドラッグで連続的に幅を広げられる。doc-pane の scrollbar / sidebar 幅に応じて
-         右オフセットが動的に変わる仕組みは sidebar-resize.ts の resolveScrollbarOffset +
+         左へドラッグで連続的に幅を広げられる。doc-pane の scrollbar / comments panel 幅に応じて
+         右オフセットが動的に変わる仕組みは comments-resize.ts の resolveScrollbarOffset +
          resolveViewportRightGap を参照。 -->
     <button
       type="button"
-      class="sidebar-toggle-tab"
-      id="sidebar-toggle-tab"
+      class="comments-toggle-tab"
+      id="comments-toggle-tab"
       aria-label="Show comments panel"
       aria-expanded="false"
       aria-controls="cmt-list"
@@ -262,7 +262,7 @@
     </button>
 
     <!-- page-nav が closed 状態のときだけ画面左端の縦中央に出現する開閉タブ。
-         sidebar-toggle-tab と対称で、クリックで前回幅復元、右へドラッグで連続的に幅を広げられる。 -->
+         comments-toggle-tab と対称で、クリックで前回幅復元、右へドラッグで連続的に幅を広げられる。 -->
     <button
       type="button"
       class="page-nav-toggle-tab"

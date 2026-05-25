@@ -1,7 +1,7 @@
 // 左サイドバー (page-nav) の横幅ドラッグ・開閉の DOM 連携。
-// sidebar-resize.ts と並列の責務分担で、純粋ロジック (clamp / snap / 状態解決) は
+// comments-resize.ts と並列の責務分担で、純粋ロジック (clamp / snap / 状態解決) は
 // page-nav-width.ts に分離してある。pointer 計算式が左右で異なる:
-// - 右 sidebar: 画面右端からの距離 (innerWidth - clientX)
+// - 右 panel (comments): 画面右端からの距離 (innerWidth - clientX)
 // - 左 page-nav: 画面左端からの距離 (clientX)
 
 import {

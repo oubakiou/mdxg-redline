@@ -130,7 +130,7 @@ var HELP_FLAGS = new Set(["--help", "-h"]);
 var DOCUMENT_NAME_FLAG = "--document-name";
 var THEME_FLAG = "--theme";
 var SHIKI_LANGS_FLAG = "--shiki-langs";
-var SIDEBAR_WIDTH_FLAG = "--sidebar-width";
+var COMMENTS_WIDTH_FLAG = "--comments-width";
 var PAGE_NAV_WIDTH_FLAG = "--page-nav-width";
 var THEME_VALUES = [
 	"system",
@@ -138,14 +138,14 @@ var THEME_VALUES = [
 	"dark"
 ];
 var isThemeHint = (value) => THEME_VALUES.includes(value);
-var SIDEBAR_WIDTH_MIN = 240;
-var SIDEBAR_WIDTH_MAX = 640;
+var COMMENTS_WIDTH_MIN = 240;
+var COMMENTS_WIDTH_MAX = 640;
 var PAGE_NAV_WIDTH_MIN = 180;
 var PAGE_NAV_WIDTH_MAX = 480;
-var isValidSidebarWidthHint = (value) => {
+var isValidCommentsWidthHint = (value) => {
 	if (!Number.isFinite(value) || !Number.isInteger(value)) return false;
 	if (value === 0) return true;
-	return value >= SIDEBAR_WIDTH_MIN && value <= SIDEBAR_WIDTH_MAX;
+	return value >= COMMENTS_WIDTH_MIN && value <= COMMENTS_WIDTH_MAX;
 };
 var isValidPageNavWidthHint = (value) => {
 	if (!Number.isFinite(value) || !Number.isInteger(value)) return false;
@@ -153,14 +153,14 @@ var isValidPageNavWidthHint = (value) => {
 	return value >= PAGE_NAV_WIDTH_MIN && value <= PAGE_NAV_WIDTH_MAX;
 };
 /**
-* `--sidebar-width` の値を整数 (0 or 240–640) にパースする。
+* `--comments-width` の値を整数 (0 or 240–640) にパースする。
 * 範囲外・非数値・小数は null (CLI 側で invalid 扱い)。
 */
-var parseSidebarWidthValue = (raw) => {
+var parseCommentsWidthValue = (raw) => {
 	const trimmed = raw.trim();
 	if (trimmed === "") return null;
 	const num = Number(trimmed);
-	if (!isValidSidebarWidthHint(num)) return null;
+	if (!isValidCommentsWidthHint(num)) return null;
 	return num;
 };
 /**
@@ -230,13 +230,13 @@ Options:
                                  (e.g. ts,js,py). Aliases are normalized to
                                  canonical names; unsupported entries are
                                  silently ignored.
-  --sidebar-width <px>   Set the initial comments-panel width hint for the
+  --comments-width <px>   Set the initial comments-panel width hint for the
                          generated HTML. One of:
-                           0         Start with the sidebar closed (only the
+                           0         Start with the comments panel closed (only the
                                      edge tab is visible until the user opens
                                      it).
                            240–640   Start open with the given width in pixels.
-                         Written as a <html data-sidebar-width> attribute and
+                         Written as a <html data-comments-width> attribute and
                          used only when the viewer has no localStorage
                          preference yet (the user's UI history always wins).
                          Omit to leave the attribute off entirely.
@@ -246,7 +246,7 @@ Options:
                                      edge tab is visible).
                            180–480   Start open with the given width in pixels.
                          Written as a <html data-page-nav-width> attribute and
-                         follows the same precedence rules as --sidebar-width.
+                         follows the same precedence rules as --comments-width.
   --no-open              Generate the HTML but do not launch a browser.
   -h, --help             Print this help and exit. Takes precedence over all
                          other arguments and flags when present.
@@ -259,17 +259,17 @@ Examples:
   cat spec.md | mdxg-redline - --document-name spec.md
 `;
 var INITIAL_PARTITION_STATE = {
+	commentsWidth: null,
 	documentName: null,
 	open: true,
 	pageNavWidth: null,
+	pendingCommentsWidth: false,
 	pendingDocName: false,
 	pendingPageNavWidth: false,
 	pendingShikiLangs: false,
-	pendingSidebarWidth: false,
 	pendingTheme: false,
 	positional: [],
 	shikiLangs: null,
-	sidebarWidth: null,
 	themeHint: null,
 	valid: true
 };
@@ -306,20 +306,20 @@ var consumeShikiLangsValue = (acc, token) => {
 		shikiLangs: parseShikiLangsValue(token)
 	};
 };
-var consumeSidebarWidthValue = (acc, token) => {
+var consumeCommentsWidthValue = (acc, token) => {
 	if (token.startsWith("--")) return {
 		...acc,
 		valid: false
 	};
-	const parsed = parseSidebarWidthValue(token);
+	const parsed = parseCommentsWidthValue(token);
 	if (parsed === null) return {
 		...acc,
 		valid: false
 	};
 	return {
 		...acc,
-		pendingSidebarWidth: false,
-		sidebarWidth: parsed
+		commentsWidth: parsed,
+		pendingCommentsWidth: false
 	};
 };
 var consumePageNavWidthValue = (acc, token) => {
@@ -368,10 +368,10 @@ var VALUE_FLAG_TABLE = [
 		})
 	},
 	{
-		flag: SIDEBAR_WIDTH_FLAG,
+		flag: COMMENTS_WIDTH_FLAG,
 		mark: (acc) => ({
 			...acc,
-			pendingSidebarWidth: true
+			pendingCommentsWidth: true
 		})
 	},
 	{
@@ -411,8 +411,8 @@ var PENDING_VALUE_TABLE = [
 		key: "pendingShikiLangs"
 	},
 	{
-		consume: consumeSidebarWidthValue,
-		key: "pendingSidebarWidth"
+		consume: consumeCommentsWidthValue,
+		key: "pendingCommentsWidth"
 	},
 	{
 		consume: consumePageNavWidthValue,
@@ -438,10 +438,10 @@ var attachPartitionOptionals = (result, state) => {
 	if (state.documentName !== null) result.documentName = state.documentName;
 	if (state.themeHint !== null) result.themeHint = state.themeHint;
 	if (state.shikiLangs !== null) result.shikiLangs = state.shikiLangs;
-	if (state.sidebarWidth !== null) result.sidebarWidth = state.sidebarWidth;
+	if (state.commentsWidth !== null) result.commentsWidth = state.commentsWidth;
 	if (state.pageNavWidth !== null) result.pageNavWidth = state.pageNavWidth;
 };
-var isPartitionValid = (state) => state.valid && !state.pendingDocName && !state.pendingTheme && !state.pendingShikiLangs && !state.pendingSidebarWidth && !state.pendingPageNavWidth;
+var isPartitionValid = (state) => state.valid && !state.pendingDocName && !state.pendingTheme && !state.pendingShikiLangs && !state.pendingCommentsWidth && !state.pendingPageNavWidth;
 var partitionArgs = (argv) => {
 	const state = argv.reduce(stepArg, INITIAL_PARTITION_STATE);
 	const result = {
@@ -460,7 +460,7 @@ var attachRunStringOptionals = (result, parts) => {
 };
 var attachRunNonStringOptionals = (result, parts) => {
 	if (parts.shikiLangs) result.shikiLangs = parts.shikiLangs;
-	if (typeof parts.sidebarWidth === "number") result.sidebarWidth = parts.sidebarWidth;
+	if (typeof parts.commentsWidth === "number") result.commentsWidth = parts.commentsWidth;
 	if (typeof parts.pageNavWidth === "number") result.pageNavWidth = parts.pageNavWidth;
 };
 var attachRunOptionals = (result, parts) => {
@@ -570,7 +570,7 @@ var EMBEDDED_SHIKI_LANGS_RE = /(<script\b(?=[^>]*\bid="embedded-shiki-langs")(?=
 var DATA_NAME_RE = /\bdata-name="[^"]*"/;
 var HTML_TAG_RE = /<html\b[^>]*>/i;
 var DATA_THEME_RE = /\bdata-theme="[^"]*"/;
-var DATA_SIDEBAR_WIDTH_RE = /\bdata-sidebar-width="[^"]*"/;
+var DATA_COMMENTS_WIDTH_RE = /\bdata-comments-width="[^"]*"/;
 var DATA_PAGE_NAV_WIDTH_RE = /\bdata-page-nav-width="[^"]*"/;
 var replaceDataName = (openingTag, escapedName) => {
 	if (DATA_NAME_RE.test(openingTag)) return openingTag.replace(DATA_NAME_RE, `data-name="${escapedName}"`);
@@ -580,9 +580,9 @@ var replaceDataTheme = (openingTag, escapedTheme) => {
 	if (DATA_THEME_RE.test(openingTag)) return openingTag.replace(DATA_THEME_RE, `data-theme="${escapedTheme}"`);
 	return openingTag.replace(/>$/, ` data-theme="${escapedTheme}">`);
 };
-var replaceDataSidebarWidth = (openingTag, escapedValue) => {
-	if (DATA_SIDEBAR_WIDTH_RE.test(openingTag)) return openingTag.replace(DATA_SIDEBAR_WIDTH_RE, `data-sidebar-width="${escapedValue}"`);
-	return openingTag.replace(/>$/, ` data-sidebar-width="${escapedValue}">`);
+var replaceDataCommentsWidth = (openingTag, escapedValue) => {
+	if (DATA_COMMENTS_WIDTH_RE.test(openingTag)) return openingTag.replace(DATA_COMMENTS_WIDTH_RE, `data-comments-width="${escapedValue}"`);
+	return openingTag.replace(/>$/, ` data-comments-width="${escapedValue}">`);
 };
 var replaceDataPageNavWidth = (openingTag, escapedValue) => {
 	if (DATA_PAGE_NAV_WIDTH_RE.test(openingTag)) return openingTag.replace(DATA_PAGE_NAV_WIDTH_RE, `data-page-nav-width="${escapedValue}"`);
@@ -602,21 +602,21 @@ var upsertHtmlDataTheme = (reviewHtml, themeHint) => {
 	return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length);
 };
 /**
-* `<html>` 開きタグに `data-sidebar-width="<value>"` を挿入する。属性が既にあれば上書き。
+* `<html>` 開きタグに `data-comments-width="<value>"` を挿入する。属性が既にあれば上書き。
 * inline script はこの属性を localStorage より低い優先度で初期値ヒントとして使う。
 * 値の正当性 (0 or 240–640) は CLI 側でバリデーション済み前提だが、属性 escape 経路は
 * data-theme と揃える。
 */
-var upsertHtmlDataSidebarWidth = (reviewHtml, value) => {
+var upsertHtmlDataCommentsWidth = (reviewHtml, value) => {
 	const match = HTML_TAG_RE.exec(reviewHtml);
 	if (!match) throw new Error("review.html に <html> タグが見つかりません");
 	const [tag] = match;
-	const newTag = replaceDataSidebarWidth(tag, escapeHtml(String(value)));
+	const newTag = replaceDataCommentsWidth(tag, escapeHtml(String(value)));
 	return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length);
 };
 /**
 * `<html>` 開きタグに `data-page-nav-width="<value>"` を挿入する。属性が既にあれば上書き。
-* 値の正当性 (0 or 180–480) は CLI 側でバリデーション済み前提。data-sidebar-width と対称。
+* 値の正当性 (0 or 180–480) は CLI 側でバリデーション済み前提。data-comments-width と対称。
 */
 var upsertHtmlDataPageNavWidth = (reviewHtml, value) => {
 	const match = HTML_TAG_RE.exec(reviewHtml);
@@ -840,9 +840,9 @@ var applyThemeHint = (html, themeHint) => {
 	if (typeof themeHint !== "string") return html;
 	return upsertHtmlDataTheme(html, themeHint);
 };
-var applySidebarWidthHint = (html, sidebarWidth) => {
-	if (typeof sidebarWidth !== "number") return html;
-	return upsertHtmlDataSidebarWidth(html, sidebarWidth);
+var applyCommentsWidthHint = (html, commentsWidth) => {
+	if (typeof commentsWidth !== "number") return html;
+	return upsertHtmlDataCommentsWidth(html, commentsWidth);
 };
 var applyPageNavWidthHint = (html, pageNavWidth) => {
 	if (typeof pageNavWidth !== "number") return html;
@@ -882,7 +882,7 @@ var applyShikiLangs = async (html, args, ctx) => {
 	return rewriteEmbeddedShikiLangs(html, await loadShikiGrammars(resolveShikiLangSet(args.shikiLangs, ctx.markdown), ctx.scriptDir));
 };
 var composeReviewHtml = async (args, ctx) => {
-	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyShikiLangs(applyPageNavWidthHint(applySidebarWidthHint(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args.sidebarWidth), args.pageNavWidth), args, ctx), formatLoadedStatus(ctx.docName, ctx.docHash)));
+	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyShikiLangs(applyPageNavWidthHint(applyCommentsWidthHint(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args.commentsWidth), args.pageNavWidth), args, ctx), formatLoadedStatus(ctx.docName, ctx.docHash)));
 };
 var runEmbed = async (args) => {
 	const ctx = await prepareEmbed(args);

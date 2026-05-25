@@ -14,7 +14,7 @@ import type { ExportPayload } from '../core/types'
 import { confirmDialog } from './dialog'
 import { exportBaseName } from '../core/review-export'
 import { reapplyAllMarks } from './mark-engine'
-import { renderSidebar } from './sidebar'
+import { renderComments } from './comments'
 import { state } from './app-state'
 
 /** loadFromMarkdown のみ循環を避けるため runtime 経由で受け取る */
@@ -104,7 +104,7 @@ const fallbackCopy = (text: string): void => {
 const clearAllComments = (): void => {
   state.comments = []
   reapplyAllMarks()
-  renderSidebar()
+  renderComments()
   toast('Comments discarded')
 }
 

@@ -6,7 +6,7 @@ import type { Comment, PendingSelection } from '../core/types'
 import { qs, qsInput, toast, uid } from './dom-utils'
 import { parsePendingSelection } from '../core/feedback'
 import { reapplyAllMarks } from './mark-engine'
-import { renderSidebar } from './sidebar'
+import { renderComments } from './comments'
 import { state } from './app-state'
 
 /**
@@ -100,7 +100,7 @@ const saveModalComment = async (): Promise<void> => {
   })
   state.comments.push(newComment)
   reapplyAllMarks()
-  renderSidebar()
+  renderComments()
   closeCommentModal()
   toast('Comment added')
 }

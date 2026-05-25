@@ -24,7 +24,7 @@ import { deriveFeedbackJsonName, stripMarkdownExt } from '../core/embed'
 import { markFeedbackUnsaved, markFeedbackWritten, state } from './app-state'
 import { qs, toast } from './dom-utils'
 import type { ExportPayload } from '../core/types'
-import { renderSidebar } from './sidebar'
+import { renderComments } from './comments'
 
 const buildExportPayload = (): ExportPayload => buildReviewExportPayload(state)
 
@@ -96,7 +96,7 @@ const finishWrite = (folderName: string, filename: string): void => {
   toast(`Wrote ${folderName}/${filename} · ${commentCountLabel()}`)
   qs('#status').textContent = `${state.docName} · ${folderName}/${filename} written`
   markFeedbackWritten()
-  renderSidebar()
+  renderComments()
 }
 
 /** ピッカーで取得したハンドルを wsState と IDB に反映し、tooltip を更新する */
@@ -190,7 +190,7 @@ export const changeOutputFolder = async (): Promise<void> => {
   await persistWorkspaceHandle(picked)
   refreshSendButtonTooltip()
   markFeedbackUnsaved()
-  renderSidebar()
+  renderComments()
   toast(`Output folder set to “${picked.name}”`)
 }
 

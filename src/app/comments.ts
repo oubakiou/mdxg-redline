@@ -7,13 +7,11 @@ import { reapplyAllMarks } from './mark-engine'
 
 /**
  * 別ページのコメントカードをクリックされた際に呼ばれる navigate ハンドラ。
- * sidebar は navigateToTarget を直接知らない (循環参照回避) ため、review.ts 側から注入する。
+ * comments panel は navigateToTarget を直接知らない (循環参照回避) ため、review.ts 側から注入する。
  */
 let onNavigateToCommentPage: ((comment: Comment) => void) | null = null
 
-export const configureSidebarCommentNavigation = (
-  handler: ((comment: Comment) => void) | null
-): void => {
+export const configureCommentsNavigation = (handler: ((comment: Comment) => void) | null): void => {
   onNavigateToCommentPage = handler
 }
 
@@ -26,7 +24,7 @@ const clearActiveComments = (): void => {
 
 /**
  * 全コメントを文書順 (pageIndex → sourceLine → startOffset) に並べたコピーを返す。
- * mark の DOM 順に依存しないため、サイドバーが全ページのコメントを表示するモードでも
+ * mark の DOM 順に依存しないため、comments panel が全ページのコメントを表示するモードでも
  * 別ページの mark が DOM 上に存在しない (mark-engine が activePageIndex でフィルタする)
  * ことに影響されずに決定論的な順序が得られる。
  */
@@ -81,7 +79,7 @@ export const focusCommentMarkAfterNavigate = (commentId: string): void => {
 }
 
 /**
- * 複数ページ文書のサイドバーが全コメントを混ぜて表示する際、各カードがどのページに属するかを
+ * 複数ページ文書の comments panel が全コメントを混ぜて表示する際、各カードがどのページに属するかを
  * 識別できるよう meta 行先頭にページタイトルバッジを付ける。単一ページ文書では冗長なため省く。
  */
 const pageBadgeHTML = (comment: Comment): string => {
@@ -146,7 +144,7 @@ const createCommentCard = (comment: Comment, onDeleted: () => void): HTMLDivElem
 }
 
 /** コメント 0 件時の案内表示 */
-const showEmptySidebar = (list: HTMLElement): void => {
+const showEmptyComments = (list: HTMLElement): void => {
   list.innerHTML =
     '<div class="label" style="color: var(--ink-faint);">Select text in the file to add a review comment.</div>'
 }
@@ -160,25 +158,25 @@ const updateOutputButtonsDisabled = (empty: boolean, dirty: boolean): void => {
   }
 }
 
-const updateSidebarHeader = (total: number): void => {
+const updateCommentsHeader = (total: number): void => {
   qs('#cmt-count').textContent = String(total)
   updateOutputButtonsDisabled(total === 0, isFeedbackDirty())
 }
 
-export const renderSidebar = (): void => {
+export const renderComments = (): void => {
   const list = qs('#cmt-list')
-  updateSidebarHeader(state.comments.length)
+  updateCommentsHeader(state.comments.length)
   if (state.comments.length === 0) {
-    showEmptySidebar(list)
+    showEmptyComments(list)
     return
   }
   list.innerHTML = ''
   for (const comment of orderedComments(state.comments)) {
-    list.appendChild(createCommentCard(comment, renderSidebar))
+    list.appendChild(createCommentCard(comment, renderComments))
   }
 }
 
-export const activateSidebarMark = (mark: HTMLElement): void => {
+export const activateCommentsMark = (mark: HTMLElement): void => {
   const id = mark.dataset.commentId
   clearActiveComments()
   mark.classList.add('active')

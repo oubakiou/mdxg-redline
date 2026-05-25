@@ -14,9 +14,12 @@ End users only need a **single HTML file** (`review.html`). No server, no extra 
 ## Features
 
 - **Location-aware inline comments**: Select any text range, leave a comment, and export JSON that pinpoints each comment with `headingPath` and `sourceLine`
-- **Single-file HTML distribution**: All dependencies (including `marked`) are inlined — no CDN references
+- **Single-file HTML distribution**: All dependencies (including `marked` and Shiki core / JS engine / 2 themes) are inlined — no CDN references
 - **Two input paths**: Embed markdown into the HTML up front, or pick a file from the browser
 - **Read-only**: Never mutates the source markdown
+- **Virtual Pages (Stacked View)**: H1 / H2 boundaries split the document into virtual pages rendered as paper-like sheets stacked vertically (Word / Pages style). A left TOC sidebar, H3–H6 outline under the active page, and Prev/Next row deliver MDXG §6–§9 conformance
+- **Syntax highlighting**: Shiki (`github-light` + `github-dark`) renders fenced code blocks for 27 languages, with a copy button injected onto each block
+- **Resizable side panels**: The left TOC (180–480px) and the right Conversation sidebar (240–640px) can be dragged independently and collapsed. State persists in `localStorage`, and distributors can pre-set the initial values with `--page-nav-width` / `--comments-width`
 - **Light / dark themes**: Initial value follows `prefers-color-scheme`; a 3-state toolbar toggle cycles through `system → light → dark`. The choice is persisted to `localStorage`, and distributors can pre-set the initial hint with `--theme`
 
 ## Usage
@@ -41,8 +44,10 @@ npx mdxg-redline <input.md>                       # writes alongside input.md an
 npx mdxg-redline <input.md> ./reviews             # writes into ./reviews
 npx mdxg-redline --no-open <input.md>             # generate only, do not open browser
 npx mdxg-redline --theme dark <input.md>          # pre-set the initial theme hint to dark on the generated HTML
-npx mdxg-redline --sidebar-width 480 <input.md>   # pre-set the initial comments-panel width to 480px
-npx mdxg-redline --sidebar-width 0 <input.md>     # start with the comments panel closed (only the edge tab visible)
+npx mdxg-redline --comments-width 480 <input.md>   # pre-set the initial comments-panel width to 480px
+npx mdxg-redline --comments-width 0 <input.md>     # start with the comments panel closed (only the edge tab visible)
+npx mdxg-redline --page-nav-width 280 <input.md>  # pre-set the initial left-pages-panel width to 280px
+npx mdxg-redline --page-nav-width 0 <input.md>    # start with the left pages panel closed (only the edge tab visible)
 cat spec.md | npx mdxg-redline - --document-name spec.md   # read markdown from stdin
 npx mdxg-redline --help                           # print full usage and exit
 ```
@@ -50,7 +55,8 @@ npx mdxg-redline --help                           # print full usage and exit
 - The output filename is auto-derived as `<input-md-basename>-<docHash>-review.html` (the `output-dir` argument defaults to the input's directory; for stdin input it defaults to the current working directory)
 - Use `--document-name <name>` to override the document name (used for the `data-name` attribute and the output filename prefix). Required when reading from stdin if you want a meaningful filename
 - Use `--theme <system|light|dark>` to write a `<html data-theme>` attribute into the generated HTML. The receiving inline script always **prefers the user's UI toggle history (`localStorage`)** first, then this hint, then `prefers-color-scheme` (when omitted, the attribute is left off and existing behavior is preserved)
-- Use `--sidebar-width <0|240-640>` to write a `<html data-sidebar-width>` attribute into the generated HTML. `0` starts with the sidebar closed (only the edge tab visible); `240–640` starts open at the given width (in integer px). Like `--theme`, the receiving inline script always **prefers the user's UI resize / toggle history (`localStorage`)** first, then this hint, then the default (`360px` / open) (when omitted, the attribute is left off and existing behavior is preserved)
+- Use `--comments-width <0|240-640>` to write a `<html data-comments-width>` attribute into the generated HTML. `0` starts with the comments panel closed (only the edge tab visible); `240–640` starts open at the given width (in integer px). Like `--theme`, the receiving inline script always **prefers the user's UI resize / toggle history (`localStorage`)** first, then this hint, then the default (`360px` / open) (when omitted, the attribute is left off and existing behavior is preserved)
+- Use `--page-nav-width <0|180-480>` to write a `<html data-page-nav-width>` attribute (the left pages-panel counterpart of `--comments-width`). `0` starts with the panel closed (only the left edge tab visible); `180–480` starts open at the given width. Same precedence: `localStorage` > this hint > default (`220px` / open)
 - After generation, the default browser is launched via `$BROWSER` → `open` / `xdg-open` / `cmd.exe /c start`, in that order
 - When VS Code Remote Containers / Codespaces is detected, the CLI instead starts a tiny HTTP server on `127.0.0.1` at port `51729` (override with `MDXG_REDLINE_PORT`) and hands the host browser an `http://localhost:<port>/...` URL (since `file://` paths in the container are invisible to the host). If the preferred port is busy, the CLI falls back to a random port and prints a warning to stderr — **note that random ports may not be forwarded to the host browser if `forwardPorts` is not set to `auto`, so pin a known-free `MDXG_REDLINE_PORT` (or register it in `devcontainer.json` `forwardPorts`) for reliable host access**
 - Pass `--no-open` to suppress browser launch. The output path is always printed to stdout so CI scripts and agents can capture it
@@ -64,7 +70,7 @@ For workflows where an agent and a reviewer iterate multiple times on the same m
 
 1. The agent runs `npx mdxg-redline <input.md> <folder>` to generate `<mdFileName>-<docHash>-review.html` in a shared folder (`mdFileName` is the basename with the `.md` / `.markdown` extension stripped; `docHash` is the first 16 hex chars of SHA-256 over the markdown body)
 2. The CLI launches the default browser with that HTML. The reviewer writes comments
-3. The reviewer clicks `Write feedback.json` (split button in the sidebar). On first use, a picker prompts for the output folder and the handle is persisted to IndexedDB; subsequent clicks write to the same folder without re-prompting
+3. The reviewer clicks `Write feedback.json` (split button in the comments panel). On first use, a picker prompts for the output folder and the handle is persisted to IndexedDB; subsequent clicks write to the same folder without re-prompting
 4. `<mdFileName>-<docHash>-feedback.json` is written into the same folder (sharing the same `<mdFileName>` / `<docHash>` as the source `review.html`, so pairs can be matched mechanically)
 5. The agent reads the matching feedback.json, prepares a revised markdown, and starts the next round with `npx mdxg-redline <input2.md> <folder>` — repeat
 
@@ -96,19 +102,19 @@ See [docs/DESIGN.md §8 Workspace Protocol](docs/DESIGN.md#8-ワークスペー�
 
 The [Markdown Experience Guidelines (MDXG)](https://github.com/vercel-labs/mdxg) are currently a preview specification and may change. MDXG Redline embeds an **MDXG Viewer** (the read-only rendering conformance level) and layers inline commenting and structured feedback JSON export on top of it as review-specific features. Viewer features are being adopted incrementally.
 
-| MDXG section             | Required level | Current status                                                           |
-| ------------------------ | -------------- | ------------------------------------------------------------------------ |
-| §1 Theming               | MUST (Viewer)  | Compliant (DADS theme + 3-state toggle following `prefers-color-scheme`) |
-| §2 Code Block Rendering  | MUST (Viewer)  | Partial (copy button and syntax highlighting are not implemented yet)    |
-| §3 Task Lists            | MUST (Viewer)  | Supported via marked defaults                                            |
-| §4 Images                | MUST (Viewer)  | Partial (relative image paths not resolved due to the trust boundary)    |
-| §5 Tables                | MUST (Viewer)  | Compliant (horizontal scrolling supported)                               |
-| §6 Virtual Pages         | MUST (Viewer)  | Not supported yet (requires integration design with the comment model)   |
-| §7 Page Navigation       | MUST (Viewer)  | Not supported yet                                                        |
-| §8 Page Outline          | MUST (Viewer)  | Not supported yet                                                        |
-| §9 Sequential Navigation | MUST (Viewer)  | Not supported yet                                                        |
-| §10 Search               | MUST (Viewer)  | Not supported yet                                                        |
-| §13 Keyboard Navigation  | MUST (Viewer)  | Partial                                                                  |
+| MDXG section             | Required level | Current status                                                                           |
+| ------------------------ | -------------- | ---------------------------------------------------------------------------------------- |
+| §1 Theming               | MUST (Viewer)  | Compliant (DADS theme + 3-state toggle following `prefers-color-scheme`)                 |
+| §2 Code Block Rendering  | MUST (Viewer)  | Compliant (Shiki dual theme over 27 languages, copy button injected per block)           |
+| §3 Task Lists            | MUST (Viewer)  | Supported via marked defaults                                                            |
+| §4 Images                | MUST (Viewer)  | Partial (relative image paths not resolved due to the trust boundary)                    |
+| §5 Tables                | MUST (Viewer)  | Compliant (horizontal scrolling supported)                                               |
+| §6 Virtual Pages         | MUST (Viewer)  | Compliant (H1 / H2 boundary split, ATX / setext forms, code-fence tracking)              |
+| §7 Page Navigation       | MUST (Viewer)  | Compliant (Stacked View with all pages stacked vertically, left TOC + page scroll-spy)   |
+| §8 Page Outline          | MUST (Viewer)  | Compliant (H3–H6 inline outline under the active page + IntersectionObserver scroll-spy) |
+| §9 Sequential Navigation | MUST (Viewer)  | Compliant (Prev / Next row integrated into the left TOC header, hidden at boundaries)    |
+| §10 Search               | MUST (Viewer)  | Not supported yet                                                                        |
+| §13 Keyboard Navigation  | MUST (Viewer)  | Partial (accessible names audited, page-nav keyboard operations not yet implemented)     |
 
 For the roadmap ahead, see [docs/DESIGN.md §12 MDXG compliance roadmap and future extensions](docs/DESIGN.md#12-mdxg-準拠ロードマップ今後の拡張).
 
