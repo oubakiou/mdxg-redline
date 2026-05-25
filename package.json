@@ -34,13 +34,13 @@
     "test:watch": "vp test --watch"
   },
   "dependencies": {
+    "marked": "^12.0.2",
     "shiki": "^4.0.2"
   },
   "devDependencies": {
     "@anthropic-ai/claude-code": "^2.1.80",
     "@openai/codex": "0.x",
     "@types/node": "^24.0.0",
-    "marked": "^12.0.2",
     "oxlint-tsgolint": "0.x",
     "typescript": "^6.0.2",
     "vite-plugin-singlefile": "^2.3.3",
