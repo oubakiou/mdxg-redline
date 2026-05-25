@@ -234,6 +234,28 @@ const blockForSelectionRange = (range: Range): HTMLElement | null => {
 }
 
 /**
+ * `block` の祖先 `<section.virtual-page>` から page index を取り出す。
+ * Stacked View では全 page の section が `data-page-index` を持っており、これが
+ * 新規 Comment の `pageIndex` 必須化 (§6.5) を満たすための信頼できる起点になる。
+ * 祖先 section が無い / 数値化できない場合は null を返し、上位はその選択を無効扱いにする。
+ */
+const pageIndexForBlock = (block: HTMLElement): number | null => {
+  const section = block.closest<HTMLElement>('section.virtual-page')
+  if (!section) {
+    return null
+  }
+  const raw = section.dataset.pageIndex
+  if (typeof raw !== 'string') {
+    return null
+  }
+  const parsed = Number.parseInt(raw, 10)
+  if (Number.isNaN(parsed)) {
+    return null
+  }
+  return parsed
+}
+
+/**
  * 選択範囲の両端を解決し、両端とも有効でかつ非ゼロ幅であることを確認する。
  * textSegments(block) を 1 度だけ計算して start/end 両方の解決に流用する。
  * 条件を満たさなければ null。
@@ -261,17 +283,21 @@ const selectionOffsets = (
   return { endOff, startOff }
 }
 
-/** フローター位置決め＋コメント保存のための情報をまとめる（rect は描画用、それ以外は保存用） */
-const buildSelectionInfo = (
-  selection: SelectionState,
-  block: HTMLElement,
+interface SelectionContext {
+  block: HTMLElement
   offsets: { endOff: number; startOff: number }
-): SelectionInfo => {
-  const { range, sel } = selection
-  const { endOff, startOff } = offsets
+  pageIndex: number
+  selection: SelectionState
+}
+
+/** フローター位置決め＋コメント保存のための情報をまとめる（rect は描画用、それ以外は保存用） */
+const buildSelectionInfo = (context: SelectionContext): SelectionInfo => {
+  const { range, sel } = context.selection
+  const { endOff, startOff } = context.offsets
   return {
-    blockId: block.dataset.blockId || '',
+    blockId: context.block.dataset.blockId || '',
     endOffset: endOff,
+    pageIndex: context.pageIndex,
     quote: sel.toString(),
     rect: range.getBoundingClientRect(),
     startOffset: startOff,
@@ -282,20 +308,36 @@ const buildSelectionInfo = (
  * 現在の選択範囲を解析し、フローター表示／コメント保存に必要な全情報を 1 オブジェクトで返す。
  * いずれかの段階で無効ならすべて null を返し、UI 側はフローターを隠す判定に使う。
  */
+/**
+ * 選択範囲の祖先からコメント可能ブロックと、その祖先 section の page index を一括解決する。
+ * 片方でも解決できなければ null を返し、上位の getSelectionInfo はその選択を無効扱いにする。
+ */
+const resolveBlockAndPage = (range: Range): { block: HTMLElement; pageIndex: number } | null => {
+  const block = blockForSelectionRange(range)
+  if (!block) {
+    return null
+  }
+  const pageIndex = pageIndexForBlock(block)
+  if (pageIndex === null) {
+    return null
+  }
+  return { block, pageIndex }
+}
+
 export const getSelectionInfo = (): SelectionInfo | null => {
   const selection = currentSelectionRange()
   if (!selection) {
     return null
   }
-  const block = blockForSelectionRange(selection.range)
-  if (!block) {
+  const resolved = resolveBlockAndPage(selection.range)
+  if (!resolved) {
     return null
   }
-  const offsets = selectionOffsets(block, selection.range)
+  const offsets = selectionOffsets(resolved.block, selection.range)
   if (!offsets) {
     return null
   }
-  return buildSelectionInfo(selection, block, offsets)
+  return buildSelectionInfo({ ...resolved, offsets, selection })
 }
 
 if (import.meta.vitest) {

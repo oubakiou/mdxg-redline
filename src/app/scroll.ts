@@ -68,6 +68,19 @@ export const smoothScrollToCenter = (
 }
 
 /**
+ * smoothScrollToCenter と同じ「中央配置 + clamp」だが、アニメーションを挟まず即座に終端へ飛ぶ。
+ * コメントカード ↔ 本文 mark 間ジャンプのように、距離感より「クリックに対する即応性」を優先したい
+ * 経路で使う。
+ */
+export const instantScrollToCenter = (target: Element): void => {
+  const { end, scroller, start } = computeScrollPlan(target)
+  if (Math.abs(end - start) < 1) {
+    return
+  }
+  scroller.scrollTop = end
+}
+
+/**
  * MARK: In-Source Testing
  * @example vp test src/scroll.ts
  */

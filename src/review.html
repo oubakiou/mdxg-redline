@@ -29,35 +29,71 @@
           document.documentElement.classList.add('has-embedded-md')
         }
       } catch (e) {}
-      // --- Sidebar width / open state (FOUC 防止のため stylesheet より前で確定する) ---
-      // 優先順位 P1: localStorage > <html data-sidebar-width> > default 360 (open)。
+      // --- Comments panel width / open state (FOUC 防止のため stylesheet より前で確定する) ---
+      // 優先順位 P1: localStorage > <html data-comments-width> > default 360 (open)。
       // theme と同じく、壊れた値 (旧バージョン / 他アプリの混入 / 手動編集) で初期描画と
-      // 後続ランタイムがズレないよう、240–640 の数値・open/closed ホワイトリストで検証する
-      // (sidebar-width.ts の isValidStoredWidth / isSidebarOpenState と同じ判定)。
+      // 後続ランタイムがズレないよう、280–640 の数値・open/closed ホワイトリストで検証する
+      // (comments-width.ts の isValidStoredCommentsWidth / isCommentsOpenState と同じ判定)。
       try {
-        var sbWidthRaw = localStorage.getItem('mdxg-redline.sidebar-width')
-        var sbOpenRaw = localStorage.getItem('mdxg-redline.sidebar-open')
-        var sbHintRaw = document.documentElement.getAttribute('data-sidebar-width')
+        var sbWidthRaw = localStorage.getItem('mdxg-redline.comments-width')
+        var sbOpenRaw = localStorage.getItem('mdxg-redline.comments-open')
+        var sbHintRaw = document.documentElement.getAttribute('data-comments-width')
         var sbWidthNum = sbWidthRaw === null ? NaN : Number(sbWidthRaw)
         var sbWidth =
-          isFinite(sbWidthNum) && sbWidthNum >= 240 && sbWidthNum <= 640 ? sbWidthNum : null
+          isFinite(sbWidthNum) && sbWidthNum >= 280 && sbWidthNum <= 640 ? sbWidthNum : null
         var sbOpen = sbOpenRaw === 'open' || sbOpenRaw === 'closed' ? sbOpenRaw : null
         var sbHintNum = sbHintRaw === null || sbHintRaw === '' ? NaN : Number(sbHintRaw)
         var sbHintWidth = null
         var sbHintOpen = null
         if (sbHintNum === 0) {
           sbHintOpen = 'closed'
-        } else if (isFinite(sbHintNum) && sbHintNum >= 240 && sbHintNum <= 640) {
+        } else if (isFinite(sbHintNum) && sbHintNum >= 280 && sbHintNum <= 640) {
           sbHintWidth = sbHintNum
           sbHintOpen = 'open'
         }
         var effWidth = sbWidth !== null ? sbWidth : sbHintWidth !== null ? sbHintWidth : 360
         var effOpen = sbOpen !== null ? sbOpen : sbHintOpen !== null ? sbHintOpen : 'open'
         document.documentElement.style.setProperty(
-          '--sidebar-width',
+          '--comments-width',
           effOpen === 'open' ? effWidth + 'px' : '0px'
         )
-        if (effOpen === 'closed') document.documentElement.classList.add('sidebar-closed')
+        if (effOpen === 'closed') document.documentElement.classList.add('comments-closed')
+      } catch (e) {}
+      // --- Page-nav width / open state (FOUC 防止のため stylesheet より前で確定する) ---
+      // 優先順位 P1: localStorage > <html data-page-nav-width> > default 220 (open)。
+      // comments panel と同じ書きぶりで、壊れた値 (旧バージョン / 他アプリの混入 / 手動編集) に対しては
+      // 180–480 の数値・open/closed ホワイトリストで検証 (page-nav-width.ts と同じ判定)。
+      try {
+        var pnWidthRaw = localStorage.getItem('mdxg-redline.page-nav-width')
+        var pnOpenRaw = localStorage.getItem('mdxg-redline.page-nav-open')
+        var pnHintRaw = document.documentElement.getAttribute('data-page-nav-width')
+        var pnWidthNum = pnWidthRaw === null ? NaN : Number(pnWidthRaw)
+        var pnWidth =
+          isFinite(pnWidthNum) && pnWidthNum >= 180 && pnWidthNum <= 480 ? pnWidthNum : null
+        var pnOpen = pnOpenRaw === 'open' || pnOpenRaw === 'closed' ? pnOpenRaw : null
+        var pnHintNum = pnHintRaw === null || pnHintRaw === '' ? NaN : Number(pnHintRaw)
+        var pnHintWidth = null
+        var pnHintOpen = null
+        if (pnHintNum === 0) {
+          pnHintOpen = 'closed'
+        } else if (isFinite(pnHintNum) && pnHintNum >= 180 && pnHintNum <= 480) {
+          pnHintWidth = pnHintNum
+          pnHintOpen = 'open'
+        }
+        var effPnWidth = pnWidth !== null ? pnWidth : pnHintWidth !== null ? pnHintWidth : 220
+        var effPnOpen = pnOpen !== null ? pnOpen : pnHintOpen !== null ? pnHintOpen : 'open'
+        document.documentElement.style.setProperty(
+          '--page-nav-width',
+          effPnOpen === 'open' ? effPnWidth + 'px' : '0px'
+        )
+        if (effPnOpen === 'closed') document.documentElement.classList.add('page-nav-closed')
+      } catch (e) {}
+      // 起動時の viewport 高さを 1 度だけ計測し、`.virtual-page` の min-height に使う。
+      // 以後のリサイズには追従せず「紙のシートの初期サイズ」を固定する。
+      try {
+        var ivh = window.innerHeight
+        if (ivh > 0)
+          document.documentElement.style.setProperty('--initial-viewport-height', ivh + 'px')
       } catch (e) {}
     </script>
     <link rel="stylesheet" href="./styles/review.css" />
@@ -111,6 +147,23 @@
     <input type="file" id="file-md" accept=".md,.markdown,text/markdown,text/plain" hidden />
 
     <main class="layout">
+      <!-- 左サイドバー: 仮想ページ TOC (MDXG §7 Page Navigation)。
+           state.pages が空の間は CSS 側の :root:not(.has-pages) ルールで列ごと隠れる。
+           page-nav-list 配下の <ul> は page-navigation.ts が描画する。 -->
+      <aside class="page-nav" id="page-nav" aria-label="Document pages">
+        <!-- ドラッグで横幅変更。PAGE_NAV_MIN_WIDTH (180px) 未満まで縮めると snap で
+             closed 状態になる (page-nav-resize.ts)。 -->
+        <div
+          class="page-nav-resize-handle"
+          id="page-nav-resize-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize document pages panel"
+          aria-controls="page-nav-list"
+        ></div>
+        <div id="page-nav-list"></div>
+      </aside>
+
       <section class="doc-pane">
         <div id="doc-wrap">
           <!-- 初期表示の素の空状態。手元の markdown を 1 ファイル単発で見るユースケース向け。
@@ -124,20 +177,19 @@
         <div id="doc"></div>
       </section>
 
-      <aside class="sidebar">
-        <!-- ドラッグで横幅変更。SIDEBAR_MIN_WIDTH (240px) 未満まで縮めると snap で
-             closed 状態になる (sidebar-resize.ts)。aria-orientation / aria-valuenow は
-             sidebar-resize.ts が同期する。 -->
+      <aside class="comments">
+        <!-- ドラッグで横幅変更。COMMENTS_MIN_WIDTH (280px) 未満まで縮めると snap で
+             closed 状態になる (comments-resize.ts)。aria-orientation / aria-valuenow は
+             comments-resize.ts が同期する。 -->
         <div
-          class="sidebar-resize-handle"
-          id="sidebar-resize-handle"
+          class="comments-resize-handle"
+          id="comments-resize-handle"
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize comments panel"
           aria-controls="cmt-list"
-          tabindex="0"
         ></div>
-        <div class="sidebar-header">
+        <div class="comments-header">
           <!-- GitHub の Merge pull request 風 split button。
                隣接した 2 ボタンの border を内側で潰し、caret 側の半透明 border-left で
                「分割されているが 1 つの UI」として読ませる (CSS .split-btn-caret 参照) -->
@@ -189,24 +241,37 @@
           </div>
         </div>
         <div id="cmt-list">
-          <div class="label sidebar-hint">Select text in the file to add a review comment.</div>
+          <div class="label comments-hint">Select text in the file to add a review comment.</div>
         </div>
       </aside>
     </main>
 
     <!-- closed 状態のときだけ画面右端の toolbar 直下に出現する開閉タブ。クリックで前回幅復元、
-         左へドラッグで連続的に幅を広げられる。doc-pane の scrollbar / sidebar 幅に応じて
-         右オフセットが動的に変わる仕組みは sidebar-resize.ts の resolveScrollbarOffset +
+         左へドラッグで連続的に幅を広げられる。doc-pane の scrollbar / comments panel 幅に応じて
+         右オフセットが動的に変わる仕組みは comments-resize.ts の resolveScrollbarOffset +
          resolveViewportRightGap を参照。 -->
     <button
       type="button"
-      class="sidebar-toggle-tab"
-      id="sidebar-toggle-tab"
+      class="comments-toggle-tab"
+      id="comments-toggle-tab"
       aria-label="Show comments panel"
       aria-expanded="false"
       aria-controls="cmt-list"
     >
       <span aria-hidden="true">‹</span>
+    </button>
+
+    <!-- page-nav が closed 状態のときだけ画面左端の縦中央に出現する開閉タブ。
+         comments-toggle-tab と対称で、クリックで前回幅復元、右へドラッグで連続的に幅を広げられる。 -->
+    <button
+      type="button"
+      class="page-nav-toggle-tab"
+      id="page-nav-toggle-tab"
+      aria-label="Show document pages panel"
+      aria-expanded="false"
+      aria-controls="page-nav-list"
+    >
+      <span aria-hidden="true">›</span>
     </button>
 
     <div id="floater"><span aria-hidden="true">＋</span> Comment</div>

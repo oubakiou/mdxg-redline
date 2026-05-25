@@ -9,7 +9,8 @@ const HELP_FLAGS = new Set(['--help', '-h'])
 const DOCUMENT_NAME_FLAG = '--document-name'
 const THEME_FLAG = '--theme'
 const SHIKI_LANGS_FLAG = '--shiki-langs'
-const SIDEBAR_WIDTH_FLAG = '--sidebar-width'
+const COMMENTS_WIDTH_FLAG = '--comments-width'
+const PAGE_NAV_WIDTH_FLAG = '--page-nav-width'
 
 export type ThemeHint = 'system' | 'light' | 'dark'
 const THEME_VALUES = ['system', 'light', 'dark'] as const
@@ -17,34 +18,66 @@ const THEME_VALUES = ['system', 'light', 'dark'] as const
 const isThemeHint = (value: string): value is ThemeHint =>
   (THEME_VALUES as readonly string[]).includes(value)
 
-// --sidebar-width に渡せる範囲は sidebar-width.ts と揃える。
+// --comments-width に渡せる範囲は comments-width.ts と揃える。
 // 0  → 起動時 closed (画面右端タブのみ表示)
-// 240–640 → open 状態でその幅
-// 範囲外 (1–239 / 641+) は invalid。
-const SIDEBAR_WIDTH_MIN = 240
-const SIDEBAR_WIDTH_MAX = 640
+// 280–640 → open 状態でその幅
+// 範囲外 (1–279 / 641+) は invalid。
+const COMMENTS_WIDTH_MIN = 280
+const COMMENTS_WIDTH_MAX = 640
 
-const isValidSidebarWidthHint = (value: number): boolean => {
+// --page-nav-width に渡せる範囲は page-nav-width.ts と揃える。
+// 0  → 起動時 closed (画面左端タブのみ表示)
+// 180–480 → open 状態でその幅
+const PAGE_NAV_WIDTH_MIN = 180
+const PAGE_NAV_WIDTH_MAX = 480
+
+const isValidCommentsWidthHint = (value: number): boolean => {
   if (!Number.isFinite(value) || !Number.isInteger(value)) {
     return false
   }
   if (value === 0) {
     return true
   }
-  return value >= SIDEBAR_WIDTH_MIN && value <= SIDEBAR_WIDTH_MAX
+  return value >= COMMENTS_WIDTH_MIN && value <= COMMENTS_WIDTH_MAX
+}
+
+const isValidPageNavWidthHint = (value: number): boolean => {
+  if (!Number.isFinite(value) || !Number.isInteger(value)) {
+    return false
+  }
+  if (value === 0) {
+    return true
+  }
+  return value >= PAGE_NAV_WIDTH_MIN && value <= PAGE_NAV_WIDTH_MAX
 }
 
 /**
- * `--sidebar-width` の値を整数 (0 or 240–640) にパースする。
+ * `--comments-width` の値を整数 (0 or 280–640) にパースする。
  * 範囲外・非数値・小数は null (CLI 側で invalid 扱い)。
  */
-export const parseSidebarWidthValue = (raw: string): number | null => {
+export const parseCommentsWidthValue = (raw: string): number | null => {
   const trimmed = raw.trim()
   if (trimmed === '') {
     return null
   }
   const num = Number(trimmed)
-  if (!isValidSidebarWidthHint(num)) {
+  if (!isValidCommentsWidthHint(num)) {
+    return null
+  }
+  return num
+}
+
+/**
+ * `--page-nav-width` の値を整数 (0 or 180–480) にパースする。
+ * 範囲外・非数値・小数は null (CLI 側で invalid 扱い)。
+ */
+export const parsePageNavWidthValue = (raw: string): number | null => {
+  const trimmed = raw.trim()
+  if (trimmed === '') {
+    return null
+  }
+  const num = Number(trimmed)
+  if (!isValidPageNavWidthHint(num)) {
     return null
   }
   return num
@@ -136,16 +169,23 @@ Options:
                                  (e.g. ts,js,py). Aliases are normalized to
                                  canonical names; unsupported entries are
                                  silently ignored.
-  --sidebar-width <px>   Set the initial comments-panel width hint for the
+  --comments-width <px>   Set the initial comments-panel width hint for the
                          generated HTML. One of:
-                           0         Start with the sidebar closed (only the
+                           0         Start with the comments panel closed (only the
                                      edge tab is visible until the user opens
                                      it).
-                           240–640   Start open with the given width in pixels.
-                         Written as a <html data-sidebar-width> attribute and
+                           280–640   Start open with the given width in pixels.
+                         Written as a <html data-comments-width> attribute and
                          used only when the viewer has no localStorage
                          preference yet (the user's UI history always wins).
                          Omit to leave the attribute off entirely.
+  --page-nav-width <px>  Set the initial document-pages panel (left TOC) width
+                         hint. One of:
+                           0         Start with the panel closed (only the left
+                                     edge tab is visible).
+                           180–480   Start open with the given width in pixels.
+                         Written as a <html data-page-nav-width> attribute and
+                         follows the same precedence rules as --comments-width.
   --no-open              Generate the HTML but do not launch a browser.
   -h, --help             Print this help and exit. Takes precedence over all
                          other arguments and flags when present.
@@ -163,9 +203,11 @@ export interface RunArgs {
   inputPath: string
   open: boolean
   outputDir?: string
+  /** --page-nav-width で指定された数値 (0 or 180–480)。未指定なら省略 */
+  pageNavWidth?: number
   shikiLangs?: ShikiLangsMode
-  /** --sidebar-width で指定された数値 (0 or 240–640)。未指定なら省略 */
-  sidebarWidth?: number
+  /** --comments-width で指定された数値 (0 or 280–640)。未指定なら省略 */
+  commentsWidth?: number
   themeHint?: ThemeHint
 }
 
@@ -174,9 +216,10 @@ export type ParsedArgs = { mode: 'help' } | { mode: 'invalid' } | ({ mode: 'run'
 interface PartitionedArgs {
   documentName?: string
   open: boolean
+  pageNavWidth?: number
   positional: readonly string[]
   shikiLangs?: ShikiLangsMode
-  sidebarWidth?: number
+  commentsWidth?: number
   themeHint?: ThemeHint
   valid: boolean
 }
@@ -184,27 +227,31 @@ interface PartitionedArgs {
 interface PartitionState {
   documentName: string | null
   open: boolean
+  pageNavWidth: number | null
   pendingDocName: boolean
+  pendingPageNavWidth: boolean
   pendingShikiLangs: boolean
-  pendingSidebarWidth: boolean
+  pendingCommentsWidth: boolean
   pendingTheme: boolean
   positional: readonly string[]
   shikiLangs: ShikiLangsMode | null
-  sidebarWidth: number | null
+  commentsWidth: number | null
   themeHint: ThemeHint | null
   valid: boolean
 }
 
 const INITIAL_PARTITION_STATE: PartitionState = {
+  commentsWidth: null,
   documentName: null,
   open: true,
+  pageNavWidth: null,
+  pendingCommentsWidth: false,
   pendingDocName: false,
+  pendingPageNavWidth: false,
   pendingShikiLangs: false,
-  pendingSidebarWidth: false,
   pendingTheme: false,
   positional: [],
   shikiLangs: null,
-  sidebarWidth: null,
   themeHint: null,
   valid: true,
 }
@@ -236,16 +283,28 @@ const consumeShikiLangsValue = (acc: PartitionState, token: string): PartitionSt
   return { ...acc, pendingShikiLangs: false, shikiLangs: parseShikiLangsValue(token) }
 }
 
-// --sidebar-width の値位置。0 or 240–640 の整数のみ valid。`-` 始まりや範囲外は invalid。
-const consumeSidebarWidthValue = (acc: PartitionState, token: string): PartitionState => {
+// --comments-width の値位置。0 or 280–640 の整数のみ valid。`-` 始まりや範囲外は invalid。
+const consumeCommentsWidthValue = (acc: PartitionState, token: string): PartitionState => {
   if (token.startsWith('--')) {
     return { ...acc, valid: false }
   }
-  const parsed = parseSidebarWidthValue(token)
+  const parsed = parseCommentsWidthValue(token)
   if (parsed === null) {
     return { ...acc, valid: false }
   }
-  return { ...acc, pendingSidebarWidth: false, sidebarWidth: parsed }
+  return { ...acc, commentsWidth: parsed, pendingCommentsWidth: false }
+}
+
+// --page-nav-width の値位置。0 or 180–480 の整数のみ valid。
+const consumePageNavWidthValue = (acc: PartitionState, token: string): PartitionState => {
+  if (token.startsWith('--')) {
+    return { ...acc, valid: false }
+  }
+  const parsed = parsePageNavWidthValue(token)
+  if (parsed === null) {
+    return { ...acc, valid: false }
+  }
+  return { ...acc, pageNavWidth: parsed, pendingPageNavWidth: false }
 }
 
 // 値を取らないフラグの dispatcher。
@@ -256,21 +315,32 @@ const consumeStandaloneFlag = (acc: PartitionState, token: string): PartitionSta
   return null
 }
 
-// 値を取るフラグ (pending* を立てるだけ) の dispatcher。
+// 値を取るフラグ (pending* を立てるだけ) の dispatcher。フラグ追加時の max-statements を
+// 避けるため、テーブル駆動で書く。各 entry は { flag, mark } で「flag に一致したら mark で
+// pending* を立てた新しい state を返す」セマンティクス。
+const VALUE_FLAG_TABLE: readonly {
+  flag: string
+  mark: (acc: PartitionState) => PartitionState
+}[] = [
+  { flag: DOCUMENT_NAME_FLAG, mark: (acc): PartitionState => ({ ...acc, pendingDocName: true }) },
+  { flag: THEME_FLAG, mark: (acc): PartitionState => ({ ...acc, pendingTheme: true }) },
+  { flag: SHIKI_LANGS_FLAG, mark: (acc): PartitionState => ({ ...acc, pendingShikiLangs: true }) },
+  {
+    flag: COMMENTS_WIDTH_FLAG,
+    mark: (acc): PartitionState => ({ ...acc, pendingCommentsWidth: true }),
+  },
+  {
+    flag: PAGE_NAV_WIDTH_FLAG,
+    mark: (acc): PartitionState => ({ ...acc, pendingPageNavWidth: true }),
+  },
+]
+
 const consumeValueFlag = (acc: PartitionState, token: string): PartitionState | null => {
-  if (token === DOCUMENT_NAME_FLAG) {
-    return { ...acc, pendingDocName: true }
+  const entry = VALUE_FLAG_TABLE.find((row): boolean => row.flag === token)
+  if (!entry) {
+    return null
   }
-  if (token === THEME_FLAG) {
-    return { ...acc, pendingTheme: true }
-  }
-  if (token === SHIKI_LANGS_FLAG) {
-    return { ...acc, pendingShikiLangs: true }
-  }
-  if (token === SIDEBAR_WIDTH_FLAG) {
-    return { ...acc, pendingSidebarWidth: true }
-  }
-  return null
+  return entry.mark(acc)
 }
 
 // `--` 始まりのトークンを既知フラグへ振り分け。未知フラグは invalid。
@@ -287,21 +357,31 @@ const consumeFlag = (acc: PartitionState, token: string): PartitionState => {
 }
 
 // 値待ちフラグがあるならその consumer に委譲し、無ければ null を返す。max-statements を
-// 抑えるために stepArg から切り出している。
+// 抑えるためテーブル駆動で書く。
+type PendingFlagKey =
+  | 'pendingDocName'
+  | 'pendingPageNavWidth'
+  | 'pendingShikiLangs'
+  | 'pendingCommentsWidth'
+  | 'pendingTheme'
+
+const PENDING_VALUE_TABLE: readonly {
+  consume: (acc: PartitionState, token: string) => PartitionState
+  key: PendingFlagKey
+}[] = [
+  { consume: consumeDocNameValue, key: 'pendingDocName' },
+  { consume: consumeThemeValue, key: 'pendingTheme' },
+  { consume: consumeShikiLangsValue, key: 'pendingShikiLangs' },
+  { consume: consumeCommentsWidthValue, key: 'pendingCommentsWidth' },
+  { consume: consumePageNavWidthValue, key: 'pendingPageNavWidth' },
+]
+
 const consumePendingValue = (acc: PartitionState, token: string): PartitionState | null => {
-  if (acc.pendingDocName) {
-    return consumeDocNameValue(acc, token)
+  const entry = PENDING_VALUE_TABLE.find((row): boolean => acc[row.key])
+  if (!entry) {
+    return null
   }
-  if (acc.pendingTheme) {
-    return consumeThemeValue(acc, token)
-  }
-  if (acc.pendingShikiLangs) {
-    return consumeShikiLangsValue(acc, token)
-  }
-  if (acc.pendingSidebarWidth) {
-    return consumeSidebarWidthValue(acc, token)
-  }
-  return null
+  return entry.consume(acc, token)
 }
 
 // reduce で 1 トークンずつ状態を進める。pure な関数として書くことで、ESLint の
@@ -331,8 +411,11 @@ const attachPartitionOptionals = (result: PartitionedArgs, state: PartitionState
   if (state.shikiLangs !== null) {
     result.shikiLangs = state.shikiLangs
   }
-  if (state.sidebarWidth !== null) {
-    result.sidebarWidth = state.sidebarWidth
+  if (state.commentsWidth !== null) {
+    result.commentsWidth = state.commentsWidth
+  }
+  if (state.pageNavWidth !== null) {
+    result.pageNavWidth = state.pageNavWidth
   }
 }
 
@@ -341,7 +424,8 @@ const isPartitionValid = (state: PartitionState): boolean =>
   !state.pendingDocName &&
   !state.pendingTheme &&
   !state.pendingShikiLangs &&
-  !state.pendingSidebarWidth
+  !state.pendingCommentsWidth &&
+  !state.pendingPageNavWidth
 
 const partitionArgs = (argv: readonly string[]): PartitionedArgs => {
   const state = argv.reduce<PartitionState>(stepArg, INITIAL_PARTITION_STATE)
@@ -379,8 +463,11 @@ const attachRunNonStringOptionals = (
   if (parts.shikiLangs) {
     result.shikiLangs = parts.shikiLangs
   }
-  if (typeof parts.sidebarWidth === 'number') {
-    result.sidebarWidth = parts.sidebarWidth
+  if (typeof parts.commentsWidth === 'number') {
+    result.commentsWidth = parts.commentsWidth
+  }
+  if (typeof parts.pageNavWidth === 'number') {
+    result.pageNavWidth = parts.pageNavWidth
   }
 }
 
@@ -729,83 +816,83 @@ if (import.meta.vitest) {
     })
   })
 
-  describe('parseSidebarWidthValue', () => {
+  describe('parseCommentsWidthValue', () => {
     it('0 は 0 を返す (closed 指定)', () => {
-      expect(parseSidebarWidthValue('0')).toBe(0)
+      expect(parseCommentsWidthValue('0')).toBe(0)
     })
 
-    it('240–640 の整数文字列は数値を返す', () => {
-      expect(parseSidebarWidthValue('240')).toBe(240)
-      expect(parseSidebarWidthValue('360')).toBe(360)
-      expect(parseSidebarWidthValue('640')).toBe(640)
+    it('280–640 の整数文字列は数値を返す', () => {
+      expect(parseCommentsWidthValue('280')).toBe(280)
+      expect(parseCommentsWidthValue('360')).toBe(360)
+      expect(parseCommentsWidthValue('640')).toBe(640)
     })
 
     it('前後の空白は許容する', () => {
-      expect(parseSidebarWidthValue('  360  ')).toBe(360)
+      expect(parseCommentsWidthValue('  360  ')).toBe(360)
     })
 
-    it('範囲外 (1–239 / 641+ / 負数) は null', () => {
-      expect(parseSidebarWidthValue('1')).toBeNull()
-      expect(parseSidebarWidthValue('239')).toBeNull()
-      expect(parseSidebarWidthValue('641')).toBeNull()
-      expect(parseSidebarWidthValue('-100')).toBeNull()
+    it('範囲外 (1–279 / 641+ / 負数) は null', () => {
+      expect(parseCommentsWidthValue('1')).toBeNull()
+      expect(parseCommentsWidthValue('279')).toBeNull()
+      expect(parseCommentsWidthValue('641')).toBeNull()
+      expect(parseCommentsWidthValue('-100')).toBeNull()
     })
 
     it('小数・非数値・空文字は null', () => {
-      expect(parseSidebarWidthValue('360.5')).toBeNull()
-      expect(parseSidebarWidthValue('auto')).toBeNull()
-      expect(parseSidebarWidthValue('360px')).toBeNull()
-      expect(parseSidebarWidthValue('')).toBeNull()
+      expect(parseCommentsWidthValue('360.5')).toBeNull()
+      expect(parseCommentsWidthValue('auto')).toBeNull()
+      expect(parseCommentsWidthValue('360px')).toBeNull()
+      expect(parseCommentsWidthValue('')).toBeNull()
     })
   })
 
-  describe('parseArgs: --sidebar-width', () => {
-    it('--sidebar-width 0 は closed 指定として認識される', () => {
-      expect(parseArgs(['--sidebar-width', '0', 'spec.md'])).toEqual({
+  describe('parseArgs: --comments-width', () => {
+    it('--comments-width 0 は closed 指定として認識される', () => {
+      expect(parseArgs(['--comments-width', '0', 'spec.md'])).toEqual({
+        commentsWidth: 0,
         inputPath: 'spec.md',
         mode: 'run',
         open: true,
-        sidebarWidth: 0,
       })
     })
 
-    it('--sidebar-width 320 は open + 幅 320 として認識される', () => {
-      expect(parseArgs(['--sidebar-width', '320', 'spec.md'])).toEqual({
+    it('--comments-width 320 は open + 幅 320 として認識される', () => {
+      expect(parseArgs(['--comments-width', '320', 'spec.md'])).toEqual({
+        commentsWidth: 320,
         inputPath: 'spec.md',
         mode: 'run',
         open: true,
-        sidebarWidth: 320,
       })
     })
 
-    it('--sidebar-width 640 (上限) も valid', () => {
-      expect(parseArgs(['--sidebar-width', '640', 'spec.md'])).toEqual({
+    it('--comments-width 640 (上限) も valid', () => {
+      expect(parseArgs(['--comments-width', '640', 'spec.md'])).toEqual({
+        commentsWidth: 640,
         inputPath: 'spec.md',
         mode: 'run',
         open: true,
-        sidebarWidth: 640,
       })
     })
 
-    it('--sidebar-width が末尾にあって値が無い場合は invalid', () => {
-      expect(parseArgs(['spec.md', '--sidebar-width'])).toEqual({ mode: 'invalid' })
+    it('--comments-width が末尾にあって値が無い場合は invalid', () => {
+      expect(parseArgs(['spec.md', '--comments-width'])).toEqual({ mode: 'invalid' })
     })
 
-    it('--sidebar-width の値位置に別フラグが来た場合は invalid', () => {
-      expect(parseArgs(['--sidebar-width', '--no-open', 'spec.md'])).toEqual({ mode: 'invalid' })
+    it('--comments-width の値位置に別フラグが来た場合は invalid', () => {
+      expect(parseArgs(['--comments-width', '--no-open', 'spec.md'])).toEqual({ mode: 'invalid' })
     })
 
-    it('--sidebar-width 範囲外 (239 / 641) は invalid', () => {
-      expect(parseArgs(['--sidebar-width', '239', 'spec.md'])).toEqual({ mode: 'invalid' })
-      expect(parseArgs(['--sidebar-width', '641', 'spec.md'])).toEqual({ mode: 'invalid' })
+    it('--comments-width 範囲外 (279 / 641) は invalid', () => {
+      expect(parseArgs(['--comments-width', '279', 'spec.md'])).toEqual({ mode: 'invalid' })
+      expect(parseArgs(['--comments-width', '641', 'spec.md'])).toEqual({ mode: 'invalid' })
     })
 
-    it('--sidebar-width 非数値 (auto / px 単位付き) は invalid', () => {
-      expect(parseArgs(['--sidebar-width', 'auto', 'spec.md'])).toEqual({ mode: 'invalid' })
-      expect(parseArgs(['--sidebar-width', '360px', 'spec.md'])).toEqual({ mode: 'invalid' })
+    it('--comments-width 非数値 (auto / px 単位付き) は invalid', () => {
+      expect(parseArgs(['--comments-width', 'auto', 'spec.md'])).toEqual({ mode: 'invalid' })
+      expect(parseArgs(['--comments-width', '360px', 'spec.md'])).toEqual({ mode: 'invalid' })
     })
 
-    it('--sidebar-width 未指定時は sidebarWidth が含まれない', () => {
+    it('--comments-width 未指定時は commentsWidth が含まれない', () => {
       expect(parseArgs(['spec.md'])).toEqual({
         inputPath: 'spec.md',
         mode: 'run',
@@ -813,15 +900,23 @@ if (import.meta.vitest) {
       })
     })
 
-    it('--sidebar-width と他のフラグの組み合わせも認識する', () => {
+    it('--comments-width と他のフラグの組み合わせも認識する', () => {
       expect(
-        parseArgs(['--no-open', '--sidebar-width', '480', '--theme', 'dark', 'spec.md', '/tmp/out'])
+        parseArgs([
+          '--no-open',
+          '--comments-width',
+          '480',
+          '--theme',
+          'dark',
+          'spec.md',
+          '/tmp/out',
+        ])
       ).toEqual({
+        commentsWidth: 480,
         inputPath: 'spec.md',
         mode: 'run',
         open: false,
         outputDir: '/tmp/out',
-        sidebarWidth: 480,
         themeHint: 'dark',
       })
     })

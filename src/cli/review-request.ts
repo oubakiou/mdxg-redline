@@ -28,7 +28,8 @@ import {
   rewriteReviewHtml,
   stripMarkdownExt,
   upsertEmbeddedMdMeta,
-  upsertHtmlDataSidebarWidth,
+  upsertHtmlDataCommentsWidth,
+  upsertHtmlDataPageNavWidth,
   upsertHtmlDataTheme,
 } from '../core/embed'
 import { dirname, resolve } from 'node:path'
@@ -103,12 +104,19 @@ const applyThemeHint = (html: string, themeHint: RunArgs['themeHint']): string =
   return upsertHtmlDataTheme(html, themeHint)
 }
 
-// --sidebar-width も applyThemeHint と同じ責務分担。未指定時は属性を付けない。
-const applySidebarWidthHint = (html: string, sidebarWidth: RunArgs['sidebarWidth']): string => {
-  if (typeof sidebarWidth !== 'number') {
+// --comments-width も applyThemeHint と同じ責務分担。未指定時は属性を付けない。
+const applyCommentsWidthHint = (html: string, commentsWidth: RunArgs['commentsWidth']): string => {
+  if (typeof commentsWidth !== 'number') {
     return html
   }
-  return upsertHtmlDataSidebarWidth(html, sidebarWidth)
+  return upsertHtmlDataCommentsWidth(html, commentsWidth)
+}
+
+const applyPageNavWidthHint = (html: string, pageNavWidth: RunArgs['pageNavWidth']): string => {
+  if (typeof pageNavWidth !== 'number') {
+    return html
+  }
+  return upsertHtmlDataPageNavWidth(html, pageNavWidth)
 }
 
 /**
@@ -177,8 +185,9 @@ const applyShikiLangs = async (html: string, args: RunArgs, ctx: EmbedContext): 
 const composeReviewHtml = async (args: RunArgs, ctx: EmbedContext): Promise<string> => {
   const embedded = rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName)
   const withTheme = applyThemeHint(embedded, args.themeHint)
-  const withSidebar = applySidebarWidthHint(withTheme, args.sidebarWidth)
-  const withShiki = await applyShikiLangs(withSidebar, args, ctx)
+  const withComments = applyCommentsWidthHint(withTheme, args.commentsWidth)
+  const withPageNav = applyPageNavWidthHint(withComments, args.pageNavWidth)
+  const withShiki = await applyShikiLangs(withPageNav, args, ctx)
   const statusText = formatLoadedStatus(ctx.docName, ctx.docHash)
   const withStatus = rewriteInitialStatus(withShiki, statusText)
   return upsertEmbeddedMdMeta(withStatus)

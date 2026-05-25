@@ -81,45 +81,325 @@ body > main.layout {
   min-height: 0;
 }
 body > main.layout > section,
-body > main.layout > aside.sidebar {
+body > main.layout > aside.page-nav,
+body > main.layout > aside.comments {
   overflow-y: auto;
   min-height: 0;
 }
 
-/* Main layout: doc pane (flexible) + sidebar (default 360px, user-resizable).
-   --sidebar-width は inline script / sidebar-width.ts が <html> に書き込む。
-   closed 状態 (html.sidebar-closed) では 0px に上書きされ、sidebar が完全に消える。 */
+/* Main layout: page-nav (default 220px, user-resizable) + doc pane (flexible) + comments
+   panel (default 360px, user-resizable)。--page-nav-width / --comments-width は inline script /
+   page-nav-width.ts / comments-width.ts が <html> に書き込む。
+   closed 状態 (html.page-nav-closed / html.comments-closed) では 0px に上書きされ、各 aside
+   が完全に消える。ページ未確定 (state.pages が空) のときは :root:not(.has-pages) ルールで
+   1 列目を消す。 */
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--sidebar-width, 360px);
+  grid-template-columns: var(--page-nav-width, 220px) minmax(0, 1fr) var(--comments-width, 360px);
 }
-:root.sidebar-closed {
-  --sidebar-width: 0px;
+/* `.page-nav` が display:none になると grid auto-placement で doc-pane が 1 列目 (= 0px の
+   列) に詰められて本文が消える。`.has-pages` 無し時と同様に、closed 時も `.layout` を
+   2 列 grid に切り替えて、doc-pane を `1fr` の列に正しく配置する。 */
+:root:not(.has-pages) .layout,
+:root.page-nav-closed .layout {
+  grid-template-columns: minmax(0, 1fr) var(--comments-width, 360px);
 }
-:root.sidebar-closed .sidebar {
+:root:not(.has-pages) .page-nav {
   display: none;
 }
-.doc-pane {
-  padding: 40px;
+:root.page-nav-closed {
+  --page-nav-width: 0px;
+}
+:root.page-nav-closed .page-nav {
+  display: none;
+}
+:root.comments-closed {
+  --comments-width: 0px;
+}
+:root.comments-closed .comments {
+  display: none;
+}
+
+/* Page navigation (左サイドバー TOC) */
+.page-nav {
+  background: var(--paper-edge);
+  border-right: 1px solid var(--rule);
+  padding: 24px 16px;
+  font-family: var(--font-system);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
   position: relative;
+}
+
+/* Resize handle: page-nav 右端に貼り付く 8px 帯の col-resize エリア (comments-resize-handle と
+   対称、左右反転)。border-right との視覚競合を避けるため透明で、hover/active 時のみ accent
+   ラインを表示する。 */
+.page-nav-resize-handle {
+  position: absolute;
+  inset: 0 -4px 0 auto;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 50;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+.page-nav-resize-handle::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+.page-nav-resize-handle:hover::after,
+.page-nav-resize-handle:focus-visible::after,
+.page-nav-resize-handle.dragging::after {
+  background: var(--accent);
+}
+.page-nav-resize-handle:focus {
+  outline: none;
+}
+
+body.page-nav-resizing {
+  user-select: none;
+  cursor: col-resize;
+}
+body.page-nav-resizing * {
+  cursor: col-resize !important;
+}
+
+/* Toggle tab: page-nav が closed の時だけ画面左端の縦中央に出現する細長いタブ。
+   comments-toggle-tab と対称 (左端 / 右開きの矢印)。scrollbar 補正は左側には不要なので
+   left は 0 固定。 */
+.page-nav-toggle-tab {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 72px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper-edge);
+  border: 1px solid var(--rule);
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  color: var(--ink-soft);
+  cursor: pointer;
+  z-index: 50;
+  box-shadow: var(--shadow-medium);
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  font-family: var(--font-system);
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.page-nav-toggle-tab:hover,
+.page-nav-toggle-tab:focus-visible {
+  background: var(--paper);
+  color: var(--ink);
+  outline: none;
+}
+.page-nav-toggle-tab.dragging {
+  background: var(--paper);
+  color: var(--ink);
+}
+:root.page-nav-closed .page-nav-toggle-tab {
+  display: flex;
+}
+:root:not(.has-pages) .page-nav-toggle-tab {
+  display: none;
+}
+.page-nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.page-nav-item {
+  margin: 2px 0;
+  /* active 時に 4 辺の枠線で「現在ページ + その配下の H3-H6 outline」をまとめて囲む。
+     枠線を li に置くことで link と page-outline-list が同じ枠内に収まる。全 li に透明な
+     border を予約しておくことで active ⇄ 非 active 切替時にレイアウトがガタつかない */
+  border: 2px solid transparent;
+  border-radius: 4px;
+  transition: border-color 0.1s ease;
+}
+.page-nav-item-active {
+  border-color: var(--accent);
+}
+.page-nav-link {
+  display: block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: inherit;
+  text-decoration: none;
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
+  /* 長いタイトルが折り返さないよう、行末でフェードする truncate にしない方が
+     レビュアーが全タイトルを読めるので、ここでは折り返しを許容する */
+  word-break: break-word;
+}
+.page-nav-link:hover,
+.page-nav-link:focus-visible {
+  background: var(--paper);
+  color: var(--ink);
+  outline: none;
+}
+.page-nav-item-depth-2 .page-nav-link {
+  padding-left: 24px;
+  color: var(--ink-soft);
+}
+.page-nav-item-active .page-nav-link {
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Page Outline (active page 配下の H3–H6 inline 展開、MDXG §8)。
+   active page の li 配下に <ul class="page-outline-list"> としてぶら下がる。
+   level に応じた左 padding でインデントし、scroll-spy が aria-current="location" を付ける。 */
+.page-outline-list {
+  list-style: none;
+  margin: 4px 0 8px 0;
+  padding: 0;
+  font-size: 12px;
+}
+.page-outline-item {
+  margin: 1px 0;
+}
+.page-outline-link {
+  display: block;
+  padding: 2px 8px 2px 32px;
+  border-radius: 4px;
+  color: var(--ink-soft);
+  text-decoration: none;
+  word-break: break-word;
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
+}
+.page-outline-link:hover,
+.page-outline-link:focus-visible {
+  background: var(--paper);
+  color: var(--ink);
+  outline: none;
+}
+/* current 表示は accent color + font-weight: 500 (medium)。page active の 4 辺 accent border が
+   主役で、サブ見出しは枠内の階層下位なのでハイライトを抑えて competing しないようにする。
+   text-decoration: underline はリンク標準の見た目と被って「クリック可能」性が過剰に伝わるため
+   font-weight 側で強調する (medium のカーニング差で隣接 link の横位置が微小に揺れるのは許容)。 */
+.page-outline-link[aria-current='location'] {
+  color: var(--accent);
+  font-weight: 500;
+}
+/* H3–H6 のレベルに応じた追加インデント。base が 32px なのは、page-nav-link の
+   左 padding と border-accent の幅を引き継いで visual に揃えるため。 */
+.page-outline-link-level-3 {
+  padding-left: 32px;
+}
+.page-outline-link-level-4 {
+  padding-left: 44px;
+}
+.page-outline-link-level-5 {
+  padding-left: 56px;
+}
+.page-outline-link-level-6 {
+  padding-left: 68px;
+}
+
+/* scroll-margin-top: heading に scroll した際、本文上端ちょうどではなく少し下げて
+   見出し全体が見えるようにする。コードブロック直前の見出し等で特に効く。 */
+#doc h3[id],
+#doc h4[id],
+#doc h5[id],
+#doc h6[id] {
+  scroll-margin-top: 24px;
+}
+
+/* Sequential Navigation (TOC 上部の前 / 次ページ row、MDXG §9)。
+   Stacked View では本文末尾ではなく page-nav サイドバー先頭に統合配置する。
+   各 link は親幅の半分から gap の半分 (4px) を引いた固有幅で、片方が無い (最初 /
+   最後ページ) でも残った link が広がらず、Prev は左半分・Next は右半分の定位置に
+   貼り付く (margin-left: auto を Next に持たせて右寄せを保証)。 */
+.page-nav-sequential {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--font-system);
+}
+.page-nav-sequential-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* box-sizing: border-box を付けないと content-box デフォルトで padding 20px + border 2px が
+     flex-basis に加算され、2 つ並べると親幅を 44px 超過してサイドバーからはみ出す。 */
+  box-sizing: border-box;
+  flex: 0 0 calc(50% - 4px);
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  color: var(--ink);
+  text-decoration: none;
+  background: var(--paper);
+  transition:
+    background 0.1s ease,
+    border-color 0.1s ease;
+}
+.page-nav-sequential-link:hover,
+.page-nav-sequential-link:focus-visible {
+  background: var(--paper-edge);
+  border-color: var(--accent);
+  outline: none;
+}
+.page-nav-sequential-next {
+  text-align: right;
+  margin-left: auto;
+}
+.page-nav-sequential-direction {
+  font-size: 10px;
+  color: var(--ink-soft);
+  letter-spacing: 0;
+}
+.page-nav-sequential-title {
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-pane {
+  padding: 32px 24px;
+  position: relative;
+  /* Stacked View では各 .virtual-page が白い「紙のシート」として浮き上がる前提なので、
+     doc-pane 側は薄いグレーの「机面」として背景を持つ (Word / Pages の慣行)。 */
+  background: var(--paper-edge);
 }
 @media (min-width: 1024px) {
   .doc-pane {
-    padding: 48px 64px;
+    padding: 40px 32px;
   }
 }
-.sidebar {
+.comments {
   background: var(--paper-edge);
   border-left: 1px solid var(--rule);
   padding: 32px 24px;
   position: relative;
 }
 
-/* Resize handle: sidebar 左端に貼り付く 6px 帯の col-resize エリア。
+/* Resize handle: comments panel 左端に貼り付く 6px 帯の col-resize エリア。
    border-left との視覚競合を避けるため、ハンドル本体は透明で、hover/active 時のみ
    accent カラーで 2px ラインを表示する (VS Code / GitHub web の split pane と同じ慣行)。
    pointer-events を確保するため width は 8px、見た目の中央 (3px 幅) に色を出す。 */
-.sidebar-resize-handle {
+.comments-resize-handle {
   position: absolute;
   inset: 0 auto 0 -4px;
   width: 8px;
@@ -128,40 +408,40 @@ body > main.layout > aside.sidebar {
   background: transparent;
   transition: background 0.15s ease;
 }
-.sidebar-resize-handle::after {
+.comments-resize-handle::after {
   content: '';
   position: absolute;
   inset: 0 auto 0 50%;
   transform: translateX(-50%);
-  width: 2px;
+  width: 4px;
   background: transparent;
   transition: background 0.15s ease;
 }
-.sidebar-resize-handle:hover::after,
-.sidebar-resize-handle:focus-visible::after,
-.sidebar-resize-handle.dragging::after {
+.comments-resize-handle:hover::after,
+.comments-resize-handle:focus-visible::after,
+.comments-resize-handle.dragging::after {
   background: var(--accent);
 }
-.sidebar-resize-handle:focus {
+.comments-resize-handle:focus {
   outline: none;
 }
 
 /* ドラッグ中は body 全体で text 選択 / col-resize 表示を強制 */
-body.sidebar-resizing {
+body.comments-resizing {
   user-select: none;
   cursor: col-resize;
 }
-body.sidebar-resizing * {
+body.comments-resizing * {
   cursor: col-resize !important;
 }
 
 /* Toggle tab: closed 状態のときだけ画面右端の toolbar 直下に出現する細長いタブ。
-   クリックで前回幅で sidebar を復元し、左にドラッグで連続的に幅を広げられる。
-   open 状態のときは display:none で完全に隠す (sidebar 自体で十分認識できるため)。
+   クリックで前回幅で comments panel を復元し、左にドラッグで連続的に幅を広げられる。
+   open 状態のときは display:none で完全に隠す (panel 自体で十分認識できるため)。
    right は --doc-scrollbar-offset (= scrollbar 幅 + viewport 右端ギャップ) で計算され、
    scrollbar 有無や OS 標準幅に依存せず scrollbar の左に貼り付く
-   (sidebar-resize.ts の resolveScrollbarOffset + resolveViewportRightGap 参照)。 */
-.sidebar-toggle-tab {
+   (comments-resize.ts の resolveScrollbarOffset + resolveViewportRightGap 参照)。 */
+.comments-toggle-tab {
   position: fixed;
   top: 50%;
   right: var(--doc-scrollbar-offset, 0px);
@@ -187,32 +467,32 @@ body.sidebar-resizing * {
     background 0.15s ease,
     color 0.15s ease;
 }
-.sidebar-toggle-tab:hover,
-.sidebar-toggle-tab:focus-visible {
+.comments-toggle-tab:hover,
+.comments-toggle-tab:focus-visible {
   background: var(--paper);
   color: var(--ink);
   outline: none;
 }
-.sidebar-toggle-tab.dragging {
+.comments-toggle-tab.dragging {
   background: var(--paper);
   color: var(--ink);
 }
-:root.sidebar-closed .sidebar-toggle-tab {
+:root.comments-closed .comments-toggle-tab {
   display: flex;
 }
-.sidebar-header {
+.comments-header {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 16px;
   /* primary btn の実高さ (line-height 20 + padding 5*2 + border 1*2 = 32px) を確保し、
-     comments count の表示有無で sidebar-header の高さが揺れないようにする */
+     comments count の表示有無で comments-header の高さが揺れないようにする */
   min-height: 32px;
 }
-.sidebar-header .menu-wrap {
+.comments-header .menu-wrap {
   margin-left: auto;
 }
-.sidebar-header .btn-ghost {
+.comments-header .btn-ghost {
   font-size: 13px;
   font-weight: 400;
   padding: 2px 8px;
@@ -220,16 +500,16 @@ body.sidebar-resizing * {
   border: 1px solid var(--rule-muted);
   background: var(--paper);
 }
-.sidebar-header .btn-ghost:hover {
+.comments-header .btn-ghost:hover {
   color: var(--ink);
   background: var(--paper-edge);
   border-color: var(--rule);
 }
-.sidebar-header .menu-caret {
+.comments-header .menu-caret {
   margin-left: 6px;
   color: var(--ink-soft);
 }
-.sidebar-hint {
+.comments-hint {
   color: var(--ink-faint);
 }
 .label {
@@ -533,7 +813,7 @@ mark.cmt.active {
   border-top: 5px solid var(--floater-bg);
 }
 
-/* Sidebar comments (GitHub PR review card style) */
+/* Comments panel cards (GitHub PR review card style) */
 .cmt-card {
   border: 1px solid var(--rule);
   border-radius: 6px;
@@ -577,6 +857,15 @@ mark.cmt.active {
   border-top: 1px solid var(--rule-muted);
   display: flex;
   justify-content: space-between;
+}
+.cmt-page-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--paper-edge);
+  border: 1px solid var(--rule-muted);
+  color: var(--ink-soft);
+  font-size: 10px;
 }
 .cmt-del {
   color: var(--ink-faint);
@@ -797,13 +1086,22 @@ mark.cmt.active {
     flex: none;
   }
   body > main.layout > section,
-  body > main.layout > aside.sidebar {
+  body > main.layout > aside.page-nav,
+  body > main.layout > aside.comments {
     overflow-y: visible;
   }
   .layout {
     grid-template-columns: 1fr;
   }
-  .sidebar {
+  /* Mobile view では page-nav 列は隠す (TOC は Phase 2 ではデスクトップ前提、
+     モバイル UI は mdxg-virtual-pages.archive.md §12 対応外として割り切る)。 */
+  .page-nav {
+    display: none;
+  }
+  :root:not(.has-pages) .layout {
+    grid-template-columns: 1fr;
+  }
+  .comments {
     border-left: none;
     border-top: 1px solid var(--rule);
   }
@@ -811,13 +1109,16 @@ mark.cmt.active {
     display: none;
   }
 
-  /* Mobile view では sidebar が縦積み (1 列レイアウト) になるので、横幅リサイズ
-     も開閉タブも無意味。両方とも隠して、closed 状態でも sidebar が見えるように戻す。 */
-  .sidebar-resize-handle,
-  .sidebar-toggle-tab {
+  /* Mobile view では comments panel が縦積み (1 列レイアウト) になるので、横幅リサイズ
+     も開閉タブも無意味。両方とも隠して、closed 状態でも panel が見えるように戻す。
+     page-nav 側は mobile では完全に非表示なので resize/toggle も合わせて隠す。 */
+  .comments-resize-handle,
+  .comments-toggle-tab,
+  .page-nav-resize-handle,
+  .page-nav-toggle-tab {
     display: none;
   }
-  :root.sidebar-closed .sidebar {
+  :root.comments-closed .comments {
     display: block;
   }
 }

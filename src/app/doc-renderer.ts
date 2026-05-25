@@ -11,6 +11,7 @@
 
 import { buildBlockAnchors } from '../core/block-anchors'
 import type { HighlighterCore } from 'shiki/core'
+import type { Page } from '../core/page-split'
 import { getOrCreateHighlighter, highlightFenceWithShiki } from './shiki'
 import { injectCopyButtons } from './code-copy-wrap'
 import { qs } from './dom-utils'
@@ -25,16 +26,21 @@ const showEmptyDocument = (doc: HTMLElement, wrap: HTMLElement): void => {
 }
 
 /**
- * トップレベルブロックに連番 ID を付け、原 HTML をキャッシュする。
+ * Stacked View 配下の全 `<section.virtual-page>` の子ブロックを文書順に走査し、
+ * `b001` から連番の blockId を付与しつつ原 HTML をキャッシュする。
  * 以降の mark 再適用ではこのキャッシュをベースに HTML を巻き戻すため、レンダリング直後に必ず呼ぶ必要がある。
  */
 const cacheBlockOriginalHTML = (doc: HTMLElement): void => {
   state.blockOriginalHTML.clear()
-  for (const [index, el] of [...doc.children].entries()) {
-    if (el instanceof HTMLElement) {
-      const id = `b${String(index + 1).padStart(3, '0')}`
-      el.dataset.blockId = id
-      state.blockOriginalHTML.set(id, el.innerHTML)
+  let blockIndex = 0
+  for (const section of doc.querySelectorAll<HTMLElement>(':scope > section.virtual-page')) {
+    for (const el of section.children) {
+      if (el instanceof HTMLElement) {
+        blockIndex += 1
+        const id = `b${String(blockIndex).padStart(3, '0')}`
+        el.dataset.blockId = id
+        state.blockOriginalHTML.set(id, el.innerHTML)
+      }
     }
   }
 }
@@ -76,12 +82,36 @@ const refreshBlockOriginalHTML = (doc: HTMLElement): void => {
   }
 }
 
-/** markdown を HTML 化して #doc に流し込み、ブロック原 HTML と markdown 上のアンカーを更新する */
+/**
+ * 1 ページ分の markdown を `<section class="virtual-page">` に描画する。
+ * dataset.pageIndex / pageSlug は scroll-spy / TOC click / selection の page 帰属解決に使う。
+ * heading slug は当該 page の H3–H6 だけを渡すため、ページを跨いだ slug 衝突は起こらない
+ * (page-split.ts の outline 抽出で per-page 一意化済み)。
+ */
+const renderPageSection = (page: Page): HTMLElement => {
+  const section = document.createElement('section')
+  section.className = 'virtual-page'
+  section.dataset.pageIndex = String(page.index)
+  section.dataset.pageSlug = page.slug
+  section.innerHTML = renderMarkdown(page.markdown, null, {
+    headingSlugs: page.headings.map((heading): string => heading.slug),
+  })
+  return section
+}
+
+/**
+ * Stacked View: 全 page を `<section.virtual-page>` で連続描画する。
+ * ブロック原 HTML と markdown 上のアンカーは doc 全体で 1 度だけ計算し、
+ * mark-engine が page を跨いだ document スコープ blockId で動けるようにする。
+ */
 const mountRenderedDoc = (doc: HTMLElement, wrap: HTMLElement): void => {
   wrap.style.display = 'none'
   // C 案: 初期 render は highlighter を渡さず marked の plain 出力で paint を稼ぐ。
   // ハイライトは scheduleShikiUpgrade で paint 後に追いかける。
-  doc.innerHTML = renderMarkdown(state.markdown, null)
+  doc.innerHTML = ''
+  for (const page of state.pages) {
+    doc.appendChild(renderPageSection(page))
+  }
   // cacheBlockOriginalHTML を injectCopyButtons より先に呼び、トップレベル <pre> の場合に
   // blockId が <pre> 自身に付与されるよう順序を保つ (wrap 後だと block-id は <div> 側に移る)。
   cacheBlockOriginalHTML(doc)

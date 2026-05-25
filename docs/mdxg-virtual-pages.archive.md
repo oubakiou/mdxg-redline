@@ -2,7 +2,7 @@
 
 DESIGN.md §12 優先順序 1「§6 / §7 / §8 / §9 Virtual Pages 系」に対応する設計の整理。MDXG 規格 §6 Virtual Pages / §7 Page Navigation / §8 Page Outline / §9 Sequential Navigation への準拠を、MDXG Redline 既存のインラインコメント機能・信頼境界・blockId アンカリングと両立させる形で導入することを目的とする。
 
-本文 §1–§11 は設計確定事項として扱う。実装手順・フェーズ分割は付録 A (non-normative) に分離し、実装時の再調整余地を残す。本書で対象外と明記した範囲（§10 Search、モバイル UI、§13 残りキーボード操作）は別ドキュメントで扱う。
+本文 §1–§11 は当初の **Single Page Active View** (アクティブページのみ DOM 描画、ページ切替で入れ替え) 前提の設計確定事項。実装稼働後の UX 課題を受けて **Stacked View** (全 page を縦に紙シート状に並べて連続スクロール) へ移行しており、§1–§11 のうち覆した論点は **§14 Stacked View 移行** に集約してある。新規読者は §1–§11 → §14 の順で読み、矛盾箇所は §14 を優先すること。実装手順・フェーズ分割は付録 A (non-normative) に分離し、実装時の再調整余地を残す。本書で対象外と明記した範囲（§10 Search、モバイル UI、§13 残りキーボード操作）は別ドキュメントで扱う。
 
 ## 目次
 
@@ -19,7 +19,8 @@ DESIGN.md §12 優先順序 1「§6 / §7 / §8 / §9 Virtual Pages 系」に対
 11. [feedback.json 互換性](#11-feedbackjson-互換性)
 12. [対応外として割り切る項目](#12-対応外として割り切る項目)
 13. [Open Questions](#13-open-questions)
-14. [付録 A. 実装フェーズ提案 (non-normative)](#付録-a-実装フェーズ提案-non-normative)
+14. [Stacked View 移行 (Addendum)](#14-stacked-view-移行-addendum)
+15. [付録 A. 実装フェーズ提案 (non-normative)](#付録-a-実装フェーズ提案-non-normative)
 
 ---
 
@@ -127,8 +128,8 @@ Virtual Pages 系の導入は単独機能の追加ではなく、本ツール固
 
 ### 4.4 レイアウト (DESIGN.md §4)
 
-- 現状は `<header>` + 2 ペイン (`<section class="doc-pane">` + `<aside class="sidebar">`(Conversation))
-- 本文とサイドバーは独立スクロール
+- 現状は `<header>` + 2 ペイン (`<section class="doc-pane">` + `<aside class="comments">`(Conversation))
+- 本文とコメントパネルは独立スクロール
 
 **含意**: Page Navigation 用の TOC をどこに置くか（左サイドバー追加 / header 内ドロップダウン / モーダル）で 2 ペイン or 3 ペイン化が決まる（§8 で詳述）。
 
@@ -267,6 +268,8 @@ DESIGN.md §5 の `Comment` に、内部 state 用フィールドとして `page
 
 ### 7.1 blockId は page スコープに閉じる
 
+> **⚠ Stacked View 移行で撤回** — §14.2 参照。本節の決定は当初 (Single Page Active View 時) のもので、Stacked View では blockId を **document スコープ連番に戻した**。下記理由・含意は当時の背景資料として残す。
+
 **決定**: blockId はページ単位で `b001` から付番する。document スコープでの連番にはしない。
 
 **理由**:
@@ -386,7 +389,7 @@ DESIGN.md §5 の `Comment` に、内部 state 用フィールドとして `page
 │ <header class="app-header">  toolbar / theme / Comments ▾ / Send ▾ │
 ├──────────────────┬───────────────────────────────┬─────────────────┤
 │ <aside class=    │ <section class="doc-pane">    │ <aside class=   │
-│  "page-nav">     │                               │  "sidebar">     │
+│  "page-nav">     │                               │  "comments">    │
 │                  │  ┌─────────────────────────┐  │                 │
 │ Pages (TOC)      │  │ <article id="doc">      │  │ Conversation    │
 │  ▾ Introduction  │  │                         │  │  (コメント一覧)  │
@@ -403,13 +406,13 @@ DESIGN.md §5 の `Comment` に、内部 state 用フィールドとして `page
 └──────────────────┴───────────────────────────────┴─────────────────┘
 ```
 
-右サイドバー (`<aside class="sidebar">`, Conversation) は本書とは独立に幅可変化されており、左端ドラッグで 240–640px の範囲でリサイズできる。`localStorage` で width / open 状態が永続化され、closed (= 0px) のときは sidebar 自体が消えて画面右端に縦タブだけが出る (DESIGN.md §4 / §7c)。Virtual Pages の 3 ペイン化はこの「右サイドバー幅は CSS 変数 `--sidebar-width` 経由」「closed の取り得る状態」を前提に組み立てる。
+右サイドバー (`<aside class="comments">`, Conversation) は本書とは独立に幅可変化されており、左端ドラッグで 280–640px の範囲でリサイズできる。`localStorage` で width / open 状態が永続化され、closed (= 0px) のときは comments panel 自体が消えて画面右端に縦タブだけが出る (DESIGN.md §4 / §7c)。Virtual Pages の 3 ペイン化はこの「右サイドバー幅は CSS 変数 `--comments-width` 経由」「closed の取り得る状態」を前提に組み立てる。
 
 ### 8.2 左サイドバー (Page Navigation, §7)
 
 - `<aside class="page-nav">` を `<main class="layout">` の左端に追加
 - ページ一覧を `<ul>` で出力、`Page.depth === 2` は左 padding でインデント
-- 現在ページに `aria-current="page"` + 視覚的ハイライト（背景色 + 左 border accent）
+- 現在ページに `aria-current="page"` + 視覚的ハイライト（背景色 + 左 border accent。Stacked View 移行後は 4 辺 accent border + 太字に変更し、`<li>` 全体を囲んで配下の H3–H6 outline も枠内に含める。§14.1 / §14.7 参照）
 - H1 配下に H2 が複数ある場合、H1 ノードは展開 / 折りたたみ可能（caret アイコン）
 - 折りたたみ状態自体は永続化しない（毎回展開状態で起動）
 - クリック → `app/pages.ts` の `navigateTo(slug)` を呼ぶ → `activePageIndex` 更新 → `location.hash` 更新 → `doc-renderer` 再 render
@@ -547,30 +550,117 @@ Open file 経由でも同じく 1a–1f を経由する。
 
 ## 13. Open Questions
 
-実装着手前に追加で詰めるべき論点。確定したものは順次本文に取り込む。
+実装着手前に追加で詰めるべき論点として整理した節。Phase 5 完了 + Stacked View 稼働後の UX 調整時点で **全項目 (§13.1–§13.5) 解決済み**。各項目の結論は本書 §14 / DESIGN.md の対応箇所と整合させてある。
 
 ### 13.1 Conversation サイドバーの幅と TOC 追加後のレイアウト
 
-右サイドバー (Conversation) は本書とは独立に幅可変化済みで、240–640px の範囲でユーザーがドラッグ調整 + closed (= 0px) もあり得る（DESIGN.md §4 / §7c）。3 ペイン化に際してこの前提を維持しつつ、残る論点は次の 2 つ：
+右サイドバー (Conversation) は本書とは独立に幅可変化済みで、280–640px の範囲でユーザーがドラッグ調整 + closed (= 0px) もあり得る（DESIGN.md §4 / §7c）。3 ペイン化に際してこの前提を維持しつつ、残る論点は次の 2 つ：
 
-- **(a) 左 `<aside class="page-nav">` の幅戦略** — 固定 220px とするか、右サイドバーと同様に CSS 変数 + ドラッグでリサイズ可能にするか。Page TOC は H1/H2 タイトル長で必要幅が大きく変わるため、長文タイトルが続く文書では固定 220px だと折り返しが頻発する。Conversation 側と挙動を揃えるなら可変だが、3 つの可変ペインが横に並ぶと中央 doc-pane の有効幅が安定しない難点もある。
-- **(b) 狭幅時の優先度** — viewport 幅が縮んだ場合、左 page-nav の折りたたみ・右 sidebar の closed・1 ペイン化への切替のうちどれを先に発火させるか。右 sidebar は既にユーザー操作で closed にできるので、自動切替は左 page-nav の折りたたみを先に出すのが自然そうだが、確定は UI 実装着手時の UX 検証に委ねる。
+- **(a) 左 `<aside class="page-nav">` の幅戦略 (解決済み)** — ✓ 右サイドバーと対称に CSS 変数 + ドラッグでリサイズ可能にする方式で実装した。値域は 180–480px、default 220px、closed (= 0px) も対応。`localStorage` で width / open 状態を永続化し、`<html data-page-nav-width>` 属性 (CLI `--page-nav-width`) を低優先度のヒントとして読む P1 解決 (DESIGN.md §7c / §3)。実装は `app/page-nav-width.ts` (pure) + `app/page-nav-resize.ts` (DOM wiring) で comments-width.ts / comments-resize.ts と対称な 2 ファイル構成。
+- **(b) 狭幅時の優先度 (解決済み)** — ✓ `@media (max-width: 900px)` の 1 段で 1 ペイン縦積みに切替える方針で実装した (`src/styles/review.css` の mobile breakpoint)。`.layout` を `grid-template-columns: 1fr` に倒し、`.page-nav` は `display: none`、`.comments` は通常フローへ。中間段 (page-nav だけ折りたたんで残り 2 ペイン) は導入しない。閾値は当面 900px 固定で、モバイル UI 最適化は §12 通り別ドキュメントに切り出す。
 
-### 13.2 ページ slug 重複と docHash の関係
+### 13.2 ページ slug 重複と docHash の関係 (解決済み)
 
-同じ markdown を別ラウンドで読み込んだ際、見出し変更でスラッグが変わると以前生成した URL hash が無効化される。`docHash` が変われば別ドキュメントとして扱うのが本ツールの設計（DESIGN.md §6）であり、hash も失効するのが整合的。明示的な「古い hash → 新しい slug への移行」は実装しない方針で良いか確認が必要。
+> **✓ 「移行しない」方針で確定**。同じ markdown を別ラウンドで読み込んだ際、見出し変更でスラッグが変わると以前生成した URL hash は無効化される。`docHash` が変われば別ドキュメントとして扱うのが本ツールの設計 (DESIGN.md §6) であり、hash も失効するのが整合的。明示的な「古い hash → 新しい slug への移行」は実装しない。`resolveTargetFromHash` (`app/pages.ts`) も slug 不一致時は先頭ページ (index 0) にフォールバックする (§7.4) のでこの方針と一貫する。
 
-### 13.3 setext 見出し（`===` / `---`）の検出範囲
+### 13.3 setext 見出し（`===` / `---`）の検出範囲 (解決済み)
 
-MDXG §6.1 は ATX / setext 両形式を [MUST] とする。setext は直前行に空でないテキストが必要で、コードフェンス内では無効。`core/page-split.ts` の正規表現または lexer 統合の判定をどちらにするかをパーサ実装時に決定。
+> **✓ 行単位の自前 scanner で確定**。`core/page-outline.ts` の `scanHeadings` が ATX (`detectAtxHeading`) と setext (`detectSetextDepth`) を同じステートマシン内で処理し、`FenceState` (backtick / tilde fence の追跡、CommonMark §4.5) でフェンス内の `#` / `=` / `-` を境界候補から除外する。`marked.lexer` 統合は採らず、行 scanner で page-split / page-outline / block-anchors すべてを通せる pure な実装にした。in-source test (`src/core/page-outline.ts` の `scanHeadings` / `extractPageHeadings` / `src/core/page-split.ts` の `フェンス追跡`) で ATX / setext / フェンス内 / 段差付き ATX 等の境界を網羅する。
 
-### 13.4 ページ切替時のスクロール位置
+### 13.4 ページ切替時のスクロール位置 (解決済み)
 
-ページ切替時は新ページの top にスクロールするのが基本だが、コメント sidebar からのジャンプ（別ページのコメントカードをクリック）では該当 `<mark>` までスクロールする必要がある。`app/scroll.ts` の固定 duration scroll を再利用し、page 切替直後の `requestAnimationFrame` で scroll を発火する流れで実装可能かをコメント統合フェーズで検証。
+> **✓ Stacked View 移行で解決** — §14.4 参照。`scrollToActivePageSection` で該当 `<section.virtual-page>` を取り、`alignSectionTopInPane` が section top を doc-pane の上から 5% の位置に揃える (instant)。コメントパネル → 別ページコメントへのジャンプは `navigateToCommentPage` → `focusCommentMarkAfterNavigate` の組で、mark には `instantScrollToCenter` で位置合わせする。
 
-### 13.5 リファレンス実装の `splitIntoChunks` バグ修正の差分検証
+### 13.5 リファレンス実装の `splitIntoChunks` バグ修正の差分検証 (解決済み)
 
-リファレンス実装にあるコードフェンス追跡漏れバグ（フェンス内 `#` を見出し検出）を本実装では最初から修正して実装する。リファレンス実装と分割結果が異なる入力例を test fixture として残し、意図的な差分であることを明示する。
+> **✓ in-source test で確定**。`core/page-split.ts` の `splitIntoPages: フェンス追跡` describe にフェンス内 `# / ##` を含む入力で「フェンス内見出しはページ境界として扱わない」ことを assert する test を置き、`core/page-outline.ts` の `scanHeadings` / `extractPageHeadings` describe にも backtick fence / tilde fence それぞれのフェンス内 ATX を弾く test を置いている。リファレンス実装 (`vercel-labs/mdxg`) の `splitIntoChunks` は同じ入力でフェンス内 `#` を H1 として拾うため、これらの test は意図的な差分の regression guard となる。詳細な対比は DESIGN.md §12 §6 Virtual Pages の「本実装との差異」を参照。
+
+---
+
+## 14. Stacked View 移行 (Addendum)
+
+§1–§13 は当初の **Single Page Active View** (アクティブページのみ DOM に描画、ページ切替で入れ替え) を前提に書かれている。実装稼働後の UX レビューで「マウスホイールだけで全文を読み進められない」点が課題化したため、**Stacked View** (全 page を縦に紙シート状に並べて連続スクロール、Word / Pages 風) へ移行した。本節は §1–§13 のうち実装時に覆した / 上書きした論点をまとめ、新規読者は §1–§13 と本節の両方を読む前提とする。
+
+### 14.1 採用した変更
+
+| 項目                                       | §1–§13 当初設計                                             | Stacked View 後の現状                                                                                        |
+| ------------------------------------------ | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 本文 DOM 構造                              | アクティブページのみ `#doc` に描画、ページ切替で入れ替え    | 全 page を `<section class="virtual-page" data-page-index data-page-slug>` で `#doc` に連続描画              |
+| `blockId` スコープ (§7.1)                  | page スコープ (`b001` から page 内連番)                     | **document スコープ連番に戻した** ── 全 section が常時 DOM 上にあり `querySelector` 衝突を構造的に避けるため |
+| `mark-engine.ts` の `activePageIndex` 絞り | active page の comments のみ mark 化                        | 全 comments を mark 化 (document スコープ blockId で衝突しない)                                              |
+| 新規 Comment の `pageIndex` 解決           | `state.activePageIndex` から取得                            | `selection.ts` が祖先 `<section.virtual-page>` の `data-page-index` から取得し PendingSelection に乗せる     |
+| `state.activePageIndex` の意味             | 「描画中のページ」                                          | 「page scroll-spy が同期する『viewport 上部に最も近い page』」 (`app/page-scroll-spy.ts`)                    |
+| §9 Sequential Navigation 配置              | 本文末尾の `<nav class="sequential-nav">`                   | 左 TOC 上部に統合した `<nav class="page-nav-sequential">` (連続スクロールで本文末尾は冗長)                   |
+| §9.2 Conversation サイドバー               | Current page only モード (既定) + All pages モード (toggle) | **常に全ページ表示に固定** (page スコープ blockId 撤回と合わせて自然な選択。`commentsByPage` 廃止)           |
+| ページ切替時のスクロール (§13.4)           | doc-pane.scrollTop=0 で先頭に戻す                           | `alignSectionTopInPane` で section top を doc-pane の上から 5% に揃える (instant、§14.4 / §14.7)             |
+| コメントカード ↔ mark のスクロール         | `smoothScrollToCenter`                                      | `instantScrollToCenter` (クリック即応性を優先、`app/scroll.ts`)                                              |
+| §8.2 TOC active 表示                       | 背景色 + 左 border accent                                   | 背景色 + 4 辺 accent border + 太字 (`<li>` 全体を囲み、配下の H3–H6 outline も枠内に含める)                  |
+| §8.3 outline current 表示                  | 左 border accent + 太字                                     | テキスト色 accent + 太字のみ (page 枠線と competing しないよう border 廃止)                                  |
+| TOC / Sequential / hashchange の scroll    | smooth                                                      | instant (`auto`)。`navigateToTarget` が一律 `auto` を渡し、`alignSectionTopInPane` に集約 (§14.7)            |
+| `.virtual-page` の min-height              | (なし)                                                      | `var(--initial-viewport-height, 100vh) - 160px` を予約し、紙シートの境界と次ページ上枠を viewport 内に保つ   |
+
+### 14.2 §7.1 blockId スコープ判断の撤回
+
+§7.1 は「ページを跨ぐ範囲選択で 1 つのコメントが生成されないようにする」ため blockId を page スコープに閉じる判断を採った。Stacked View では全 section が DOM 上に並ぶため、page スコープのまま `b001` が複数 section に存在すると `mark-engine` の `querySelector('[data-block-id="b001"]')` が衝突する。
+
+`page スコープ blockId × 全 section 描画` の組み合わせを成立させるには「`[data-page-index][data-block-id]` の複合 selector に全箇所書き換え」が必要だが、blockId の意味と export スキーマを page スコープに合わせる構造的負担に対してメリットが乏しい (Stacked View では Selection API が複数 section にまたがる Range を返した時点で `selection.ts` の祖先 blockId 探索が単一 block に絞れず自然に弾かれる)。document スコープ blockId に戻すことで、`mark-engine` / `selection` / `floater` / `comment-modal` / export 経路すべてが既存の単純な querySelector パターンで動く。
+
+### 14.3 §8 UI 構成の更新
+
+§8.1 のレイアウト全体図は Single Page Active 前提だが、Stacked View では `<section class="doc-pane">` 配下が次の構造になる：
+
+```
+<section class="doc-pane">  ← 背景: var(--paper-edge) (薄いグレーの "机面")
+  <div id="doc">
+    <section class="virtual-page" data-page-index="0" data-page-slug="intro">
+      ... page 0 の markdown 描画
+    </section>
+    <section class="virtual-page" data-page-index="1" data-page-slug="overview">
+      ... page 1 の markdown 描画
+    </section>
+    <section class="virtual-page" data-page-index="2" data-page-slug="...">
+      ...
+    </section>
+    ...
+  </div>
+</section>
+```
+
+各 `.virtual-page` は白背景 + box-shadow + max-width 860px + padding 48px/64px の「紙のシート」として描画され、`.doc-pane` の薄いグレー背景に対して浮き上がる。ページ間は `margin-bottom: 32px` で区切る。
+
+§8.4 で確定していた本文末尾 Sequential Nav は撤去 (連続スクロールで前後ページに到達できるため冗長)。代わりに左 TOC 上部に統合した Prev/Next row が常時視界に入り、§9 [SHOULD] の隣接ページタイトル可視化を継続して充足する。
+
+### 14.4 §13.4 ページ切替時のスクロール位置 (解決)
+
+§13.4 で Open Question として残していた「ページ切替時のスクロール位置」は Stacked View 移行により解決：
+
+- 通常のページ切替 (TOC クリック / Sequential row クリック / hashchange): `scrollToActivePageSection` で該当 `<section.virtual-page>` を取り、`alignSectionTopInPane` が section top を doc-pane の上から 5% に揃える (instant)。判定基準は `page-scroll-spy` の `rootMargin: '-5% 0px -95% 0px'` と同じ位置で、navigate 直後に前ページが topmost と誤判定されないよう同期させてある (§14.7)
+- 連続スクロール: `page-scroll-spy` が viewport 上 5% 線にいる section の `pageIndex` を `state.activePageIndex` / `location.hash` に push、TOC active 表示も追従
+- コメントパネル → 別ページコメントへのジャンプ: `navigateToCommentPage` で該当 section に飛んだ後 `focusCommentMarkAfterNavigate` で mark に `instantScrollToCenter` (アニメ無し、即応性優先)
+
+### 14.5 §9.2 Conversation サイドバーモード (確定)
+
+§9.2 で「Current page only モード (既定) + All pages モード (toggle)」を設計していたが、Stacked View 移行と並行して toggle を導入せず常に全コメント表示に固定した。理由：
+
+- 全 section が DOM 上に並ぶため、別ページのコメントカードをクリック → 該当ページに `scrollIntoView` する経路が自然
+- toggle UI を増やすほどの差別化価値がない (Single Page Active 時代は「現在ページ外のコメントを混ぜると混乱する」懸念があったが、Stacked View では mark が同じ doc 上に並んで見えている)
+- カードに `<span class="cmt-page-badge">` でページタイトルを表示することで、複数ページ文書でもカードの帰属が一目で分かる
+
+### 14.6 影響を受けない決定
+
+§7.2 (sourceLine は元 markdown 全体の line 番号維持) / §7.3 (slug 生成) / §7.4 (`location.hash` 一本化) / §7.5 (H1/H2 無い文書の単一ページ正規化) / §7.6 (Introduction 固定文字列) / §7.7 (Page Outline は左 TOC 配下に inline 展開) は Stacked View 移行後も変更なし。
+
+`feedback.json` 互換性 (§11) も完全互換維持。`pageIndex` は引き続き export に含めず、`headingPath` / `sourceLine` のみが出力される。
+
+### 14.7 UX 調整 (Stacked View 稼働後)
+
+Stacked View 稼働後のレビューで判明した UX 課題への追加調整。§14.1 移行表の該当行と併せて読むこと。
+
+- **navigate 全経路を instant scroll に**: TOC / outline / Sequential / hashchange の navigate を smooth → instant (`auto`) に統一。smooth では `page-scroll-spy` の IntersectionObserver 初回 callback が「先頭 section が intersecting」と判定して `activePageIndex` を 0 に巻き戻すレースを起こすため、`navigateToTarget` は一律 `auto` を渡す。コメントカード ↔ mark の instant 化 (§14.1 表) と挙動を揃え、クリック応答も改善された
+- **section top を pane 上 5% に揃える + scroll-spy 同期**: section top を viewport top にぴったり貼り付けるとページ境界の認識が弱いため、`alignSectionTopInPane` (`SECTION_TOP_RATIO = 0.05`) で pane の上 5% に揃える。同時に `page-scroll-spy` の `rootMargin` を `'-5% 0px -95% 0px'` に変更し、navigate 直後に上半分の前ページが topmost と誤判定されないよう判定線を一致させる
+- **`.virtual-page` の min-height で次ページ上枠を覗かせる**: `<head>` inline script が起動時の `window.innerHeight` を `--initial-viewport-height` に書き、CSS が `min-height: calc(var(--initial-viewport-height, 100vh) - 160px)` を適用する。160px は app-header + margin-bottom + 余白で、次ページの上枠線が viewport 下端に覗くサイズ
+- **TOC active 表示を 4 辺 accent border に**: `.page-nav-link` 1 要素だけだった accent ライン (左 border) を `.page-nav-item` (li) 全体の 4 辺枠線に拡張し、配下の `.page-outline-list` (H3–H6) も枠内に収める。サブ見出しの current 表示は枠線と competing しないよう左 border accent を廃止し、テキスト色 accent + 太字のみに変更
+- **左 page-nav サイドバーを user-resizable 化** (§13.1 (a) 解決): 右 sidebar と対称な実装 (`app/page-nav-width.ts` + `app/page-nav-resize.ts`)。値域 180–480 / default 220、closed (= 0px) 対応、CLI `--page-nav-width` / `<html data-page-nav-width>` ヒント、`localStorage` 永続化。resize handle のキーボード操作はマウス操作で代替可能なため右 sidebar 含め両側で削除し、ドラッグ + 開閉タブのみに統一
 
 ---
 

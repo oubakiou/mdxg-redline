@@ -46,16 +46,27 @@ const applyMark = (blockEl: Element, comment: Comment): void => {
   wrapRangeWithMark(built, comment.id)
 }
 
-/** state.comments を blockId キーでグルーピングする。再描画時にブロック単位でまとめて処理するための前処理 */
+const pushIntoBucket = (byBlock: Map<string, Comment[]>, comment: Comment): void => {
+  const bucket = byBlock.get(comment.blockId)
+  if (bucket) {
+    bucket.push(comment)
+    return
+  }
+  byBlock.set(comment.blockId, [comment])
+}
+
+/**
+ * state.comments を blockId キーでグルーピングする。
+ *
+ * blockId は文書全体で連番付与される (document スコープ) ので、page によるフィルタは行わない。
+ * Stacked View では全 page の DOM に対して該当 blockId の mark を貼る。Single Page 描画でも
+ * DOM 上に該当 blockId が無いコメントは applyMarksForBlock の `querySelector → null` で
+ * 自然に fail-soft され、見える形で表示されない。
+ */
 const commentsGroupedByBlock = (): Map<string, Comment[]> => {
   const byBlock = new Map<string, Comment[]>()
   for (const comment of state.comments) {
-    const bucket = byBlock.get(comment.blockId)
-    if (bucket) {
-      bucket.push(comment)
-    } else {
-      byBlock.set(comment.blockId, [comment])
-    }
+    pushIntoBucket(byBlock, comment)
   }
   return byBlock
 }
@@ -116,14 +127,17 @@ export const reapplyAllMarks = (): void => {
   }
 }
 
-// テスト用のダミーコメント生成 (overrides で必要なフィールドだけ上書きできる)
+// テスト用のダミーコメント生成 (overrides で必要なフィールドだけ上書きできる)。
+// Phase 5 で sourceLine / pageIndex が必須化されたため default 値を入れる。
 const dummyComment = (overrides: Partial<Comment> = {}): Comment => ({
   blockId: 'b001',
   comment: '',
   created: '',
   endOffset: 0,
   id: 'x',
+  pageIndex: 0,
   quote: '',
+  sourceLine: 1,
   startOffset: 0,
   ...overrides,
 })

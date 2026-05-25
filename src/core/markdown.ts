@@ -56,9 +56,57 @@ const wrapTbody = (body: string): string => {
 // renderer.code (marked デフォルト) のフォールバック用。highlighter が null を返したときに使う。
 const defaultRenderer = new Renderer()
 
-const createRenderer = (highlighter: CodeHighlighter | null | undefined): Renderer => {
+/**
+ * marked 出力の H3–H6 に `id` を注入するためのヒント。
+ * `headingSlugs` は H3–H6 の出現順 (文書順) に並んだ slug 列で、page-outline の
+ * `extractPageHeadings` 出力をそのまま渡せる契約 (mdxg-virtual-pages.archive.md §6.4)。
+ * H1 / H2 はページ境界として scanHeadings が拾うが、本実装では active page を 1 枚ずつ
+ * render する設計のためページ内に H1 / H2 はそのページ自身の見出し 1 つだけになる。
+ * その見出しには id を付けない (URL fragment は `<page-slug>` で済むため別途用意しない)。
+ */
+export interface MarkdownRenderOptions {
+  headingSlugs?: readonly string[]
+}
+
+const headingHtmlWithId = (text: string, level: number, slug: string | null): string => {
+  if (slug === null) {
+    return `<h${level}>${text}</h${level}>\n`
+  }
+  return `<h${level} id="${escapeHtml(slug)}">${text}</h${level}>\n`
+}
+
+const resolveHeadingSlugs = (options: MarkdownRenderOptions | undefined): readonly string[] => {
+  if (!options) {
+    return []
+  }
+  if (!options.headingSlugs) {
+    return []
+  }
+  return options.headingSlugs
+}
+
+const createHeadingRenderer = (
+  options: MarkdownRenderOptions | undefined
+): ((text: string, level: number, raw: string) => string) => {
+  const slugs = resolveHeadingSlugs(options)
+  let outlineIndex = 0
+  return (text: string, level: number): string => {
+    if (level >= 3 && level <= 6) {
+      const slug = slugs[outlineIndex] ?? null
+      outlineIndex += 1
+      return headingHtmlWithId(text, level, slug)
+    }
+    return `<h${level}>${text}</h${level}>\n`
+  }
+}
+
+const createRenderer = (
+  highlighter: CodeHighlighter | null | undefined,
+  options?: MarkdownRenderOptions
+): Renderer => {
   const renderer = new Renderer()
   renderer.html = (html: string): string => escapeHtml(html)
+  renderer.heading = createHeadingRenderer(options)
 
   // 信頼できない markdown を前提に、URL スキームを allowlist で絞る (DESIGN.md §11)。
   // 不許可リンクは <a> を出さず inner HTML をそのまま流して plain text 扱いにし、
@@ -107,12 +155,18 @@ const createRenderer = (highlighter: CodeHighlighter | null | undefined): Render
 /**
  * marked で markdown を HTML に変換。raw HTML は実行されないよう文字として escape する。
  * `highlighter` を渡すとフェンス付きコードブロックを差し替える (null 戻り値で fallback)。
+ * `options.headingSlugs` を渡すと H3–H6 に `id="<slug>"` を出現順で注入し、Page Outline の
+ * URL fragment (`<page-slug>__<heading-slug>`) のスクロール先として使える (MDXG §8 / §6.4)。
  */
-export const renderMarkdown = (markdown: string, highlighter?: CodeHighlighter | null): string => {
+export const renderMarkdown = (
+  markdown: string,
+  highlighter?: CodeHighlighter | null,
+  options?: MarkdownRenderOptions
+): string => {
   const result = marked.parse(markdown, {
     breaks: false,
     gfm: true,
-    renderer: createRenderer(highlighter),
+    renderer: createRenderer(highlighter, options),
   })
   // marked.parse は同期設定 (async: false) ではあるが型上 string | Promise<string>
   if (typeof result === 'string') {
@@ -272,6 +326,51 @@ if (import.meta.vitest) {
       const html = renderMarkdown('| A |\n|---|\n| 1 |\n\nbetween\n\n| B |\n|---|\n| 2 |\n')
       expect(html.match(/<div class="table-wrap">/g)).toHaveLength(2)
       expect(html.match(/<\/table>\n<\/div>/g)).toHaveLength(2)
+    })
+  })
+
+  describe('renderMarkdown heading id injection (MDXG §8 outline anchors)', () => {
+    it('headingSlugs を渡すと H3–H6 に id 属性が出現順で注入される', () => {
+      const html = renderMarkdown(
+        '## Page Title\n\n### Section A\n\n#### Sub A\n\n### Section B\n',
+        null,
+        {
+          headingSlugs: ['section-a', 'sub-a', 'section-b'],
+        }
+      )
+      expect(html).toContain('<h3 id="section-a">Section A</h3>')
+      expect(html).toContain('<h4 id="sub-a">Sub A</h4>')
+      expect(html).toContain('<h3 id="section-b">Section B</h3>')
+    })
+
+    it('headingSlugs 未指定なら H3–H6 に id は付かない (旧挙動互換)', () => {
+      const html = renderMarkdown('### Section\n')
+      expect(html).toContain('<h3>Section</h3>')
+      expect(html).not.toContain('id=')
+    })
+
+    it('H1 / H2 (ページ境界見出し) には id を付けない', () => {
+      const html = renderMarkdown('# Page\n\n## Sub Page\n\n### Section\n', null, {
+        headingSlugs: ['section'],
+      })
+      expect(html).toMatch(/<h1>Page<\/h1>/)
+      expect(html).toMatch(/<h2>Sub Page<\/h2>/)
+      expect(html).toContain('<h3 id="section">Section</h3>')
+    })
+
+    it('headingSlugs の数が H3–H6 個数より少なくても残りは id 無しで出る', () => {
+      const html = renderMarkdown('### A\n\n### B\n\n### C\n', null, { headingSlugs: ['a'] })
+      expect(html).toContain('<h3 id="a">A</h3>')
+      expect(html).toContain('<h3>B</h3>')
+      expect(html).toContain('<h3>C</h3>')
+    })
+
+    it('slug は HTML escape される (属性インジェクション防止)', () => {
+      const html = renderMarkdown('### Section\n', null, {
+        headingSlugs: ['x"onmouseover="alert(1)'],
+      })
+      expect(html).not.toContain('onmouseover="alert(1)"')
+      expect(html).toContain('&quot;')
     })
   })
 }
