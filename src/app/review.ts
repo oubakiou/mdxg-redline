@@ -151,7 +151,7 @@ export const loadFromMarkdown = async (name: string, text: string): Promise<void
  * - `pushHash = true` (TOC / outline / Sequential クリック): hash も書き換える
  * - `pushHash = false` (hashchange 由来): hash は既に変更済みなので書き換えない
  * - scroll 動作は `scrollToTargetAfterRender` に集約 (heading 指定 / page section / 同一 page 内
- *   no-op の 3 分岐) し、smooth で位置遷移する
+ *   no-op の 3 分岐) し、instant (`auto`) で位置遷移する
  *
  * 再描画は必ず `renderAll()` 経由にする。view 追加時の drift を構造的に防ぐ単一の真の源
  * (Phase 3 で sequential-nav 抜けが起きた回帰の再発防止)。
@@ -164,7 +164,7 @@ const navigateToTarget = (target: NavigateTarget, pushHash: boolean): void => {
   if (pushHash) {
     syncHashFromActivePage(target.headingSlug)
   }
-  scrollToTargetAfterRender(target, pageChanged, 'smooth')
+  scrollToTargetAfterRender(target, pageChanged, 'auto')
 }
 
 export const buildExportPayload = (): ExportPayload => buildReviewExportPayload(state)
