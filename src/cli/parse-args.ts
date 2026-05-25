@@ -10,6 +10,7 @@ const DOCUMENT_NAME_FLAG = '--document-name'
 const THEME_FLAG = '--theme'
 const SHIKI_LANGS_FLAG = '--shiki-langs'
 const SIDEBAR_WIDTH_FLAG = '--sidebar-width'
+const PAGE_NAV_WIDTH_FLAG = '--page-nav-width'
 
 export type ThemeHint = 'system' | 'light' | 'dark'
 const THEME_VALUES = ['system', 'light', 'dark'] as const
@@ -24,6 +25,12 @@ const isThemeHint = (value: string): value is ThemeHint =>
 const SIDEBAR_WIDTH_MIN = 240
 const SIDEBAR_WIDTH_MAX = 640
 
+// --page-nav-width に渡せる範囲は page-nav-width.ts と揃える。
+// 0  → 起動時 closed (画面左端タブのみ表示)
+// 180–480 → open 状態でその幅
+const PAGE_NAV_WIDTH_MIN = 180
+const PAGE_NAV_WIDTH_MAX = 480
+
 const isValidSidebarWidthHint = (value: number): boolean => {
   if (!Number.isFinite(value) || !Number.isInteger(value)) {
     return false
@@ -32,6 +39,16 @@ const isValidSidebarWidthHint = (value: number): boolean => {
     return true
   }
   return value >= SIDEBAR_WIDTH_MIN && value <= SIDEBAR_WIDTH_MAX
+}
+
+const isValidPageNavWidthHint = (value: number): boolean => {
+  if (!Number.isFinite(value) || !Number.isInteger(value)) {
+    return false
+  }
+  if (value === 0) {
+    return true
+  }
+  return value >= PAGE_NAV_WIDTH_MIN && value <= PAGE_NAV_WIDTH_MAX
 }
 
 /**
@@ -45,6 +62,22 @@ export const parseSidebarWidthValue = (raw: string): number | null => {
   }
   const num = Number(trimmed)
   if (!isValidSidebarWidthHint(num)) {
+    return null
+  }
+  return num
+}
+
+/**
+ * `--page-nav-width` の値を整数 (0 or 180–480) にパースする。
+ * 範囲外・非数値・小数は null (CLI 側で invalid 扱い)。
+ */
+export const parsePageNavWidthValue = (raw: string): number | null => {
+  const trimmed = raw.trim()
+  if (trimmed === '') {
+    return null
+  }
+  const num = Number(trimmed)
+  if (!isValidPageNavWidthHint(num)) {
     return null
   }
   return num
@@ -146,6 +179,13 @@ Options:
                          used only when the viewer has no localStorage
                          preference yet (the user's UI history always wins).
                          Omit to leave the attribute off entirely.
+  --page-nav-width <px>  Set the initial document-pages panel (left TOC) width
+                         hint. One of:
+                           0         Start with the panel closed (only the left
+                                     edge tab is visible).
+                           180–480   Start open with the given width in pixels.
+                         Written as a <html data-page-nav-width> attribute and
+                         follows the same precedence rules as --sidebar-width.
   --no-open              Generate the HTML but do not launch a browser.
   -h, --help             Print this help and exit. Takes precedence over all
                          other arguments and flags when present.
@@ -163,6 +203,8 @@ export interface RunArgs {
   inputPath: string
   open: boolean
   outputDir?: string
+  /** --page-nav-width で指定された数値 (0 or 180–480)。未指定なら省略 */
+  pageNavWidth?: number
   shikiLangs?: ShikiLangsMode
   /** --sidebar-width で指定された数値 (0 or 240–640)。未指定なら省略 */
   sidebarWidth?: number
@@ -174,6 +216,7 @@ export type ParsedArgs = { mode: 'help' } | { mode: 'invalid' } | ({ mode: 'run'
 interface PartitionedArgs {
   documentName?: string
   open: boolean
+  pageNavWidth?: number
   positional: readonly string[]
   shikiLangs?: ShikiLangsMode
   sidebarWidth?: number
@@ -184,7 +227,9 @@ interface PartitionedArgs {
 interface PartitionState {
   documentName: string | null
   open: boolean
+  pageNavWidth: number | null
   pendingDocName: boolean
+  pendingPageNavWidth: boolean
   pendingShikiLangs: boolean
   pendingSidebarWidth: boolean
   pendingTheme: boolean
@@ -198,7 +243,9 @@ interface PartitionState {
 const INITIAL_PARTITION_STATE: PartitionState = {
   documentName: null,
   open: true,
+  pageNavWidth: null,
   pendingDocName: false,
+  pendingPageNavWidth: false,
   pendingShikiLangs: false,
   pendingSidebarWidth: false,
   pendingTheme: false,
@@ -248,6 +295,18 @@ const consumeSidebarWidthValue = (acc: PartitionState, token: string): Partition
   return { ...acc, pendingSidebarWidth: false, sidebarWidth: parsed }
 }
 
+// --page-nav-width の値位置。0 or 180–480 の整数のみ valid。
+const consumePageNavWidthValue = (acc: PartitionState, token: string): PartitionState => {
+  if (token.startsWith('--')) {
+    return { ...acc, valid: false }
+  }
+  const parsed = parsePageNavWidthValue(token)
+  if (parsed === null) {
+    return { ...acc, valid: false }
+  }
+  return { ...acc, pageNavWidth: parsed, pendingPageNavWidth: false }
+}
+
 // 値を取らないフラグの dispatcher。
 const consumeStandaloneFlag = (acc: PartitionState, token: string): PartitionState | null => {
   if (token === NO_OPEN_FLAG) {
@@ -256,21 +315,32 @@ const consumeStandaloneFlag = (acc: PartitionState, token: string): PartitionSta
   return null
 }
 
-// 値を取るフラグ (pending* を立てるだけ) の dispatcher。
+// 値を取るフラグ (pending* を立てるだけ) の dispatcher。フラグ追加時の max-statements を
+// 避けるため、テーブル駆動で書く。各 entry は { flag, mark } で「flag に一致したら mark で
+// pending* を立てた新しい state を返す」セマンティクス。
+const VALUE_FLAG_TABLE: readonly {
+  flag: string
+  mark: (acc: PartitionState) => PartitionState
+}[] = [
+  { flag: DOCUMENT_NAME_FLAG, mark: (acc): PartitionState => ({ ...acc, pendingDocName: true }) },
+  { flag: THEME_FLAG, mark: (acc): PartitionState => ({ ...acc, pendingTheme: true }) },
+  { flag: SHIKI_LANGS_FLAG, mark: (acc): PartitionState => ({ ...acc, pendingShikiLangs: true }) },
+  {
+    flag: SIDEBAR_WIDTH_FLAG,
+    mark: (acc): PartitionState => ({ ...acc, pendingSidebarWidth: true }),
+  },
+  {
+    flag: PAGE_NAV_WIDTH_FLAG,
+    mark: (acc): PartitionState => ({ ...acc, pendingPageNavWidth: true }),
+  },
+]
+
 const consumeValueFlag = (acc: PartitionState, token: string): PartitionState | null => {
-  if (token === DOCUMENT_NAME_FLAG) {
-    return { ...acc, pendingDocName: true }
+  const entry = VALUE_FLAG_TABLE.find((row): boolean => row.flag === token)
+  if (!entry) {
+    return null
   }
-  if (token === THEME_FLAG) {
-    return { ...acc, pendingTheme: true }
-  }
-  if (token === SHIKI_LANGS_FLAG) {
-    return { ...acc, pendingShikiLangs: true }
-  }
-  if (token === SIDEBAR_WIDTH_FLAG) {
-    return { ...acc, pendingSidebarWidth: true }
-  }
-  return null
+  return entry.mark(acc)
 }
 
 // `--` 始まりのトークンを既知フラグへ振り分け。未知フラグは invalid。
@@ -287,21 +357,31 @@ const consumeFlag = (acc: PartitionState, token: string): PartitionState => {
 }
 
 // 値待ちフラグがあるならその consumer に委譲し、無ければ null を返す。max-statements を
-// 抑えるために stepArg から切り出している。
+// 抑えるためテーブル駆動で書く。
+type PendingFlagKey =
+  | 'pendingDocName'
+  | 'pendingPageNavWidth'
+  | 'pendingShikiLangs'
+  | 'pendingSidebarWidth'
+  | 'pendingTheme'
+
+const PENDING_VALUE_TABLE: readonly {
+  consume: (acc: PartitionState, token: string) => PartitionState
+  key: PendingFlagKey
+}[] = [
+  { consume: consumeDocNameValue, key: 'pendingDocName' },
+  { consume: consumeThemeValue, key: 'pendingTheme' },
+  { consume: consumeShikiLangsValue, key: 'pendingShikiLangs' },
+  { consume: consumeSidebarWidthValue, key: 'pendingSidebarWidth' },
+  { consume: consumePageNavWidthValue, key: 'pendingPageNavWidth' },
+]
+
 const consumePendingValue = (acc: PartitionState, token: string): PartitionState | null => {
-  if (acc.pendingDocName) {
-    return consumeDocNameValue(acc, token)
+  const entry = PENDING_VALUE_TABLE.find((row): boolean => acc[row.key])
+  if (!entry) {
+    return null
   }
-  if (acc.pendingTheme) {
-    return consumeThemeValue(acc, token)
-  }
-  if (acc.pendingShikiLangs) {
-    return consumeShikiLangsValue(acc, token)
-  }
-  if (acc.pendingSidebarWidth) {
-    return consumeSidebarWidthValue(acc, token)
-  }
-  return null
+  return entry.consume(acc, token)
 }
 
 // reduce で 1 トークンずつ状態を進める。pure な関数として書くことで、ESLint の
@@ -334,6 +414,9 @@ const attachPartitionOptionals = (result: PartitionedArgs, state: PartitionState
   if (state.sidebarWidth !== null) {
     result.sidebarWidth = state.sidebarWidth
   }
+  if (state.pageNavWidth !== null) {
+    result.pageNavWidth = state.pageNavWidth
+  }
 }
 
 const isPartitionValid = (state: PartitionState): boolean =>
@@ -341,7 +424,8 @@ const isPartitionValid = (state: PartitionState): boolean =>
   !state.pendingDocName &&
   !state.pendingTheme &&
   !state.pendingShikiLangs &&
-  !state.pendingSidebarWidth
+  !state.pendingSidebarWidth &&
+  !state.pendingPageNavWidth
 
 const partitionArgs = (argv: readonly string[]): PartitionedArgs => {
   const state = argv.reduce<PartitionState>(stepArg, INITIAL_PARTITION_STATE)
@@ -381,6 +465,9 @@ const attachRunNonStringOptionals = (
   }
   if (typeof parts.sidebarWidth === 'number') {
     result.sidebarWidth = parts.sidebarWidth
+  }
+  if (typeof parts.pageNavWidth === 'number') {
+    result.pageNavWidth = parts.pageNavWidth
   }
 }
 

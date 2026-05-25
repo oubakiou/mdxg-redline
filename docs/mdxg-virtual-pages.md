@@ -556,7 +556,7 @@ Open file 経由でも同じく 1a–1f を経由する。
 
 右サイドバー (Conversation) は本書とは独立に幅可変化済みで、240–640px の範囲でユーザーがドラッグ調整 + closed (= 0px) もあり得る（DESIGN.md §4 / §7c）。3 ペイン化に際してこの前提を維持しつつ、残る論点は次の 2 つ：
 
-- **(a) 左 `<aside class="page-nav">` の幅戦略** — 固定 220px とするか、右サイドバーと同様に CSS 変数 + ドラッグでリサイズ可能にするか。Page TOC は H1/H2 タイトル長で必要幅が大きく変わるため、長文タイトルが続く文書では固定 220px だと折り返しが頻発する。Conversation 側と挙動を揃えるなら可変だが、3 つの可変ペインが横に並ぶと中央 doc-pane の有効幅が安定しない難点もある。
+- **(a) 左 `<aside class="page-nav">` の幅戦略 (解決済み)** — ✓ 右サイドバーと対称に CSS 変数 + ドラッグでリサイズ可能にする方式で実装した。値域は 180–480px、default 220px、closed (= 0px) も対応。`localStorage` で width / open 状態を永続化し、`<html data-page-nav-width>` 属性 (CLI `--page-nav-width`) を低優先度のヒントとして読む P1 解決 (DESIGN.md §7c / §3)。実装は `app/page-nav-width.ts` (pure) + `app/page-nav-resize.ts` (DOM wiring) で sidebar-width.ts / sidebar-resize.ts と対称な 2 ファイル構成。
 - **(b) 狭幅時の優先度** — viewport 幅が縮んだ場合、左 page-nav の折りたたみ・右 sidebar の closed・1 ペイン化への切替のうちどれを先に発火させるか。右 sidebar は既にユーザー操作で closed にできるので、自動切替は左 page-nav の折りたたみを先に出すのが自然そうだが、確定は UI 実装着手時の UX 検証に委ねる。
 
 ### 13.2 ページ slug 重複と docHash の関係

@@ -28,6 +28,7 @@ import {
   rewriteReviewHtml,
   stripMarkdownExt,
   upsertEmbeddedMdMeta,
+  upsertHtmlDataPageNavWidth,
   upsertHtmlDataSidebarWidth,
   upsertHtmlDataTheme,
 } from '../core/embed'
@@ -111,6 +112,13 @@ const applySidebarWidthHint = (html: string, sidebarWidth: RunArgs['sidebarWidth
   return upsertHtmlDataSidebarWidth(html, sidebarWidth)
 }
 
+const applyPageNavWidthHint = (html: string, pageNavWidth: RunArgs['pageNavWidth']): string => {
+  if (typeof pageNavWidth !== 'number') {
+    return html
+  }
+  return upsertHtmlDataPageNavWidth(html, pageNavWidth)
+}
+
 /**
  * `--shiki-langs` の指定 (未指定時は auto と同じ) から注入対象の正規名集合を決める pure 関数。
  * - auto / 未指定: markdown を scan して使用されている grammar を集める
@@ -178,7 +186,8 @@ const composeReviewHtml = async (args: RunArgs, ctx: EmbedContext): Promise<stri
   const embedded = rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName)
   const withTheme = applyThemeHint(embedded, args.themeHint)
   const withSidebar = applySidebarWidthHint(withTheme, args.sidebarWidth)
-  const withShiki = await applyShikiLangs(withSidebar, args, ctx)
+  const withPageNav = applyPageNavWidthHint(withSidebar, args.pageNavWidth)
+  const withShiki = await applyShikiLangs(withPageNav, args, ctx)
   const statusText = formatLoadedStatus(ctx.docName, ctx.docHash)
   const withStatus = rewriteInitialStatus(withShiki, statusText)
   return upsertEmbeddedMdMeta(withStatus)

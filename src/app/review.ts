@@ -33,6 +33,7 @@ import { scrollToHeading, setActiveHeadingImmediately, setupScrollSpy } from './
 import { setOnPageActivated, setupPageScrollSpy } from './page-scroll-spy'
 import { boot } from './boot'
 import { createDropdownMenu } from './menu'
+import { initPageNavResize } from './page-nav-resize'
 import { initSidebarResize } from './sidebar-resize'
 import { renderDoc } from './doc-renderer'
 import { splitIntoPages } from '../core/page-split'
@@ -224,6 +225,7 @@ const navigateToComment = (comment: Comment): void => {
 
 if (!import.meta.vitest) {
   initSidebarResize()
+  initPageNavResize()
   wireFloater()
   wireCommentModal()
   configureSidebarCommentNavigation(navigateToComment)

@@ -59,6 +59,35 @@
         )
         if (effOpen === 'closed') document.documentElement.classList.add('sidebar-closed')
       } catch (e) {}
+      // --- Page-nav width / open state (FOUC 防止のため stylesheet より前で確定する) ---
+      // 優先順位 P1: localStorage > <html data-page-nav-width> > default 220 (open)。
+      // sidebar と同じ書きぶりで、壊れた値 (旧バージョン / 他アプリの混入 / 手動編集) に対しては
+      // 180–480 の数値・open/closed ホワイトリストで検証 (page-nav-width.ts と同じ判定)。
+      try {
+        var pnWidthRaw = localStorage.getItem('mdxg-redline.page-nav-width')
+        var pnOpenRaw = localStorage.getItem('mdxg-redline.page-nav-open')
+        var pnHintRaw = document.documentElement.getAttribute('data-page-nav-width')
+        var pnWidthNum = pnWidthRaw === null ? NaN : Number(pnWidthRaw)
+        var pnWidth =
+          isFinite(pnWidthNum) && pnWidthNum >= 180 && pnWidthNum <= 480 ? pnWidthNum : null
+        var pnOpen = pnOpenRaw === 'open' || pnOpenRaw === 'closed' ? pnOpenRaw : null
+        var pnHintNum = pnHintRaw === null || pnHintRaw === '' ? NaN : Number(pnHintRaw)
+        var pnHintWidth = null
+        var pnHintOpen = null
+        if (pnHintNum === 0) {
+          pnHintOpen = 'closed'
+        } else if (isFinite(pnHintNum) && pnHintNum >= 180 && pnHintNum <= 480) {
+          pnHintWidth = pnHintNum
+          pnHintOpen = 'open'
+        }
+        var effPnWidth = pnWidth !== null ? pnWidth : pnHintWidth !== null ? pnHintWidth : 220
+        var effPnOpen = pnOpen !== null ? pnOpen : pnHintOpen !== null ? pnHintOpen : 'open'
+        document.documentElement.style.setProperty(
+          '--page-nav-width',
+          effPnOpen === 'open' ? effPnWidth + 'px' : '0px'
+        )
+        if (effPnOpen === 'closed') document.documentElement.classList.add('page-nav-closed')
+      } catch (e) {}
       // 起動時の viewport 高さを 1 度だけ計測し、`.virtual-page` の min-height に使う。
       // 以後のリサイズには追従せず「紙のシートの初期サイズ」を固定する。
       try {
@@ -122,6 +151,16 @@
            state.pages が空の間は CSS 側の :root:not(.has-pages) ルールで列ごと隠れる。
            page-nav-list 配下の <ul> は page-navigation.ts が描画する。 -->
       <aside class="page-nav" id="page-nav" aria-label="Document pages">
+        <!-- ドラッグで横幅変更。PAGE_NAV_MIN_WIDTH (180px) 未満まで縮めると snap で
+             closed 状態になる (page-nav-resize.ts)。 -->
+        <div
+          class="page-nav-resize-handle"
+          id="page-nav-resize-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize document pages panel"
+          aria-controls="page-nav-list"
+        ></div>
         <div id="page-nav-list"></div>
       </aside>
 
@@ -149,7 +188,6 @@
           aria-orientation="vertical"
           aria-label="Resize comments panel"
           aria-controls="cmt-list"
-          tabindex="0"
         ></div>
         <div class="sidebar-header">
           <!-- GitHub の Merge pull request 風 split button。
@@ -221,6 +259,19 @@
       aria-controls="cmt-list"
     >
       <span aria-hidden="true">‹</span>
+    </button>
+
+    <!-- page-nav が closed 状態のときだけ画面左端の縦中央に出現する開閉タブ。
+         sidebar-toggle-tab と対称で、クリックで前回幅復元、右へドラッグで連続的に幅を広げられる。 -->
+    <button
+      type="button"
+      class="page-nav-toggle-tab"
+      id="page-nav-toggle-tab"
+      aria-label="Show document pages panel"
+      aria-expanded="false"
+      aria-controls="page-nav-list"
+    >
+      <span aria-hidden="true">›</span>
     </button>
 
     <div id="floater"><span aria-hidden="true">＋</span> Comment</div>

@@ -1,6 +1,6 @@
-// サイドバーの横幅ドラッグ・開閉・キーボード操作の DOM 連携。
+// サイドバーの横幅ドラッグ・開閉の DOM 連携。
 // 純粋ロジック (clamp / snap 判定 / 状態解決) は sidebar-width.ts に分離してあり、
-// 本ファイルは pointer/keyboard event の wiring と localStorage / DOM への副作用に専念する。
+// 本ファイルは pointer / click event の wiring と localStorage / DOM への副作用に専念する。
 
 import {
   SIDEBAR_DEFAULT_WIDTH,
@@ -23,8 +23,6 @@ import {
 // no-op にする (CSS 側で handle / toggle tab は display:none 済みだが、念のため pointer
 // event を無視して JS 副作用を発生させない)。
 const MOBILE_BREAKPOINT_PX = 900
-const KEYBOARD_STEP = 16
-const KEYBOARD_STEP_LARGE = 64
 // pointerup までに動いた距離がこれ未満なら「クリック」として扱う (toggle tab のクリック復元)。
 const CLICK_DRAG_THRESHOLD_PX = 4
 
@@ -160,14 +158,6 @@ const ensureOpen = (): void => {
   if (currentState.open !== 'open') {
     setOpenState('open')
   }
-}
-
-const toggleOpen = (): void => {
-  if (currentState.open === 'open') {
-    setOpenState('closed')
-    return
-  }
-  setOpenState('open')
 }
 
 interface DragStartInput {
@@ -307,65 +297,8 @@ const onPointerCancel = (event: PointerEvent): void => {
   endDrag()
 }
 
-const keyboardStep = (event: Pick<KeyboardEvent, 'shiftKey'>): number => {
-  if (event.shiftKey) {
-    return KEYBOARD_STEP_LARGE
-  }
-  return KEYBOARD_STEP
-}
-
-// キーボード操作 (separator role の慣行に合わせる):
-// - ← : 幅を広げる (sidebar が左に伸びる)
-// - → : 幅を狭める
-// - Shift+ ←/→ : ±64px の大ステップ
-const handleArrowKey = (event: KeyboardEvent): boolean => {
-  if (event.key === 'ArrowLeft') {
-    setWidth(currentState.width + keyboardStep(event), true)
-    ensureOpen()
-    return true
-  }
-  if (event.key === 'ArrowRight') {
-    setWidth(currentState.width - keyboardStep(event), true)
-    ensureOpen()
-    return true
-  }
-  return false
-}
-
-// Home/End と Enter/Space をそれぞれ別 helper に分けて max-statements を満たす。
-const handleEdgeKey = (event: KeyboardEvent): boolean => {
-  if (event.key === 'Home') {
-    setWidth(SIDEBAR_MAX_WIDTH, true)
-    ensureOpen()
-    return true
-  }
-  if (event.key === 'End') {
-    setWidth(SIDEBAR_MIN_WIDTH, true)
-    ensureOpen()
-    return true
-  }
-  return false
-}
-
-const handleToggleKey = (event: KeyboardEvent): boolean => {
-  if (event.key === 'Enter' || event.key === ' ') {
-    toggleOpen()
-    return true
-  }
-  return false
-}
-
-const onHandleKeyDown = (event: KeyboardEvent): void => {
-  if (isMobileView()) {
-    return
-  }
-  if (handleArrowKey(event) || handleEdgeKey(event) || handleToggleKey(event)) {
-    event.preventDefault()
-  }
-}
-
 // クリック動作はすべてこの click event ハンドラに集約。pointer 由来のクリックも
-// キーボード Enter / Space 由来のクリック (button のデフォルト) も同じパスで処理する。
+// button のデフォルト click (Space / Enter) も同じパスで処理する。
 // タブは closed のときしか可視ではないため、動作は「closed → open に復元」のみ。
 // ドラッグ昇格 (promoteToFullDrag) 後に発火する click は suppressNextClick で 1 度だけ弾く。
 const onToggleClick = (event: MouseEvent): void => {
@@ -399,7 +332,6 @@ const wireHandle = (handle: HTMLElement): void => {
   handle.addEventListener('pointermove', onPointerMove)
   handle.addEventListener('pointerup', onPointerUp)
   handle.addEventListener('pointercancel', onPointerCancel)
-  handle.addEventListener('keydown', onHandleKeyDown)
 }
 
 const wireToggleTab = (tab: HTMLElement): void => {
@@ -412,7 +344,7 @@ const wireToggleTab = (tab: HTMLElement): void => {
 
 /**
  * 起動時に呼び出す。localStorage / CLI hint から初期 SidebarState を解決し、
- * pointer/keyboard event を handle と toggle tab に配線する。
+ * pointer / click event を handle と toggle tab に配線する。
  */
 export const initSidebarResize = (): void => {
   applyInitialState()
@@ -448,16 +380,6 @@ if (import.meta.vitest) {
           value: originalInnerWidth,
         })
       }
-    })
-  })
-
-  describe('keyboardStep', () => {
-    it('shift 無しは KEYBOARD_STEP (16)', () => {
-      expect(keyboardStep({ shiftKey: false })).toBe(16)
-    })
-
-    it('shift 有りは KEYBOARD_STEP_LARGE (64)', () => {
-      expect(keyboardStep({ shiftKey: true })).toBe(64)
     })
   })
 

@@ -142,6 +142,7 @@ const DATA_NAME_RE = /\bdata-name="[^"]*"/
 const HTML_TAG_RE = /<html\b[^>]*>/i
 const DATA_THEME_RE = /\bdata-theme="[^"]*"/
 const DATA_SIDEBAR_WIDTH_RE = /\bdata-sidebar-width="[^"]*"/
+const DATA_PAGE_NAV_WIDTH_RE = /\bdata-page-nav-width="[^"]*"/
 
 // data-name が無い既存テンプレートでも安全に補えるように、置換と挿入を関数として分離する。
 // 関数化により rewriteReviewHtml 側を no-ternary / prefer-ternary 双方に抵触せず保てる。
@@ -166,6 +167,13 @@ const replaceDataSidebarWidth = (openingTag: string, escapedValue: string): stri
     return openingTag.replace(DATA_SIDEBAR_WIDTH_RE, `data-sidebar-width="${escapedValue}"`)
   }
   return openingTag.replace(/>$/, ` data-sidebar-width="${escapedValue}">`)
+}
+
+const replaceDataPageNavWidth = (openingTag: string, escapedValue: string): string => {
+  if (DATA_PAGE_NAV_WIDTH_RE.test(openingTag)) {
+    return openingTag.replace(DATA_PAGE_NAV_WIDTH_RE, `data-page-nav-width="${escapedValue}"`)
+  }
+  return openingTag.replace(/>$/, ` data-page-nav-width="${escapedValue}">`)
 }
 
 /**
@@ -197,6 +205,20 @@ export const upsertHtmlDataSidebarWidth = (reviewHtml: string, value: number): s
   }
   const [tag] = match
   const newTag = replaceDataSidebarWidth(tag, escapeHtml(String(value)))
+  return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length)
+}
+
+/**
+ * `<html>` 開きタグに `data-page-nav-width="<value>"` を挿入する。属性が既にあれば上書き。
+ * 値の正当性 (0 or 180–480) は CLI 側でバリデーション済み前提。data-sidebar-width と対称。
+ */
+export const upsertHtmlDataPageNavWidth = (reviewHtml: string, value: number): string => {
+  const match = HTML_TAG_RE.exec(reviewHtml)
+  if (!match) {
+    throw new Error('review.html に <html> タグが見つかりません')
+  }
+  const [tag] = match
+  const newTag = replaceDataPageNavWidth(tag, escapeHtml(String(value)))
   return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length)
 }
 

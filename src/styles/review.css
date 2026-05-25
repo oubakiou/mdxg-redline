@@ -87,12 +87,12 @@ body > main.layout > aside.sidebar {
   min-height: 0;
 }
 
-/* Main layout: page-nav (fixed) + doc pane (flexible) + sidebar (default 360px, user-resizable).
-   --sidebar-width は inline script / sidebar-width.ts が <html> に書き込む。
-   closed 状態 (html.sidebar-closed) では 0px に上書きされ、sidebar が完全に消える。
-   --page-nav-width は固定 220px (mdxg-virtual-pages.md §13.1 Open Question (a): Phase 2 は
-   固定幅で始め、可変化は将来検討)。
-   ページ未確定 (state.pages が空) のときは :root:not(.has-pages) ルールで 1 列目を消す。 */
+/* Main layout: page-nav (default 220px, user-resizable) + doc pane (flexible) + sidebar
+   (default 360px, user-resizable)。--page-nav-width / --sidebar-width は inline script /
+   page-nav-width.ts / sidebar-width.ts が <html> に書き込む。
+   closed 状態 (html.page-nav-closed / html.sidebar-closed) では 0px に上書きされ、各 aside
+   が完全に消える。ページ未確定 (state.pages が空) のときは :root:not(.has-pages) ルールで
+   1 列目を消す。 */
 .layout {
   display: grid;
   grid-template-columns: var(--page-nav-width, 220px) minmax(0, 1fr) var(--sidebar-width, 360px);
@@ -101,6 +101,12 @@ body > main.layout > aside.sidebar {
   grid-template-columns: minmax(0, 1fr) var(--sidebar-width, 360px);
 }
 :root:not(.has-pages) .page-nav {
+  display: none;
+}
+:root.page-nav-closed {
+  --page-nav-width: 0px;
+}
+:root.page-nav-closed .page-nav {
   display: none;
 }
 :root.sidebar-closed {
@@ -119,6 +125,91 @@ body > main.layout > aside.sidebar {
   font-size: 13px;
   line-height: 1.5;
   color: var(--ink);
+  position: relative;
+}
+
+/* Resize handle: page-nav 右端に貼り付く 8px 帯の col-resize エリア (sidebar-resize-handle と
+   対称、左右反転)。border-right との視覚競合を避けるため透明で、hover/active 時のみ accent
+   ラインを表示する。 */
+.page-nav-resize-handle {
+  position: absolute;
+  inset: 0 -4px 0 auto;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 50;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+.page-nav-resize-handle::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+.page-nav-resize-handle:hover::after,
+.page-nav-resize-handle:focus-visible::after,
+.page-nav-resize-handle.dragging::after {
+  background: var(--accent);
+}
+.page-nav-resize-handle:focus {
+  outline: none;
+}
+
+body.page-nav-resizing {
+  user-select: none;
+  cursor: col-resize;
+}
+body.page-nav-resizing * {
+  cursor: col-resize !important;
+}
+
+/* Toggle tab: page-nav が closed の時だけ画面左端の縦中央に出現する細長いタブ。
+   sidebar-toggle-tab と対称 (左端 / 右開きの矢印)。scrollbar 補正は左側には不要なので
+   left は 0 固定。 */
+.page-nav-toggle-tab {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 72px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper-edge);
+  border: 1px solid var(--rule);
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  color: var(--ink-soft);
+  cursor: pointer;
+  z-index: 50;
+  box-shadow: var(--shadow-medium);
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  font-family: var(--font-system);
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.page-nav-toggle-tab:hover,
+.page-nav-toggle-tab:focus-visible {
+  background: var(--paper);
+  color: var(--ink);
+  outline: none;
+}
+.page-nav-toggle-tab.dragging {
+  background: var(--paper);
+  color: var(--ink);
+}
+:root.page-nav-closed .page-nav-toggle-tab {
+  display: flex;
+}
+:root:not(.has-pages) .page-nav-toggle-tab {
+  display: none;
 }
 .page-nav-list {
   list-style: none;
@@ -312,7 +403,7 @@ body > main.layout > aside.sidebar {
   position: absolute;
   inset: 0 auto 0 50%;
   transform: translateX(-50%);
-  width: 2px;
+  width: 4px;
   background: transparent;
   transition: background 0.15s ease;
 }
@@ -1009,9 +1100,12 @@ mark.cmt.active {
   }
 
   /* Mobile view では sidebar が縦積み (1 列レイアウト) になるので、横幅リサイズ
-     も開閉タブも無意味。両方とも隠して、closed 状態でも sidebar が見えるように戻す。 */
+     も開閉タブも無意味。両方とも隠して、closed 状態でも sidebar が見えるように戻す。
+     page-nav 側は mobile では完全に非表示なので resize/toggle も合わせて隠す。 */
   .sidebar-resize-handle,
-  .sidebar-toggle-tab {
+  .sidebar-toggle-tab,
+  .page-nav-resize-handle,
+  .page-nav-toggle-tab {
     display: none;
   }
   :root.sidebar-closed .sidebar {

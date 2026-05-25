@@ -131,6 +131,7 @@ var DOCUMENT_NAME_FLAG = "--document-name";
 var THEME_FLAG = "--theme";
 var SHIKI_LANGS_FLAG = "--shiki-langs";
 var SIDEBAR_WIDTH_FLAG = "--sidebar-width";
+var PAGE_NAV_WIDTH_FLAG = "--page-nav-width";
 var THEME_VALUES = [
 	"system",
 	"light",
@@ -139,10 +140,17 @@ var THEME_VALUES = [
 var isThemeHint = (value) => THEME_VALUES.includes(value);
 var SIDEBAR_WIDTH_MIN = 240;
 var SIDEBAR_WIDTH_MAX = 640;
+var PAGE_NAV_WIDTH_MIN = 180;
+var PAGE_NAV_WIDTH_MAX = 480;
 var isValidSidebarWidthHint = (value) => {
 	if (!Number.isFinite(value) || !Number.isInteger(value)) return false;
 	if (value === 0) return true;
 	return value >= SIDEBAR_WIDTH_MIN && value <= SIDEBAR_WIDTH_MAX;
+};
+var isValidPageNavWidthHint = (value) => {
+	if (!Number.isFinite(value) || !Number.isInteger(value)) return false;
+	if (value === 0) return true;
+	return value >= PAGE_NAV_WIDTH_MIN && value <= PAGE_NAV_WIDTH_MAX;
 };
 /**
 * `--sidebar-width` の値を整数 (0 or 240–640) にパースする。
@@ -153,6 +161,17 @@ var parseSidebarWidthValue = (raw) => {
 	if (trimmed === "") return null;
 	const num = Number(trimmed);
 	if (!isValidSidebarWidthHint(num)) return null;
+	return num;
+};
+/**
+* `--page-nav-width` の値を整数 (0 or 180–480) にパースする。
+* 範囲外・非数値・小数は null (CLI 側で invalid 扱い)。
+*/
+var parsePageNavWidthValue = (raw) => {
+	const trimmed = raw.trim();
+	if (trimmed === "") return null;
+	const num = Number(trimmed);
+	if (!isValidPageNavWidthHint(num)) return null;
 	return num;
 };
 var parseShikiLangsKeyword = (trimmed) => {
@@ -221,6 +240,13 @@ Options:
                          used only when the viewer has no localStorage
                          preference yet (the user's UI history always wins).
                          Omit to leave the attribute off entirely.
+  --page-nav-width <px>  Set the initial document-pages panel (left TOC) width
+                         hint. One of:
+                           0         Start with the panel closed (only the left
+                                     edge tab is visible).
+                           180–480   Start open with the given width in pixels.
+                         Written as a <html data-page-nav-width> attribute and
+                         follows the same precedence rules as --sidebar-width.
   --no-open              Generate the HTML but do not launch a browser.
   -h, --help             Print this help and exit. Takes precedence over all
                          other arguments and flags when present.
@@ -235,7 +261,9 @@ Examples:
 var INITIAL_PARTITION_STATE = {
 	documentName: null,
 	open: true,
+	pageNavWidth: null,
 	pendingDocName: false,
+	pendingPageNavWidth: false,
 	pendingShikiLangs: false,
 	pendingSidebarWidth: false,
 	pendingTheme: false,
@@ -294,6 +322,22 @@ var consumeSidebarWidthValue = (acc, token) => {
 		sidebarWidth: parsed
 	};
 };
+var consumePageNavWidthValue = (acc, token) => {
+	if (token.startsWith("--")) return {
+		...acc,
+		valid: false
+	};
+	const parsed = parsePageNavWidthValue(token);
+	if (parsed === null) return {
+		...acc,
+		valid: false
+	};
+	return {
+		...acc,
+		pageNavWidth: parsed,
+		pendingPageNavWidth: false
+	};
+};
 var consumeStandaloneFlag = (acc, token) => {
 	if (token === NO_OPEN_FLAG) return {
 		...acc,
@@ -301,24 +345,47 @@ var consumeStandaloneFlag = (acc, token) => {
 	};
 	return null;
 };
+var VALUE_FLAG_TABLE = [
+	{
+		flag: DOCUMENT_NAME_FLAG,
+		mark: (acc) => ({
+			...acc,
+			pendingDocName: true
+		})
+	},
+	{
+		flag: THEME_FLAG,
+		mark: (acc) => ({
+			...acc,
+			pendingTheme: true
+		})
+	},
+	{
+		flag: SHIKI_LANGS_FLAG,
+		mark: (acc) => ({
+			...acc,
+			pendingShikiLangs: true
+		})
+	},
+	{
+		flag: SIDEBAR_WIDTH_FLAG,
+		mark: (acc) => ({
+			...acc,
+			pendingSidebarWidth: true
+		})
+	},
+	{
+		flag: PAGE_NAV_WIDTH_FLAG,
+		mark: (acc) => ({
+			...acc,
+			pendingPageNavWidth: true
+		})
+	}
+];
 var consumeValueFlag = (acc, token) => {
-	if (token === DOCUMENT_NAME_FLAG) return {
-		...acc,
-		pendingDocName: true
-	};
-	if (token === THEME_FLAG) return {
-		...acc,
-		pendingTheme: true
-	};
-	if (token === SHIKI_LANGS_FLAG) return {
-		...acc,
-		pendingShikiLangs: true
-	};
-	if (token === SIDEBAR_WIDTH_FLAG) return {
-		...acc,
-		pendingSidebarWidth: true
-	};
-	return null;
+	const entry = VALUE_FLAG_TABLE.find((row) => row.flag === token);
+	if (!entry) return null;
+	return entry.mark(acc);
 };
 var consumeFlag = (acc, token) => {
 	const standalone = consumeStandaloneFlag(acc, token);
@@ -330,12 +397,32 @@ var consumeFlag = (acc, token) => {
 		valid: false
 	};
 };
+var PENDING_VALUE_TABLE = [
+	{
+		consume: consumeDocNameValue,
+		key: "pendingDocName"
+	},
+	{
+		consume: consumeThemeValue,
+		key: "pendingTheme"
+	},
+	{
+		consume: consumeShikiLangsValue,
+		key: "pendingShikiLangs"
+	},
+	{
+		consume: consumeSidebarWidthValue,
+		key: "pendingSidebarWidth"
+	},
+	{
+		consume: consumePageNavWidthValue,
+		key: "pendingPageNavWidth"
+	}
+];
 var consumePendingValue = (acc, token) => {
-	if (acc.pendingDocName) return consumeDocNameValue(acc, token);
-	if (acc.pendingTheme) return consumeThemeValue(acc, token);
-	if (acc.pendingShikiLangs) return consumeShikiLangsValue(acc, token);
-	if (acc.pendingSidebarWidth) return consumeSidebarWidthValue(acc, token);
-	return null;
+	const entry = PENDING_VALUE_TABLE.find((row) => acc[row.key]);
+	if (!entry) return null;
+	return entry.consume(acc, token);
 };
 var stepArg = (acc, token) => {
 	if (!acc.valid) return acc;
@@ -352,8 +439,9 @@ var attachPartitionOptionals = (result, state) => {
 	if (state.themeHint !== null) result.themeHint = state.themeHint;
 	if (state.shikiLangs !== null) result.shikiLangs = state.shikiLangs;
 	if (state.sidebarWidth !== null) result.sidebarWidth = state.sidebarWidth;
+	if (state.pageNavWidth !== null) result.pageNavWidth = state.pageNavWidth;
 };
-var isPartitionValid = (state) => state.valid && !state.pendingDocName && !state.pendingTheme && !state.pendingShikiLangs && !state.pendingSidebarWidth;
+var isPartitionValid = (state) => state.valid && !state.pendingDocName && !state.pendingTheme && !state.pendingShikiLangs && !state.pendingSidebarWidth && !state.pendingPageNavWidth;
 var partitionArgs = (argv) => {
 	const state = argv.reduce(stepArg, INITIAL_PARTITION_STATE);
 	const result = {
@@ -373,6 +461,7 @@ var attachRunStringOptionals = (result, parts) => {
 var attachRunNonStringOptionals = (result, parts) => {
 	if (parts.shikiLangs) result.shikiLangs = parts.shikiLangs;
 	if (typeof parts.sidebarWidth === "number") result.sidebarWidth = parts.sidebarWidth;
+	if (typeof parts.pageNavWidth === "number") result.pageNavWidth = parts.pageNavWidth;
 };
 var attachRunOptionals = (result, parts) => {
 	attachRunStringOptionals(result, parts);
@@ -482,6 +571,7 @@ var DATA_NAME_RE = /\bdata-name="[^"]*"/;
 var HTML_TAG_RE = /<html\b[^>]*>/i;
 var DATA_THEME_RE = /\bdata-theme="[^"]*"/;
 var DATA_SIDEBAR_WIDTH_RE = /\bdata-sidebar-width="[^"]*"/;
+var DATA_PAGE_NAV_WIDTH_RE = /\bdata-page-nav-width="[^"]*"/;
 var replaceDataName = (openingTag, escapedName) => {
 	if (DATA_NAME_RE.test(openingTag)) return openingTag.replace(DATA_NAME_RE, `data-name="${escapedName}"`);
 	return openingTag.replace(/>$/, ` data-name="${escapedName}">`);
@@ -493,6 +583,10 @@ var replaceDataTheme = (openingTag, escapedTheme) => {
 var replaceDataSidebarWidth = (openingTag, escapedValue) => {
 	if (DATA_SIDEBAR_WIDTH_RE.test(openingTag)) return openingTag.replace(DATA_SIDEBAR_WIDTH_RE, `data-sidebar-width="${escapedValue}"`);
 	return openingTag.replace(/>$/, ` data-sidebar-width="${escapedValue}">`);
+};
+var replaceDataPageNavWidth = (openingTag, escapedValue) => {
+	if (DATA_PAGE_NAV_WIDTH_RE.test(openingTag)) return openingTag.replace(DATA_PAGE_NAV_WIDTH_RE, `data-page-nav-width="${escapedValue}"`);
+	return openingTag.replace(/>$/, ` data-page-nav-width="${escapedValue}">`);
 };
 /**
 * `<html>` 開きタグに `data-theme="<themeHint>"` を挿入する。属性が既にあれば上書き。
@@ -518,6 +612,17 @@ var upsertHtmlDataSidebarWidth = (reviewHtml, value) => {
 	if (!match) throw new Error("review.html に <html> タグが見つかりません");
 	const [tag] = match;
 	const newTag = replaceDataSidebarWidth(tag, escapeHtml(String(value)));
+	return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length);
+};
+/**
+* `<html>` 開きタグに `data-page-nav-width="<value>"` を挿入する。属性が既にあれば上書き。
+* 値の正当性 (0 or 180–480) は CLI 側でバリデーション済み前提。data-sidebar-width と対称。
+*/
+var upsertHtmlDataPageNavWidth = (reviewHtml, value) => {
+	const match = HTML_TAG_RE.exec(reviewHtml);
+	if (!match) throw new Error("review.html に <html> タグが見つかりません");
+	const [tag] = match;
+	const newTag = replaceDataPageNavWidth(tag, escapeHtml(String(value)));
 	return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length);
 };
 /**
@@ -739,6 +844,10 @@ var applySidebarWidthHint = (html, sidebarWidth) => {
 	if (typeof sidebarWidth !== "number") return html;
 	return upsertHtmlDataSidebarWidth(html, sidebarWidth);
 };
+var applyPageNavWidthHint = (html, pageNavWidth) => {
+	if (typeof pageNavWidth !== "number") return html;
+	return upsertHtmlDataPageNavWidth(html, pageNavWidth);
+};
 /**
 * `--shiki-langs` の指定 (未指定時は auto と同じ) から注入対象の正規名集合を決める pure 関数。
 * - auto / 未指定: markdown を scan して使用されている grammar を集める
@@ -773,7 +882,7 @@ var applyShikiLangs = async (html, args, ctx) => {
 	return rewriteEmbeddedShikiLangs(html, await loadShikiGrammars(resolveShikiLangSet(args.shikiLangs, ctx.markdown), ctx.scriptDir));
 };
 var composeReviewHtml = async (args, ctx) => {
-	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyShikiLangs(applySidebarWidthHint(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args.sidebarWidth), args, ctx), formatLoadedStatus(ctx.docName, ctx.docHash)));
+	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyShikiLangs(applyPageNavWidthHint(applySidebarWidthHint(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args.sidebarWidth), args.pageNavWidth), args, ctx), formatLoadedStatus(ctx.docName, ctx.docHash)));
 };
 var runEmbed = async (args) => {
 	const ctx = await prepareEmbed(args);
