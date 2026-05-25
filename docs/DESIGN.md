@@ -532,7 +532,7 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 - **grammar の動的注入**：`dist/review.html` には Shiki core + JS engine + 2 テーマだけ inline し、27 言語の grammar JSON は `dist/shiki-langs/<lang>.json` として個別 emit して **commit 対象** にする。CLI が markdown をスキャンして必要 grammar だけを配布 HTML の `<script id="embedded-shiki-langs" type="application/json">` に注入する。`dist/shiki-langs/` を commit する理由は `dist/review.html` / `dist/review-request.mjs` と同じ「clone 直後に `npm run build` 抜きで CLI を実行できる」配布契約に揃えるため。partial clone や手動削除で grammar JSON が欠けた場合は CLI が ENOENT を捕えて「`先に npm run build を実行してください`」案内を投げる（`src/cli/review-request.ts` の `readGrammarJson` / `src/core/embed.ts`）
 - **CLI オプション**：`--shiki-langs <auto|all|none|<csv>>`。既定 `auto` は `marked.lexer` で markdown 中のフェンス言語を抽出。`<csv>` は `ts,js,py` のような短縮形を受け、Shiki メタ由来のエイリアスマップで正規化（`src/cli/parse-args.ts` の `parseShikiLangsValue`）
 - **27 正規名**：設計上の 28 言語のうち `bash` / `shell` は Shiki 内部で `shellscript` のエイリアスに集約されるため、ユニークな正規名は 27 個になる（エイリアスは ALIAS_TO_CANONICAL で同じ正規名にマップされる）
-- **配布物サイズ**：`dist/review.html` 約 264 KB / gzip 約 83 KB（実測。Shiki core + JS engine + 2 テーマ inline ぶん）。grammar 追加分は `auto` で典型 100〜300 KB、`all` で +5.2 MB raw（+1〜1.5 MB gzip）
+- **配布物サイズ**：`dist/review.html` 約 314 KB / gzip 約 95 KB（実測。Shiki core + JS engine + 2 テーマ + §10 Search モジュール inline ぶん）。grammar 追加分は `auto` で典型 100〜300 KB、`all` で +5.2 MB raw（+1〜1.5 MB gzip）
 - **§6 アンカリングとの両立**：`doc-renderer.ts` で `cacheBlockOriginalHTML` を先に呼んで `<pre>` に blockId を付け、その後に `injectCopyButtons` で wrap する順序にすることで、blockOriginalHTML には `<pre>` の innerHTML のみが入り Copy button の textContent はフラットテキスト計算に混入しない
 - **言語ラベル表示 (MDXG §2.2 実装例 / SHOULD 未満)**：`core/markdown.ts` の renderer が言語識別子付きフェンスに対し `<pre data-lang="<raw lang>">` を付与する (`infostring` をそのまま属性値とし HTML escape する)。`app/code-copy-wrap.ts` の `wrapPreWithCopyButton` が wrap 時に `<span class="code-lang-label" aria-hidden="true">` をコードブロック左上に「上に飛び出すタブ」として配置し、`normalizeLangIdentifier` で正規名にマップ (`ts` → `typescript`、`sh` → `bash`) して表示する。27 言語ホワイトリスト外の識別子は生 lang を fallback として表示する。Copy button は従来通り hover/focus 時のみ表示 (`opacity 0 → 1`) で、タブの位置とは独立。`<span>` の textContent はオフセット計算に混入させないよう `selection.ts` の `textSegments` が `.code-lang-label` 配下を skip する (既存 `.code-copy-btn` と同じパターン)。Shiki upgrade は `<pre>` 自身を残すため `data-lang` 属性は upgrade 前後で不変
 
@@ -694,6 +694,7 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 - **ハイライトの寿命管理**: `setSearchQuery` / `closeSearch` のいずれも `reapplyAllMarks()` を呼んで cmt mark のみの状態にリセットし、`onMarksReapplied` で改めて search を貼り直す (matches が空なら no-op)。これにより「クエリ変更時に古いハイライトが残る」「閉じてもハイライトが消えない」事故が起きない
 - **blockOriginalHTML への焼き込み防止**: `doc-renderer.ts` の `innerHTMLForOriginalCache` が clone した subtree から `mark.cmt` と `mark.search-hl` を unwrap してから innerHTML を採取する。`refreshBlockOriginalHTML` (Shiki upgrade 後の blockOriginalHTML 再構築) がこれを通すことで、検索中にページ切替や Shiki upgrade が走っても search mark が `blockOriginalHTML` に焼き込まれず、`closeSearch → reapplyAllMarks → el.innerHTML = original` でハイライトが復活する経路を構造的に塞ぐ (cmt 側にも同じ焼き込みリスクがあったため同時に対処)
 - **input の autocomplete 抑止**: ブラウザの履歴サジェストが検索バー上に出るのを避けるため `autocomplete="off"` / `spellcheck="false"` を付ける (UI コンポーネントとしてのノイズ低減)
+- **current match の DOM 識別**: 各 search mark には `data-search-index="<0-origin index>"` を付与し、`markCurrentSearchMark` / `scrollCurrentMarkIntoView` が `mark.search-hl[data-search-index="${currentIndex}"]` の attribute selector で current match を 1 つに絞る。document スコープで文書順に採番するため、ページ境界を跨いでも index は連続し、`nextMatchIndex` / `prevMatchIndex` の ループ計算と整合する
 
 **リファレンス実装 (vercel-labs/mdxg)**
 
@@ -734,10 +735,6 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 - web: TOC リストの各 `<li>` に `tabIndex={0}` + `handleTocKeyDown` を付与し、↑/↓ で項目移動、←/→ で H1 配下グループの折りたたみ / 親 H1 へのフォーカス移動、Enter で `navigateTo`。`useEffect` で `activePageIndex` 変化時に当該 TOC アイテムへ自動フォーカス。アイコン only 系 button（prev / next / sidebar toggle）には `aria-label`。`apps/web/src/components/mdxg-viewer.tsx`
 
 **本実装との差異**: tab order / 矢印キー / Enter の挙動は本実装も同方針 (flat tab order + keydown handler)。←/→ で H1 配下グループを折りたたむ挙動は本実装に H2 page 折りたたみ機能が無いため未実装。`activePageIndex` 変化時の自動フォーカスはリファレンス実装が無条件で行うのに対し、本実装は **キーボード Enter 由来のみ**に絞る (scroll-spy 由来の頻発フォーカス移動を避ける設計判断)。
-
-優先順序：
-
-すべての MDXG セクションが準拠 (§4 Images は信頼境界の都合で部分対応のまま、[対応外として割り切る項目](#対応外として割り切る項目) 参照)。追加で取り組む候補は[その他の拡張候補](#その他の拡張候補)を参照。
 
 ### 規格に明文規定がない領域での判断
 
@@ -1035,11 +1032,16 @@ mdxg-redline/
 │   │   ├── help-modal.ts    キーボードショートカット help モーダル (`?` で toggle、§13 affordance)。
 │   │   │                     modal HTML は static (src/review.html) で、open/close と
 │   │   │                     wiring のみ担当
-│   │   ├── search.ts        検索 UI / DOM 操作 (MDXG §10 Search)。collectSearchMatches で全 page
-│   │   │                     を走査し `<mark class="search-hl">` を text node に挿入。
-│   │   │                     `setOnMarksReapplied(reapplySearchHighlights)` で reapply 経路に hook
-│   │   │                     を register し、Shiki upgrade / renderAll / コメント追加・削除のいずれ
-│   │   │                     でも search 状態が維持される。cmt mark との視覚分離は CSS で確保
+│   │   ├── search.ts        検索 UI / DOM 操作 (MDXG §10 Search)。public API は openSearch /
+│   │   │                     closeSearch / setSearchQuery / nextMatch / prevMatch / isSearchOpen /
+│   │   │                     wireSearchBar / configureSearchNavigation / reapplySearchHighlights。
+│   │   │                     setSearchQuery が全 page を走査して `<mark class="search-hl">` を
+│   │   │                     text node に挿入し、`setOnMarksReapplied(reapplySearchHighlights)`
+│   │   │                     で reapply 経路に hook を register することで Shiki upgrade /
+│   │   │                     renderAll / コメント追加・削除のいずれでも search 状態が維持される。
+│   │   │                     cmt mark との視覚分離は CSS で確保、ハイライト寿命管理 / 焼き込み
+│   │   │                     防止は §10 Search 詳細節と doc-renderer.ts の
+│   │   │                     innerHTMLForOriginalCache 参照
 │   │   ├── scroll.ts        固定 duration smooth scroll
 │   │   ├── storage.ts       IndexedDB の薄いラッパ（`workspace-handle` 永続化専用）
 │   │   ├── workspace.ts     File System Access API 連携の orchestrator
