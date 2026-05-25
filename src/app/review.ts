@@ -25,6 +25,7 @@ import {
 } from '../core/review-export'
 import { changeOutputFolder, writeFeedback } from './workspace'
 import { closeCommentModal, wireCommentModal } from './comment-modal'
+import { closeHelpModal, openHelpModal, toggleHelpModal, wireHelpModal } from './help-modal'
 import { computeDocHash, formatLoadedStatus } from '../core/embed'
 import { markFeedbackUnsaved, state } from './app-state'
 import { qs, toast } from './dom-utils'
@@ -43,6 +44,27 @@ import { renderDoc } from './doc-renderer'
 import { splitIntoPages } from '../core/page-split'
 import { wireFloater } from './floater'
 import { wireToolbar } from './toolbar'
+
+// `?` キー (Shift+/) や `g` などのグローバルショートカットは、textarea / input / contentEditable
+// 配下にフォーカスがある間はそちらの文字入力を妨げないようスキップしたい。判定を一箇所にまとめる。
+const isEditableTarget = (target: EventTarget | null): boolean => {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+  if (target.isContentEditable) {
+    return true
+  }
+  return target.tagName === 'TEXTAREA' || target.tagName === 'INPUT'
+}
+
+const hasNoModifier = (event: KeyboardEvent): boolean =>
+  !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
+
+// affordance ショートカット (`g` / `?`) を無視すべきケースをまとめた共通ガード。
+//   - event.repeat: 押しっぱなしによる連続発火 (modal の点滅対策)
+//   - isEditableTarget: textarea / input / contenteditable 中の文字入力を妨げない
+const shouldSkipAffordanceKey = (event: KeyboardEvent): boolean =>
+  event.repeat || isEditableTarget(event.target)
 
 /**
  * loadFromMarkdown / navigateToTarget 双方で使う「現状の state を全 view に流す」共通処理。
@@ -246,6 +268,7 @@ if (!import.meta.vitest) {
   initPageNavResize()
   wireFloater()
   wireCommentModal()
+  wireHelpModal()
   configureCommentsNavigation(navigateToComment)
   // page scroll-spy が activePageIndex を更新した直後の TOC active 表示更新。
   // renderPageNavigation は state を再読込して描き直すだけなので、scroll 中の頻発でも軽い。
@@ -260,19 +283,62 @@ if (!import.meta.vitest) {
     menuId: '#menu-send',
   })
 
-  document.addEventListener('keydown', (event): void => {
-    if (event.key === 'Escape') {
-      closeCommentModal()
-      commentsMenu.close()
-      sendMenu.close()
-    }
-    if (
-      event.key === 'Enter' &&
-      (event.metaKey || event.ctrlKey) &&
-      qs('#modal').classList.contains('open')
-    ) {
+  const handleEscapeKey = (): void => {
+    closeCommentModal()
+    closeHelpModal()
+    commentsMenu.close()
+    sendMenu.close()
+  }
+  const handleModalSaveKey = (): void => {
+    if (qs('#modal').classList.contains('open')) {
       qs('#modal-save').click()
     }
+  }
+  // `g` キーで TOC の active page-nav-link へジャンプ (§13 affordance, Vim 流の単独キー)。
+  // 単独キーのため textarea / input / contenteditable 中の文字入力を妨げないよう
+  // 呼び出し側 (handleAffordanceKeys) で isEditableTarget チェックする。
+  const handleFocusTOCKey = (): void => {
+    const activePage = state.pages[state.activePageIndex]
+    if (activePage) {
+      focusNavigatedLink(activePage.slug, null)
+    }
+  }
+
+  // `g` / `?` の affordance ショートカット (§13)。両方とも単独キーのため textarea / input /
+  // contenteditable に focus があるときは isEditableTarget でスキップして文字入力を妨げない。
+  // Escape / Cmd+Enter のような既存 handler とは別の dispatcher に切り出す
+  // (各 handler の statements を keydown listener 1 つに集約すると上限を超える)。
+  //
+  // `event.repeat` ガードは押しっぱなしによる連続発火を塞ぐ (`?` キーで modal が点滅する
+  // 不具合の根本対策、再押下 toggle を期待しない GitHub / VS Code 流の挙動)。
+  const handleAffordanceKeys = (event: KeyboardEvent): void => {
+    if (shouldSkipAffordanceKey(event)) {
+      return
+    }
+    if (event.code === 'KeyG' && hasNoModifier(event)) {
+      event.preventDefault()
+      handleFocusTOCKey()
+      return
+    }
+    // `?` は Shift+/ で生成される。hasNoModifier は使えないので event.key で直接判定する。
+    // open 専用にすることで「リピートで open/close を繰り返してチカチカする」現象を構造的に塞ぐ。
+    // 閉じる経路は Esc / Close ボタン / バックドロップクリック / toolbar `?` ボタンの toggle に集約。
+    if (event.key === '?') {
+      event.preventDefault()
+      openHelpModal()
+    }
+  }
+
+  document.addEventListener('keydown', (event): void => {
+    if (event.key === 'Escape') {
+      handleEscapeKey()
+      return
+    }
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      handleModalSaveKey()
+      return
+    }
+    handleAffordanceKeys(event)
   })
 
   // mark クリック → サイドバーカードをアクティブ化
@@ -294,10 +360,21 @@ if (!import.meta.vitest) {
     loadFromMarkdown,
   })
 
+  qs('#btn-help').addEventListener('click', toggleHelpModal)
   qs('#btn-send').addEventListener('click', async (): Promise<void> => writeFeedback())
   qs('#btn-change-output').addEventListener('click', async (): Promise<void> => {
     sendMenu.close()
     await changeOutputFolder()
+  })
+
+  // Skip to navigation (§13)。href="#page-nav-list" のブラウザ標準 scroll では <ul> 自体が
+  // focusable ではないため、明示的に active page-nav-link へ focus() を移す。
+  qs('#skip-to-nav').addEventListener('click', (event): void => {
+    event.preventDefault()
+    const activePage = state.pages[state.activePageIndex]
+    if (activePage) {
+      focusNavigatedLink(activePage.slug, null)
+    }
   })
 
   // 左サイドバー TOC / outline link / TOC 上部の Prev/Next sequential row のクリックを

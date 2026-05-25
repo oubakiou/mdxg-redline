@@ -76,6 +76,30 @@ body {
 body > header {
   flex-shrink: 0;
 }
+
+/* Skip link (WAI-ARIA Authoring Practices / MDXG §13)。
+   通常は viewport 外に押し出して見せず、focus を受け取った時だけ画面左上に visible になる。
+   Tab で最初に焦点を受ける位置 (body 直後) に置くことで、初回 Tab 1 回で TOC に飛べる
+   ショートカットとして機能する。 */
+.skip-link {
+  position: fixed;
+  top: -100px;
+  left: 8px;
+  z-index: 1000;
+  padding: 8px 16px;
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 0 0 6px 6px;
+  transition: top 0.1s ease;
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+  top: 0;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 body > main.layout {
   flex: 1;
   min-height: 0;
@@ -214,6 +238,52 @@ body.page-nav-resizing * {
 }
 :root:not(.has-pages) .page-nav-toggle-tab {
   display: none;
+}
+/* TOC ヘッダー (MDXG §13)。"Pages" 見出しと、focus-within のときだけ表示される ↑↓ Enter
+   キーヒント。常時表示しないことで定常状態の視覚ノイズを抑え、TOC にフォーカスが入った瞬間に
+   「ここで矢印キーが効く」モード情報を ephemeral に伝える。 */
+.page-nav-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 6px;
+  padding: 0 2px;
+}
+.page-nav-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.page-nav-keyhints {
+  /* 常時 inline-flex で kbd の高さをレイアウトに予約し、表示切替で高さが変動するのを防ぐ
+     (display: none / inline-flex 切替だと flow に出入りして page-nav-header の高さが揺れる)。 */
+  display: inline-flex;
+  visibility: hidden;
+  gap: 3px;
+}
+/* キーボード起因の focus (Tab / 矢印キー / g) のときだけ hint を表示する。:focus-within では
+   mouse click も trigger してしまい、click → renderAll の前に一瞬 hint がチラつくため、
+   `:has(:focus-visible)` で keyboard focus のみに絞る。:has / :focus-visible は本実装が
+   ターゲットとする Chromium 系で全対応、Firefox 121+ / Safari 15.4+ でも対応済み。 */
+.page-nav:has(:focus-visible) .page-nav-keyhints {
+  visibility: visible;
+}
+.page-nav-keyhints kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  white-space: nowrap;
 }
 .page-nav-list {
   list-style: none;
@@ -970,6 +1040,46 @@ mark.cmt.active {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 16px;
+}
+
+/* Help modal のキーバインドリスト (MDXG §13 affordance)。
+   <dt> がキーキャップ表示、<dd> が説明文。row レイアウトを grid で揃え、
+   読み手が左の <kbd> 群から右の説明文へ自然に視線を移せるようにする。 */
+.help-shortcuts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 16px;
+  row-gap: 8px;
+  margin: 0;
+  align-items: baseline;
+}
+.help-shortcuts dt {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.help-shortcuts dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.help-shortcuts kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  box-shadow: 0 1px 0 var(--rule);
+  white-space: nowrap;
 }
 /* dialog の footer は modal 全体の padding を持たない (modal-compact) 構造のため、
    セクション自前で padding を持つ。Primer Dialog に倣い body との境界は divider ではなく

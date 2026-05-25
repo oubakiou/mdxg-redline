@@ -706,6 +706,16 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 - **navigate 後の自動 focus**: `focusNavigatedLink(pageSlug, headingSlug)` が target を `[data-slug]` で一致検索し、`focusLinkAtIndex` 経由で `focus()` する。tabindex 操作は行わない (全 link が tab order に乗っているため)
 - **スクロールスパイ由来は focus を動かさない**: `setOnPageActivated` callback は `renderPageNavigation` を呼ぶだけで、`focusNavigatedLink` には踏み込まない。本文を読みながらスクロールしている最中に TOC へフォーカスが奪われると UX が大きく悪化するため、明示的なキーボード navigate (Enter) 経由でのみフォーカス移動する設計判断
 
+**affordance (キーボードナビゲーションの可視化 / 導線)**
+
+「キーボード操作が可能であること」「TOC への入り方」が画面から自明でない問題に対し、以下 4 つの仕掛けを組み合わせている。
+
+- **toolbar の Help (?) ボタン**: app-header 右側の theme toggle の隣に `<button id="btn-help" class="btn btn-ghost tooltipped">` を置き、クリックで `toggleHelpModal()` を呼ぶ。`aria-label="Show keyboard shortcuts"` + `data-tooltip="Keyboard shortcuts (?)"` で「`?` キーでも開ける」ことを示す。toolbar に置くのは「TOC が closed のときも常時可視であってほしい」要件を満たすため (TOC ヘッダー内に置くと closed 時に見えなくなる)
+- **TOC ヘッダーの keyboard focus キーヒント**: `<header class="page-nav-header">` 内に「Pages」見出しと並べて `<span class="page-nav-keyhints"><kbd>↑↓</kbd><kbd>Enter</kbd></span>` を置く。デフォルトは `visibility: hidden` (display は `inline-flex` で kbd の高さをレイアウトに予約し、表示切替時の高さ変動を防ぐ) で、`.page-nav:has(:focus-visible)` の時だけ `visibility: visible` になる ephemeral な affordance。`:focus-within` でなく `:has(:focus-visible)` を採用するのは、マウスクリックでも一瞬 trigger される `:focus-within` を避け、キーボード起因の focus (Tab / 矢印キー / `g`) のみに表示を絞るため (click → renderAll の前に hint がチラつく問題を構造的に塞ぐ)。`aria-hidden="true"` で SR からは隠す
+- **Skip to navigation link**: `<body>` 直後に `<a class="skip-link" id="skip-to-nav" href="#page-nav-list">Skip to navigation</a>` を置き、focus 時のみ画面左上に visible になる。click handler が active page-nav-link へ `focus()` を移す (href の anchor scroll では `<ul>` 自体が focusable でないため明示的に補う)。WAI-ARIA Authoring Practices の標準パターン
+- **`g` キーで TOC ジャンプ**: グローバル `keydown` で `event.code === 'KeyG'` + 修飾キー無しを検知し、`focusNavigatedLink(activePage.slug, null)` で active page-nav-link に飛ぶ (Vim 流の単独キー)。`KeyboardEvent.code` を採用するのは、レイアウト依存で `event.key` が変わるケース (例: Dvorak で `g` が別位置) に強いため。単独キーなので `isEditableTarget()` で textarea / input / contenteditable 中の文字入力をスキップする
+- **`?` キーで help modal**: `Shift+/` で発火する `event.key === '?'` を検知し `toggleHelpModal()` を呼ぶ。`g` と共通の `isEditableTarget()` ガード経由で文字入力を妨げない。modal HTML は `src/review.html` に静的に置き、`app/help-modal.ts` が `open` クラスの toggle と Close ボタン / バックドロップクリックの wiring を担当する。閉じる経路: Close ボタン / バックドロップクリック / グローバル Esc (既存 `handleEscapeKey` に `closeHelpModal()` を統合)
+
 **リファレンス実装 (vercel-labs/mdxg)**
 
 - parser: 該当責務なし
@@ -1006,6 +1016,9 @@ mdxg-redline/
 │   │   ├── floater.ts       選択範囲追従の「＋ Comment」フローター
 │   │   ├── menu.ts          ドロップダウンメニュー (Comments ▾ / Send ▾) 共通コントローラ
 │   │   ├── dialog.ts        確認・通知モーダル
+│   │   ├── help-modal.ts    キーボードショートカット help モーダル (`?` で toggle、§13 affordance)。
+│   │   │                     modal HTML は static (src/review.html) で、open/close と
+│   │   │                     wiring のみ担当
 │   │   ├── scroll.ts        固定 duration smooth scroll
 │   │   ├── storage.ts       IndexedDB の薄いラッパ（`workspace-handle` 永続化専用）
 │   │   ├── workspace.ts     File System Access API 連携の orchestrator

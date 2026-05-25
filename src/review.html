@@ -120,6 +120,11 @@
          空のままだと全コードブロックが plain text fallback として描画される。 -->
     <script id="embedded-shiki-langs" type="application/json"></script>
 
+    <!-- Skip to navigation (MDXG §13)。
+         focus 時のみ画面左上に visible になり、Enter で TOC の active page-nav-link に焦点を移す。
+         WAI-ARIA Authoring Practices の skip link パターン。 -->
+    <a class="skip-link" id="skip-to-nav" href="#page-nav-list">Skip to navigation</a>
+
     <header class="app-header">
       <div class="app-brand">
         <a
@@ -133,6 +138,14 @@
       <div class="toolbar-actions">
         <span id="status" class="label toolbar-status">No file</span>
         <button class="btn" id="btn-load">Open file</button>
+        <button
+          class="btn btn-ghost tooltipped"
+          id="btn-help"
+          aria-label="Show keyboard shortcuts"
+          data-tooltip="Keyboard shortcuts (?)"
+        >
+          ?
+        </button>
         <button
           class="btn btn-ghost tooltipped"
           id="btn-theme"
@@ -161,6 +174,13 @@
           aria-label="Resize document pages panel"
           aria-controls="page-nav-list"
         ></div>
+        <!-- TOC ヘッダー: 「Pages」見出しと focus 時のみ表示される ↑↓ Enter キーヒント (§13)。
+             page-nav 全体が :focus-within のときだけ ephemeral に hint が現れ、キーボードで
+             移動できることを伝える。Help (?) ボタンは toolbar 側に配置。 -->
+        <header class="page-nav-header">
+          <h2 class="page-nav-title">Pages</h2>
+          <span class="page-nav-keyhints" aria-hidden="true"> <kbd>↑↓</kbd><kbd>Enter</kbd> </span>
+        </header>
         <div id="page-nav-list"></div>
       </aside>
 
@@ -295,6 +315,43 @@
     </div>
 
     <div id="toast"></div>
+
+    <!-- Help modal (MDXG §13)。? キーで toggle、Esc / Close ボタン / バックドロップクリックで閉じる。
+         キーバインドの一覧は help-modal.ts と review.ts の handler 群と二重管理になるが、
+         キー数が少ないため hand-written で十分 (静的なドキュメントとしての価値が高い)。 -->
+    <div class="modal-backdrop" id="help-modal-backdrop">
+      <div
+        class="modal modal-compact"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="help-modal-title"
+      >
+        <header class="modal-header">
+          <h2 class="modal-title" id="help-modal-title">Keyboard shortcuts</h2>
+        </header>
+        <div class="modal-body">
+          <dl class="help-shortcuts">
+            <dt><kbd>g</kbd></dt>
+            <dd>Focus the active page in the table of contents</dd>
+            <dt><kbd>Tab</kbd></dt>
+            <dd>Move forward through TOC links and other controls</dd>
+            <dt><kbd>↑</kbd> / <kbd>↓</kbd></dt>
+            <dd>Move between TOC entries</dd>
+            <dt><kbd>Home</kbd> / <kbd>End</kbd></dt>
+            <dd>Jump to first / last TOC entry</dd>
+            <dt><kbd>Enter</kbd></dt>
+            <dd>Navigate to the focused entry</dd>
+            <dt><kbd>?</kbd></dt>
+            <dd>Show this help</dd>
+            <dt><kbd>Esc</kbd></dt>
+            <dd>Close any open modal or menu</dd>
+          </dl>
+        </div>
+        <footer class="modal-actions">
+          <button type="button" class="btn btn-primary" id="help-modal-close">Close</button>
+        </footer>
+      </div>
+    </div>
 
     <script type="module" src="./app/review.ts"></script>
   </body>
