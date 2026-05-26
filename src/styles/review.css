@@ -684,6 +684,10 @@ body.comments-resizing * {
   background: transparent;
   box-shadow: none;
 }
+#btn-search span {
+  font-size: 20px;
+  line-height: 1;
+}
 .btn-ghost:hover {
   background: var(--paper-edge);
   border-color: transparent;
