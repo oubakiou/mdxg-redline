@@ -32,34 +32,9 @@ export const stripMarkdownExt = (filename: string): string =>
 export const deriveReviewHtmlName = (mdFileName: string, docHash: string): string =>
   `${mdFileName}-${docHash}-review.html`
 
-/** ファイル命名規約 §8 に従ってエージェント→人間方向の MD ファイル名を組み立てる */
-export const deriveReviewMdName = (mdFileName: string, docHash: string): string =>
-  `${mdFileName}-${docHash}-review.md`
-
 /** ファイル命名規約 §8 に従って人間→エージェント方向の JSON ファイル名を組み立てる */
 export const deriveFeedbackJsonName = (mdFileName: string, docHash: string): string =>
   `${mdFileName}-${docHash}-feedback.json`
-
-/** `<mdFileName>-<16桁hex>-review.md` 形式のファイル名を識別する正規表現 */
-export const REVIEW_MD_PATTERN = /^(.+)-([0-9a-f]{16})-review\.md$/i
-
-export interface ReviewMdFilenameParts {
-  docHash: string
-  mdFileName: string
-}
-
-/**
- * Watch folder 内のファイル名から `mdFileName` と `docHash` を抽出する。
- * パターンに合致しないファイル名は null（呼び出し側で skip）。
- * hash は照合のしやすさのため小文字に正規化する（命名規約は本来小文字を想定）。
- */
-export const parseReviewMdFilename = (filename: string): ReviewMdFilenameParts | null => {
-  const match = REVIEW_MD_PATTERN.exec(filename)
-  if (!match) {
-    return null
-  }
-  return { docHash: match[2].toLowerCase(), mdFileName: match[1] }
-}
 
 // `<script>` タグの中身に JSON を埋め込む共通ロジック。`<` を JSON の Unicode escape
 // `\u003C` に置換することで、HTML パーサが `</script>` を閉じタグとして誤検出する余地を
@@ -610,12 +585,11 @@ if (import.meta.vitest) {
     })
   })
 
-  describe('deriveReviewHtmlName / deriveReviewMdName / deriveFeedbackJsonName', () => {
-    it('HTML / MD / JSON のファイル名を命名規約どおりに組み立てる', () => {
+  describe('deriveReviewHtmlName / deriveFeedbackJsonName', () => {
+    it('HTML / JSON のファイル名を命名規約どおりに組み立てる', () => {
       expect(deriveReviewHtmlName('spec', 'a1b2c3d4e5f6a7b8')).toBe(
         'spec-a1b2c3d4e5f6a7b8-review.html'
       )
-      expect(deriveReviewMdName('spec', 'a1b2c3d4e5f6a7b8')).toBe('spec-a1b2c3d4e5f6a7b8-review.md')
       expect(deriveFeedbackJsonName('spec', 'a1b2c3d4e5f6a7b8')).toBe(
         'spec-a1b2c3d4e5f6a7b8-feedback.json'
       )
@@ -625,43 +599,6 @@ if (import.meta.vitest) {
       expect(deriveReviewHtmlName('仕様書 v2', 'a1b2c3d4e5f6a7b8')).toBe(
         '仕様書 v2-a1b2c3d4e5f6a7b8-review.html'
       )
-    })
-  })
-
-  describe('parseReviewMdFilename', () => {
-    it('規約に従ったファイル名から mdFileName と docHash を抽出する', () => {
-      expect(parseReviewMdFilename('spec-a1b2c3d4e5f6a7b8-review.md')).toEqual({
-        docHash: 'a1b2c3d4e5f6a7b8',
-        mdFileName: 'spec',
-      })
-    })
-
-    it('大文字 hex も小文字に正規化して返す', () => {
-      expect(parseReviewMdFilename('spec-A1B2C3D4E5F6A7B8-review.md')).toEqual({
-        docHash: 'a1b2c3d4e5f6a7b8',
-        mdFileName: 'spec',
-      })
-    })
-
-    it('mdFileName にハイフンが含まれていても正しく分解できる', () => {
-      // mdFileName 部分は greedy で最後の -<16桁hex>-review.md の手前まで取る
-      expect(parseReviewMdFilename('part-1-pre-release-a1b2c3d4e5f6a7b8-review.md')).toEqual({
-        docHash: 'a1b2c3d4e5f6a7b8',
-        mdFileName: 'part-1-pre-release',
-      })
-    })
-
-    it('hash が 16 桁でない場合は null', () => {
-      expect(parseReviewMdFilename('spec-abc-review.md')).toBeNull()
-    })
-
-    it('-review.md で終わらない場合は null', () => {
-      expect(parseReviewMdFilename('spec-a1b2c3d4e5f6a7b8-feedback.json')).toBeNull()
-      expect(parseReviewMdFilename('spec.md')).toBeNull()
-    })
-
-    it('hash 部分に非 hex 文字を含む場合は null', () => {
-      expect(parseReviewMdFilename('spec-zzzzzzzzzzzzzzzz-review.md')).toBeNull()
     })
   })
 
