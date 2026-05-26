@@ -62,9 +62,14 @@ export const parseReviewMdFilename = (filename: string): ReviewMdFilenameParts |
 }
 
 // `<script>` タグの中身に JSON を埋め込む共通ロジック。`<` を JSON の Unicode escape
-// `<` に置換することで、HTML パーサが `</script>` を閉じタグとして誤検出する余地を
+// `\u003C` に置換することで、HTML パーサが `</script>` を閉じタグとして誤検出する余地を
 // ゼロにする。復元側は `JSON.parse` のみで Unicode escape も含めて元の値に戻る。
 // embedded-md / embedded-shiki-langs / embedded-feedback など複数の埋め込み経路で共有する。
+//
+// ⚠️ template literal の中身は **literal バックスラッシュ + u003C** (7 バイト) で書く必要がある
+// (`String.raw` は raw 形式を保持するが、ソースに Unicode escape を書くと TypeScript lexer が
+// 先に 1 文字 `<` に解決してしまい raw 保持が成立せず replace が no-op になる)。同パターンを
+// 使う vite.config.ts の `inlineGrammarsIntoHtml` も同じ注意が必要。
 const escapeJsonForScriptTag = (jsonString: string): string =>
   jsonString.replace(/</g, String.raw`\u003C`)
 

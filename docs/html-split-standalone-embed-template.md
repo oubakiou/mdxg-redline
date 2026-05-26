@@ -23,9 +23,9 @@ DESIGN.md §3 / §13 / §14 で 1 ファイルが兼任している「① 単独
 
 スコープ外（別タスクで扱う）：
 
-- **`standalone.html` での `--shiki-langs` 切替**：単独配布物は all 固定で、ユーザー側で `none` / `auto` に絞る経路は提供しない（grammar をサブセット化したい場合は CLI を使う動機が成立するため）。Phase 2 として URL クエリ / `<html data-shiki>` ヒントで切替する余地は残すが、本タスクでは扱わない
+- **`standalone.html` での `--shiki-langs` 切替**：単独配布物は all 固定で、ユーザー側で `none` / `auto` に絞る経路は提供しない（grammar をサブセット化したい場合は CLI を使う動機が成立するため）
 - **`standalone.html` の埋め込み markdown / feedback 注入経路**：単独配布物は Open file 経由での読み込みを主眼に置く。`<script id="embedded-md">` ブロック自体は構造的に残すが、CLI を使わずに手作業で埋め込むユースケースは引き続き非サポート（§3 既存記述を維持）
-- **`dist/review.html` の互換シンボリックリンク / リダイレクト経路**：旧名 `dist/review.html` を残すかは §5.d で議論し、本タスク内では「残さず削除」を採用する。外部から旧名でリンクしている経路は README で誘導する
+- **`dist/review.html` の互換シンボリックリンク / リダイレクト経路**：旧名 `dist/review.html` を残すかは §5.d で議論し、本タスク内では「残さず削除」を採用する
 
 ## 2. ベースラインアーキテクチャ
 
@@ -295,7 +295,7 @@ A 採用時の論点：
 
 A 採用時の論点：
 
-- **外部参照の確認**：本リポジトリの README / DESIGN.md / docs/ 配下を grep して `dist/review.html` への参照を洗い出し、すべて新名称に更新する。外部リポジトリからのリンクは追跡不可能だが、影響は限定的と判断
+- **外部参照の確認**：本リポジトリの README / DESIGN.md / docs/ 配下を grep して `dist/review.html` への参照を洗い出し、すべて新名称に更新する（本リポジトリは現状 private で外部からの参照経路は存在しない）
 
 ### e. `<title>` / メタ情報の分岐
 
@@ -416,7 +416,7 @@ A 採用時の論点：
 | CLI が `dist/embed-template.html` を読む経路で path 解決が壊れる                         | `__dirname` 基準のパス解決を CLI 側で 1 箇所に集約し、in-source test でカバー                                                                                                       |
 | `vite.standalone.config.ts` と `vite.config.ts` の plugin 設定が drift する              | 共通部分を `vite.shared.ts` に切り出し両方が import する。drift しない構造に強制する                                                                                                |
 | viteSingleFile が `<script id="embedded-shiki-langs">` を破壊する                        | 既存挙動（`<script id="embedded-md">` / `<script id="embedded-feedback">` が `type` 非 module のため touch されない）と同パターンで安全。Step 2 でビルド後の HTML を grep して確認  |
-| 旧名 `dist/review.html` 削除で外部リンクが破綻                                           | README / DESIGN.md / docs/ 配下の参照を grep で網羅し更新。外部リポジトリからの参照は追跡不可だが影響限定と判断（§5.d）                                                             |
+| 旧名 `dist/review.html` 削除で内部リンクが破綻                                           | README / DESIGN.md / docs/ 配下の参照を grep で網羅し更新（本リポジトリは現状 private で外部参照経路はない、§5.d）                                                                  |
 | grammar の二重化でリポジトリ容量が肥大化                                                 | 現状の配布契約上は許容範囲。Phase 2 として `dist/standalone.html` を npm publish 時のみ生成し commit 対象から外す選択肢を検討（ただし clone 直後に開けない問題が再発する）          |
 | HTML minify が将来有効化される可能性                                                     | DESIGN.md §13 「HTML minify 無効維持」方針を継続。両 HTML 共通の不変条件として明記                                                                                                  |
 | `--show-open-file` 既定 hidden が「Open file が見当たらない」と困惑される                | HELP_TEXT / README に「CLI 経路では Open file は既定 hidden、`--show-open-file` で表示」を明示。`standalone.html` を直接開く経路は常時表示なので別経路が常に存在する                |

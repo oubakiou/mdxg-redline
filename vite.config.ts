@@ -80,7 +80,15 @@ const inlineGrammarsIntoHtml = (html: string, grammars: Record<string, unknown>)
     )
   }
   const [fullMatch, openingTag, , closingTag] = match
-  const payload = JSON.stringify(grammars).replace(/</g, String.raw`<`)
+  // `<` を JSON Unicode escape `\u003C` (6 文字の literal) に置換することで、HTML パーサが
+  // `</script>` を閉じタグとして誤検出する余地をゼロにする。embed.ts の `escapeJsonForScriptTag`
+  // と同一パターン。
+  //
+  // ⚠️ template literal の中身は **literal バックスラッシュ + u003C** (7 バイト) で書く必要がある。
+  // ソース上で `<` のように Unicode escape を直接書くと TypeScript lexer が先に `<` 1 文字に
+  // 解決してしまい、`String.raw` が raw 形式を保持する余地が無くなって replace が no-op になる
+  // 罠がある (将来同じ場所を編集する時は hexdump で `60 5c 75 30 30 33 43 60` を確認)。
+  const payload = JSON.stringify(grammars).replace(/</g, String.raw`\u003C`)
   const replaced = `${openingTag}${payload}${closingTag}`
   return html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length)
 }
