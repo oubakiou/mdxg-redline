@@ -93,12 +93,14 @@ DESIGN.md §7 `navigateToTarget` / `resolveTargetFromHash` が `#<page-slug>` / 
 
 ### 3.4 配布物サイズ影響
 
-| ケース     | review.html | marked-footnote 増分 | gzipped 後の配布物 |
-| ---------- | ----------- | -------------------- | ------------------ |
-| 現行       | ~314 KB     | -                    | ~95 KB             |
-| 脚注対応後 | ~317 KB     | +3〜5 KB raw         | ~96 KB             |
+Mermaid / KaTeX と異なり `marked-footnote` は marked 拡張として build 本体に組み込むため、CLI 経路 / standalone 経路の両方（`dist/embed-template.html` / `dist/standalone.html` 双方）に bundle される。基準値は DESIGN.md §12 §2 Code Block Rendering 行に記載の embed-template ~327 KB / gzip ~99 KB、standalone ~45 MB / gzip ~5.9 MB（旧 `dist/review.html` は split-outputs 化以降 build 中の中間出力としてのみ存在）：
 
-実用上ゼロ近似。CLI フラグでの opt-in を不要とする根拠（§5.b）。
+| ケース     | embed-template.html (raw / gzip) | standalone.html (raw / gzip) | marked-footnote 増分            |
+| ---------- | -------------------------------- | ---------------------------- | ------------------------------- |
+| 現行       | ~327 KB / ~99 KB                 | ~45 MB / ~5.9 MB             | -                               |
+| 脚注対応後 | ~330 KB / ~100 KB                | ~45 MB / ~5.9 MB             | +3〜5 KB raw / +1〜2 KB gzipped |
+
+実用上ゼロ近似（特に standalone は元のサイズが大きいため割合インパクトは無視できる）。CLI フラグでの opt-in を不要とする根拠（§5.b）。
 
 ## 4. 実装ステップ
 
@@ -454,7 +456,7 @@ A 案の論点と mitigation：
 - [ ] §10 Search の検索クエリ `[^1]` で参照位置にヒットする
 - [ ] §10 Search で脚注定義テキストの単語にもヒットする
 - [ ] page 跨ぎでも `#fn-<id>` deep link が動作する（URL を直接書き換えて Enter）
-- [ ] `dist/review.html` のサイズが ~+5 KB raw / +2 KB gzipped 程度に収まる
+- [ ] `dist/embed-template.html` / `dist/standalone.html` 双方のサイズ増分が ~+5 KB raw / +2 KB gzipped 程度に収まる
 
 ## 7. 受け入れ基準
 
@@ -462,7 +464,7 @@ A 案の論点と mitigation：
 - MDXG §16 [SHOULD] 脚注定義の文書末セクション + backref 描画を満たす
 - MDXG §16 [MUST] 脚注未サポート時の plain text fallback が回帰していない（未定義参照 / `marked-footnote` 未ロード時に raw `[^1]` が表示される）
 - MDXG §16 [MUST NOT] ストリップ / 隠蔽が発生しない
-- `dist/review.html` のサイズ増分が **gzip +3 KB 以内**（見積もり +1〜2 KB に対し +50% の保守的上限。transitive deps / marked-footnote 内部 helper の予期せぬ膨張に備える余白）
+- `dist/embed-template.html` / `dist/standalone.html` 双方のサイズ増分が **gzip +3 KB 以内**（見積もり +1〜2 KB に対し +50% の保守的上限。transitive deps / marked-footnote 内部 helper の予期せぬ膨張に備える余白）
 - §6 アンカリングが壊れない（既存 in-source test 全通過 + 新規追加分も通過、footnote-ref 含み段落の textSegments が raw `[^<id>]` を返す）
 - §10 Search が脚注を含む文書でも動作する（参照 / 定義の両方にヒット）
 - §1 Theming の dark 連動が脚注セクションにも適用される
