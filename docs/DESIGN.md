@@ -688,7 +688,7 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 
 #### §10 Search（準拠）
 
-- [MUST] 検索の起動: ✓（`/` キー or toolbar 検索ボタン (`#btn-search`) で `openSearch()` を呼ぶ。`/` は `handleAffordanceKeys` 経由で `g` / `?` と同じ isEditableTarget / hasNoModifier ガードを通す。Cmd/Ctrl+F は触らない設計で、ユーザーは「ブラウザ標準のサイト検索」と「ドキュメント検索」を使い分けられる）
+- [MUST] 検索の起動: ✓（`/` キー or toolbar 検索ボタン (`#btn-search`) で `openSearch()` を呼ぶ。`/` は `handleAffordanceKeys` 経由で `f` / `g` / `?` と同じ isEditableTarget / hasNoModifier ガードを通す。Cmd/Ctrl+F は触らない設計で、ユーザーは「ブラウザ標準のサイト検索」と「ドキュメント検索」を使い分けられる）
 - [MUST] レンダリング後テキストへの検索: ✓（`app/search.ts` の `collectSearchMatches` が全 `<section.virtual-page>` を走査し、各 `[data-block-id]` ブロックで `textSegments` の textContent を平坦化 → `core/search.ts` の `findMatchesInText` で case-insensitive substring match）
 - [MUST] 現在マッチのハイライト + スクロールイン: ✓（current match に `search-hl-current` クラスを付与、`scrollIntoView({ behavior: 'auto', block: 'center' })` で doc-pane 内を instant スクロール。本実装の他の navigate 経路 (`scrollToHeading` / `alignSectionTopInPane`) と挙動を揃え、Enter 連打での逐次検索が smooth アニメーションに追い付かず「次マッチを見失う」事象を避ける）
 - [MUST] 次 / 前のマッチ移動: ✓（input 上の `Enter` / `Shift+Enter`、`#search-next` / `#search-prev` ボタンが `nextMatch` / `prevMatch` を呼ぶ。`core/search.ts` の `nextMatchIndex` / `prevMatchIndex` が末尾/先頭でループ）
@@ -713,7 +713,7 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 - parser: 該当責務なし（`Page.markdown` を提供して web 側に検索素材を渡す形）
 - web: Cmd / Ctrl+F でトリガ。`globalMatches` で全 `pages` の `title + markdown` を lowercase 比較で集約、`Enter` / `Shift+Enter` で前後移動、`"N of M"` の件数表示。ページ境界跨ぎ時は自動で `navigateTo`、ハイライトは `highlightTextNodes` で text node に `<mark class="search-hl">` を挿入し `current` マッチに `scrollIntoView({ behavior: "smooth" })`。`apps/web/src/components/mdxg-viewer.tsx` / `globals.css` の `mark.search-hl`
 
-**本実装との差異**: 起動キーはリファレンス実装の Cmd/Ctrl+F ではなく `/` 単独 (本実装は `g` / `?` と同じ affordance スキーマで揃えた)。マッチ集約はリファレンス実装が `title + markdown` をソースに使うのに対し、本実装は **レンダリング済み DOM の textContent** を `textSegments` 経由で集める (cmt mark の境界・Shiki span ・Copy ボタン除外などの DOM 上の skip ルールを再利用して、検索対象を「画面に出ているテキスト」に揃える)。reapply hook を mark-engine に統合する設計は本実装独自で、Shiki upgrade / コメント追加 / 削除すべての経路で search 状態が自動復元される。
+**本実装との差異**: 起動キーはリファレンス実装の Cmd/Ctrl+F ではなく `/` 単独 (本実装は `f` / `g` / `?` と同じ affordance スキーマで揃えた)。マッチ集約はリファレンス実装が `title + markdown` をソースに使うのに対し、本実装は **レンダリング済み DOM の textContent** を `textSegments` 経由で集める (cmt mark の境界・Shiki span ・Copy ボタン除外などの DOM 上の skip ルールを再利用して、検索対象を「画面に出ているテキスト」に揃える)。reapply hook を mark-engine に統合する設計は本実装独自で、Shiki upgrade / コメント追加 / 削除すべての経路で search 状態が自動復元される。
 
 #### §13 Keyboard Navigation（準拠）
 
@@ -736,10 +736,11 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 「キーボード操作が可能であること」「TOC への入り方」が画面から自明でない問題に対し、以下 4 つの仕掛けを組み合わせている。
 
 - **toolbar の Help (?) ボタン**: app-header 右側の theme toggle の隣に `<button id="btn-help" class="btn btn-ghost tooltipped">` を置き、クリックで `toggleHelpModal()` を呼ぶ。`aria-label="Show keyboard shortcuts"` + `data-tooltip="Keyboard shortcuts (?)"` で「`?` キーでも開ける」ことを示す。toolbar に置くのは「TOC が closed のときも常時可視であってほしい」要件を満たすため (TOC ヘッダー内に置くと closed 時に見えなくなる)
-- **TOC ヘッダーの keyboard focus キーヒント**: `<header class="page-nav-header">` 内に「Pages」見出しと並べて `<span class="page-nav-keyhints"><kbd>↑↓</kbd><kbd>Enter</kbd></span>` を置く。デフォルトは `visibility: hidden` (display は `inline-flex` で kbd の高さをレイアウトに予約し、表示切替時の高さ変動を防ぐ) で、`.page-nav:has(:focus-visible)` の時だけ `visibility: visible` になる ephemeral な affordance。`:focus-within` でなく `:has(:focus-visible)` を採用するのは、マウスクリックでも一瞬 trigger される `:focus-within` を避け、キーボード起因の focus (Tab / 矢印キー / `g`) のみに表示を絞るため (click → renderAll の前に hint がチラつく問題を構造的に塞ぐ)。`aria-hidden="true"` で SR からは隠す
+- **TOC ヘッダーの keyboard focus キーヒント**: `<header class="page-nav-header">` 内に「Pages」見出しと並べて `<span class="page-nav-keyhints"><kbd>↑↓</kbd><kbd>Enter</kbd></span>` を置く。デフォルトは `visibility: hidden` (display は `inline-flex` で kbd の高さをレイアウトに予約し、表示切替時の高さ変動を防ぐ) で、`.page-nav:has(:focus-visible)` の時だけ `visibility: visible` になる ephemeral な affordance。`:focus-within` でなく `:has(:focus-visible)` を採用するのは、マウスクリックでも一瞬 trigger される `:focus-within` を避け、キーボード起因の focus (Tab / 矢印キー / `f`) のみに表示を絞るため (click → renderAll の前に hint がチラつく問題を構造的に塞ぐ)。`aria-hidden="true"` で SR からは隠す
 - **Skip to navigation link**: `<body>` 直後に `<a class="skip-link" id="skip-to-nav" href="#page-nav-list">Skip to navigation</a>` を置き、focus 時のみ画面左上に visible になる。click handler が active page-nav-link へ `focus()` を移す (href の anchor scroll では `<ul>` 自体が focusable でないため明示的に補う)。WAI-ARIA Authoring Practices の標準パターン
-- **`g` キーで TOC ジャンプ**: グローバル `keydown` で `event.code === 'KeyG'` + 修飾キー無しを検知し、`focusNavigatedLink(activePage.slug, null)` で active page-nav-link に飛ぶ (Vim 流の単独キー)。`KeyboardEvent.code` を採用するのは、レイアウト依存で `event.key` が変わるケース (例: Dvorak で `g` が別位置) に強いため。単独キーなので `isEditableTarget()` で textarea / input / contenteditable 中の文字入力をスキップする
-- **`?` キーで help modal**: `Shift+/` で発火する `event.key === '?'` を検知し `toggleHelpModal()` を呼ぶ。`g` と共通の `isEditableTarget()` ガード経由で文字入力を妨げない。modal HTML は `src/review.html` に静的に置き、`app/help-modal.ts` が `open` クラスの toggle と Close ボタン / バックドロップクリックの wiring を担当する。閉じる経路: Close ボタン / バックドロップクリック / グローバル Esc (既存 `handleEscapeKey` に `closeHelpModal()` を統合)
+- **`f` キーで TOC ジャンプ**: グローバル `keydown` で `event.code === 'KeyF'` + 修飾キー無しを検知し、`focusNavigatedLink(activePage.slug, null)` で active page-nav-link に飛ぶ (Vim 流の単独キー)。`KeyboardEvent.code` を採用するのは、レイアウト依存で `event.key` が変わるケース (例: Dvorak で `f` が別位置) に強いため。単独キーなので `isEditableTarget()` で textarea / input / contenteditable 中の文字入力をスキップする
+- **`g` キーで doc-pane フォーカス**: `f` で TOC に飛んだ後、本文を ↑↓ / PgUp/PgDn でスクロールしたい時に doc-pane へ focus を戻すための逆経路。`event.code === 'KeyG'` + 修飾キー無しを検知し、`<section class="doc-pane">` (`tabindex="-1"`) に `focus()` する。`f` と同じ affordance スキーマ (`isEditableTarget()` ガード / `hasNoModifier` / `event.repeat` 抑止) を共有。focus 中は `.doc-pane-keyhints` (`<kbd>↑↓</kbd><kbd>PgUp/PgDn</kbd><kbd>f</kbd>nav`) を doc-pane 左上に ephemeral 表示し、`.page-nav-keyhints` と対称な `:has(:focus-visible)` / `:focus-visible` ルールで keyboard focus 起因のときだけ visible にする (マウスクリック起因の `:focus-within` チラつきを避けるのも同じ理由)
+- **`?` キーで help modal**: `Shift+/` で発火する `event.key === '?'` を検知し `toggleHelpModal()` を呼ぶ。`f` / `g` と共通の `isEditableTarget()` ガード経由で文字入力を妨げない。modal HTML は `src/review.html` に静的に置き、`app/help-modal.ts` が `open` クラスの toggle と Close ボタン / バックドロップクリックの wiring を担当する。閉じる経路: Close ボタン / バックドロップクリック / グローバル Esc (既存 `handleEscapeKey` に `closeHelpModal()` を統合)
 
 **リファレンス実装 (vercel-labs/mdxg)**
 

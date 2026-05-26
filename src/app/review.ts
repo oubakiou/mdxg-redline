@@ -54,7 +54,7 @@ import { splitIntoPages } from '../core/page-split'
 import { wireFloater } from './floater'
 import { wireToolbar } from './toolbar'
 
-// `?` キー (Shift+/) や `g` などのグローバルショートカットは、textarea / input / contentEditable
+// `?` キー (Shift+/) や `f` / `g` などのグローバルショートカットは、textarea / input / contentEditable
 // 配下にフォーカスがある間はそちらの文字入力を妨げないようスキップしたい。判定を一箇所にまとめる。
 const isEditableTarget = (target: EventTarget | null): boolean => {
   if (!(target instanceof HTMLElement)) {
@@ -69,11 +69,21 @@ const isEditableTarget = (target: EventTarget | null): boolean => {
 const hasNoModifier = (event: KeyboardEvent): boolean =>
   !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
 
-// affordance ショートカット (`g` / `?`) を無視すべきケースをまとめた共通ガード。
+// affordance ショートカット (`f` / `g` / `?`) を無視すべきケースをまとめた共通ガード。
 //   - event.repeat: 押しっぱなしによる連続発火 (modal の点滅対策)
 //   - isEditableTarget: textarea / input / contenteditable 中の文字入力を妨げない
 const shouldSkipAffordanceKey = (event: KeyboardEvent): boolean =>
   event.repeat || isEditableTarget(event.target)
+
+// `g` キーで doc-pane 自身に focus を移し、↑↓ / PgUp/PgDn でスクロール可能な状態に戻す。
+// .doc-pane は tabindex="-1" でプログラム focus 可能、focus 中は .doc-pane-keyhints が
+// visible になる (CSS の :has(:focus-visible) / :focus-visible 経由)。
+const focusDocPane = (): void => {
+  const pane = document.querySelector<HTMLElement>('.doc-pane')
+  if (pane) {
+    pane.focus()
+  }
+}
 
 /**
  * loadFromMarkdown / navigateToTarget 双方で使う「現状の state を全 view に流す」共通処理。
@@ -306,7 +316,7 @@ if (!import.meta.vitest) {
       qs('#modal-save').click()
     }
   }
-  // `g` キーで TOC の active page-nav-link へジャンプ (§13 affordance, Vim 流の単独キー)。
+  // `f` キーで TOC の active page-nav-link へジャンプ (§13 affordance, Vim 流の単独キー)。
   // 単独キーのため textarea / input / contenteditable 中の文字入力を妨げないよう
   // 呼び出し側 (handleAffordanceKeys) で isEditableTarget チェックする。
   const handleFocusTOCKey = (): void => {
@@ -316,7 +326,7 @@ if (!import.meta.vitest) {
     }
   }
 
-  // `g` / `?` の affordance ショートカット (§13)。両方とも単独キーのため textarea / input /
+  // `f` / `g` / `?` の affordance ショートカット (§13)。すべて単独キーのため textarea / input /
   // contenteditable に focus があるときは isEditableTarget でスキップして文字入力を妨げない。
   // Escape / Cmd+Enter のような既存 handler とは別の dispatcher に切り出す
   // (各 handler の statements を keydown listener 1 つに集約すると上限を超える)。
@@ -347,13 +357,27 @@ if (!import.meta.vitest) {
     return true
   }
 
+  const tryHandleFocusTOCKey = (event: KeyboardEvent): boolean => {
+    if (event.code !== 'KeyF' || !hasNoModifier(event)) {
+      return false
+    }
+    event.preventDefault()
+    handleFocusTOCKey()
+    return true
+  }
+  const tryHandleFocusDocKey = (event: KeyboardEvent): boolean => {
+    if (event.code !== 'KeyG' || !hasNoModifier(event)) {
+      return false
+    }
+    event.preventDefault()
+    focusDocPane()
+    return true
+  }
   const handleAffordanceKeys = (event: KeyboardEvent): void => {
     if (shouldSkipAffordanceKey(event)) {
       return
     }
-    if (event.code === 'KeyG' && hasNoModifier(event)) {
-      event.preventDefault()
-      handleFocusTOCKey()
+    if (tryHandleFocusTOCKey(event) || tryHandleFocusDocKey(event)) {
       return
     }
     if (tryHandleHelpKey(event)) {

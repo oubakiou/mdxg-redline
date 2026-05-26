@@ -246,7 +246,17 @@
         <div id="page-nav-list"></div>
       </aside>
 
-      <section class="doc-pane">
+      <section class="doc-pane" tabindex="-1">
+        <!-- focus 時のみ表示される ↑↓ PgUp/PgDn / f キーヒント (§13)。.page-nav-keyhints と
+             対称な :has(:focus-visible) で keyboard focus 起因のときだけ visible にする。
+             `g` キーで section が focus を受けるため (tabindex="-1")、:has(:focus-visible) は
+             section 自身の focus も拾える。
+             外側 .doc-pane-keyhints-anchor は height:0 / position:sticky の wrapper で、
+             doc-pane のスクロールに追従しつつコンテンツのレイアウトに影響を与えない。
+             内側 span は absolute で wrapper 上端に貼り付く。 -->
+        <div class="doc-pane-keyhints-anchor" aria-hidden="true">
+          <span class="doc-pane-keyhints"> <kbd>↑↓</kbd><kbd>PgUp/PgDn</kbd><kbd>f</kbd>nav </span>
+        </div>
         <div id="doc-wrap">
           <!-- 初期表示の素の空状態。手元の markdown を 1 ファイル単発で見るユースケース向け。
                エージェント連携時は review-request CLI で生成された HTML を開く前提なので、
@@ -393,8 +403,10 @@
         </header>
         <div class="modal-body">
           <dl class="help-shortcuts">
-            <dt><kbd>g</kbd></dt>
+            <dt><kbd>f</kbd></dt>
             <dd>Focus the active page in the table of contents</dd>
+            <dt><kbd>g</kbd></dt>
+            <dd>Focus the document pane (then use ↑↓ / PgUp/PgDn to scroll)</dd>
             <dt><kbd>Tab</kbd></dt>
             <dd>Move forward through TOC links and other controls</dd>
             <dt><kbd>↑</kbd> / <kbd>↓</kbd></dt>
