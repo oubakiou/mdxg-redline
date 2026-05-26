@@ -348,19 +348,41 @@ const resetSearchState = (): void => {
   searchState.currentIndex = null
 }
 
+// input 連打中に毎回 setSearchQuery を発火させると collectSearchMatches + reapplyAllMarks +
+// applySearchHighlights が累積し、大きな文書で操作が引っかかる。打鍵が一定時間止まってから
+// 1 回だけ実行するため、タイマーで debounce する。150ms は GitHub の find-in-code 等で
+// 採用される標準値で、入力 → 結果反映の体感ラグを抑えつつ無駄な再計算を大幅に削減する。
+const SEARCH_DEBOUNCE_MS = 150
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+const cancelPendingSearch = (): void => {
+  if (searchDebounceTimer !== null) {
+    clearTimeout(searchDebounceTimer)
+    searchDebounceTimer = null
+  }
+}
+
+const resetSearchInput = (): void => {
+  const input = qsInput(`#${SEARCH_INPUT_ID}`)
+  input.value = ''
+  resetSearchState()
+  updateCountDisplay()
+  setTimeout((): void => input.focus(), 0)
+}
+
 /** 検索バーを開く。前回の query は維持しない (空欄から始める) */
 export const openSearch = (): void => {
   const bar = document.getElementById(SEARCH_BAR_ID)
   if (!(bar instanceof HTMLElement)) {
     return
   }
+  // 「入力 → debounce 経過前に close → 再 open」の流れで、前回登録した timer が生きていると
+  // 再 open 後に旧 query で setSearchQuery が発火し、空欄からスタートしたはずの bar に
+  // 旧 highlight が復活する。close と同じく open 先頭でも timer を確実にキャンセルする。
+  cancelPendingSearch()
   searchState.open = true
   bar.classList.add('open')
-  const input = qsInput(`#${SEARCH_INPUT_ID}`)
-  input.value = ''
-  resetSearchState()
-  updateCountDisplay()
-  setTimeout((): void => input.focus(), 0)
+  resetSearchInput()
 }
 
 /** 検索バーを閉じる。state をクリアし、cmt mark のみの状態に戻す (reapplyAllMarks 経由) */
@@ -369,18 +391,39 @@ export const closeSearch = (): void => {
   if (!(bar instanceof HTMLElement)) {
     return
   }
+  cancelPendingSearch()
   searchState.open = false
   resetSearchState()
   bar.classList.remove('open')
   reapplyAllMarks()
 }
 
+// Enter / Shift+Enter で next/prev する前に、pending 中の debounce を即時 flush して
+// 最新クエリの matches で navigation する。flush 経路を分けないと、ユーザーが「打鍵 → 即 Enter」
+// した場合に古い matches で navigate してしまう。
+const flushPendingSearch = (input: HTMLInputElement): void => {
+  if (searchDebounceTimer === null) {
+    return
+  }
+  cancelPendingSearch()
+  setSearchQuery(input.value)
+}
+
+const scheduleSearch = (input: HTMLInputElement): void => {
+  cancelPendingSearch()
+  searchDebounceTimer = setTimeout((): void => {
+    searchDebounceTimer = null
+    setSearchQuery(input.value)
+  }, SEARCH_DEBOUNCE_MS)
+}
+
 /** input の Enter / Shift+Enter で next / prev、その他キーは標準挙動に任せる */
-const handleSearchInputKeydown = (event: KeyboardEvent): void => {
+const handleSearchInputKeydown = (input: HTMLInputElement, event: KeyboardEvent): void => {
   if (event.key !== 'Enter') {
     return
   }
   event.preventDefault()
+  flushPendingSearch(input)
   if (event.shiftKey) {
     prevMatch()
     return
@@ -390,9 +433,11 @@ const handleSearchInputKeydown = (event: KeyboardEvent): void => {
 
 const wireSearchInput = (input: HTMLInputElement): void => {
   input.addEventListener('input', (): void => {
-    setSearchQuery(input.value)
+    scheduleSearch(input)
   })
-  input.addEventListener('keydown', handleSearchInputKeydown)
+  input.addEventListener('keydown', (event): void => {
+    handleSearchInputKeydown(input, event)
+  })
 }
 
 const wireButtonClick = (id: string, handler: () => void): void => {

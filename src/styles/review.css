@@ -518,7 +518,12 @@ body.page-nav-resizing * {
     top: calc(28px - 40px);
   }
 }
-.doc-pane:has(:focus-visible) .doc-pane-keyhints,
+/* `.doc-pane:focus-visible` 単体に絞る理由: `:has(:focus-visible)` を使うと、search 等で
+   .doc-pane 配下に `<mark>` を大量挿入する度にブラウザが「サブツリーに :focus-visible があるか」
+   を再評価し、Chrome 系で著しい perf 退化を起こす (.virtual-page は数百テキストノード規模)。
+   .doc-pane 内に Tab で focusable なのは Copy button 程度で、それらに focus が当たっても
+   keyhints の "↑↓ で本文をスクロール" は doc-pane に対する affordance ではないため、
+   `:has()` を外しても UX に実害はない。 */
 .doc-pane:focus-visible .doc-pane-keyhints {
   visibility: visible;
 }
