@@ -42,6 +42,7 @@ import {
   isSearchOpen,
   openSearch,
   reapplySearchHighlights,
+  toggleSearch,
   wireSearchBar,
 } from './search'
 import { focusNavigatedLink, renderPageNavigation, wirePageNavigation } from './page-navigation'
@@ -465,6 +466,27 @@ if (!import.meta.vitest) {
     KeyS: moveFocusDown,
     KeyW: moveFocusUp,
   }
+  const KBD_FLASH_MS = 420
+  const KBD_FLASH_KEYS: Record<string, string> = {
+    KeyA: 'a',
+    KeyD: 'd',
+    KeyE: 'e',
+    KeyS: 's',
+    KeyW: 'w',
+  }
+  const flashKbdHints = (code: string): void => {
+    const key = KBD_FLASH_KEYS[code]
+    if (!key) {
+      return
+    }
+    const targets = document.querySelectorAll<HTMLElement>(
+      `.page-nav-keyhints kbd[data-key="${key}"], .doc-pane-keyhints kbd[data-key="${key}"], .comments-keyhints kbd[data-key="${key}"]`
+    )
+    for (const el of targets) {
+      el.classList.add('kbd-active')
+      globalThis.setTimeout(() => el.classList.remove('kbd-active'), KBD_FLASH_MS)
+    }
+  }
   const handleAffordanceKeys = (event: KeyboardEvent): void => {
     if (shouldSkipAffordanceKey(event)) {
       return
@@ -475,6 +497,7 @@ if (!import.meta.vitest) {
     const handler = AFFORDANCE_KEY_HANDLERS[event.code]
     if (handler) {
       event.preventDefault()
+      flashKbdHints(event.code)
       handler()
     }
   }
@@ -518,7 +541,7 @@ if (!import.meta.vitest) {
     navigateToTarget({ headingSlug: null, pageIndex }, false)
   })
   wireSearchBar()
-  qs('#btn-search').addEventListener('click', openSearch)
+  qs('#btn-search').addEventListener('click', toggleSearch)
 
   qs('#btn-help').addEventListener('click', toggleHelpModal)
   qs('#btn-send').addEventListener('click', async (): Promise<void> => writeFeedback())

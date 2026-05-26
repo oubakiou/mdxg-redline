@@ -370,6 +370,17 @@ const resetSearchInput = (): void => {
   setTimeout((): void => input.focus(), 0)
 }
 
+const SEARCH_TOGGLE_BUTTON_ID = 'btn-search'
+
+const syncSearchToggleButton = (open: boolean): void => {
+  const btn = document.getElementById(SEARCH_TOGGLE_BUTTON_ID)
+  if (!(btn instanceof HTMLElement)) {
+    return
+  }
+  btn.classList.toggle('btn-active', open)
+  btn.setAttribute('aria-pressed', String(open))
+}
+
 /** 検索バーを開く。前回の query は維持しない (空欄から始める) */
 export const openSearch = (): void => {
   const bar = document.getElementById(SEARCH_BAR_ID)
@@ -382,6 +393,7 @@ export const openSearch = (): void => {
   cancelPendingSearch()
   searchState.open = true
   bar.classList.add('open')
+  syncSearchToggleButton(true)
   resetSearchInput()
 }
 
@@ -395,7 +407,16 @@ export const closeSearch = (): void => {
   searchState.open = false
   resetSearchState()
   bar.classList.remove('open')
+  syncSearchToggleButton(false)
   reapplyAllMarks()
+}
+
+export const toggleSearch = (): void => {
+  if (searchState.open) {
+    closeSearch()
+    return
+  }
+  openSearch()
 }
 
 // Enter / Shift+Enter で next/prev する前に、pending 中の debounce を即時 flush して

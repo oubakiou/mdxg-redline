@@ -38,6 +38,17 @@ const captureTrigger = (backdrop: HTMLElement): void => {
   }
 }
 
+const HELP_TOGGLE_BUTTON_ID = 'btn-help'
+
+const syncHelpToggleButton = (open: boolean): void => {
+  const btn = document.getElementById(HELP_TOGGLE_BUTTON_ID)
+  if (!(btn instanceof HTMLElement)) {
+    return
+  }
+  btn.classList.toggle('btn-active', open)
+  btn.setAttribute('aria-pressed', String(open))
+}
+
 export const openHelpModal = (): void => {
   const backdrop = findBackdrop()
   if (backdrop === null) {
@@ -45,6 +56,7 @@ export const openHelpModal = (): void => {
   }
   captureTrigger(backdrop)
   backdrop.classList.add('open')
+  syncHelpToggleButton(true)
   const closeBtn = document.getElementById(HELP_MODAL_CLOSE_ID)
   if (closeBtn instanceof HTMLElement) {
     closeBtn.focus()
@@ -57,6 +69,7 @@ export const closeHelpModal = (): void => {
     return
   }
   backdrop.classList.remove('open')
+  syncHelpToggleButton(false)
   if (lastTrigger !== null) {
     lastTrigger.focus()
     lastTrigger = null

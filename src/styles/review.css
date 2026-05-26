@@ -291,6 +291,18 @@ body.page-nav-resizing * {
   border: 1px solid var(--rule);
   border-radius: 3px;
   white-space: nowrap;
+  transition:
+    background-color 320ms ease-out,
+    color 320ms ease-out,
+    border-color 320ms ease-out;
+}
+.page-nav-keyhints kbd.kbd-active,
+.doc-pane-keyhints kbd.kbd-active,
+.comments-keyhints kbd.kbd-active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--rule));
+  transition-duration: 70ms;
 }
 .page-nav-list {
   list-style: none;
@@ -836,6 +848,15 @@ html.toolbar-open-file-off #btn-load {
   border-color: transparent;
   color: var(--ink);
 }
+/* トグル系の btn-ghost (検索 / ヘルプ) が open 中であることを示す active 状態。
+   hover より一段強い背景 + accent の文字色で「現在押された状態」を伝える。
+   aria-pressed と class を両方同期させて SR にも伝える (search.ts / help-modal.ts)。 */
+.btn-ghost.btn-active,
+.btn-ghost.btn-active:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
 /* Split button (GitHub Primer "Merge pull request" 風)。
    主ボタン + caret ▾ を隣接させ、内側 border を潰して 1 つの UI として見せる。
    caret 側の border-left は半透明白で「分割」を示しつつ btn-primary の塗りに馴染ませる。 */
@@ -1332,6 +1353,34 @@ mark.search-hl.search-hl-current {
   font-size: 13px;
   line-height: 1.5;
   color: var(--ink);
+}
+/* modal の Close / Cancel ボタンと併記する Esc ヒント。ボタンの左隣に
+   小さめの説明文 + kbd を inline-flex で並べる。kbd の余白を控えめにし
+   ボタンに見えないよう ink-soft 系で色を抑える。 */
+.btn-with-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.btn-hint-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+.btn-key-hint {
+  display: inline-block;
+  padding: 0 4px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  white-space: nowrap;
 }
 .help-shortcuts kbd {
   display: inline-block;

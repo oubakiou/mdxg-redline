@@ -248,7 +248,8 @@
         <header class="page-nav-header">
           <h2 class="page-nav-title">Pages</h2>
           <span class="page-nav-keyhints" aria-hidden="true">
-            <kbd>a</kbd><kbd>w</kbd><kbd>s</kbd><kbd>d</kbd> / <kbd>e</kbd>
+            <kbd data-key="a">a</kbd><kbd data-key="w">w</kbd><kbd data-key="s">s</kbd
+            ><kbd data-key="d">d</kbd> / <kbd data-key="e">e</kbd>
           </span>
         </header>
         <div id="page-nav-list"></div>
@@ -262,7 +263,10 @@
              doc-pane のスクロールに追従しつつコンテンツのレイアウトに影響を与えない。
              内側 span は absolute で wrapper 上端に貼り付く。 -->
         <div class="doc-pane-keyhints-anchor" aria-hidden="true">
-          <span class="doc-pane-keyhints"> <kbd>a</kbd><kbd>w</kbd><kbd>s</kbd><kbd>d</kbd> </span>
+          <span class="doc-pane-keyhints">
+            <kbd data-key="a">a</kbd><kbd data-key="w">w</kbd><kbd data-key="s">s</kbd
+            ><kbd data-key="d">d</kbd>
+          </span>
         </div>
         <div id="doc-wrap">
           <!-- 初期表示の素の空状態。手元の markdown を 1 ファイル単発で見るユースケース向け。
@@ -293,7 +297,8 @@
              追従しつつコンテンツのレイアウトに影響を与えない。 -->
         <div class="comments-keyhints-anchor" aria-hidden="true">
           <span class="comments-keyhints">
-            <kbd>a</kbd><kbd>w</kbd><kbd>s</kbd><kbd>d</kbd> / <kbd>e</kbd>
+            <kbd data-key="a">a</kbd><kbd data-key="w">w</kbd><kbd data-key="s">s</kbd
+            ><kbd data-key="d">d</kbd> / <kbd data-key="e">e</kbd>
           </span>
         </div>
         <div class="comments-header">
@@ -395,7 +400,12 @@
           aria-labelledby="modal-input-label"
         ></textarea>
         <div class="modal-actions">
-          <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
+          <span class="btn-with-hint">
+            <span class="btn-hint-label" aria-hidden="true">
+              <kbd class="btn-key-hint">Esc</kbd> to cancel
+            </span>
+            <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
+          </span>
           <button class="btn btn-primary" id="modal-save">Comment</button>
         </div>
       </div>
@@ -441,7 +451,12 @@
           </dl>
         </div>
         <footer class="modal-actions">
-          <button type="button" class="btn btn-primary" id="help-modal-close">Close</button>
+          <span class="btn-with-hint">
+            <span class="btn-hint-label" aria-hidden="true">
+              <kbd class="btn-key-hint">Esc</kbd> to close
+            </span>
+            <button type="button" class="btn btn-primary" id="help-modal-close">Close</button>
+          </span>
         </footer>
       </div>
     </div>
@@ -461,7 +476,12 @@
         </header>
         <div class="modal-body mermaid-modal-body" id="mermaid-modal-body"></div>
         <footer class="modal-actions">
-          <button type="button" class="btn btn-primary" id="mermaid-modal-close">Close</button>
+          <span class="btn-with-hint">
+            <span class="btn-hint-label" aria-hidden="true">
+              <kbd class="btn-key-hint">Esc</kbd> to close
+            </span>
+            <button type="button" class="btn btn-primary" id="mermaid-modal-close">Close</button>
+          </span>
         </footer>
       </div>
     </div>
