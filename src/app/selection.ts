@@ -1,4 +1,5 @@
 import type { Comment, PendingSelection } from '../core/types'
+import { MERMAID_ATTR, MERMAID_ATTR_VALUE } from '../core/mermaid-attrs'
 
 /** 選択範囲解析結果。フローター位置決め用の rect 込み */
 export interface SelectionInfo extends PendingSelection {
@@ -58,8 +59,8 @@ const SKIP_TEXT_SEGMENT_CLASSES = ['code-copy-btn', 'code-lang-label']
 // しづらいため一括で除外する。未 upgrade (data-mermaid="1" のみ) の <pre> は通常どおり拾われ、
 // Shiki ハイライト fallback 時の検索 / コメント対象として残る。
 const SKIP_TEXT_SEGMENT_ATTRS: readonly { attr: string; value: string }[] = [
-  { attr: 'data-mermaid-applied', value: '1' },
-  { attr: 'data-mermaid-svg', value: '1' },
+  { attr: MERMAID_ATTR.applied, value: MERMAID_ATTR_VALUE },
+  { attr: MERMAID_ATTR.svg, value: MERMAID_ATTR_VALUE },
 ]
 
 const shouldSkipForTextSegments = (node: Node): boolean => {

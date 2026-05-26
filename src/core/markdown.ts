@@ -1,6 +1,11 @@
 import { Renderer, marked } from 'marked'
 
+// sort-imports は multiple specifier を single specifier より前に並べる一方、
+// alphabetical 順では `escape` (e) が `mermaid-attrs` (m) より先になり両立しない。
+/* eslint-disable sort-imports */
+import { MERMAID_ATTR, MERMAID_ATTR_VALUE } from './mermaid-attrs'
 import { escapeHtml } from './escape'
+/* eslint-enable sort-imports */
 
 const ALLOWED_LINK_SCHEMES = new Set(['http:', 'https:'])
 // http: は CSP の img-src と揃えて意図的に除外している。平文通信と外部追跡経路を構造的に塞ぐ。
@@ -107,7 +112,7 @@ const injectMermaidAttr = (html: string, isMermaid: boolean): string => {
   if (!isMermaid) {
     return html
   }
-  return html.replace(/^<pre\b/u, `<pre data-mermaid="1"`)
+  return html.replace(/^<pre\b/u, `<pre ${MERMAID_ATTR.code}="${MERMAID_ATTR_VALUE}"`)
 }
 
 interface CodeRenderRequest {

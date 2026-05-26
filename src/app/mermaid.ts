@@ -9,6 +9,7 @@
 // <pre> を残す理由: §6 アンカリングは textContent ベースで動くため、元コードを DOM 上に
 // 残しておくことで cmt mark / 検索の貼付経路が壊れない (案 A: 検索対象外 skip は selection.ts 側で)。
 
+import { MERMAID_ATTR, MERMAID_ATTR_VALUE } from '../core/mermaid-attrs'
 import { openMermaidModal } from './mermaid-modal'
 import { reapplyAllMarks } from './mark-engine'
 import { state } from './app-state'
@@ -162,7 +163,7 @@ const wireMermaidSvgExpand = (svg: SVGSVGElement): void => {
   svg.setAttribute('role', 'button')
   svg.setAttribute('tabindex', '0')
   svg.setAttribute('aria-label', 'Expand diagram')
-  svg.setAttribute('data-mermaid-expandable', '1')
+  svg.setAttribute(MERMAID_ATTR.expandable, MERMAID_ATTR_VALUE)
   svg.style.cursor = 'zoom-in'
   svg.addEventListener('click', (event): void => handleMermaidSvgClick(event, svg))
   svg.addEventListener('keydown', (event): void => {
@@ -177,7 +178,7 @@ const insertSvgAfterPre = (pre: HTMLElement, svg: SVGSVGElement): void => {
   pre.hidden = true
   // data-mermaid-svg は selection.ts の textSegments skip 判定に使う識別子
   // (docs/mdxg-diagram-rendering.md §4 Step 6 案 A: ダイアグラム内文字列は検索 / コメント対象外)。
-  svg.setAttribute('data-mermaid-svg', '1')
+  svg.setAttribute(MERMAID_ATTR.svg, MERMAID_ATTR_VALUE)
   wireMermaidSvgExpand(svg)
   pre.after(svg)
 }
@@ -228,7 +229,7 @@ const upgradeOneMermaidPre = async (
 
 const collectMermaidPres = (docEl: HTMLElement): HTMLElement[] => {
   const nodes = docEl.querySelectorAll<HTMLElement>(
-    'pre[data-mermaid="1"]:not([data-mermaid-applied]):not([data-mermaid-failed])'
+    `pre[${MERMAID_ATTR.code}="${MERMAID_ATTR_VALUE}"]:not([${MERMAID_ATTR.applied}]):not([${MERMAID_ATTR.failed}])`
   )
   return [...nodes]
 }
@@ -301,7 +302,9 @@ const cacheParentBlockHtml = (pre: HTMLElement): void => {
 // <pre> 自身の innerHTML は変わらないが、親ブロック側に sibling <svg> が追加されているため
 // 親まで遡って blockOriginalHTML を再構築する。
 const refreshMermaidBlockOriginalHTML = (docEl: HTMLElement): void => {
-  for (const pre of docEl.querySelectorAll<HTMLElement>('pre[data-mermaid-applied="1"]')) {
+  for (const pre of docEl.querySelectorAll<HTMLElement>(
+    `pre[${MERMAID_ATTR.applied}="${MERMAID_ATTR_VALUE}"]`
+  )) {
     cacheParentBlockHtml(pre)
   }
 }
@@ -381,10 +384,12 @@ const resetMermaidPre = (pre: HTMLElement): void => {
  * runtime 未注入時は upgrade 経路自体が no-op になるため安全に呼べる。
  */
 export const redrawMermaidForTheme = (docEl: HTMLElement): void => {
-  for (const svg of docEl.querySelectorAll('[data-mermaid-svg="1"]')) {
+  for (const svg of docEl.querySelectorAll(`[${MERMAID_ATTR.svg}="${MERMAID_ATTR_VALUE}"]`)) {
     svg.remove()
   }
-  for (const pre of docEl.querySelectorAll<HTMLElement>('pre[data-mermaid="1"]')) {
+  for (const pre of docEl.querySelectorAll<HTMLElement>(
+    `pre[${MERMAID_ATTR.code}="${MERMAID_ATTR_VALUE}"]`
+  )) {
     resetMermaidPre(pre)
   }
   mermaidInitialized = false

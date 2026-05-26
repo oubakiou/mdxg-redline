@@ -1339,4 +1339,60 @@ if (import.meta.vitest) {
       expect(sanitizeMdFileName('a\x00b\x1Fc\x7Fd')).toBe('a_b_c_d')
     })
   })
+
+  // VALUE_FLAG_TABLE と PENDING_VALUE_TABLE の対応漏れは型では検出できない (mark が
+  // 立てる pending* キーと PENDING_VALUE_TABLE の key が runtime でのみ結びつく)。
+  // 片方だけ追加 / 削除した場合に「値が消費されない」「未定義の pending を見に行く」
+  // 等の silent な不具合になるため、両テーブルの整合性を機械的に検証する。
+  describe('VALUE_FLAG_TABLE / PENDING_VALUE_TABLE 整合性', () => {
+    const collectPendingKeys = (state: PartitionState): readonly PendingFlagKey[] => {
+      const keys: PendingFlagKey[] = [
+        'pendingDocName',
+        'pendingMermaid',
+        'pendingPageNavWidth',
+        'pendingShikiLangs',
+        'pendingCommentsWidth',
+        'pendingTheme',
+      ]
+      return keys.filter((key): boolean => state[key])
+    }
+
+    it('各 VALUE_FLAG_TABLE.mark は丁度 1 つの pending* キーを立てる', () => {
+      for (const entry of VALUE_FLAG_TABLE) {
+        const pendings = collectPendingKeys(entry.mark(INITIAL_PARTITION_STATE))
+        expect(pendings.length, `flag=${entry.flag}`).toBe(1)
+      }
+    })
+
+    it('VALUE_FLAG_TABLE が立てる全ての pending キーは PENDING_VALUE_TABLE に entry を持つ', () => {
+      const handledKeys = new Set(PENDING_VALUE_TABLE.map((row): PendingFlagKey => row.key))
+      for (const entry of VALUE_FLAG_TABLE) {
+        const [pendingKey] = collectPendingKeys(entry.mark(INITIAL_PARTITION_STATE))
+        expect(pendingKey, `flag=${entry.flag}`).toBeDefined()
+        expect(handledKeys.has(pendingKey), `flag=${entry.flag}, key=${pendingKey}`).toBe(true)
+      }
+    })
+
+    it('PENDING_VALUE_TABLE の全 key は VALUE_FLAG_TABLE のいずれかで立てられる (dead entry が無い)', () => {
+      const reachable = new Set<PendingFlagKey>()
+      for (const entry of VALUE_FLAG_TABLE) {
+        for (const key of collectPendingKeys(entry.mark(INITIAL_PARTITION_STATE))) {
+          reachable.add(key)
+        }
+      }
+      for (const row of PENDING_VALUE_TABLE) {
+        expect(reachable.has(row.key), `key=${row.key}`).toBe(true)
+      }
+    })
+
+    it('PENDING_VALUE_TABLE の key は重複しない', () => {
+      const keys = PENDING_VALUE_TABLE.map((row): PendingFlagKey => row.key)
+      expect(new Set(keys).size).toBe(keys.length)
+    })
+
+    it('VALUE_FLAG_TABLE の flag は重複しない', () => {
+      const flags = VALUE_FLAG_TABLE.map((row): string => row.flag)
+      expect(new Set(flags).size).toBe(flags.length)
+    })
+  })
 }

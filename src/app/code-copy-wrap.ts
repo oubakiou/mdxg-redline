@@ -1,6 +1,7 @@
 // <pre> を <div class="code-block-wrap"> で wrap し、コピーボタンと言語ラベルを追加するヘルパ。
 // 初回描画 (doc-renderer.ts) と mark 再適用後の wrap 復元 (mark-engine.ts) の双方から呼ばれる。
 
+import { MERMAID_ATTR, MERMAID_ATTR_VALUE } from '../core/mermaid-attrs'
 import { normalizeLangIdentifier } from '../core/scan-fenced-langs'
 import { toast } from './dom-utils'
 
@@ -76,7 +77,7 @@ const wrapPreWithCopyButton = (pre: HTMLElement): void => {
   // 視覚的に意味を持たない。upgrade 前の Shiki ハイライト fallback 時もダイアグラム DSL の
   // コードをコピーする UX 価値が低いため、data-mermaid="1" の <pre> 全般を除外する
   // (docs/mdxg-diagram-rendering.md §4 Step 5a)。
-  if (pre.dataset.mermaid === '1') {
+  if (pre.getAttribute(MERMAID_ATTR.code) === MERMAID_ATTR_VALUE) {
     return
   }
   const parent = pre.parentElement
