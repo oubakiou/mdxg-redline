@@ -14,6 +14,7 @@ import type { ExportPayload } from '../core/types'
 import { confirmDialog } from './dialog'
 import { exportBaseName } from '../core/review-export'
 import { reapplyAllMarks } from './mark-engine'
+import { redrawMermaidForTheme } from './mermaid'
 import { renderComments } from './comments'
 import { state } from './app-state'
 
@@ -142,6 +143,16 @@ const renderThemeButton = (button: HTMLElement, stored: StoredTheme): void => {
  * theme toggle ボタンの配線。inline script で既に .dark は確定しているため、
  * click ハンドラ・OS テーマ変更購読・button 表示の同期だけを担う。
  */
+// theme トグル / OS テーマ変更後に Mermaid SVG を再描画する。Mermaid は CSS variables を直接
+// 読まず initialize 時の themeVariables を SVG に焼き込むため、CSS だけでは追従できない
+// (docs/mdxg-diagram-rendering.md §5.g)。doc 要素が無い起動初期 (Empty state) は no-op で返す。
+const refreshMermaidAfterTheme = (): void => {
+  const doc = document.querySelector<HTMLElement>('#doc')
+  if (doc !== null) {
+    redrawMermaidForTheme(doc)
+  }
+}
+
 const wireThemeToggle = (): void => {
   const button = qs('#btn-theme')
   renderThemeButton(button, currentStored())
@@ -150,6 +161,7 @@ const wireThemeToggle = (): void => {
     writeStoredTheme(next)
     applyAppliedTheme(resolveEffectiveTheme(next, readCliHint(), getSystemPrefersDark()))
     renderThemeButton(button, next)
+    refreshMermaidAfterTheme()
   })
   // OS テーマ変更は stored が 'system' 由来 (localStorage 未設定 + cliHint も無し or system) の間だけ
   // 反映する。明示 light/dark の間は OS 変化を無視する (DESIGN.md §7c / §12 §1 Theming 行)。
@@ -162,6 +174,7 @@ const wireThemeToggle = (): void => {
       return
     }
     applyAppliedTheme(resolveEffectiveTheme(stored, readCliHint(), prefersDark))
+    refreshMermaidAfterTheme()
   })
 }
 

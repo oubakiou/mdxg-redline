@@ -13,6 +13,7 @@
 
 import {
   HELP_TEXT,
+  type MermaidMode,
   type RunArgs,
   type ShikiLangsMode,
   parseArgs,
@@ -23,6 +24,7 @@ import {
   computeDocHash,
   deriveReviewHtmlName,
   formatLoadedStatus,
+  rewriteEmbeddedMermaid,
   rewriteEmbeddedShikiLangs,
   rewriteInitialStatus,
   rewriteReviewHtml,
@@ -43,6 +45,7 @@ import { openOutput } from './serve'
 import process from 'node:process'
 import { resolveInput } from './input-source'
 import { scanFencedLangs } from '../core/scan-fenced-langs'
+import { scanMermaidFences } from '../core/scan-mermaid'
 
 const errorMessage = (error: unknown): string => {
   if (error instanceof Error) {
@@ -198,18 +201,72 @@ const applyShikiLangs = async (html: string, args: RunArgs, ctx: EmbedContext): 
   return rewriteEmbeddedShikiLangs(html, grammars)
 }
 
-// rewrite 系を直列に通して最終 HTML を組み立てる。max-statements を満たすため runEmbed から
-// 分離している。
-const composeReviewHtml = async (args: RunArgs, ctx: EmbedContext): Promise<string> => {
+/**
+ * `--mermaid` mode と markdown 内容から Mermaid runtime を注入すべきか判定する pure 関数。
+ * - mode 未指定 / `auto`: scanMermaidFences > 0 のときのみ true
+ * - `on`: 常に true
+ * - `off`: 常に false
+ */
+export const shouldInjectMermaid = (mode: MermaidMode | undefined, markdown: string): boolean => {
+  if (mode === 'off') {
+    return false
+  }
+  if (mode === 'on') {
+    return true
+  }
+  return scanMermaidFences(markdown) > 0
+}
+
+const readMermaidRuntime = async (scriptDir: string): Promise<string> => {
+  const path = resolve(scriptDir, 'mermaid.mjs')
+  try {
+    return await readFile(path, 'utf8')
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      throw new Error(
+        `${path} が見つかりません。先に \`npm run build\` を実行して dist/mermaid.mjs を生成してください。`,
+        { cause: error }
+      )
+    }
+    throw error
+  }
+}
+
+const applyMermaid = async (html: string, args: RunArgs, ctx: EmbedContext): Promise<string> => {
+  if (!shouldInjectMermaid(args.mermaid, ctx.markdown)) {
+    return html
+  }
+  const runtime = await readMermaidRuntime(ctx.scriptDir)
+  const { escapedScriptCount, html: rewritten } = rewriteEmbeddedMermaid(html, runtime)
+  const count = scanMermaidFences(ctx.markdown)
+  process.stderr.write(
+    `Detected ${count} mermaid block(s). Embedding mermaid runtime (+~700 KB gzipped).\n`
+  )
+  if (escapedScriptCount > 0) {
+    process.stderr.write(`(escaped ${escapedScriptCount} literal </script> in mermaid runtime)\n`)
+  }
+  return rewritten
+}
+
+// HTML 属性 hint 系の rewrite を先にまとめて適用する pure 部分 (Mermaid / Shiki 等の
+// 重い async 注入と分離して max-statements を満たす)。
+const applyHintRewrites = (args: RunArgs, ctx: EmbedContext): string => {
   const embedded = rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName)
   const withTheme = applyThemeHint(embedded, args.themeHint)
   const withComments = applyCommentsWidthHint(withTheme, args.commentsWidth)
   const withPageNav = applyPageNavWidthHint(withComments, args.pageNavWidth)
   const withToolbar = applyToolbarOpenFileHint(withPageNav, args.showOpenFile)
-  const withTitle = applyTitleRewrite(withToolbar, ctx.docName)
-  const withShiki = await applyShikiLangs(withTitle, args, ctx)
+  return applyTitleRewrite(withToolbar, ctx.docName)
+}
+
+// rewrite 系を直列に通して最終 HTML を組み立てる。max-statements を満たすため runEmbed から
+// 分離している。
+const composeReviewHtml = async (args: RunArgs, ctx: EmbedContext): Promise<string> => {
+  const withHints = applyHintRewrites(args, ctx)
+  const withShiki = await applyShikiLangs(withHints, args, ctx)
+  const withMermaid = await applyMermaid(withShiki, args, ctx)
   const statusText = formatLoadedStatus(ctx.docName, ctx.docHash)
-  const withStatus = rewriteInitialStatus(withShiki, statusText)
+  const withStatus = rewriteInitialStatus(withMermaid, statusText)
   return upsertEmbeddedMdMeta(withStatus)
 }
 
@@ -313,6 +370,36 @@ if (import.meta.vitest) {
         expect(message).toContain('shiki-langs')
         expect(message).toContain('npm run build')
       }
+    })
+  })
+
+  describe('shouldInjectMermaid', () => {
+    const mdWithMermaid = '```mermaid\ngraph TD\nA-->B\n```\n'
+    const mdNoMermaid = '# Hello\n\n```ts\nlet x = 1\n```\n'
+
+    it('auto × 1+ 件 → true', () => {
+      expect(shouldInjectMermaid('auto', mdWithMermaid)).toBe(true)
+    })
+
+    it('auto × 0 件 → false', () => {
+      expect(shouldInjectMermaid('auto', mdNoMermaid)).toBe(false)
+    })
+
+    it('未指定 (undefined) は auto と同じ挙動', () => {
+      // eslint-disable-next-line no-undefined
+      expect(shouldInjectMermaid(undefined, mdWithMermaid)).toBe(true)
+      // eslint-disable-next-line no-undefined
+      expect(shouldInjectMermaid(undefined, mdNoMermaid)).toBe(false)
+    })
+
+    it('on は markdown 内容に関係なく true', () => {
+      expect(shouldInjectMermaid('on', mdWithMermaid)).toBe(true)
+      expect(shouldInjectMermaid('on', mdNoMermaid)).toBe(true)
+    })
+
+    it('off は markdown 内容に関係なく false', () => {
+      expect(shouldInjectMermaid('off', mdWithMermaid)).toBe(false)
+      expect(shouldInjectMermaid('off', mdNoMermaid)).toBe(false)
     })
   })
 

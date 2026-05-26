@@ -1214,6 +1214,36 @@ mark.search-hl.search-hl-current {
 .modal.modal-compact {
   padding: 0;
 }
+/* Mermaid SVG 拡大 modal (docs/mdxg-diagram-rendering.md §5.j)。
+   `.modal` の 560px 固定幅では大きなダイアグラムが収まらないため、ビューポート余白いっぱいで
+   表示する。padding は 0 に倒し、body 内 SVG が max-width / max-height いっぱいに広がる。 */
+.modal.modal-mermaid {
+  padding: 0;
+  width: 98vw;
+  height: 98vh;
+  max-width: 98vw;
+  max-height: 98vh;
+  display: flex;
+  flex-direction: column;
+}
+.mermaid-modal-body {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 8px 12px;
+  min-height: 0;
+}
+.mermaid-modal-body svg {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  /* upgrade 時に元 SVG に付けた inline `cursor: zoom-in` がクローンに残るが、
+     拡大モーダル内ではこれ以上ズーム先が無いため通常カーソルに戻す。 */
+  cursor: default;
+}
 .modal-header {
   padding: 16px 24px;
   border-bottom: 1px solid var(--rule);
@@ -1323,6 +1353,14 @@ mark.search-hl.search-hl-current {
 .modal.modal-compact > .modal-actions {
   margin-top: 0;
   padding: 12px 16px;
+}
+/* Mermaid modal も modal 全体の padding を 0 にしている (.modal.modal-mermaid) ため、
+   Close ボタンを含む footer が画面端に張り付かないよう modal-compact と同等の余白を
+   個別に持たせる。 */
+.modal.modal-mermaid > .modal-actions {
+  margin-top: 0;
+  padding: 12px 16px;
+  border-top: 1px solid var(--rule);
 }
 
 /* FOUC 防止: embedded-md がある (= CLI 経由配布物) 場合は空状態を paint 前から隠す。 */

@@ -72,6 +72,13 @@ const appendWrapActions = (wrap: HTMLElement, pre: HTMLElement): void => {
 }
 
 const wrapPreWithCopyButton = (pre: HTMLElement): void => {
+  // mermaid フェンスは upgrade 後 <pre hidden> + sibling <svg> 構造になり、Copy button が
+  // 視覚的に意味を持たない。upgrade 前の Shiki ハイライト fallback 時もダイアグラム DSL の
+  // コードをコピーする UX 価値が低いため、data-mermaid="1" の <pre> 全般を除外する
+  // (docs/mdxg-diagram-rendering.md §4 Step 5a)。
+  if (pre.dataset.mermaid === '1') {
+    return
+  }
   const parent = pre.parentElement
   if (parent && parent.classList.contains('code-block-wrap')) {
     return

@@ -50,11 +50,28 @@ export interface BuiltDomRange {
  */
 const SKIP_TEXT_SEGMENT_CLASSES = ['code-copy-btn', 'code-lang-label']
 
+// upgrade 済み mermaid ブロックは「ダイアグラム全体を検索 / コメント対象外にする」案 A
+// (docs/mdxg-diagram-rendering.md §4 Step 6) のため、<pre[data-mermaid-applied]> と
+// 兄弟の <svg[data-mermaid-svg]> 両方を skip 対象に含める。<pre> の textContent は
+// 元コードをそのまま保持するが、SVG レンダリング後はその出現位置でコメントを付ける UX 価値が
+// 薄く、SVG 内 textContent (Mermaid 生成のノード / arrow ラベル) も検索結果として scrollIntoView
+// しづらいため一括で除外する。未 upgrade (data-mermaid="1" のみ) の <pre> は通常どおり拾われ、
+// Shiki ハイライト fallback 時の検索 / コメント対象として残る。
+const SKIP_TEXT_SEGMENT_ATTRS: readonly { attr: string; value: string }[] = [
+  { attr: 'data-mermaid-applied', value: '1' },
+  { attr: 'data-mermaid-svg', value: '1' },
+]
+
 const shouldSkipForTextSegments = (node: Node): boolean => {
   if (!(node instanceof Element)) {
     return false
   }
-  return SKIP_TEXT_SEGMENT_CLASSES.some((cls): boolean => node.classList.contains(cls))
+  if (SKIP_TEXT_SEGMENT_CLASSES.some((cls): boolean => node.classList.contains(cls))) {
+    return true
+  }
+  return SKIP_TEXT_SEGMENT_ATTRS.some(
+    ({ attr, value }): boolean => node.getAttribute(attr) === value
+  )
 }
 
 export const textSegments = (blockEl: Element): TextSegment[] => {

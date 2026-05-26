@@ -28,6 +28,7 @@ import {
 import { changeOutputFolder, writeFeedback } from './workspace'
 import { closeCommentModal, wireCommentModal } from './comment-modal'
 import { closeHelpModal, openHelpModal, toggleHelpModal, wireHelpModal } from './help-modal'
+import { closeMermaidModal, wireMermaidModal } from './mermaid-modal'
 import { computeDocHash, formatLoadedStatus } from '../core/embed'
 import { markFeedbackUnsaved, state } from './app-state'
 import { qs, toast } from './dom-utils'
@@ -421,6 +422,7 @@ if (!import.meta.vitest) {
   wireFloater()
   wireCommentModal()
   wireHelpModal()
+  wireMermaidModal()
   configureCommentsNavigation(navigateToComment)
   // page scroll-spy が activePageIndex を更新した直後の TOC active 表示更新。
   // renderPageNavigation は state を再読込して描き直すだけなので、scroll 中の頻発でも軽い。
@@ -438,6 +440,7 @@ if (!import.meta.vitest) {
   const handleEscapeKey = (): void => {
     closeCommentModal()
     closeHelpModal()
+    closeMermaidModal()
     commentsMenu.close()
     sendMenu.close()
     if (isSearchOpen()) {

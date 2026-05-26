@@ -17,6 +17,7 @@ import { injectCopyButtons } from './code-copy-wrap'
 import { qs } from './dom-utils'
 import { reapplyAllMarks } from './mark-engine'
 import { renderMarkdown } from '../core/markdown'
+import { scheduleMermaidUpgrade } from './mermaid'
 import { state } from './app-state'
 
 /** ドキュメントが未読込のときの表示。プレースホルダ #doc-wrap を見える状態に戻す */
@@ -309,6 +310,10 @@ export const renderDoc = (): void => {
     mountRenderedDoc(doc, wrap)
     reapplyAllMarks()
     scheduleShikiUpgrade(doc)
+    // Shiki と並行に paint 後 idle で Mermaid ```mermaid フェンスを SVG に upgrade する。
+    // runtime 未注入 / mermaid ブロック 0 件のときは内部で no-op になる
+    // (docs/mdxg-diagram-rendering.md §4 Step 5b)。
+    scheduleMermaidUpgrade(doc)
   }
   document.documentElement.classList.add('doc-ready')
 }

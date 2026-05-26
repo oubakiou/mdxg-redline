@@ -72,6 +72,27 @@ const shikiAssetsPlugin = (): Plugin => ({
 const EMBEDDED_SHIKI_LANGS_RE_BUILD =
   /(<script\b(?=[^>]*\bid="embedded-shiki-langs")(?=[^>]*\btype="application\/json")[^>]*>)([\s\S]*?)(<\/script>)/i
 
+// Mermaid runtime 注入用 (docs/mdxg-diagram-rendering.md §5.l)。CLI 経路は embed.ts の
+// rewriteEmbeddedMermaid を使うが、standalone build は build chain 専用にここで inline する。
+const EMBEDDED_MERMAID_RE_BUILD =
+  /(<script\b(?=[^>]*\bid="embedded-mermaid")(?=[^>]*\btype="module")[^>]*>)([\s\S]*?)(<\/script>)/i
+
+const inlineMermaidIntoHtml = (html: string, runtime: string): string => {
+  const match = EMBEDDED_MERMAID_RE_BUILD.exec(html)
+  if (!match) {
+    throw new Error(
+      'review.html に id="embedded-mermaid" の <script> タグが見つかりません (build plugin)'
+    )
+  }
+  const [fullMatch, openingTag, , closingTag] = match
+  // bridge コード (`globalThis.__mdxgMermaid = mermaid; document.dispatchEvent(...)`) は
+  // src/mermaid-entry.ts に含まれており runtime 末尾に焼き込まれている。ここでは
+  // literal </script> だけを escape して書き込む (embed.ts の escapeScriptTagInJs と同じ規約)。
+  const escaped = runtime.replace(/<\/script>/gi, String.raw`<\/script>`)
+  const replaced = `${openingTag}${escaped}${closingTag}`
+  return html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length)
+}
+
 const inlineGrammarsIntoHtml = (html: string, grammars: Record<string, unknown>): string => {
   const match = EMBEDDED_SHIKI_LANGS_RE_BUILD.exec(html)
   if (!match) {
@@ -99,6 +120,47 @@ const inlineGrammarsIntoHtml = (html: string, grammars: Record<string, unknown>)
 //   2. dist/standalone.html      : 単独 Open file 用、27 言語の grammar を事前 inline 済み
 // shikiAssetsPlugin の closeBundle が dist/shiki-langs/*.json を emit した後に走らせるため、
 // plugins 配列でこの plugin を後ろに置く (closeBundle は declaration 順)。
+// docs/mdxg-diagram-rendering.md §5.l に従い standalone.html には Mermaid runtime を
+// build 時に default で inline する。`dist/mermaid.mjs` が見つからない場合 (npm run build を
+// 通さず単体で vite.config.ts を回した場合) は標準エラーに警告だけ出して inline 自体は skip し、
+// standalone.html は Shiki ハイライト fallback で動作する形にする (build を fail させない)。
+const readMermaidRuntimeIfPresent = async (distDir: string): Promise<string | null> => {
+  try {
+    return await readFile(resolve(distDir, 'mermaid.mjs'), 'utf8')
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[mdxg-split-outputs] dist/mermaid.mjs が見つからないため standalone.html への Mermaid inline を skip しました。`vp build --config vite.mermaid.config.ts` を先に実行してください。'
+      )
+      return null
+    }
+    throw error
+  }
+}
+
+const loadShikiGrammars = async (distDir: string): Promise<Record<string, unknown>> => {
+  const canonicals = canonicalizeSpec()
+  const grammars: Record<string, unknown> = {}
+  await Promise.all(
+    canonicals.map(async (lang: string): Promise<void> => {
+      const grammarJson = await readFile(resolve(distDir, 'shiki-langs', `${lang}.json`), 'utf8')
+      grammars[lang] = JSON.parse(grammarJson) as unknown
+    })
+  )
+  return grammars
+}
+
+const buildStandaloneHtml = async (distDir: string, html: string): Promise<string> => {
+  const grammars = await loadShikiGrammars(distDir)
+  const withShiki = inlineGrammarsIntoHtml(html, grammars)
+  const mermaidRuntime = await readMermaidRuntimeIfPresent(distDir)
+  if (mermaidRuntime === null) {
+    return withShiki
+  }
+  return inlineMermaidIntoHtml(withShiki, mermaidRuntime)
+}
+
 const splitOutputsPlugin = (): Plugin => ({
   apply: 'build',
   closeBundle: async (): Promise<void> => {
@@ -107,15 +169,7 @@ const splitOutputsPlugin = (): Plugin => ({
     const embedTemplatePath = resolve(distDir, 'embed-template.html')
     const standalonePath = resolve(distDir, 'standalone.html')
     const html = await readFile(intermediatePath, 'utf8')
-    const canonicals = canonicalizeSpec()
-    const grammars: Record<string, unknown> = {}
-    await Promise.all(
-      canonicals.map(async (lang: string): Promise<void> => {
-        const grammarJson = await readFile(resolve(distDir, 'shiki-langs', `${lang}.json`), 'utf8')
-        grammars[lang] = JSON.parse(grammarJson) as unknown
-      })
-    )
-    const standaloneHtml = inlineGrammarsIntoHtml(html, grammars)
+    const standaloneHtml = await buildStandaloneHtml(distDir, html)
     await Promise.all([
       writeFile(standalonePath, standaloneHtml, 'utf8'),
       rename(intermediatePath, embedTemplatePath),

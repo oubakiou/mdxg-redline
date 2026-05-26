@@ -12,6 +12,7 @@ const SHIKI_LANGS_FLAG = '--shiki-langs'
 const COMMENTS_WIDTH_FLAG = '--comments-width'
 const PAGE_NAV_WIDTH_FLAG = '--page-nav-width'
 const SHOW_OPEN_FILE_FLAG = '--show-open-file'
+const MERMAID_FLAG = '--mermaid'
 const CLEAN_FLAG = '--clean'
 const YES_FLAG = '--yes'
 const KEEP_FLAG = '--keep'
@@ -86,6 +87,30 @@ export const parsePageNavWidthValue = (raw: string): number | null => {
     return null
   }
   return num
+}
+
+/**
+ * `--mermaid <mode>` のパース結果 (docs/mdxg-diagram-rendering.md §3.2 / §4 Step 4)。
+ * - `auto` (既定): markdown を scanMermaidFences で走査し、mermaid ブロックがあるときだけ Mermaid runtime を注入
+ * - `on`: 件数に関係なく必ず注入
+ * - `off`: 注入しない (mermaid ブロックは Shiki ハイライト fallback で表示)
+ */
+export type MermaidMode = 'auto' | 'off' | 'on'
+const MERMAID_VALUES = ['auto', 'on', 'off'] as const
+
+const isMermaidMode = (value: string): value is MermaidMode =>
+  (MERMAID_VALUES as readonly string[]).includes(value)
+
+/**
+ * `--mermaid` の値を MermaidMode にパースする。pure な関数で、CLI 引数パースと
+ * 単体テストの両方から再利用する。未知の値・空文字は null を返し、CLI 側で invalid 扱い。
+ */
+export const parseMermaidValue = (value: string): MermaidMode | null => {
+  const trimmed = value.trim()
+  if (isMermaidMode(trimmed)) {
+    return trimmed
+  }
+  return null
 }
 
 /**
@@ -192,6 +217,15 @@ Options:
                            180–480   Start open with the given width in pixels.
                          Written as a <html data-page-nav-width> attribute and
                          follows the same precedence rules as --comments-width.
+  --mermaid <value>      Control Mermaid runtime injection for \`\`\`mermaid blocks.
+                         One of:
+                           auto  Inject Mermaid only if the markdown contains at
+                                 least one \`\`\`mermaid block (default). Keeps
+                                 distribution size minimal when not used.
+                           on    Always inject. Adds ~700 KB gzipped to the
+                                 distribution HTML.
+                           off   Never inject. \`\`\`mermaid blocks fall back to
+                                 Shiki-highlighted code blocks (MDXG §15 [MUST]).
   --no-open              Generate the HTML but do not launch a browser.
   --show-open-file       Keep the "Open file" button visible in the generated
                          HTML's header. By default (without this flag), CLI
@@ -226,6 +260,8 @@ Examples:
 export interface RunArgs {
   documentName?: string
   inputPath: string
+  /** --mermaid モード。未指定なら省略 (CLI 側で auto を既定として解釈) */
+  mermaid?: MermaidMode
   open: boolean
   outputDir?: string
   /** --page-nav-width で指定された数値 (0 or 180–480)。未指定なら省略 */
@@ -334,6 +370,7 @@ const parseCleanArgs = (argv: readonly string[]): ParsedArgs => {
 
 interface PartitionedArgs {
   documentName?: string
+  mermaid?: MermaidMode
   open: boolean
   pageNavWidth?: number
   positional: readonly string[]
@@ -346,9 +383,11 @@ interface PartitionedArgs {
 
 interface PartitionState {
   documentName: string | null
+  mermaid: MermaidMode | null
   open: boolean
   pageNavWidth: number | null
   pendingDocName: boolean
+  pendingMermaid: boolean
   pendingPageNavWidth: boolean
   pendingShikiLangs: boolean
   pendingCommentsWidth: boolean
@@ -364,10 +403,12 @@ interface PartitionState {
 const INITIAL_PARTITION_STATE: PartitionState = {
   commentsWidth: null,
   documentName: null,
+  mermaid: null,
   open: true,
   pageNavWidth: null,
   pendingCommentsWidth: false,
   pendingDocName: false,
+  pendingMermaid: false,
   pendingPageNavWidth: false,
   pendingShikiLangs: false,
   pendingTheme: false,
@@ -417,6 +458,18 @@ const consumeCommentsWidthValue = (acc: PartitionState, token: string): Partitio
   return { ...acc, commentsWidth: parsed, pendingCommentsWidth: false }
 }
 
+// --mermaid の値位置。auto / on / off のみ valid。`-` 始まりは値欠落扱い。
+const consumeMermaidValue = (acc: PartitionState, token: string): PartitionState => {
+  if (token.startsWith('--')) {
+    return { ...acc, valid: false }
+  }
+  const parsed = parseMermaidValue(token)
+  if (parsed === null) {
+    return { ...acc, valid: false }
+  }
+  return { ...acc, mermaid: parsed, pendingMermaid: false }
+}
+
 // --page-nav-width の値位置。0 or 180–480 の整数のみ valid。
 const consumePageNavWidthValue = (acc: PartitionState, token: string): PartitionState => {
   if (token.startsWith('--')) {
@@ -458,6 +511,7 @@ const VALUE_FLAG_TABLE: readonly {
     flag: PAGE_NAV_WIDTH_FLAG,
     mark: (acc): PartitionState => ({ ...acc, pendingPageNavWidth: true }),
   },
+  { flag: MERMAID_FLAG, mark: (acc): PartitionState => ({ ...acc, pendingMermaid: true }) },
 ]
 
 const consumeValueFlag = (acc: PartitionState, token: string): PartitionState | null => {
@@ -485,6 +539,7 @@ const consumeFlag = (acc: PartitionState, token: string): PartitionState => {
 // 抑えるためテーブル駆動で書く。
 type PendingFlagKey =
   | 'pendingDocName'
+  | 'pendingMermaid'
   | 'pendingPageNavWidth'
   | 'pendingShikiLangs'
   | 'pendingCommentsWidth'
@@ -499,6 +554,7 @@ const PENDING_VALUE_TABLE: readonly {
   { consume: consumeShikiLangsValue, key: 'pendingShikiLangs' },
   { consume: consumeCommentsWidthValue, key: 'pendingCommentsWidth' },
   { consume: consumePageNavWidthValue, key: 'pendingPageNavWidth' },
+  { consume: consumeMermaidValue, key: 'pendingMermaid' },
 ]
 
 const consumePendingValue = (acc: PartitionState, token: string): PartitionState | null => {
@@ -525,8 +581,9 @@ const stepArg = (acc: PartitionState, token: string): PartitionState => {
   return { ...acc, positional: [...acc.positional, token] }
 }
 
-// 結果オブジェクトに optional フィールドを後付けで追加するヘルパ。max-statements を抑える。
-const attachPartitionOptionals = (result: PartitionedArgs, state: PartitionState): void => {
+// 結果オブジェクトに optional フィールドを後付けで追加するヘルパ。max-statements を抑えるため
+// 文字列系と数値系で関数を分割する。
+const attachPartitionStringOptionals = (result: PartitionedArgs, state: PartitionState): void => {
   if (state.documentName !== null) {
     result.documentName = state.documentName
   }
@@ -536,6 +593,12 @@ const attachPartitionOptionals = (result: PartitionedArgs, state: PartitionState
   if (state.shikiLangs !== null) {
     result.shikiLangs = state.shikiLangs
   }
+  if (state.mermaid !== null) {
+    result.mermaid = state.mermaid
+  }
+}
+
+const attachPartitionNumberOptionals = (result: PartitionedArgs, state: PartitionState): void => {
   if (state.commentsWidth !== null) {
     result.commentsWidth = state.commentsWidth
   }
@@ -544,13 +607,19 @@ const attachPartitionOptionals = (result: PartitionedArgs, state: PartitionState
   }
 }
 
+const attachPartitionOptionals = (result: PartitionedArgs, state: PartitionState): void => {
+  attachPartitionStringOptionals(result, state)
+  attachPartitionNumberOptionals(result, state)
+}
+
 const isPartitionValid = (state: PartitionState): boolean =>
   state.valid &&
   !state.pendingDocName &&
   !state.pendingTheme &&
   !state.pendingShikiLangs &&
   !state.pendingCommentsWidth &&
-  !state.pendingPageNavWidth
+  !state.pendingPageNavWidth &&
+  !state.pendingMermaid
 
 const partitionArgs = (argv: readonly string[]): PartitionedArgs => {
   const state = argv.reduce<PartitionState>(stepArg, INITIAL_PARTITION_STATE)
@@ -594,6 +663,9 @@ const attachRunNonStringOptionals = (
   }
   if (typeof parts.pageNavWidth === 'number') {
     result.pageNavWidth = parts.pageNavWidth
+  }
+  if (parts.mermaid) {
+    result.mermaid = parts.mermaid
   }
 }
 
@@ -1041,6 +1113,68 @@ if (import.meta.vitest) {
     })
 
     it('--shiki-langs 未指定時は shikiLangs が含まれない', () => {
+      expect(parseArgs(['spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        mode: 'run',
+        open: true,
+      })
+    })
+  })
+
+  describe('parseMermaidValue', () => {
+    it('auto / on / off を MermaidMode として返す', () => {
+      expect(parseMermaidValue('auto')).toBe('auto')
+      expect(parseMermaidValue('on')).toBe('on')
+      expect(parseMermaidValue('off')).toBe('off')
+    })
+
+    it('前後の空白を許容する', () => {
+      expect(parseMermaidValue('  auto  ')).toBe('auto')
+    })
+
+    it('未知の値・空文字・大文字は null', () => {
+      expect(parseMermaidValue('yes')).toBeNull()
+      expect(parseMermaidValue('Auto')).toBeNull()
+      expect(parseMermaidValue('')).toBeNull()
+    })
+  })
+
+  describe('parseArgs: --mermaid', () => {
+    it('--mermaid auto / on / off が認識される', () => {
+      expect(parseArgs(['--mermaid', 'auto', 'spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        mermaid: 'auto',
+        mode: 'run',
+        open: true,
+      })
+      expect(parseArgs(['--mermaid', 'on', 'spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        mermaid: 'on',
+        mode: 'run',
+        open: true,
+      })
+      expect(parseArgs(['--mermaid', 'off', 'spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        mermaid: 'off',
+        mode: 'run',
+        open: true,
+      })
+    })
+
+    it('--mermaid が末尾にあって値が無い場合は invalid', () => {
+      expect(parseArgs(['spec.md', '--mermaid'])).toEqual({ mode: 'invalid' })
+    })
+
+    it('--mermaid の値位置に別フラグが来た場合は invalid', () => {
+      expect(parseArgs(['--mermaid', '--no-open', 'spec.md'])).toEqual({ mode: 'invalid' })
+    })
+
+    it('--mermaid の値が許容外 (yes / Auto / 空文字) は invalid', () => {
+      expect(parseArgs(['--mermaid', 'yes', 'spec.md'])).toEqual({ mode: 'invalid' })
+      expect(parseArgs(['--mermaid', 'Auto', 'spec.md'])).toEqual({ mode: 'invalid' })
+    })
+
+    it('--mermaid 未指定時は mermaid が含まれない (CLI 側で auto 既定として解釈)', () => {
       expect(parseArgs(['spec.md'])).toEqual({
         inputPath: 'spec.md',
         mode: 'run',

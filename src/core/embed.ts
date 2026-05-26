@@ -119,6 +119,53 @@ export const upsertEmbeddedMdMeta = (reviewHtml: string): string => {
 const EMBEDDED_SHIKI_LANGS_RE =
   /(<script\b(?=[^>]*\bid="embedded-shiki-langs")(?=[^>]*\btype="application\/json")[^>]*>)([\s\S]*?)(<\/script>)/i
 
+// Mermaid runtime 注入用。id="embedded-mermaid" + type="module" の両属性を lookahead で要求する。
+// `dist/mermaid.mjs` の bundle 結果 (素の JS source) を中身として書き込む。
+const EMBEDDED_MERMAID_RE =
+  /(<script\b(?=[^>]*\bid="embedded-mermaid")(?=[^>]*\btype="module")[^>]*>)([\s\S]*?)(<\/script>)/i
+
+// Mermaid bundle 中の literal `</script>` を `<\/script>` に escape する。
+// embedded-md / embedded-shiki-langs の `<` Unicode escape とは別経路 (こちらは素の JS source な
+// ので JSON encode を経由できない)。Mermaid のエラーメッセージ / regex / コメントに `</script>` が
+// 混入し得る可能性をゼロにしないことで build を fail させない設計 (§3.2 注入経路)。
+// 戻り値で escape 件数を返し、CLI が stderr に報告する。
+const escapeScriptTagInJs = (jsSource: string): { count: number; escaped: string } => {
+  let count = 0
+  const escaped = jsSource.replace(/<\/script>/gi, (): string => {
+    count += 1
+    return String.raw`<\/script>`
+  })
+  return { count, escaped }
+}
+
+/**
+ * `<script id="embedded-mermaid" type="module">` の中身を Mermaid ESM runtime で書き換える。
+ * runtime は `dist/mermaid.mjs` の文字列を想定しており、bridge コード
+ * (`globalThis.__mdxgMermaid = mermaid; document.dispatchEvent(...)`) は entry 側に含まれているため
+ * ここでは追加しない。書き込み時に literal `</script>` を `<\/script>` に escape する。
+ *
+ * 戻り値の `escapedScriptCount` は CLI が stderr に「N 件 escape した」を報告する用 (運用上 0 件が
+ * 普通だが、Mermaid version up でエラーメッセージ等に混入する可能性をゼロにしないため可視化する)。
+ *
+ * - `runtime` が空文字なら script タグの中身を空のまま残す (注入しない場合の no-op 経路)
+ * - 該当タグが無ければ Error を投げる
+ */
+export const rewriteEmbeddedMermaid = (
+  reviewHtml: string,
+  runtime: string
+): { escapedScriptCount: number; html: string } => {
+  const match = EMBEDDED_MERMAID_RE.exec(reviewHtml)
+  if (!match) {
+    throw new Error('template HTML に id="embedded-mermaid" の <script> タグが見つかりません')
+  }
+  const [fullMatch, openingTag, , closingTag] = match
+  const { count, escaped } = escapeScriptTagInJs(runtime)
+  const replaced = `${openingTag}${escaped}${closingTag}`
+  const html =
+    reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length)
+  return { escapedScriptCount: count, html }
+}
+
 const DATA_NAME_RE = /\bdata-name="[^"]*"/
 const HTML_TAG_RE = /<html\b[^>]*>/i
 const DATA_THEME_RE = /\bdata-theme="[^"]*"/
@@ -703,6 +750,52 @@ if (import.meta.vitest) {
       const html = '<html><head><title>x</title></head></html>'
       rewriteTitle(html, 'y')
       expect(html).toBe('<html><head><title>x</title></head></html>')
+    })
+  })
+
+  describe('rewriteEmbeddedMermaid', () => {
+    const baseHtml =
+      '<html><body><script id="embedded-mermaid" type="module"></script></body></html>'
+
+    it('runtime を中身として書き込み、escape 件数 0 を返す', () => {
+      const runtime = 'globalThis.__mdxgMermaid = {};'
+      const { escapedScriptCount, html } = rewriteEmbeddedMermaid(baseHtml, runtime)
+      expect(html).toContain(`>${runtime}</script>`)
+      expect(escapedScriptCount).toBe(0)
+    })
+
+    it(String.raw`runtime 中の literal </script> を <\/script> に escape する (件数を返す)`, () => {
+      const runtime = 'var s = "</script>"; var t = "</SCRIPT>";'
+      const { escapedScriptCount, html } = rewriteEmbeddedMermaid(baseHtml, runtime)
+      expect(escapedScriptCount).toBe(2)
+      // 書き込んだ body 部分にだけ raw </script> が残らない (閉じタグだけが唯一の </script> になる)
+      const opening = html.indexOf('<script id="embedded-mermaid"')
+      const tagOpenEnd = html.indexOf('>', opening) + 1
+      const closing = html.indexOf('</script>', tagOpenEnd)
+      const body = html.slice(tagOpenEnd, closing)
+      expect(body.toLowerCase()).not.toContain('</script>')
+      expect(body).toContain(String.raw`<\/script>`)
+    })
+
+    it('runtime が空文字なら中身も空のまま no-op に近い書き換えになる', () => {
+      const { escapedScriptCount, html } = rewriteEmbeddedMermaid(baseHtml, '')
+      expect(html).toContain('></script>')
+      expect(escapedScriptCount).toBe(0)
+    })
+
+    it('embedded-mermaid タグが無いと Error を投げる', () => {
+      expect(() => rewriteEmbeddedMermaid('<html></html>', 'x')).toThrow(/embedded-mermaid/)
+    })
+
+    it('type="module" が無い script タグは対象外', () => {
+      const html = '<script id="embedded-mermaid"></script>'
+      expect(() => rewriteEmbeddedMermaid(html, 'x')).toThrow(/embedded-mermaid/)
+    })
+
+    it('元文字列を破壊しない', () => {
+      const html = baseHtml
+      rewriteEmbeddedMermaid(html, 'x')
+      expect(html).toBe(baseHtml)
     })
   })
 

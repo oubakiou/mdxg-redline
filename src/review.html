@@ -129,6 +129,12 @@
     <!-- review-request CLI が --shiki-langs に応じて Shiki grammar の JSON を書き込む。
          空のままだと全コードブロックが plain text fallback として描画される。 -->
     <script id="embedded-shiki-langs" type="application/json"></script>
+    <!-- standalone build と review-request CLI (--mermaid auto/on) が Mermaid runtime ESM を
+         注入する。空のままだと ```mermaid ブロックは Shiki ハイライト済みコードブロックの
+         まま fallback (MDXG §15 [MUST])。注入時は末尾で `globalThis.__mdxgMermaid` に
+         インスタンスを bridge し `mdxg:mermaid-ready` イベントを発火する規約
+         (docs/mdxg-diagram-rendering.md §3.2 / §5.k)。 -->
+    <script id="embedded-mermaid" type="module"></script>
 
     <!-- Skip to navigation (MDXG §13)。
          focus 時のみ画面左上に visible になり、Enter で TOC の active page-nav-link に焦点を移す。
@@ -436,6 +442,26 @@
         </div>
         <footer class="modal-actions">
           <button type="button" class="btn btn-primary" id="help-modal-close">Close</button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Mermaid SVG 拡大表示 modal (MDXG §15 / docs/mdxg-diagram-rendering.md §5.j)。
+         upgrade 済み SVG をクリックすると open し、Esc / 背景クリック / Close で閉じる。
+         help-modal と同じ `open` クラス toggle + body 内 SVG 複製挿入のパターンで実装する。 -->
+    <div class="modal-backdrop" id="mermaid-modal-backdrop">
+      <div
+        class="modal modal-mermaid"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mermaid-modal-title"
+      >
+        <header class="modal-header">
+          <h2 class="modal-title" id="mermaid-modal-title">Diagram</h2>
+        </header>
+        <div class="modal-body mermaid-modal-body" id="mermaid-modal-body"></div>
+        <footer class="modal-actions">
+          <button type="button" class="btn btn-primary" id="mermaid-modal-close">Close</button>
         </footer>
       </div>
     </div>

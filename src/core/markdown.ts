@@ -100,6 +100,63 @@ const createHeadingRenderer = (
   }
 }
 
+// `<pre>` 開始タグに data-mermaid="1" 属性を注入する。
+// 既に data-lang 等が付いていても、先頭 `<pre` の直後に挿入することで他属性を壊さない。
+// ` ```mermaid ` ブロック以外では何もせず元 HTML を返す。
+const injectMermaidAttr = (html: string, isMermaid: boolean): string => {
+  if (!isMermaid) {
+    return html
+  }
+  return html.replace(/^<pre\b/u, `<pre data-mermaid="1"`)
+}
+
+interface CodeRenderRequest {
+  code: string
+  escaped: boolean
+  isMermaid: boolean
+  lang: string
+}
+
+const tryHighlight = (highlighter: CodeHighlighter, req: CodeRenderRequest): string | null => {
+  const highlighted = highlighter.highlight(req.code, req.lang)
+  if (highlighted === null) {
+    return null
+  }
+  const withLang = highlighted.replace(/^<pre(\s|>)/u, `<pre data-lang="${escapeHtml(req.lang)}"$1`)
+  return injectMermaidAttr(withLang, req.isMermaid)
+}
+
+const renderFallbackCode = (req: CodeRenderRequest): string => {
+  const fallback = defaultRenderer.code(req.code, req.lang, req.escaped)
+  if (!req.lang) {
+    return fallback
+  }
+  const withLang = fallback.replace(/^<pre>/u, `<pre data-lang="${escapeHtml(req.lang)}">`)
+  return injectMermaidAttr(withLang, req.isMermaid)
+}
+
+// renderer.code 単体だと max-statements を超えるため pure helper として外に出す。
+const createCodeRenderer =
+  (
+    highlighter: CodeHighlighter | null | undefined
+  ): ((code: string, infostring: string | undefined, escaped: boolean) => string) =>
+  (code: string, infostring: string | undefined, escaped: boolean): string => {
+    const lang = (infostring ?? '').trim()
+    const req: CodeRenderRequest = {
+      code,
+      escaped,
+      isMermaid: lang.toLowerCase() === 'mermaid',
+      lang,
+    }
+    if (highlighter && lang) {
+      const highlighted = tryHighlight(highlighter, req)
+      if (highlighted !== null) {
+        return highlighted
+      }
+    }
+    return renderFallbackCode(req)
+  }
+
 const createRenderer = (
   highlighter: CodeHighlighter | null | undefined,
   options?: MarkdownRenderOptions
@@ -128,26 +185,7 @@ const createRenderer = (
   renderer.table = (header: string, body: string): string =>
     `<div class="table-wrap"><table>\n<thead>\n${header}</thead>\n${wrapTbody(body)}</table>\n</div>\n`
 
-  // フェンス付きコードブロックは highlighter の有無にかかわらず `<pre data-lang="…">` を出力する。
-  // data-lang は MDXG §2.2 の「コピーボタンと並べて表示される言語ラベル」用のフックで、
-  // app/code-copy-wrap.ts が wrap 時に読み取って `<span class="code-lang-label">` を生成する。
-  // Shiki は data-lang を出さないため、highlighter 成功時も出力 HTML の `<pre>` 開始タグに
-  // data-lang を注入してパス間で属性を統一する。Shiki upgrade で `<pre>` の innerHTML は
-  // 差し替わるが、`<pre>` 自身は残るため data-lang は不変。
-  renderer.code = (code: string, infostring: string | undefined, escaped: boolean): string => {
-    const lang = (infostring ?? '').trim()
-    if (highlighter && lang) {
-      const highlighted = highlighter.highlight(code, lang)
-      if (highlighted !== null) {
-        return highlighted.replace(/^<pre(\s|>)/u, `<pre data-lang="${escapeHtml(lang)}"$1`)
-      }
-    }
-    const fallback = defaultRenderer.code(code, infostring, escaped)
-    if (!lang) {
-      return fallback
-    }
-    return fallback.replace(/^<pre>/u, `<pre data-lang="${escapeHtml(lang)}">`)
-  }
+  renderer.code = createCodeRenderer(highlighter)
 
   return renderer
 }
@@ -239,6 +277,41 @@ if (import.meta.vitest) {
       const html = renderMarkdown('```ts" onclick="alert(1)\nx\n```', highlighter)
       expect(html).not.toContain('onclick="alert(1)"')
       expect(html).toContain('&quot;')
+    })
+  })
+
+  describe('renderMarkdown mermaid fence attribute (MDXG §15 / data-mermaid)', () => {
+    it('```mermaid フェンスは <pre data-mermaid="1"> 属性付きで出力される', () => {
+      const html = renderMarkdown('```mermaid\ngraph TD\nA-->B\n```')
+      expect(html).toContain('data-mermaid="1"')
+      expect(html).toContain('data-lang="mermaid"')
+      // Shiki ハイライト経路を skip しない (fallback 用) ため、language-mermaid クラスも残る
+      expect(html).toContain('language-mermaid')
+    })
+
+    it('Mermaid / MERMAID も小文字判定で data-mermaid="1" が付く', () => {
+      const lower = renderMarkdown('```Mermaid\ngraph TD\nA-->B\n```')
+      const upper = renderMarkdown('```MERMAID\ngraph TD\nA-->B\n```')
+      expect(lower).toContain('data-mermaid="1"')
+      expect(upper).toContain('data-mermaid="1"')
+    })
+
+    it('mermaid 以外の言語 (ts / py 等) には data-mermaid 属性が付かない', () => {
+      const ts = renderMarkdown('```ts\nlet x = 1\n```')
+      const py = renderMarkdown('```py\nx = 1\n```')
+      expect(ts).not.toContain('data-mermaid')
+      expect(py).not.toContain('data-mermaid')
+    })
+
+    it('highlighter 成功時の Shiki 出力にも data-mermaid="1" が注入される', () => {
+      const highlighter: CodeHighlighter = {
+        highlight(code: string): string | null {
+          return `<pre class="shiki" tabindex="0"><code>${code}</code></pre>`
+        },
+      }
+      const html = renderMarkdown('```mermaid\ngraph TD\nA-->B\n```', highlighter)
+      expect(html).toContain('<pre data-mermaid="1"')
+      expect(html).toContain('class="shiki"')
     })
   })
 

@@ -581,7 +581,7 @@ var ALIAS_TO_CANONICAL = {
 };
 //#endregion
 //#region src/core/scan-fenced-langs.ts
-var isTokenLike = (value) => {
+var isTokenLike$1 = (value) => {
 	if (typeof value !== "object" || value === null) return false;
 	return typeof value.type === "string";
 };
@@ -601,12 +601,12 @@ var collectCodeLang = (token, acc) => {
 	const canonical = normalizeLangIdentifier(token.lang);
 	if (canonical !== null) acc.add(canonical);
 };
-var walkTokens = (tokens, acc) => {
+var walkTokens$1 = (tokens, acc) => {
 	if (!Array.isArray(tokens)) return;
-	for (const token of tokens) if (isTokenLike(token)) {
+	for (const token of tokens) if (isTokenLike$1(token)) {
 		collectCodeLang(token, acc);
-		walkTokens(token.tokens, acc);
-		walkTokens(token.items, acc);
+		walkTokens$1(token.tokens, acc);
+		walkTokens$1(token.items, acc);
 	}
 };
 /**
@@ -615,7 +615,7 @@ var walkTokens = (tokens, acc) => {
 */
 var scanFencedLangs = (markdown) => {
 	const acc = /* @__PURE__ */ new Set();
-	walkTokens(marked.lexer(markdown), acc);
+	walkTokens$1(marked.lexer(markdown), acc);
 	return acc;
 };
 //#endregion
@@ -628,6 +628,7 @@ var SHIKI_LANGS_FLAG = "--shiki-langs";
 var COMMENTS_WIDTH_FLAG = "--comments-width";
 var PAGE_NAV_WIDTH_FLAG = "--page-nav-width";
 var SHOW_OPEN_FILE_FLAG = "--show-open-file";
+var MERMAID_FLAG = "--mermaid";
 var CLEAN_FLAG = "--clean";
 var YES_FLAG = "--yes";
 var KEEP_FLAG = "--keep";
@@ -673,6 +674,21 @@ var parsePageNavWidthValue = (raw) => {
 	const num = Number(trimmed);
 	if (!isValidPageNavWidthHint(num)) return null;
 	return num;
+};
+var MERMAID_VALUES = [
+	"auto",
+	"on",
+	"off"
+];
+var isMermaidMode = (value) => MERMAID_VALUES.includes(value);
+/**
+* `--mermaid` の値を MermaidMode にパースする。pure な関数で、CLI 引数パースと
+* 単体テストの両方から再利用する。未知の値・空文字は null を返し、CLI 側で invalid 扱い。
+*/
+var parseMermaidValue = (value) => {
+	const trimmed = value.trim();
+	if (isMermaidMode(trimmed)) return trimmed;
+	return null;
 };
 var parseShikiLangsKeyword = (trimmed) => {
 	if (trimmed === "auto") return { kind: "auto" };
@@ -748,6 +764,15 @@ Options:
                            180–480   Start open with the given width in pixels.
                          Written as a <html data-page-nav-width> attribute and
                          follows the same precedence rules as --comments-width.
+  --mermaid <value>      Control Mermaid runtime injection for \`\`\`mermaid blocks.
+                         One of:
+                           auto  Inject Mermaid only if the markdown contains at
+                                 least one \`\`\`mermaid block (default). Keeps
+                                 distribution size minimal when not used.
+                           on    Always inject. Adds ~700 KB gzipped to the
+                                 distribution HTML.
+                           off   Never inject. \`\`\`mermaid blocks fall back to
+                                 Shiki-highlighted code blocks (MDXG §15 [MUST]).
   --no-open              Generate the HTML but do not launch a browser.
   --show-open-file       Keep the "Open file" button visible in the generated
                          HTML's header. By default (without this flag), CLI
@@ -864,10 +889,12 @@ var parseCleanArgs = (argv) => {
 var INITIAL_PARTITION_STATE = {
 	commentsWidth: null,
 	documentName: null,
+	mermaid: null,
 	open: true,
 	pageNavWidth: null,
 	pendingCommentsWidth: false,
 	pendingDocName: false,
+	pendingMermaid: false,
 	pendingPageNavWidth: false,
 	pendingShikiLangs: false,
 	pendingTheme: false,
@@ -924,6 +951,22 @@ var consumeCommentsWidthValue = (acc, token) => {
 		...acc,
 		commentsWidth: parsed,
 		pendingCommentsWidth: false
+	};
+};
+var consumeMermaidValue = (acc, token) => {
+	if (token.startsWith("--")) return {
+		...acc,
+		valid: false
+	};
+	const parsed = parseMermaidValue(token);
+	if (parsed === null) return {
+		...acc,
+		valid: false
+	};
+	return {
+		...acc,
+		mermaid: parsed,
+		pendingMermaid: false
 	};
 };
 var consumePageNavWidthValue = (acc, token) => {
@@ -988,6 +1031,13 @@ var VALUE_FLAG_TABLE = [
 			...acc,
 			pendingPageNavWidth: true
 		})
+	},
+	{
+		flag: MERMAID_FLAG,
+		mark: (acc) => ({
+			...acc,
+			pendingMermaid: true
+		})
 	}
 ];
 var consumeValueFlag = (acc, token) => {
@@ -1025,6 +1075,10 @@ var PENDING_VALUE_TABLE = [
 	{
 		consume: consumePageNavWidthValue,
 		key: "pendingPageNavWidth"
+	},
+	{
+		consume: consumeMermaidValue,
+		key: "pendingMermaid"
 	}
 ];
 var consumePendingValue = (acc, token) => {
@@ -1042,14 +1096,21 @@ var stepArg = (acc, token) => {
 		positional: [...acc.positional, token]
 	};
 };
-var attachPartitionOptionals = (result, state) => {
+var attachPartitionStringOptionals = (result, state) => {
 	if (state.documentName !== null) result.documentName = state.documentName;
 	if (state.themeHint !== null) result.themeHint = state.themeHint;
 	if (state.shikiLangs !== null) result.shikiLangs = state.shikiLangs;
+	if (state.mermaid !== null) result.mermaid = state.mermaid;
+};
+var attachPartitionNumberOptionals = (result, state) => {
 	if (state.commentsWidth !== null) result.commentsWidth = state.commentsWidth;
 	if (state.pageNavWidth !== null) result.pageNavWidth = state.pageNavWidth;
 };
-var isPartitionValid = (state) => state.valid && !state.pendingDocName && !state.pendingTheme && !state.pendingShikiLangs && !state.pendingCommentsWidth && !state.pendingPageNavWidth;
+var attachPartitionOptionals = (result, state) => {
+	attachPartitionStringOptionals(result, state);
+	attachPartitionNumberOptionals(result, state);
+};
+var isPartitionValid = (state) => state.valid && !state.pendingDocName && !state.pendingTheme && !state.pendingShikiLangs && !state.pendingCommentsWidth && !state.pendingPageNavWidth && !state.pendingMermaid;
 var partitionArgs = (argv) => {
 	const state = argv.reduce(stepArg, INITIAL_PARTITION_STATE);
 	const result = {
@@ -1071,6 +1132,7 @@ var attachRunNonStringOptionals = (result, parts) => {
 	if (parts.shikiLangs) result.shikiLangs = parts.shikiLangs;
 	if (typeof parts.commentsWidth === "number") result.commentsWidth = parts.commentsWidth;
 	if (typeof parts.pageNavWidth === "number") result.pageNavWidth = parts.pageNavWidth;
+	if (parts.mermaid) result.mermaid = parts.mermaid;
 };
 var attachRunOptionals = (result, parts) => {
 	attachRunStringOptionals(result, parts);
@@ -1181,6 +1243,41 @@ var upsertEmbeddedMdMeta = (reviewHtml) => {
 	return cleaned.slice(0, insertPos) + "\n    <meta name=\"mdxg-redline:embedded-md\" content=\"1\" />" + cleaned.slice(insertPos);
 };
 var EMBEDDED_SHIKI_LANGS_RE = /(<script\b(?=[^>]*\bid="embedded-shiki-langs")(?=[^>]*\btype="application\/json")[^>]*>)([\s\S]*?)(<\/script>)/i;
+var EMBEDDED_MERMAID_RE = /(<script\b(?=[^>]*\bid="embedded-mermaid")(?=[^>]*\btype="module")[^>]*>)([\s\S]*?)(<\/script>)/i;
+var escapeScriptTagInJs = (jsSource) => {
+	let count = 0;
+	const escaped = jsSource.replace(/<\/script>/gi, () => {
+		count += 1;
+		return String.raw`<\/script>`;
+	});
+	return {
+		count,
+		escaped
+	};
+};
+/**
+* `<script id="embedded-mermaid" type="module">` の中身を Mermaid ESM runtime で書き換える。
+* runtime は `dist/mermaid.mjs` の文字列を想定しており、bridge コード
+* (`globalThis.__mdxgMermaid = mermaid; document.dispatchEvent(...)`) は entry 側に含まれているため
+* ここでは追加しない。書き込み時に literal `<\/script>` を `<\/script>` に escape する。
+*
+* 戻り値の `escapedScriptCount` は CLI が stderr に「N 件 escape した」を報告する用 (運用上 0 件が
+* 普通だが、Mermaid version up でエラーメッセージ等に混入する可能性をゼロにしないため可視化する)。
+*
+* - `runtime` が空文字なら script タグの中身を空のまま残す (注入しない場合の no-op 経路)
+* - 該当タグが無ければ Error を投げる
+*/
+var rewriteEmbeddedMermaid = (reviewHtml, runtime) => {
+	const match = EMBEDDED_MERMAID_RE.exec(reviewHtml);
+	if (!match) throw new Error("template HTML に id=\"embedded-mermaid\" の <script> タグが見つかりません");
+	const [fullMatch, openingTag, , closingTag] = match;
+	const { count, escaped } = escapeScriptTagInJs(runtime);
+	const replaced = `${openingTag}${escaped}${closingTag}`;
+	return {
+		escapedScriptCount: count,
+		html: reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length)
+	};
+};
 var DATA_NAME_RE = /\bdata-name="[^"]*"/;
 var HTML_TAG_RE = /<html\b[^>]*>/i;
 var DATA_THEME_RE = /\bdata-theme="[^"]*"/;
@@ -1536,6 +1633,40 @@ var resolveInput = async (inputPath, documentName) => {
 	};
 };
 //#endregion
+//#region src/core/scan-mermaid.ts
+var isTokenLike = (value) => {
+	if (typeof value !== "object" || value === null) return false;
+	return typeof value.type === "string";
+};
+var isMermaidLang = (raw) => {
+	if (typeof raw !== "string") return false;
+	const [head] = raw.trim().split(/\s+/u, 1);
+	return typeof head === "string" && head.toLowerCase() === "mermaid";
+};
+var isMermaidCodeToken = (token) => {
+	if (token.type !== "code") return false;
+	return isMermaidLang(token.lang);
+};
+var walkTokens = (tokens, counter) => {
+	if (!Array.isArray(tokens)) return;
+	for (const token of tokens) if (isTokenLike(token)) {
+		if (isMermaidCodeToken(token)) counter.value += 1;
+		walkTokens(token.tokens, counter);
+		walkTokens(token.items, counter);
+	}
+};
+/**
+* markdown 全体を走査して、`mermaid` 言語識別子付きフェンスの数を返す。
+* 大小文字は区別しない (`Mermaid` / `MERMAID` も検出)。
+* インラインコードや info string 中の "mermaid" 文字列は検出しない。
+*/
+var scanMermaidFences = (markdown) => {
+	const tokens = marked.lexer(markdown);
+	const counter = { value: 0 };
+	walkTokens(tokens, counter);
+	return counter.value;
+};
+//#endregion
 //#region src/cli/review-request.ts
 var errorMessage = (error) => {
 	if (error instanceof Error) return error.message;
@@ -1614,8 +1745,39 @@ var loadShikiGrammars = async (langs, scriptDir) => {
 var applyShikiLangs = async (html, args, ctx) => {
 	return rewriteEmbeddedShikiLangs(html, await loadShikiGrammars(resolveShikiLangSet(args.shikiLangs, ctx.markdown), ctx.scriptDir));
 };
+/**
+* `--mermaid` mode と markdown 内容から Mermaid runtime を注入すべきか判定する pure 関数。
+* - mode 未指定 / `auto`: scanMermaidFences > 0 のときのみ true
+* - `on`: 常に true
+* - `off`: 常に false
+*/
+var shouldInjectMermaid = (mode, markdown) => {
+	if (mode === "off") return false;
+	if (mode === "on") return true;
+	return scanMermaidFences(markdown) > 0;
+};
+var readMermaidRuntime = async (scriptDir) => {
+	const path = resolve(scriptDir, "mermaid.mjs");
+	try {
+		return await readFile(path, "utf8");
+	} catch (error) {
+		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(`${path} が見つかりません。先に \`npm run build\` を実行して dist/mermaid.mjs を生成してください。`, { cause: error });
+		throw error;
+	}
+};
+var applyMermaid = async (html, args, ctx) => {
+	if (!shouldInjectMermaid(args.mermaid, ctx.markdown)) return html;
+	const { escapedScriptCount, html: rewritten } = rewriteEmbeddedMermaid(html, await readMermaidRuntime(ctx.scriptDir));
+	const count = scanMermaidFences(ctx.markdown);
+	process$1.stderr.write(`Detected ${count} mermaid block(s). Embedding mermaid runtime (+~700 KB gzipped).\n`);
+	if (escapedScriptCount > 0) process$1.stderr.write(`(escaped ${escapedScriptCount} literal <\/script> in mermaid runtime)\n`);
+	return rewritten;
+};
+var applyHintRewrites = (args, ctx) => {
+	return applyTitleRewrite(applyToolbarOpenFileHint(applyPageNavWidthHint(applyCommentsWidthHint(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args.commentsWidth), args.pageNavWidth), args.showOpenFile), ctx.docName);
+};
 var composeReviewHtml = async (args, ctx) => {
-	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyShikiLangs(applyTitleRewrite(applyToolbarOpenFileHint(applyPageNavWidthHint(applyCommentsWidthHint(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args.commentsWidth), args.pageNavWidth), args.showOpenFile), ctx.docName), args, ctx), formatLoadedStatus(ctx.docName, ctx.docHash)));
+	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyMermaid(await applyShikiLangs(applyHintRewrites(args, ctx), args, ctx), args, ctx), formatLoadedStatus(ctx.docName, ctx.docHash)));
 };
 var runEmbed = async (args) => {
 	const ctx = await prepareEmbed(args);
@@ -1653,4 +1815,4 @@ main().catch((error) => {
 	process$1.exit(1);
 });
 //#endregion
-export { resolveShikiLangSet };
+export { resolveShikiLangSet, shouldInjectMermaid };
