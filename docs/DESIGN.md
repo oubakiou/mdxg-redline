@@ -17,7 +17,6 @@
 11. [セキュリティとプライバシー](#11-セキュリティとプライバシー)
 12. [MDXG 準拠ロードマップ・今後の拡張](#12-mdxg-準拠ロードマップ今後の拡張)
 13. [ビルドパイプライン](#13-ビルドパイプライン)
-14. [ファイル構成](#14-ファイル構成)
 
 ## 1. 概要
 
@@ -974,196 +973,18 @@ review-request CLI は `dist/embed-template.html` の `<script id="embedded-md" 
 1. ソースは `src/` 配下（`cli/` / `app/` / `core/` / `styles/` / `review.html`）のみを編集する
 2. ビルド出力（`dist/standalone.html` / `dist/embed-template.html` / `dist/review-request.mjs` / `dist/shiki-langs/*.json`）は **手で編集しない**（次の `vp build` で上書きされる）
 3. commit 前に `npm run build` を実行し、ソースと両方の出力をコミットする
-4. 設計変更を伴う場合は本ドキュメント（§4 / §13 / §14）も更新する
+4. 設計変更を伴う場合は本ドキュメント（§4 / §13）も更新する
 
 ### エンドユーザーの責務
 
 なし。`dist/standalone.html` をブラウザで開くだけ。配布者が markdown を埋め込みたい場合は `node dist/review-request.mjs <input.md> [output-dir]` を使う（§3 入力 2 / §8 ファイル命名規約 参照）。
 
----
+### ソース構成の責務境界
 
-## 14. ファイル構成
+`src/` 配下は 3 層に分かれ、依存方向は `core ← app` / `core ← cli` の一方向のみ：
 
-ソース（`src/`）と生成物（`dist/`）を明確に分離している。`src/` 配下を編集し、`npm run build` で `dist/standalone.html` / `dist/embed-template.html` / `dist/review-request.mjs` を再生成する。
+- **`src/core/`** — 環境非依存の pure module。Node CLI / ブラウザ双方から import される（markdown / block-anchors / page-split / page-outline / slugify / search / embed / escape / feedback / review-export / scan-fenced-langs / shiki-aliases.generated / types）
+- **`src/app/`** — Browser DOM / Web API 専用のランタイム（review エントリ / boot / app-state / doc-renderer / mark-engine / selection / comment-modal / floater / comments / toolbar / workspace / theme / search / scroll-spy / page-navigation / `*-width` / `*-resize` 等）
+- **`src/cli/`** — Node CLI 専用（review-request エントリ / parse-args / clean / input-source / open-command / serve）
 
-```
-mdxg-redline/
-├── README.md                エンドユーザー向けの概要・インストール・使い方
-├── LICENSE                  MIT
-├── package.json             name / deps / scripts / files / bin (将来) /
-│                             scripts.build = "vp build && vp build --config vite.review-request.config.ts"
-├── tsconfig.json            TypeScript 設定 (DOM lib 追加)
-├── vite.config.ts           Vite 設定 (root: 'src', outDir: '../dist', vite-plugin-singlefile,
-│                             test.includeSource, fmt/lint の ignorePatterns で dist/ 除外)
-├── vite.review-request.config.ts     review-request CLI 用ビルド設定 (SSR mode、Node 20+、shebang 保持、
-│                             node:* を external、出力は dist/review-request.mjs)
-├── .gitignore
-├── src/                     ─── ソース（編集対象） ──────────────────────
-│   ├── review.html          Vite エントリ HTML
-│   │   ├── <head>
-│   │   │   ├── <meta http-equiv="Content-Security-Policy" ...>       CSP (§11)
-│   │   │   ├── <link rel="stylesheet" href="./styles/review.css">    ← Vite が bundle して inline
-│   │   │   └── <link rel="stylesheet" href="./styles/markdown.css">  ← 同上
-│   │   └── <body>
-│   │       ├── <script id="embedded-md">                注入ポイント（markdown）
-│   │       ├── <script id="embedded-feedback">          注入ポイント（JSON）
-│   │       ├── <header class="app-header">              ツールバー + 状態表示
-│   │       ├── <input type="file" id="file-md" hidden>  Open file 用の隠し input
-│   │       ├── <main class="layout">
-│   │       │   ├── <section class="doc-pane">
-│   │       │   │   ├── #doc-wrap     空状態
-│   │       │   │   └── #doc          レンダリング済み markdown
-│   │       │   └── <aside class="comments">  コメント一覧 (Conversation)
-│   │       ├── #floater                                 「＋ Comment」ボタン
-│   │       ├── #modal                                   コメント入力ダイアログ
-│   │       ├── #toast                                   一時的なステータス通知
-│   │       └── <script type="module" src="./app/review.ts">  ← Vite が bundle して inline
-│   ├── styles/              ─── スタイル ───────────────────────────────
-│   │   ├── review.css       全体スタイル (toolbar / modal / comments / floater / button 等)
-│   │   └── markdown.css     markdown 描画用スタイル (heading / code / blockquote 等)
-│   ├── core/                ─── 環境非依存ドメインロジック (CLI / browser 双方が import) ─
-│   │   ├── embed.ts         markdown 埋め込みの pure ロジック (JSON エンコード + rewrite + ファイル名規約)。
-│   │   │                     `docHash` (SHA-256 先頭 16 桁 hex) の計算と
-│   │   │                     `<mdFileName>-<docHash>-review.html` の名前生成も担う。
-│   │   │                     review-request CLI とブラウザ側 boot.ts / loadFromMarkdown の双方から再利用
-│   │   ├── escape.ts        HTML escape (`& < > " '` → 実体参照)。innerHTML / 属性値 共通
-│   │   ├── feedback.ts      feedback / embedded / pending selection の型ガード
-│   │   ├── markdown.ts      marked renderer。raw HTML を escape し、コードブロックは維持
-│   │   ├── review-export.ts feedback JSON payload、件数表示、export ファイル名
-│   │   ├── block-anchors.ts `marked.lexer` のトップレベルトークン列から
-│   │   │                     blockId → { sourceLine, headingPath } の Map を作る純粋ロジック。
-│   │   │                     doc-renderer (state.blockAnchors の更新) と review-export
-│   │   │                     (export JSON の headingPath / sourceLine 解決) が import する
-│   │   ├── slugify.ts       Page / heading slug の ASCII 限定生成 + 非 ASCII fallback +
-│   │   │                     重複時 `-N` suffix。MDXG §6.4 一意性の要件を満たす純粋ロジック
-│   │   ├── page-outline.ts  markdown 行 scanner (scanHeadings) と H3–H6 outline 抽出
-│   │   │                     (extractPageHeadings)。コードフェンス追跡 + ATX / setext 両対応で、
-│   │   │                     page-split / doc 内 outline 両方が import する pure module
-│   │   ├── page-split.ts    markdown → Page[] の分割 (splitIntoPages)。Introduction page /
-│   │   │                     単一ページ正規化 / round-trip 不変条件 / ancestorHeadingPath / slug 解決 /
-│   │   │                     sourceLine → pageIndex 逆引き (findPageIndexBySourceLine) を含む。
-│   │   │                     MDXG §6 Virtual Pages の中核 pure module
-│   │   ├── scan-fenced-langs.ts  markdown 内のフェンス言語識別子を集約し Shiki 正規名集合に
-│   │   │                     正規化する pure module。CLI `--shiki-langs auto` から呼ばれる
-│   │   ├── search.ts        case-insensitive substring match (findMatchesInText) +
-│   │   │                     next/prev/format 件数の純粋ロジック (MDXG §10 Search)
-│   │   ├── shiki-aliases.generated.ts  Shiki bundledLanguagesInfo から自動生成 (commit 対象)。
-│   │   │                     SHIKI_SUPPORTED_LANGS (Shiki bundled 全正規名) + ALIAS_TO_CANONICAL を export。
-│   │   │                     vite.config.ts の mdxg-shiki-assets plugin が再生成する
-│   │   └── types.ts         モジュール間で共有する JSON / コメント型 (Comment は pageIndex /
-│   │                         sourceLine 必須化済み、MDXG §6.5 / §6.6)
-│   ├── app/                 ─── Browser DOM / API 専用 ─────────────────
-│   │   ├── review.ts        DOM エントリ、event wiring、loadFromMarkdown / navigateToTarget
-│   │   │                     orchestrator (TOC / outline / Sequential / hashchange を 1 経路に統合)
-│   │   ├── boot.ts          起動順序（workspace handle 復元 / embedded / pageIndex 逆引き）
-│   │   ├── app-state.ts     state 単一の真の源 + Write feedback.json の dirty 追跡 +
-│   │   │                     state.pages / state.activePageIndex (MDXG Virtual Pages)
-│   │   ├── dom-utils.ts     qs / qsInput / uid / toast
-│   │   ├── mark-engine.ts   state.comments → <mark class="cmt"> の再適用エンジン (activePageIndex で
-│   │   │                     フィルタして他ページの blockId 偶発衝突を構造的に塞ぐ、§7.1 / §9.4)
-│   │   ├── doc-renderer.ts  markdown を HTML 化して #doc に流し込む + blockAnchors 再構築 +
-│   │   │                     active page の headingSlugs / ancestorHeadingPath 反映
-│   │   ├── pages.ts         findPageBySlug / parseHashSlug / resolveTargetFromHash /
-│   │   │                     syncHashFromActivePage 等の URL hash ↔ page index 解決ロジック
-│   │   ├── page-navigation.ts 左サイドバー TOC の renderPageNavigation + active page の H3–H6
-│   │   │                     outline を inline 展開 (renderOutlineList) + click delegation
-│   │   │                     (MDXG §7 Page Navigation + §8 Page Outline)
-│   │   ├── sequential-nav.ts 本文末尾の Prev / Next リンク (MDXG §9 Sequential Navigation)。
-│   │   │                     最初 / 最後ページで該当方向を DOM から omit
-│   │   ├── scroll-spy.ts    IntersectionObserver で active page 内の H3–H6 を観測し、
-│   │   │                     topmost visible に aria-current="location" を付与 (MDXG §8 [SHOULD]
-│   │   │                     スクロールスパイ) + scrollToHeading で navigate 経由 instant scroll
-│   │   ├── selection.ts     選択範囲 → blockId / text offsets / DOM Range
-│   │   ├── comments.ts       コメント一覧、カード描画、mark / card のアクティブ状態 +
-│   │   │                     this page / all 件数表示 (MDXG §9.2)
-│   │   ├── toolbar.ts       Open / Export / Copy / Clear の toolbar 配線
-│   │   ├── comment-modal.ts コメント入力モーダルの状態管理・保存処理・floater との配線。
-│   │   │                     新規 Comment に sourceLine / pageIndex を埋める (§6.5)
-│   │   ├── floater.ts       選択範囲追従の「＋ Comment」フローター
-│   │   ├── menu.ts          ドロップダウンメニュー (Comments ▾ / Send ▾) 共通コントローラ
-│   │   ├── dialog.ts        確認・通知モーダル
-│   │   ├── help-modal.ts    キーボードショートカット help モーダル (`?` で toggle、§13 affordance)。
-│   │   │                     modal HTML は static (src/review.html) で、open/close と
-│   │   │                     wiring のみ担当
-│   │   ├── search.ts        検索 UI / DOM 操作 (MDXG §10 Search)。public API は openSearch /
-│   │   │                     closeSearch / setSearchQuery / nextMatch / prevMatch / isSearchOpen /
-│   │   │                     wireSearchBar / configureSearchNavigation / reapplySearchHighlights。
-│   │   │                     setSearchQuery が全 page を走査して `<mark class="search-hl">` を
-│   │   │                     text node に挿入し、`setOnMarksReapplied(reapplySearchHighlights)`
-│   │   │                     で reapply 経路に hook を register することで Shiki upgrade /
-│   │   │                     renderAll / コメント追加・削除のいずれでも search 状態が維持される。
-│   │   │                     cmt mark との視覚分離は CSS で確保、ハイライト寿命管理 / 焼き込み
-│   │   │                     防止は §10 Search 詳細節と doc-renderer.ts の
-│   │   │                     innerHTMLForOriginalCache 参照
-│   │   ├── scroll.ts        固定 duration smooth scroll
-│   │   ├── storage.ts       IndexedDB の薄いラッパ（`workspace-handle` 永続化専用）
-│   │   ├── workspace.ts     File System Access API 連携の orchestrator
-│   │   │                     (writeFeedback / changeOutputFolder / restoreWorkspaceHandle)
-│   │   ├── workspace-fs.ts  FS Access API 型 + handle lifecycle (picker / permission / IDB)
-│   │   ├── theme.ts         theme (system / light / dark) の状態解決 + localStorage / data-theme 連携
-│   │   ├── comments-width.ts パネル幅・開閉状態の pure ロジック (clamp / snap / 解決 P1) +
-│   │   │                     localStorage / `<html data-comments-width>` 連携
-│   │   ├── comments-resize.ts コメントパネル左端ハンドルのドラッグ・開閉タブの wiring。
-│   │   │                     doc-pane の `offsetWidth - clientWidth` から実描画上の scrollbar 幅
-│   │   │                     + viewport 右端ギャップを合算し `--doc-scrollbar-offset` CSS 変数に
-│   │   │                     流して、closed 時の開閉タブを scrollbar の左に貼り付ける
-│   │   │                     (ResizeObserver で doc-pane と #doc を監視し、open/closed 切替や
-│   │   │                      content load にも追従する)
-│   │   ├── page-nav-width.ts 左 TOC 幅・開閉状態の pure ロジック (comments-width.ts と対称、
-│   │   │                     値域 180–480 / default 220 / storage key `mdxg-redline.page-nav-*`)
-│   │   ├── page-nav-resize.ts 左 TOC 右端ハンドルのドラッグ・開閉タブの wiring
-│   │   │                     (comments-resize.ts と対称、widthFromPointer は viewport 左端からの距離。
-│   │   │                      開閉タブは画面左端固定で scrollbar 補正なし)
-│   │   └── shiki.ts         Shiki ハイライタの lazy singleton 初期化と
-│   │                         `<script id="embedded-shiki-langs">` からの grammar 読み込み。
-│   │                         core/markdown.ts の CodeHighlighter インターフェースを満たす
-│   └── cli/                 ─── Node CLI (dist/review-request.mjs のソース) ──
-│       ├── review-request.ts CLI エントリ (`dist/review-request.mjs` のエントリ)。core/embed を呼んで
-│       │                     <input.md> (または stdin) から `<mdFileName>-<docHash>-review.html` を
-│       │                     指定ディレクトリ (省略時は input.md と同じ場所、stdin 時は cwd) に生成し、
-│       │                     既定で標準ブラウザを起動する shebang 付きスクリプト
-│       ├── parse-args.ts    引数パース (`--no-open` / `--document-name` / `--theme` / `--shiki-langs` /
-│       │                     `--comments-width` / `--page-nav-width` / `-h|--help` / stdin token `-` /
-│       │                     `--clean <dir> [--yes] [--keep <docHash>]`) + HELP_TEXT +
-│       │                     sanitizeMdFileName + parseShikiLangsValue (auto/all/none/csv の
-│       │                     ShikiLangsMode 解釈) + parseCommentsWidthValue (0 or 280–640 整数の検証) +
-│       │                     parsePageNavWidthValue (0 or 180–480 整数の検証)
-│       ├── clean.ts          `--clean <dir>` の pure 分類 (classifyEntries) と I/O (runClean)。
-│       │                     `<dir>` 直下を readdir し、命名規約マッチを toDelete / kept / skipped に
-│       │                     振り分ける。既定 dry-run、`--yes` で実削除 (§8 古いファイルの扱い参照)
-│       ├── input-source.ts  stdin / file 入力の解決
-│       ├── open-command.ts  OS / `$BROWSER` 別のブラウザ起動コマンド + VS Code Remote 環境判定
-│       └── serve.ts         `$BROWSER` が file:// を扱えない環境向け軽量 HTTP サーバー (port 51729 デフォルト)
-├── dist/                    ─── 生成物（commit 対象、編集禁止） ──────────
-│   ├── standalone.html      ★ `npm run build` の出力。エンドユーザーが直接開く配布物。
-│   │                         JS / CSS / npm 依存 (marked, shiki core + 2 テーマ + JS engine)
-│   │                         + Shiki bundled 全言語（約 235）の grammar が事前 inline 済み (~45 MB / gzip ~5.9 MB)。
-│   │                         CLI を経由せずに全コードブロックが Shiki でハイライト表示される
-│   ├── embed-template.html  ★ `npm run build` の出力。review-request CLI が rewrite テンプレートとして
-│   │                         読み込む素材専用。standalone.html と JS / CSS / CSP / DOM 構造は同一だが、
-│   │                         `<script id="embedded-shiki-langs">` が空で grammar 0 (~315 KB / gzip ~95 KB)。
-│   │                         CLI が `--shiki-langs` モードに応じて動的に grammar を注入する想定で、
-│   │                         エンドユーザーが直接開く用途は想定しない (開くと plain text fallback)
-│   ├── review-request.mjs   ★ `npm run build:review-request` の出力。Node 20+ で実行可能な
-│   │                         配布者向け review-request CLI。実行時に同ディレクトリの
-│   │                         embed-template.html / shiki-langs/*.json を読み込むため揃った状態で commit する
-│   └── shiki-langs/          ★ `vp build` の mdxg-shiki-assets plugin が emit する Shiki bundled 全言語（約 235）の
-│                             grammar JSON (commit 対象)。CLI と standalone build (mdxg-split-outputs plugin)
-│                             の双方が読み込み、`<script id="embedded-shiki-langs">` に inline する
-├── scripts/
-│   ├── generate-shiki-aliases.mjs  単独 CLI で src/core/shiki-aliases.generated.ts を再生成。
-│   │                          vite.config.ts の mdxg-shiki-assets plugin と同じロジックを使う
-│   └── lib/
-│       ├── shiki-meta.mjs    Shiki bundledLanguagesInfo から正規名 / ALIAS_TO_CANONICAL / grammar
-│       │                     JSON を抽出する共通ロジック。CLI script と vite plugin が import
-│       └── shiki-meta.d.mts  vite.config.ts (TS) からも import するための型注釈
-└── docs/
-    └── DESIGN.md            本ドキュメント
-```
-
-ソース（`src/review.html` + `src/styles/*.css` + `src/{cli,app,core}/*.ts` + `vite.config.ts`）と出力（`dist/standalone.html` / `dist/embed-template.html` / `dist/review-request.mjs` / `dist/shiki-langs/*.json`）はいずれも commit 対象。生成物を commit するのは、clone 直後の利用者が `vp build` を実行せずにそのままブラウザで開けるようにし、npm publish 時にも `dist/` が必ず含まれるようにするため。
-
-### 編集ルール
-
-- 編集対象は `src/` 配下のみ（`review.html` / `styles/*.css` / `cli/*.ts` / `app/*.ts` / `core/*.ts`）。`dist/standalone.html` / `dist/embed-template.html` / `dist/review-request.mjs` / `dist/shiki-langs/*.json` は `vp build` で都度上書きされるため手で直さない
-- ソースの編集後は `vp build` でビルドし、両ファイルを commit する
+エントリ素材は `src/review.html` と `src/styles/*.css`。`app` / `cli` の型を `core` に持ち込まない。`dist/` 配下（`standalone.html` / `embed-template.html` / `review-request.mjs` / `shiki-langs/*.json`）は `vp build` の生成物で、commit 対象だが手では編集しない。
