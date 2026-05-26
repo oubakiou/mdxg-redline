@@ -315,6 +315,7 @@ body.page-nav-resizing * {
   border-radius: 4px;
   color: inherit;
   text-decoration: none;
+  position: relative;
   transition:
     background 0.1s ease,
     color 0.1s ease;
@@ -327,6 +328,22 @@ body.page-nav-resizing * {
   background: var(--paper);
   color: var(--ink);
   outline: none;
+}
+/* keyboard focus 候補を「左辺 accent バー (inset box-shadow)」で示す共通表現 (cmt-card / page-nav
+   共通、VS Code / Slack 風)。active (= 全周 accent border + ring) と形状で区別し、色は同じ accent
+   で揃える: 全周 = 現在地、左バー = 次候補。 */
+.page-nav-link:focus-visible {
+  outline: none;
+}
+.page-nav-link:focus-visible::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
 }
 .page-nav-item-depth-2 .page-nav-link {
   padding-left: 24px;
@@ -526,8 +543,57 @@ body.page-nav-resizing * {
 .comments {
   background: var(--paper-edge);
   border-left: 1px solid var(--rule);
-  padding: 32px 24px;
+  /* padding-top は keyhints 縦位置 (y=28) を TOC / doc-pane と揃えるため 32→56 に拡大。
+     y=28 の keyhints と y=56 の Write feedback.json ボタン行が縦に並び、互いに被らない。 */
+  padding: 56px 24px 32px;
   position: relative;
+}
+/* `h` キーで panel 自身が focus を受け取るが、scroll 用の focus ring は不要
+   (keyhints の visible 切替で focus 状態を伝える)。 */
+.comments:focus {
+  outline: none;
+}
+/* comments panel 右上に固定配置する ephemeral キーヒント (§13)。.doc-pane-keyhints と
+   同じ anchor (height:0 / position:sticky) パターンで、scroll に追従しつつ後続コンテンツに
+   影響を与えない。.comments padding-top 32 を相殺した負の top で TOC 側 (28px) と縦位置を揃える。 */
+.comments-keyhints-anchor {
+  position: sticky;
+  top: 0;
+  height: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.comments-keyhints {
+  display: inline-flex;
+  position: absolute;
+  /* TOC (page-nav padding 24 + header padding 4 = 28) と doc-pane (calc 28-32) に縦位置を揃え、
+     y=28 に keyhints を置く。.comments padding-top 56 を相殺して -28px → y=28。
+     comments-header (Write feedback.json + ▾ ボタン行) は y=56 から始まるので keyhints と
+     縦に並ぶ形で被らない。 */
+  top: calc(28px - 56px);
+  right: 0;
+  visibility: hidden;
+  gap: 3px;
+  align-items: center;
+  font-size: 10px;
+  color: var(--ink-soft);
+}
+.comments:has(:focus-visible) .comments-keyhints,
+.comments:focus-visible .comments-keyhints {
+  visibility: visible;
+}
+.comments-keyhints kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  white-space: nowrap;
 }
 
 /* Resize handle: comments panel 左端に貼り付く 6px 帯の col-resize エリア。
@@ -1034,6 +1100,7 @@ mark.search-hl.search-hl-current {
   margin-bottom: 8px;
   background: var(--paper);
   cursor: pointer;
+  position: relative;
   transition:
     border-color 0.15s ease,
     box-shadow 0.15s ease;
@@ -1042,6 +1109,27 @@ mark.search-hl.search-hl-current {
 .cmt-card.active {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
+}
+/* keyboard focus 候補は page-nav-link と同じ「左辺 accent バー」で示す (全周 accent = 現在地 /
+   左バー accent = 次候補、形状で区別)。active かつ focus 中のカードでは全周ring と inset 左バー
+   を重ねて「現在地に focus がある」を表現する。 */
+.cmt-card:focus {
+  outline: none;
+}
+.cmt-card:focus-visible {
+  outline: none;
+}
+.cmt-card:focus-visible::before {
+  content: '';
+  position: absolute;
+  /* active 時の左辺ライン (box-shadow 1px outer + border 1px = x:-1 〜 x:+1) と重なる位置に置く。
+     focus バーは少し太く (4px) して active と重なった時も focus 表示が見えるようにする。 */
+  left: -1px;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--accent);
 }
 .cmt-quote {
   font-style: normal;

@@ -269,7 +269,7 @@
         <div id="doc"></div>
       </section>
 
-      <aside class="comments">
+      <aside class="comments" tabindex="-1">
         <!-- ドラッグで横幅変更。COMMENTS_MIN_WIDTH (280px) 未満まで縮めると snap で
              closed 状態になる (comments-resize.ts)。aria-orientation / aria-valuenow は
              comments-resize.ts が同期する。 -->
@@ -281,6 +281,12 @@
           aria-label="Resize comments panel"
           aria-controls="cmt-list"
         ></div>
+        <!-- focus 時のみ表示される ↑↓ PgUp/PgDn / h キーヒント (§13)。.doc-pane-keyhints と
+             同じ anchor (height:0 / position:sticky) パターンで、comments panel のスクロールに
+             追従しつつコンテンツのレイアウトに影響を与えない。 -->
+        <div class="comments-keyhints-anchor" aria-hidden="true">
+          <span class="comments-keyhints"> <kbd>↑↓</kbd><kbd>Enter</kbd><kbd>h</kbd>pane </span>
+        </div>
         <div class="comments-header">
           <!-- GitHub の Merge pull request 風 split button。
                隣接した 2 ボタンの border を内側で潰し、caret 側の半透明 border-left で
@@ -407,6 +413,10 @@
             <dd>Focus the active page in the table of contents</dd>
             <dt><kbd>g</kbd></dt>
             <dd>Focus the document pane (then use ↑↓ / PgUp/PgDn to scroll)</dd>
+            <dt><kbd>h</kbd></dt>
+            <dd>
+              Focus the comments panel (↑↓/Home/End to move between cards, Enter to jump to mark)
+            </dd>
             <dt><kbd>Tab</kbd></dt>
             <dd>Move forward through TOC links and other controls</dd>
             <dt><kbd>↑</kbd> / <kbd>↓</kbd></dt>

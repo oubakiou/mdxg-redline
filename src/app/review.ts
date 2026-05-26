@@ -16,8 +16,10 @@ import {
 import {
   activateCommentsMark,
   configureCommentsNavigation,
+  focusActiveOrFirstCommentCard,
   focusCommentMarkAfterNavigate,
   renderComments,
+  wireCommentsKeyboardNav,
 } from './comments'
 import {
   buildReviewExportPayload,
@@ -84,6 +86,11 @@ const focusDocPane = (): void => {
     pane.focus()
   }
 }
+
+// `h` キーで comments panel に navigate する際の focus 先解決。`f` の active page-nav-link
+// 対称で、active な cmt-card → 最初の cmt-card → aside.comments 自身 の優先順で focus を移す
+// (空状態時のヒントへのアクセスを保つため最後段で aside 自身に fall back)。
+// ↑↓ / Home / End によるカード間巡回は wireCommentsKeyboardNav が捌く別経路。
 
 /**
  * loadFromMarkdown / navigateToTarget 双方で使う「現状の state を全 view に流す」共通処理。
@@ -280,6 +287,13 @@ const onCompositeSlugClick = (compositeSlug: string, keyboardActivated: boolean)
 const navigateToComment = (comment: Comment): void => {
   navigateToTarget({ headingSlug: null, pageIndex: comment.pageIndex }, true)
   focusCommentMarkAfterNavigate(comment.id)
+  // navigateToTarget → renderAll で #cmt-list が再構築され、Enter/click 時に focus を持っていた
+  // 旧カードは破棄される。新カードを comment id で引き直して focus を戻すことで、TOC 側の
+  // focusNavigatedLink (§13 [SHOULD]) と同等の「navigate 後にフォーカスが残る」挙動を実現する。
+  const newCard = document.querySelector<HTMLElement>(`.cmt-card[data-id="${comment.id}"]`)
+  if (newCard) {
+    newCard.focus()
+  }
 }
 
 if (!import.meta.vitest) {
@@ -373,11 +387,21 @@ if (!import.meta.vitest) {
     focusDocPane()
     return true
   }
+  const tryHandleFocusCommentsKey = (event: KeyboardEvent): boolean => {
+    if (event.code !== 'KeyH' || !hasNoModifier(event)) {
+      return false
+    }
+    event.preventDefault()
+    focusActiveOrFirstCommentCard()
+    return true
+  }
+  const tryHandlePaneFocusKey = (event: KeyboardEvent): boolean =>
+    tryHandleFocusTOCKey(event) || tryHandleFocusDocKey(event) || tryHandleFocusCommentsKey(event)
   const handleAffordanceKeys = (event: KeyboardEvent): void => {
     if (shouldSkipAffordanceKey(event)) {
       return
     }
-    if (tryHandleFocusTOCKey(event) || tryHandleFocusDocKey(event)) {
+    if (tryHandlePaneFocusKey(event)) {
       return
     }
     if (tryHandleHelpKey(event)) {
@@ -449,6 +473,7 @@ if (!import.meta.vitest) {
   // hashchange より先に即時 navigate して active 状態の反映遅延を回避する。重複 navigation は
   // setActivePageIndex の idempotent ガードで吸収される。
   wirePageNavigation({ onSlugClick: onCompositeSlugClick })
+  wireCommentsKeyboardNav()
 
   // ブラウザの戻る / 進む or 直接 URL 編集経由の hash 変更を反映する。
   // pushHash=false にすることで navigateToTarget 側で hash を再度書き戻さない (無限ループ防止)。

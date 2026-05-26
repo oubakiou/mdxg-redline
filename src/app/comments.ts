@@ -116,11 +116,26 @@ const deleteComment = (comment: Comment): void => {
  * 削除ボタン押下は stopPropagation でカードクリック（フォーカス遷移）と切り分ける必要があり、これがバグの温床になりやすいため明示的にハンドラを分けている。
  */
 const wireCommentCard = (card: HTMLElement, comment: Comment, onDeleted: () => void): void => {
+  card.tabIndex = 0
   card.addEventListener('click', (event): void => {
     const { target } = event
     if (target instanceof HTMLElement && target.dataset.del) {
       return
     }
+    focusCommentCard(card, comment)
+  })
+  card.addEventListener('keydown', (event): void => {
+    if (event.key !== 'Enter') {
+      return
+    }
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+      return
+    }
+    const { target } = event
+    if (target instanceof HTMLElement && target.tagName === 'BUTTON') {
+      return
+    }
+    event.preventDefault()
     focusCommentCard(card, comment)
   })
   const delButton = card.querySelector('[data-del]')
@@ -174,6 +189,131 @@ export const renderComments = (): void => {
   for (const comment of orderedComments(state.comments)) {
     list.appendChild(createCommentCard(comment, renderComments))
   }
+}
+
+const COMMENT_CARD_SELECTOR = '.cmt-card'
+
+type NavDirection = 'up' | 'down' | 'home' | 'end'
+
+const navDirectionFromKey = (key: string): NavDirection | null => {
+  if (key === 'ArrowDown') {
+    return 'down'
+  }
+  if (key === 'ArrowUp') {
+    return 'up'
+  }
+  if (key === 'Home') {
+    return 'home'
+  }
+  if (key === 'End') {
+    return 'end'
+  }
+  return null
+}
+
+const resolveNextCardIndex = (
+  total: number,
+  currentIndex: number,
+  direction: NavDirection
+): number => {
+  if (total === 0) {
+    return -1
+  }
+  if (direction === 'home') {
+    return 0
+  }
+  if (direction === 'end') {
+    return total - 1
+  }
+  let delta = -1
+  if (direction === 'down') {
+    delta = 1
+  }
+  return Math.max(0, Math.min(total - 1, currentIndex + delta))
+}
+
+const queryCommentCards = (root: HTMLElement): readonly HTMLElement[] => [
+  ...root.querySelectorAll<HTMLElement>(COMMENT_CARD_SELECTOR),
+]
+
+interface CommentsKeyDownContext {
+  current: HTMLElement
+  direction: NavDirection
+}
+
+const hasAnyModifier = (event: KeyboardEvent): boolean =>
+  event.metaKey || event.ctrlKey || event.altKey || event.shiftKey
+
+const resolveCurrentCommentCard = (target: EventTarget | null): HTMLElement | null => {
+  if (!(target instanceof HTMLElement)) {
+    return null
+  }
+  return target.closest<HTMLElement>(COMMENT_CARD_SELECTOR)
+}
+
+const resolveCommentsKeyDownContext = (event: KeyboardEvent): CommentsKeyDownContext | null => {
+  if (hasAnyModifier(event)) {
+    return null
+  }
+  const direction = navDirectionFromKey(event.key)
+  if (direction === null) {
+    return null
+  }
+  const current = resolveCurrentCommentCard(event.target)
+  if (current === null) {
+    return null
+  }
+  return { current, direction }
+}
+
+const onCommentsKeyDown = (root: HTMLElement, event: KeyboardEvent): void => {
+  const ctx = resolveCommentsKeyDownContext(event)
+  if (ctx === null) {
+    return
+  }
+  event.preventDefault()
+  const cards = queryCommentCards(root)
+  const next = resolveNextCardIndex(cards.length, cards.indexOf(ctx.current), ctx.direction)
+  const targetCard = cards[next]
+  if (targetCard) {
+    targetCard.focus()
+  }
+}
+
+/**
+ * comments panel 上で ↑↓ / Home / End によりカード間を巡回する keyboard delegate。
+ * page-navigation.ts の onPageNavKeyDown と同じ flat 配列巡回パターン。
+ * Enter は cmt-card 個別 listener が捌くため別経路。
+ */
+export const wireCommentsKeyboardNav = (): void => {
+  const root = document.querySelector<HTMLElement>('aside.comments')
+  if (root === null) {
+    return
+  }
+  root.addEventListener('keydown', (event): void => {
+    onCommentsKeyDown(root, event)
+  })
+}
+
+/**
+ * `h` キー由来で comments panel に navigate する際の focus 先解決。
+ *   - active な cmt-card があればそれに focus (`f` の active page-nav-link 対称)
+ *   - 無ければ最初の cmt-card
+ *   - カードが 1 件も無ければ aside.comments 自身に focus (空状態 hint へのアクセス保持)
+ */
+export const focusActiveOrFirstCommentCard = (): void => {
+  const root = document.querySelector<HTMLElement>('aside.comments')
+  if (root === null) {
+    return
+  }
+  const active = root.querySelector<HTMLElement>('.cmt-card.active')
+  const first = root.querySelector<HTMLElement>(COMMENT_CARD_SELECTOR)
+  const target = active ?? first
+  if (target) {
+    target.focus()
+    return
+  }
+  root.focus()
 }
 
 export const activateCommentsMark = (mark: HTMLElement): void => {
