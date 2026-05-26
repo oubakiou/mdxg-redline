@@ -2,7 +2,7 @@
 // review-request CLI: レビュー依頼用 HTML を生成して標準ブラウザで開くツール。
 // embed-core の純粋な埋め込みロジックに、Node 側の I/O (引数パース / ファイル読み書き /
 // ブラウザ起動) だけを付ける薄い CLI。ビルド後は dist/review-request.mjs として配布される。
-// dist/review.html を同ディレクトリから読み込む。
+// dist/embed-template.html を同ディレクトリから読み込む。
 // 出力ファイル名は docs/DESIGN.md §8 のファイル命名規約に従い、入力 MD の basename と
 // 本文 SHA-256 から自動決定する。利用者は output ファイル名ではなくディレクトリだけ指定できる。
 // 既定では生成した HTML を OS の標準ブラウザで開く。`--no-open` で抑止できる。
@@ -50,7 +50,7 @@ const errorMessage = (error: unknown): string => {
   return String(error)
 }
 
-// review.html は CLI から見て暗黙的な前提依存のため、未生成時は Node 既定の ENOENT より
+// embed-template.html は CLI から見て暗黙的な前提依存のため、未生成時は Node 既定の ENOENT より
 // 親切な案内に差し替える。input.md は利用者が指定したパスなので、
 // 元の ENOENT メッセージのまま返した方が原因が分かりやすい。
 const readReviewHtml = async (path: string): Promise<string> => {
@@ -59,7 +59,7 @@ const readReviewHtml = async (path: string): Promise<string> => {
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       throw new Error(
-        `${path} が見つかりません。先に \`npm run build\` を実行して dist/review.html を生成してください。`,
+        `${path} が見つかりません。先に \`npm run build\` を実行して dist/embed-template.html を生成してください。`,
         { cause: error }
       )
     }
@@ -80,7 +80,7 @@ const prepareEmbed = async (args: RunArgs): Promise<EmbedContext> => {
   const scriptDir = dirname(fileURLToPath(import.meta.url))
   const [input, reviewHtml] = await Promise.all([
     resolveInput(args.inputPath, args.documentName),
-    readReviewHtml(resolve(scriptDir, 'review.html')),
+    readReviewHtml(resolve(scriptDir, 'embed-template.html')),
   ])
   const docHash = await computeDocHash(input.markdown)
   const mdFileName = sanitizeMdFileName(stripMarkdownExt(input.docName))

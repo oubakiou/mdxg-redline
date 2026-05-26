@@ -5,7 +5,7 @@ import {
   loadGrammar,
 } from './scripts/lib/shiki-meta.mjs'
 import { dirname, resolve } from 'node:path'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 // fmt が `type Plugin` を先頭に並べ替える一方 lint の sort-imports は
 // identifier 文字列順 (defineConfig が先) を求める。両者の合意点が無いため当該行のみ無効化する。
 // eslint-disable-next-line sort-imports
@@ -56,9 +56,9 @@ const emitGrammarJsonFiles = async (): Promise<void> => {
 // - 前者は CLI / browser 双方がコンパイル時に import する固定マップ (commit 対象)
 // - 後者は CLI が markdown スキャン結果に応じて配布 HTML に inject する素材 (.gitignore 対象)
 //
-// closeBundle まで grammar JSON を遅延させる理由: viteSingleFile が dist/review.html を
-// inline 化する完了タイミングを待つことで、emptyOutDir: false でも並走による
-// 書き出し競合を避けられる。
+// closeBundle まで grammar JSON を遅延させる理由: viteSingleFile が中間出力
+// (dist/review.html、後段で embed-template.html / standalone.html に分岐) を inline 化する
+// 完了タイミングを待つことで、emptyOutDir: false でも並走による書き出し競合を避けられる。
 const shikiAssetsPlugin = (): Plugin => ({
   apply: 'build',
   buildStart: regenerateAliasesTs,
@@ -66,9 +66,60 @@ const shikiAssetsPlugin = (): Plugin => ({
   name: 'mdxg-shiki-assets',
 })
 
+// embed.ts の EMBEDDED_SHIKI_LANGS_RE / rewriteEmbeddedShikiLangs と同じパターン。
+// Node loader が src/core/embed.ts を直接 import できないため、build chain 専用に inline する。
+// CLI と shape を揃えるため `<` の Unicode escape (`<`) も同じ書きぶりで行う。
+const EMBEDDED_SHIKI_LANGS_RE_BUILD =
+  /(<script\b(?=[^>]*\bid="embedded-shiki-langs")(?=[^>]*\btype="application\/json")[^>]*>)([\s\S]*?)(<\/script>)/i
+
+const inlineGrammarsIntoHtml = (html: string, grammars: Record<string, unknown>): string => {
+  const match = EMBEDDED_SHIKI_LANGS_RE_BUILD.exec(html)
+  if (!match) {
+    throw new Error(
+      'review.html に id="embedded-shiki-langs" の <script> タグが見つかりません (build plugin)'
+    )
+  }
+  const [fullMatch, openingTag, , closingTag] = match
+  const payload = JSON.stringify(grammars).replace(/</g, String.raw`<`)
+  const replaced = `${openingTag}${payload}${closingTag}`
+  return html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length)
+}
+
+// vite build 出力 (`dist/review.html`) を 2 ファイルに分岐させる plugin (DESIGN.md §5.a)。
+//   1. dist/embed-template.html  : review-request CLI が読み込んでテンプレートとして rewrite する
+//                                  (grammar 注入なしの最小サイズ、現行 review.html 相当)
+//   2. dist/standalone.html      : 単独 Open file 用、27 言語の grammar を事前 inline 済み
+// shikiAssetsPlugin の closeBundle が dist/shiki-langs/*.json を emit した後に走らせるため、
+// plugins 配列でこの plugin を後ろに置く (closeBundle は declaration 順)。
+const splitOutputsPlugin = (): Plugin => ({
+  apply: 'build',
+  closeBundle: async (): Promise<void> => {
+    const distDir = resolve(ROOT_DIR, 'dist')
+    const intermediatePath = resolve(distDir, 'review.html')
+    const embedTemplatePath = resolve(distDir, 'embed-template.html')
+    const standalonePath = resolve(distDir, 'standalone.html')
+    const html = await readFile(intermediatePath, 'utf8')
+    const canonicals = canonicalizeSpec()
+    const grammars: Record<string, unknown> = {}
+    await Promise.all(
+      canonicals.map(async (lang: string): Promise<void> => {
+        const grammarJson = await readFile(resolve(distDir, 'shiki-langs', `${lang}.json`), 'utf8')
+        grammars[lang] = JSON.parse(grammarJson) as unknown
+      })
+    )
+    const standaloneHtml = inlineGrammarsIntoHtml(html, grammars)
+    await Promise.all([
+      writeFile(standalonePath, standaloneHtml, 'utf8'),
+      rename(intermediatePath, embedTemplatePath),
+    ])
+  },
+  name: 'mdxg-split-outputs',
+})
+
 // `root: 'src'` でソース一式 (review.html + review.ts + review.css) を src/ 配下に集約。
-// outDir は root からの相対なので '../dist' を指定し、生成物を repo ルート直下の
-// dist/review.html に置く。`files` field 経由で npm publish 対象になる。
+// outDir は root からの相対なので '../dist' を指定し、中間出力を repo ルート直下の
+// dist/review.html に置く (splitOutputsPlugin が embed-template.html / standalone.html に分岐)。
+// `files` field 経由で npm publish 対象になる。
 export default defineConfig({
   build: {
     emptyOutDir: false,
@@ -112,7 +163,7 @@ export default defineConfig({
       'unicorn/no-null': 'off',
     },
   },
-  plugins: [viteSingleFile(), shikiAssetsPlugin()],
+  plugins: [viteSingleFile(), shikiAssetsPlugin(), splitOutputsPlugin()],
   root: 'src',
   test: {
     includeSource: ['**/*.ts'],

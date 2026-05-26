@@ -9,7 +9,7 @@
 
 MDXG Redline は、LLM エージェントが人間レビュワーから「長文 markdown に対するフィードバック」を **散文の感想ではなく位置情報付きの構造化 JSON** として受け取るためのブラウザツールです。LLM エージェントと人間レビュワーの間に立ち、「markdown を貼って、散文のフィードバックを受け取る」という曖昧なループを、**機械可読なフィードバック成果物** に置き換えます。
 
-エンドユーザーには **単一 HTML ファイル**（`review.html`）を配布するだけで動きます。サーバー不要・追加インストール不要・ LLM コンテンツ起点での外部通信ゼロ。
+エンドユーザーには **単一 HTML ファイル**（`standalone.html`）を配布するだけで動きます。サーバー不要・追加インストール不要・ LLM コンテンツ起点での外部通信ゼロ。
 
 ## 特徴
 
@@ -26,14 +26,16 @@ MDXG Redline は、LLM エージェントが人間レビュワーから「長文
 
 ### 入手
 
-以下のいずれかで `review.html` を入手します:
+以下のいずれかで `standalone.html` を入手します:
 
-- **ダウンロード**: GitHub Releases から `review.html` を直接ダウンロード（インストール不要）
-- **npm**: `npm install mdxg-redline` で取得し `node_modules/mdxg-redline/dist/review.html` を使用
+- **ダウンロード**: GitHub Releases から `standalone.html` を直接ダウンロード（インストール不要）
+- **npm**: `npm install mdxg-redline` で取得し `node_modules/mdxg-redline/dist/standalone.html` を使用
+
+同梱の `dist/embed-template.html` は **`mdxg-redline` CLI が rewrite 用テンプレートとして読み込む素材専用** で、エンドユーザーが直接開く用途は想定していません（grammar を inline していないため全コードブロックが plain text になります）。単独利用では必ず `standalone.html` を開いてください。
 
 ### 最短ルート
 
-`review.html` をブラウザで開き、`Open file` で markdown を読み込み、選択 → `＋ Comment` でコメント → `Comments ▾ → Copy as JSON` で書き戻し。
+`standalone.html` をブラウザで開き、`Open file` で markdown を読み込み、選択 → `＋ Comment` でコメント → `Comments ▾ → Copy as JSON` で書き戻し。
 
 ### `npx mdxg-redline` でレビュー依頼用 HTML を生成して開く
 
@@ -99,7 +101,7 @@ sequenceDiagram
 1. エージェントが `npx mdxg-redline <input.md> <folder>` で `<mdFileName>-<docHash>-review.html` をワークスペースフォルダに生成する（`mdFileName` は元 MD basename から `.md` / `.markdown` 拡張子を除いたもの、`docHash` は本文 SHA-256 の先頭 16 桁 hex）
 2. CLI が標準ブラウザで HTML を自動起動。レビュワーがコメントを記入する
 3. コメントパネルの `Write feedback.json` ボタン（split button）をクリック。初回は出力先フォルダを picker で選択し、IndexedDB に永続化。2 回目以降は picker 無しで同じフォルダに書き出される
-4. 同じフォルダに `<mdFileName>-<docHash>-feedback.json` が書き出される（元 review.html と同じ `<mdFileName>` / `<docHash>` を共有するため対応関係が機械的に決まる）
+4. 同じフォルダに `<mdFileName>-<docHash>-feedback.json` が書き出される（元レビュー HTML と同じ `<mdFileName>` / `<docHash>` を共有するため対応関係が機械的に決まる）
 5. エージェントが対応する feedback.json を読み、改訂版を `npx mdxg-redline <input2.md> <folder>` で次ラウンドの HTML を生成 → ループ継続
 
 `Write feedback.json` は File System Access API を使うため Chromium 系（Chrome / Edge / Arc / Brave / Opera）のみ対応。Safari / Firefox では代替として `Comments ▾ → Export as JSON` でダウンロード、または `Copy as JSON` でクリップボード経由のフィードバック授受になる。
@@ -161,9 +163,9 @@ sequenceDiagram
 
 ```bash
 npm ci
-npm run build                # dist/review.html (配布用 HTML) と dist/review-request.mjs (レビュー依頼 CLI) を生成
+npm run build                # dist/standalone.html / dist/embed-template.html / dist/review-request.mjs を生成
 npm run build:review-request # = vp build --config vite.review-request.config.ts  review-request CLI のみ差分ビルド
-npm run build:watch          # = vp build --watch  ファイル変更で review.html を自動再ビルド
+npm run build:watch          # = vp build --watch  ファイル変更で HTML 出力を自動再ビルド
 npm run dev                  # = vp dev           HMR 付き dev サーバー
 npm test                     # = vp test          in-source tests を実行
 ```

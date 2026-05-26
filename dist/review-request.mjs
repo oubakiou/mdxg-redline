@@ -563,7 +563,7 @@ var formatLoadedStatus = (docName, docHash) => `${docName} (${docHash}) · loade
 */
 var rewriteInitialStatus = (reviewHtml, statusText) => {
 	const match = STATUS_SPAN_RE.exec(reviewHtml);
-	if (!match) throw new Error("review.html に id=\"status\" の <span> タグが見つかりません");
+	if (!match) throw new Error("template HTML に id=\"status\" の <span> タグが見つかりません");
 	const [fullMatch, openingTag, , closingTag] = match;
 	const replaced = `${openingTag}${escapeHtml(statusText)}${closingTag}`;
 	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
@@ -576,7 +576,7 @@ var rewriteInitialStatus = (reviewHtml, statusText) => {
 var upsertEmbeddedMdMeta = (reviewHtml) => {
 	const cleaned = reviewHtml.replace(EMBEDDED_MD_META_RE, "");
 	const headMatch = HEAD_OPEN_RE.exec(cleaned);
-	if (!headMatch) throw new Error("review.html に <head> タグが見つかりません");
+	if (!headMatch) throw new Error("template HTML に <head> タグが見つかりません");
 	const insertPos = headMatch.index + headMatch[0].length;
 	return cleaned.slice(0, insertPos) + "\n    <meta name=\"mdxg-redline:embedded-md\" content=\"1\" />" + cleaned.slice(insertPos);
 };
@@ -612,7 +612,7 @@ var replaceDataPageNavWidth = (openingTag, escapedValue) => {
 */
 var upsertHtmlDataTheme = (reviewHtml, themeHint) => {
 	const match = HTML_TAG_RE.exec(reviewHtml);
-	if (!match) throw new Error("review.html に <html> タグが見つかりません");
+	if (!match) throw new Error("template HTML に <html> タグが見つかりません");
 	const [tag] = match;
 	const newTag = replaceDataTheme(tag, escapeHtml(themeHint));
 	return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length);
@@ -625,7 +625,7 @@ var upsertHtmlDataTheme = (reviewHtml, themeHint) => {
 */
 var upsertHtmlDataCommentsWidth = (reviewHtml, value) => {
 	const match = HTML_TAG_RE.exec(reviewHtml);
-	if (!match) throw new Error("review.html に <html> タグが見つかりません");
+	if (!match) throw new Error("template HTML に <html> タグが見つかりません");
 	const [tag] = match;
 	const newTag = replaceDataCommentsWidth(tag, escapeHtml(String(value)));
 	return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length);
@@ -636,7 +636,7 @@ var upsertHtmlDataCommentsWidth = (reviewHtml, value) => {
 */
 var upsertHtmlDataPageNavWidth = (reviewHtml, value) => {
 	const match = HTML_TAG_RE.exec(reviewHtml);
-	if (!match) throw new Error("review.html に <html> タグが見つかりません");
+	if (!match) throw new Error("template HTML に <html> タグが見つかりません");
 	const [tag] = match;
 	const newTag = replaceDataPageNavWidth(tag, escapeHtml(String(value)));
 	return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length);
@@ -653,7 +653,7 @@ var replaceDataToolbarOpenFile = (openingTag, value) => {
 */
 var upsertHtmlDataToolbarOpenFile = (reviewHtml, value) => {
 	const match = HTML_TAG_RE.exec(reviewHtml);
-	if (!match) throw new Error("review.html に <html> タグが見つかりません");
+	if (!match) throw new Error("template HTML に <html> タグが見つかりません");
 	const [tag] = match;
 	const newTag = replaceDataToolbarOpenFile(tag, escapeHtml(value));
 	return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length);
@@ -674,19 +674,19 @@ var rewriteTitle = (reviewHtml, newTitle) => {
 /**
 * `<script id="embedded-shiki-langs">` の中身を grammars の JSON で書き換える。
 * - `grammars` が空オブジェクト `{}` でも JSON `{}` が書き込まれる (browser は空 langs として扱う)
-* - 該当 `<script>` タグが review.html に無ければ Error を投げる (呼び出し側が CLI エラーに変換)
+* - 該当 `<script>` タグが template HTML に無ければ Error を投げる (呼び出し側が CLI エラーに変換)
 *
 * embedded-md のように属性経由の上書きはなく、コンテンツ置換のみ。
 */
 var rewriteEmbeddedShikiLangs = (reviewHtml, grammars) => {
 	const match = EMBEDDED_SHIKI_LANGS_RE.exec(reviewHtml);
-	if (!match) throw new Error("review.html に id=\"embedded-shiki-langs\" の <script> タグが見つかりません");
+	if (!match) throw new Error("template HTML に id=\"embedded-shiki-langs\" の <script> タグが見つかりません");
 	const [fullMatch, openingTag, , closingTag] = match;
 	const replaced = `${openingTag}${encodeEmbeddedShikiLangs(grammars)}${closingTag}`;
 	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
 };
 /**
-* review.html の文字列を受け取り、`<script id="embedded-md">` の中身と data-name 属性を
+* template HTML の文字列を受け取り、`<script id="embedded-md">` の中身と data-name 属性を
 * 書き換えた新しい HTML 文字列を返す。元文字列は変更しない。
 * embedded-md タグが見つからない場合は Error を投げる（呼び出し側が CLI エラーに変換）。
 *
@@ -694,7 +694,7 @@ var rewriteEmbeddedShikiLangs = (reviewHtml, grammars) => {
 */
 var rewriteReviewHtml = (reviewHtml, markdown, docName) => {
 	const match = EMBEDDED_MD_RE.exec(reviewHtml);
-	if (!match) throw new Error("review.html に id=\"embedded-md\" の <script> タグが見つかりません");
+	if (!match) throw new Error("template HTML に id=\"embedded-md\" の <script> タグが見つかりません");
 	const [fullMatch, openingTag, , closingTag] = match;
 	const replaced = `${replaceDataName(openingTag, escapeHtml(docName))}${encodeEmbeddedMarkdown(markdown)}${closingTag}`;
 	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
@@ -863,13 +863,13 @@ var readReviewHtml = async (path) => {
 	try {
 		return await readFile(path, "utf8");
 	} catch (error) {
-		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(`${path} が見つかりません。先に \`npm run build\` を実行して dist/review.html を生成してください。`, { cause: error });
+		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(`${path} が見つかりません。先に \`npm run build\` を実行して dist/embed-template.html を生成してください。`, { cause: error });
 		throw error;
 	}
 };
 var prepareEmbed = async (args) => {
 	const scriptDir = dirname(fileURLToPath(import.meta.url));
-	const [input, reviewHtml] = await Promise.all([resolveInput(args.inputPath, args.documentName), readReviewHtml(resolve(scriptDir, "review.html"))]);
+	const [input, reviewHtml] = await Promise.all([resolveInput(args.inputPath, args.documentName), readReviewHtml(resolve(scriptDir, "embed-template.html"))]);
 	const docHash = await computeDocHash(input.markdown);
 	const mdFileName = sanitizeMdFileName(stripMarkdownExt(input.docName));
 	const outputPath = resolve(args.outputDir ?? input.defaultOutputDir, deriveReviewHtmlName(mdFileName, docHash));

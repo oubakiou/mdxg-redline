@@ -9,7 +9,7 @@
 
 MDXG Redline is a browser tool that lets an LLM agent receive feedback on long-form markdown from a human reviewer as **location-aware structured JSON instead of free-form prose**. Sitting between LLM agents and human reviewers, it replaces the ambiguous "paste markdown, receive prose feedback" loop with a **machine-readable feedback artifact**.
 
-End users only need a **single HTML file** (`review.html`). No server, no extra installation, zero outbound traffic from LLM content by default.
+End users only need a **single HTML file** (`standalone.html`). No server, no extra installation, zero outbound traffic from LLM content by default.
 
 ## Features
 
@@ -24,16 +24,18 @@ End users only need a **single HTML file** (`review.html`). No server, no extra 
 
 ## Usage
 
-### Get `review.html`
+### Get `standalone.html`
 
-Obtain `review.html` via either:
+Obtain `standalone.html` via either:
 
-- **Download**: Grab `review.html` directly from GitHub Releases (no install required)
-- **npm**: `npm install mdxg-redline` and use `node_modules/mdxg-redline/dist/review.html`
+- **Download**: Grab `standalone.html` directly from GitHub Releases (no install required)
+- **npm**: `npm install mdxg-redline` and use `node_modules/mdxg-redline/dist/standalone.html`
+
+The companion `dist/embed-template.html` is **only** used by the `mdxg-redline` CLI as a rewrite template — end users do not need to open it directly (it has no syntax highlighting grammars inlined, by design, so all code blocks would render as plain text). Always open `standalone.html` for single-file usage.
 
 ### Quickest path
 
-Open `review.html` in your browser, load markdown via `Open file`, select text → `＋ Comment` to leave a comment, then `Comments ▾ → Copy as JSON` to hand it back.
+Open `standalone.html` in your browser, load markdown via `Open file`, select text → `＋ Comment` to leave a comment, then `Comments ▾ → Copy as JSON` to hand it back.
 
 ### Generate and open a review request with `npx mdxg-redline`
 
@@ -99,7 +101,7 @@ sequenceDiagram
 1. The agent runs `npx mdxg-redline <input.md> <folder>` to generate `<mdFileName>-<docHash>-review.html` in a shared folder (`mdFileName` is the basename with the `.md` / `.markdown` extension stripped; `docHash` is the first 16 hex chars of SHA-256 over the markdown body)
 2. The CLI launches the default browser with that HTML. The reviewer writes comments
 3. The reviewer clicks `Write feedback.json` (split button in the comments panel). On first use, a picker prompts for the output folder and the handle is persisted to IndexedDB; subsequent clicks write to the same folder without re-prompting
-4. `<mdFileName>-<docHash>-feedback.json` is written into the same folder (sharing the same `<mdFileName>` / `<docHash>` as the source `review.html`, so pairs can be matched mechanically)
+4. `<mdFileName>-<docHash>-feedback.json` is written into the same folder (sharing the same `<mdFileName>` / `<docHash>` as the source review HTML, so pairs can be matched mechanically)
 5. The agent reads the matching feedback.json, prepares a revised markdown, and starts the next round with `npx mdxg-redline <input2.md> <folder>` — repeat
 
 `Write feedback.json` relies on the File System Access API, so only Chromium-based browsers (Chrome / Edge / Arc / Brave / Opera) support it. On Safari / Firefox, fall back to `Comments ▾ → Export as JSON` (download) or `Copy as JSON` (clipboard).
@@ -161,9 +163,9 @@ The build tool is [Vite+ (vp)](https://viteplus.dev/), installed via npm (`vite-
 
 ```bash
 npm ci
-npm run build                  # Generates both dist/review.html (distribution HTML) and dist/review-request.mjs (review-request CLI)
+npm run build                  # Generates dist/standalone.html, dist/embed-template.html, and dist/review-request.mjs
 npm run build:review-request   # = vp build --config vite.review-request.config.ts  rebuilds the review-request CLI only
-npm run build:watch # = vp build --watch  rebuilds review.html on file changes
+npm run build:watch # = vp build --watch  rebuilds the HTML outputs on file changes
 npm run dev         # = vp dev           dev server with HMR
 npm test            # = vp test          runs in-source tests
 ```

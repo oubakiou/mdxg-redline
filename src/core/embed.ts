@@ -1,4 +1,5 @@
-// review.html の <script id="embedded-md"> に markdown を埋め込むための pure logic。
+// template HTML (dist/embed-template.html / dist/standalone.html) の <script id="embedded-md"> に
+// markdown を埋め込むための pure logic。
 // Node CLI からも、将来のブラウザ側 UI からも使えるよう、I/O や Node 専用 API は持たない。
 // `crypto.subtle` は Node 20+ / モダンブラウザ双方で globalThis.crypto として利用可能。
 
@@ -108,7 +109,7 @@ export const formatLoadedStatus = (docName: string, docHash: string): string =>
 export const rewriteInitialStatus = (reviewHtml: string, statusText: string): string => {
   const match = STATUS_SPAN_RE.exec(reviewHtml)
   if (!match) {
-    throw new Error('review.html に id="status" の <span> タグが見つかりません')
+    throw new Error('template HTML に id="status" の <span> タグが見つかりません')
   }
   const [fullMatch, openingTag, , closingTag] = match
   const replaced = `${openingTag}${escapeHtml(statusText)}${closingTag}`
@@ -126,7 +127,7 @@ export const upsertEmbeddedMdMeta = (reviewHtml: string): string => {
   const cleaned = reviewHtml.replace(EMBEDDED_MD_META_RE, '')
   const headMatch = HEAD_OPEN_RE.exec(cleaned)
   if (!headMatch) {
-    throw new Error('review.html に <head> タグが見つかりません')
+    throw new Error('template HTML に <head> タグが見つかりません')
   }
   const insertPos = headMatch.index + headMatch[0].length
   const meta = '\n    <meta name="mdxg-redline:embedded-md" content="1" />'
@@ -187,7 +188,7 @@ const replaceDataPageNavWidth = (openingTag: string, escapedValue: string): stri
 export const upsertHtmlDataTheme = (reviewHtml: string, themeHint: string): string => {
   const match = HTML_TAG_RE.exec(reviewHtml)
   if (!match) {
-    throw new Error('review.html に <html> タグが見つかりません')
+    throw new Error('template HTML に <html> タグが見つかりません')
   }
   const [tag] = match
   const newTag = replaceDataTheme(tag, escapeHtml(themeHint))
@@ -203,7 +204,7 @@ export const upsertHtmlDataTheme = (reviewHtml: string, themeHint: string): stri
 export const upsertHtmlDataCommentsWidth = (reviewHtml: string, value: number): string => {
   const match = HTML_TAG_RE.exec(reviewHtml)
   if (!match) {
-    throw new Error('review.html に <html> タグが見つかりません')
+    throw new Error('template HTML に <html> タグが見つかりません')
   }
   const [tag] = match
   const newTag = replaceDataCommentsWidth(tag, escapeHtml(String(value)))
@@ -217,7 +218,7 @@ export const upsertHtmlDataCommentsWidth = (reviewHtml: string, value: number): 
 export const upsertHtmlDataPageNavWidth = (reviewHtml: string, value: number): string => {
   const match = HTML_TAG_RE.exec(reviewHtml)
   if (!match) {
-    throw new Error('review.html に <html> タグが見つかりません')
+    throw new Error('template HTML に <html> タグが見つかりません')
   }
   const [tag] = match
   const newTag = replaceDataPageNavWidth(tag, escapeHtml(String(value)))
@@ -240,7 +241,7 @@ const replaceDataToolbarOpenFile = (openingTag: string, value: string): string =
 export const upsertHtmlDataToolbarOpenFile = (reviewHtml: string, value: 'off'): string => {
   const match = HTML_TAG_RE.exec(reviewHtml)
   if (!match) {
-    throw new Error('review.html に <html> タグが見つかりません')
+    throw new Error('template HTML に <html> タグが見つかりません')
   }
   const [tag] = match
   const newTag = replaceDataToolbarOpenFile(tag, escapeHtml(value))
@@ -268,7 +269,7 @@ export const rewriteTitle = (reviewHtml: string, newTitle: string): string => {
 /**
  * `<script id="embedded-shiki-langs">` の中身を grammars の JSON で書き換える。
  * - `grammars` が空オブジェクト `{}` でも JSON `{}` が書き込まれる (browser は空 langs として扱う)
- * - 該当 `<script>` タグが review.html に無ければ Error を投げる (呼び出し側が CLI エラーに変換)
+ * - 該当 `<script>` タグが template HTML に無ければ Error を投げる (呼び出し側が CLI エラーに変換)
  *
  * embedded-md のように属性経由の上書きはなく、コンテンツ置換のみ。
  */
@@ -278,7 +279,7 @@ export const rewriteEmbeddedShikiLangs = (
 ): string => {
   const match = EMBEDDED_SHIKI_LANGS_RE.exec(reviewHtml)
   if (!match) {
-    throw new Error('review.html に id="embedded-shiki-langs" の <script> タグが見つかりません')
+    throw new Error('template HTML に id="embedded-shiki-langs" の <script> タグが見つかりません')
   }
   const [fullMatch, openingTag, , closingTag] = match
   const replaced = `${openingTag}${encodeEmbeddedShikiLangs(grammars)}${closingTag}`
@@ -288,7 +289,7 @@ export const rewriteEmbeddedShikiLangs = (
 }
 
 /**
- * review.html の文字列を受け取り、`<script id="embedded-md">` の中身と data-name 属性を
+ * template HTML の文字列を受け取り、`<script id="embedded-md">` の中身と data-name 属性を
  * 書き換えた新しい HTML 文字列を返す。元文字列は変更しない。
  * embedded-md タグが見つからない場合は Error を投げる（呼び出し側が CLI エラーに変換）。
  *
@@ -301,7 +302,7 @@ export const rewriteReviewHtml = (
 ): string => {
   const match = EMBEDDED_MD_RE.exec(reviewHtml)
   if (!match) {
-    throw new Error('review.html に id="embedded-md" の <script> タグが見つかりません')
+    throw new Error('template HTML に id="embedded-md" の <script> タグが見つかりません')
   }
 
   const [fullMatch, openingTag, , closingTag] = match

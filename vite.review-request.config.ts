@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite-plus'
 
 // src/review-request.ts (Node CLI) を dist/review-request.mjs にバンドルする専用設定。
-// vite.config.ts (review.html 用) と並走させるため、別 config として分離している。
+// vite.config.ts (embed-template.html / standalone.html 用) と並走させるため、別 config として分離している。
 // Node 組み込みモジュールは external にして、自前コード (embed-core.ts) だけを 1 つの ESM に統合する。
 // SSR ビルドにすることで Node ターゲットの解決と top-level side effect の保持が両立する。
 export default defineConfig({
