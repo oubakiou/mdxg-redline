@@ -152,7 +152,7 @@
           class="btn btn-ghost tooltipped"
           id="btn-search"
           aria-label="Search the document"
-          data-tooltip="Search (/)"
+          data-tooltip="Search (f)"
         >
           <span aria-hidden="true">⌕</span>
         </button>
@@ -160,7 +160,7 @@
           class="btn btn-ghost tooltipped"
           id="btn-help"
           aria-label="Show keyboard shortcuts"
-          data-tooltip="Keyboard shortcuts (?)"
+          data-tooltip="Keyboard shortcuts (h)"
         >
           ?
         </button>
@@ -241,21 +241,22 @@
              移動できることを伝える。Help (?) ボタンは toolbar 側に配置。 -->
         <header class="page-nav-header">
           <h2 class="page-nav-title">Pages</h2>
-          <span class="page-nav-keyhints" aria-hidden="true"> <kbd>↑↓</kbd><kbd>Enter</kbd> </span>
+          <span class="page-nav-keyhints" aria-hidden="true">
+            <kbd>a</kbd><kbd>w</kbd><kbd>s</kbd><kbd>d</kbd> / <kbd>e</kbd>
+          </span>
         </header>
         <div id="page-nav-list"></div>
       </aside>
 
       <section class="doc-pane" tabindex="-1">
-        <!-- focus 時のみ表示される ↑↓ PgUp/PgDn / f キーヒント (§13)。.page-nav-keyhints と
-             対称な :has(:focus-visible) で keyboard focus 起因のときだけ visible にする。
-             `g` キーで section が focus を受けるため (tabindex="-1")、:has(:focus-visible) は
-             section 自身の focus も拾える。
+        <!-- focus 時のみ表示される WASD キーヒント (§13)。.page-nav-keyhints と対称な
+             :focus-visible で keyboard focus 起因のときだけ visible にする。
+             section は tabindex="-1" で a/d 経由で focus を受ける。
              外側 .doc-pane-keyhints-anchor は height:0 / position:sticky の wrapper で、
              doc-pane のスクロールに追従しつつコンテンツのレイアウトに影響を与えない。
              内側 span は absolute で wrapper 上端に貼り付く。 -->
         <div class="doc-pane-keyhints-anchor" aria-hidden="true">
-          <span class="doc-pane-keyhints"> <kbd>↑↓</kbd><kbd>PgUp/PgDn</kbd><kbd>f</kbd>nav </span>
+          <span class="doc-pane-keyhints"> <kbd>a</kbd><kbd>w</kbd><kbd>s</kbd><kbd>d</kbd> </span>
         </div>
         <div id="doc-wrap">
           <!-- 初期表示の素の空状態。手元の markdown を 1 ファイル単発で見るユースケース向け。
@@ -285,7 +286,9 @@
              同じ anchor (height:0 / position:sticky) パターンで、comments panel のスクロールに
              追従しつつコンテンツのレイアウトに影響を与えない。 -->
         <div class="comments-keyhints-anchor" aria-hidden="true">
-          <span class="comments-keyhints"> <kbd>↑↓</kbd><kbd>Enter</kbd><kbd>h</kbd>pane </span>
+          <span class="comments-keyhints">
+            <kbd>a</kbd><kbd>w</kbd><kbd>s</kbd><kbd>d</kbd> / <kbd>e</kbd>
+          </span>
         </div>
         <div class="comments-header">
           <!-- GitHub の Merge pull request 風 split button。
@@ -409,28 +412,24 @@
         </header>
         <div class="modal-body">
           <dl class="help-shortcuts">
+            <dt><kbd>a</kbd> / <kbd>d</kbd></dt>
+            <dd>Move focus to the pane on the left / right (TOC ↔ doc ↔ comments)</dd>
+            <dt><kbd>w</kbd> / <kbd>s</kbd></dt>
+            <dd>Move focus up / down within the current pane (line scroll in doc)</dd>
+            <dt><kbd>e</kbd></dt>
+            <dd>Activate the focused item (same as Enter / click)</dd>
             <dt><kbd>f</kbd></dt>
-            <dd>Focus the active page in the table of contents</dd>
-            <dt><kbd>g</kbd></dt>
-            <dd>Focus the document pane (then use ↑↓ / PgUp/PgDn to scroll)</dd>
+            <dd>Open search</dd>
             <dt><kbd>h</kbd></dt>
-            <dd>
-              Focus the comments panel (↑↓/Home/End to move between cards, Enter to jump to mark)
-            </dd>
-            <dt><kbd>Tab</kbd></dt>
-            <dd>Move forward through TOC links and other controls</dd>
+            <dd>Show this help</dd>
             <dt><kbd>↑</kbd> / <kbd>↓</kbd></dt>
-            <dd>Move between TOC entries</dd>
+            <dd>Move within TOC / comments (same as w / s)</dd>
             <dt><kbd>Home</kbd> / <kbd>End</kbd></dt>
             <dd>Jump to first / last TOC entry</dd>
+            <dt><kbd>Tab</kbd></dt>
+            <dd>Move forward through TOC links and other controls</dd>
             <dt><kbd>Enter</kbd></dt>
-            <dd>Navigate to the focused entry</dd>
-            <dt><kbd>/</kbd></dt>
-            <dd>Open search</dd>
-            <dt><kbd>Enter</kbd> / <kbd>⇧</kbd><kbd>Enter</kbd></dt>
-            <dd>Next / previous search match (while search is open)</dd>
-            <dt><kbd>?</kbd></dt>
-            <dd>Show this help</dd>
+            <dd>Activate the focused entry (or Enter / Shift+Enter for next/prev search match)</dd>
             <dt><kbd>Esc</kbd></dt>
             <dd>Close any open modal, menu, or search</dd>
           </dl>

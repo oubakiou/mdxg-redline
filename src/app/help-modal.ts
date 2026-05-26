@@ -111,7 +111,7 @@ if (import.meta.vitest) {
 
   // help modal の HTML 文言 (src/review.html) と review.ts 側のキーバインド実装が
   // ずれないよう、HTML 内に期待のキーが残っているかを文字列マッチで verify する。
-  // 将来 `f` / `g` / `h` を別キーに変えたら / `?` を変えたら、ここが落ちて気付ける保険 (§13)。
+  // 将来 WASD ベースのマップを変えたら、ここが落ちて気付ける保険 (§13)。
   // 完全な constants 一元化はコスト高なので、最小限の integration test に留める。
   const moduleDir = path.dirname(url.fileURLToPath(import.meta.url))
   const reviewHtmlPath = path.resolve(moduleDir, '..', 'review.html')
@@ -122,11 +122,13 @@ if (import.meta.vitest) {
   // データ駆動でキー名の存在をチェックすることで、describe / it の数を抑えつつ
   // 将来のキー追加にも 1 行で対応できる。
   const expectedKbdKeys: readonly string[] = [
+    'a',
+    'd',
+    'w',
+    's',
+    'e',
     'f',
-    'g',
     'h',
-    '?',
-    '/',
     'Esc',
     'Tab',
     'Enter',

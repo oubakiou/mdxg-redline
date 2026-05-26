@@ -77,9 +77,46 @@ const hasNoModifier = (event: KeyboardEvent): boolean =>
 const shouldSkipAffordanceKey = (event: KeyboardEvent): boolean =>
   event.repeat || isEditableTarget(event.target)
 
-// `g` キーで doc-pane 自身に focus を移し、↑↓ / PgUp/PgDn でスクロール可能な状態に戻す。
-// .doc-pane は tabindex="-1" でプログラム focus 可能、focus 中は .doc-pane-keyhints が
-// visible になる (CSS の :has(:focus-visible) / :focus-visible 経由)。
+// 左手のみで完結する WASD ベースのキーマップ (§13)。
+//   a/d = 隣接 pane へ focus 移動 (TOC ↔ doc-pane ↔ comments)
+//   w/s = pane 内アイテム間で focus 上下 (synthetic ArrowUp/Down で既存 handler に委譲)
+//         doc-pane では scrollBy ±40px で arrow key と同等の line scroll
+//   r   = focus 中のアイテムを activate (.click() 発火)
+//   f / h = search / help 起動
+// すべて単独キーで、ブラウザ native shortcut (Cmd+F 等) は触らない。
+// 何も focus してない (body) 状態で a / d を押すと TOC に着地する (初動の左手 fallback)。
+
+type PaneId = 'comments' | 'doc' | 'toc'
+
+const detectCurrentPane = (): PaneId | null => {
+  const active = document.activeElement
+  if (!(active instanceof Element)) {
+    return null
+  }
+  if (active.closest('.page-nav')) {
+    return 'toc'
+  }
+  if (active.closest('aside.comments')) {
+    return 'comments'
+  }
+  if (active.closest('.doc-pane')) {
+    return 'doc'
+  }
+  return null
+}
+
+const focusTocPane = (): void => {
+  const activePage = state.pages[state.activePageIndex]
+  if (activePage) {
+    focusNavigatedLink(activePage.slug, null)
+    return
+  }
+  const firstLink = document.querySelector<HTMLElement>(`#page-nav-list a`)
+  if (firstLink) {
+    firstLink.focus()
+  }
+}
+
 const focusDocPane = (): void => {
   const pane = document.querySelector<HTMLElement>('.doc-pane')
   if (pane) {
@@ -87,10 +124,92 @@ const focusDocPane = (): void => {
   }
 }
 
-// `h` キーで comments panel に navigate する際の focus 先解決。`f` の active page-nav-link
-// 対称で、active な cmt-card → 最初の cmt-card → aside.comments 自身 の優先順で focus を移す
-// (空状態時のヒントへのアクセスを保つため最後段で aside 自身に fall back)。
-// ↑↓ / Home / End によるカード間巡回は wireCommentsKeyboardNav が捌く別経路。
+const focusCommentsPane = (): void => {
+  focusActiveOrFirstCommentCard()
+}
+
+// 3 pane を環状 (TOC → doc → comments → TOC → ...) と見立て、a/d で端から反対端へ wrap する。
+// 両端 no-op だと「TOC で a を押しても何も起きない」反応の無さがあるため、左手だけでパネルを
+// 一周できる回遊性を優先する。null (どこも focus してない初期状態) は左手 fallback として TOC へ。
+const PANE_FOCUS_LEFT: Record<PaneId, () => void> = {
+  comments: focusDocPane,
+  doc: focusTocPane,
+  toc: focusCommentsPane,
+}
+const PANE_FOCUS_RIGHT: Record<PaneId, () => void> = {
+  comments: focusTocPane,
+  doc: focusCommentsPane,
+  toc: focusDocPane,
+}
+
+const resolvePaneFocusHandler = (
+  current: PaneId | null,
+  table: Record<PaneId, () => void>
+): (() => void) => {
+  if (current === null) {
+    return focusTocPane
+  }
+  return table[current]
+}
+
+const moveFocusLeft = (): void => {
+  resolvePaneFocusHandler(detectCurrentPane(), PANE_FOCUS_LEFT)()
+}
+
+const moveFocusRight = (): void => {
+  resolvePaneFocusHandler(detectCurrentPane(), PANE_FOCUS_RIGHT)()
+}
+
+const DOC_LINE_SCROLL_PX = 40
+
+const dispatchArrowOnActiveElement = (key: 'ArrowDown' | 'ArrowUp'): void => {
+  const target = document.activeElement
+  if (!(target instanceof Element)) {
+    return
+  }
+  target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key }))
+}
+
+const scrollDocPane = (delta: number): void => {
+  const pane = document.querySelector<HTMLElement>('.doc-pane')
+  if (pane) {
+    pane.scrollBy({ top: delta })
+  }
+}
+
+const moveFocusUp = (): void => {
+  const current = detectCurrentPane()
+  if (current === 'doc') {
+    scrollDocPane(-DOC_LINE_SCROLL_PX)
+    return
+  }
+  if (current === 'toc' || current === 'comments') {
+    dispatchArrowOnActiveElement('ArrowUp')
+  }
+}
+
+const moveFocusDown = (): void => {
+  const current = detectCurrentPane()
+  if (current === 'doc') {
+    scrollDocPane(DOC_LINE_SCROLL_PX)
+    return
+  }
+  if (current === 'toc' || current === 'comments') {
+    dispatchArrowOnActiveElement('ArrowDown')
+  }
+}
+
+const activateFocusedItem = (): void => {
+  const target = document.activeElement
+  if (!(target instanceof HTMLElement)) {
+    return
+  }
+  // doc-pane 自身には activate 対象が無いので no-op
+  if (target.matches('.doc-pane')) {
+    return
+  }
+  target.click()
+}
 
 /**
  * loadFromMarkdown / navigateToTarget 双方で使う「現状の state を全 view に流す」共通処理。
@@ -330,84 +449,31 @@ if (!import.meta.vitest) {
       qs('#modal-save').click()
     }
   }
-  // `f` キーで TOC の active page-nav-link へジャンプ (§13 affordance, Vim 流の単独キー)。
-  // 単独キーのため textarea / input / contenteditable 中の文字入力を妨げないよう
-  // 呼び出し側 (handleAffordanceKeys) で isEditableTarget チェックする。
-  const handleFocusTOCKey = (): void => {
-    const activePage = state.pages[state.activePageIndex]
-    if (activePage) {
-      focusNavigatedLink(activePage.slug, null)
-    }
+  // WASD ベースのキーマップ (§13)。dispatch table で event.code → handler に振り分ける。
+  // すべて単独キーのため textarea / input / contenteditable に focus があるときは
+  // shouldSkipAffordanceKey でスキップして文字入力を妨げない。`event.repeat` ガードは
+  // 押しっぱなしによる連続発火を塞ぐ (modal の点滅対策、§13)。
+  const AFFORDANCE_KEY_HANDLERS: Record<string, () => void> = {
+    KeyA: moveFocusLeft,
+    KeyD: moveFocusRight,
+    KeyE: activateFocusedItem,
+    KeyF: openSearch,
+    KeyH: openHelpModal,
+    KeyS: moveFocusDown,
+    KeyW: moveFocusUp,
   }
-
-  // `f` / `g` / `?` の affordance ショートカット (§13)。すべて単独キーのため textarea / input /
-  // contenteditable に focus があるときは isEditableTarget でスキップして文字入力を妨げない。
-  // Escape / Cmd+Enter のような既存 handler とは別の dispatcher に切り出す
-  // (各 handler の statements を keydown listener 1 つに集約すると上限を超える)。
-  //
-  // `event.repeat` ガードは押しっぱなしによる連続発火を塞ぐ (`?` キーで modal が点滅する
-  // 不具合の根本対策、再押下 toggle を期待しない GitHub / VS Code 流の挙動)。
-  // `?` は Shift+/ で生成される。hasNoModifier は使えないので event.key で直接判定する。
-  // open 専用にすることで「リピートで open/close を繰り返してチカチカする」現象を構造的に塞ぐ。
-  // 閉じる経路は Esc / Close ボタン / バックドロップクリック / toolbar `?` ボタンの toggle に集約。
-  const tryHandleHelpKey = (event: KeyboardEvent): boolean => {
-    if (event.key !== '?') {
-      return false
-    }
-    event.preventDefault()
-    openHelpModal()
-    return true
-  }
-
-  // `/` キーで検索バーを開く (MDXG §10)。修飾キー無しの単独 `/` のみ受け付け、textarea / input /
-  // contenteditable 中はスキップ済み。ブラウザ標準の Cmd+F は触らず、ユーザーが「サイトを
-  // 横断する標準検索」と「ドキュメント検索」を使い分けられるようにする。
-  const tryHandleSearchKey = (event: KeyboardEvent): boolean => {
-    if (event.key !== '/' || !hasNoModifier(event)) {
-      return false
-    }
-    event.preventDefault()
-    openSearch()
-    return true
-  }
-
-  const tryHandleFocusTOCKey = (event: KeyboardEvent): boolean => {
-    if (event.code !== 'KeyF' || !hasNoModifier(event)) {
-      return false
-    }
-    event.preventDefault()
-    handleFocusTOCKey()
-    return true
-  }
-  const tryHandleFocusDocKey = (event: KeyboardEvent): boolean => {
-    if (event.code !== 'KeyG' || !hasNoModifier(event)) {
-      return false
-    }
-    event.preventDefault()
-    focusDocPane()
-    return true
-  }
-  const tryHandleFocusCommentsKey = (event: KeyboardEvent): boolean => {
-    if (event.code !== 'KeyH' || !hasNoModifier(event)) {
-      return false
-    }
-    event.preventDefault()
-    focusActiveOrFirstCommentCard()
-    return true
-  }
-  const tryHandlePaneFocusKey = (event: KeyboardEvent): boolean =>
-    tryHandleFocusTOCKey(event) || tryHandleFocusDocKey(event) || tryHandleFocusCommentsKey(event)
   const handleAffordanceKeys = (event: KeyboardEvent): void => {
     if (shouldSkipAffordanceKey(event)) {
       return
     }
-    if (tryHandlePaneFocusKey(event)) {
+    if (!hasNoModifier(event)) {
       return
     }
-    if (tryHandleHelpKey(event)) {
-      return
+    const handler = AFFORDANCE_KEY_HANDLERS[event.code]
+    if (handler) {
+      event.preventDefault()
+      handler()
     }
-    tryHandleSearchKey(event)
   }
 
   document.addEventListener('keydown', (event): void => {
