@@ -165,8 +165,28 @@ const wireThemeToggle = (): void => {
   })
 }
 
-/** Markdown 読み込みボタンと隠し file input を接続する */
+// CLI 経路 (review-request) が <html data-toolbar-open-file="off"> を注入した時、
+// 「特定 MD のレビュー固定文脈」フットガン (DESIGN.md §3 入力 1, §5.g) を構造的に塞ぐため
+// Open file ボタンと隠し file input を tab order / DOM クエリから完全に外す。
+// display:none での視覚抑制は CSS 側で並行して効くが、DOM 削除も併せて行う方が
+// 信頼境界として強い (--show-open-file 未指定時に keyboard 経路で偶発的に叩かれないため)。
+const isOpenFileSuppressed = (): boolean =>
+  document.documentElement.dataset.toolbarOpenFile === 'off'
+
+const removeIfPresent = (selector: string): void => {
+  const el = document.querySelector(selector)
+  if (el !== null) {
+    el.remove()
+  }
+}
+
+/** Markdown 読み込みボタンと隠し file input を接続する。CLI 経路で抑止された場合は両要素を削除する */
 const wireMarkdownLoad = (runtime: ToolbarRuntime): void => {
+  if (isOpenFileSuppressed()) {
+    removeIfPresent('#btn-load')
+    removeIfPresent('#file-md')
+    return
+  }
   qs('#btn-load').addEventListener('click', (): void => qsInput('#file-md').click())
   qsInput('#file-md').addEventListener('change', async (event): Promise<void> => {
     const file = fileFromChange(event)

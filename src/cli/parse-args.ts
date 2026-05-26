@@ -11,6 +11,7 @@ const THEME_FLAG = '--theme'
 const SHIKI_LANGS_FLAG = '--shiki-langs'
 const COMMENTS_WIDTH_FLAG = '--comments-width'
 const PAGE_NAV_WIDTH_FLAG = '--page-nav-width'
+const SHOW_OPEN_FILE_FLAG = '--show-open-file'
 
 export type ThemeHint = 'system' | 'light' | 'dark'
 const THEME_VALUES = ['system', 'light', 'dark'] as const
@@ -187,6 +188,12 @@ Options:
                          Written as a <html data-page-nav-width> attribute and
                          follows the same precedence rules as --comments-width.
   --no-open              Generate the HTML but do not launch a browser.
+  --show-open-file       Keep the "Open file" button visible in the generated
+                         HTML's header. By default (without this flag), CLI
+                         output hides the button to prevent accidentally
+                         loading a different markdown (which would discard the
+                         current comments). The standalone HTML — opened
+                         directly without the CLI — always shows the button.
   -h, --help             Print this help and exit. Takes precedence over all
                          other arguments and flags when present.
 
@@ -209,6 +216,12 @@ export interface RunArgs {
   /** --comments-width で指定された数値 (0 or 280–640)。未指定なら省略 */
   commentsWidth?: number
   themeHint?: ThemeHint
+  /**
+   * --show-open-file が明示指定された場合のみ true。CLI 既定は不在 (= hidden 扱い)。
+   * 不在 / false の時に <html data-toolbar-open-file="off"> が注入され、ブラウザ側 toolbar.ts が
+   * #btn-load / #file-md を DOM から削除する (DESIGN.md §5.g)。
+   */
+  showOpenFile?: boolean
 }
 
 export type ParsedArgs = { mode: 'help' } | { mode: 'invalid' } | ({ mode: 'run' } & RunArgs)
@@ -221,6 +234,7 @@ interface PartitionedArgs {
   shikiLangs?: ShikiLangsMode
   commentsWidth?: number
   themeHint?: ThemeHint
+  showOpenFile: boolean
   valid: boolean
 }
 
@@ -237,6 +251,7 @@ interface PartitionState {
   shikiLangs: ShikiLangsMode | null
   commentsWidth: number | null
   themeHint: ThemeHint | null
+  showOpenFile: boolean
   valid: boolean
 }
 
@@ -252,6 +267,7 @@ const INITIAL_PARTITION_STATE: PartitionState = {
   pendingTheme: false,
   positional: [],
   shikiLangs: null,
+  showOpenFile: false,
   themeHint: null,
   valid: true,
 }
@@ -311,6 +327,9 @@ const consumePageNavWidthValue = (acc: PartitionState, token: string): Partition
 const consumeStandaloneFlag = (acc: PartitionState, token: string): PartitionState | null => {
   if (token === NO_OPEN_FLAG) {
     return { ...acc, open: false }
+  }
+  if (token === SHOW_OPEN_FILE_FLAG) {
+    return { ...acc, showOpenFile: true }
   }
   return null
 }
@@ -432,6 +451,7 @@ const partitionArgs = (argv: readonly string[]): PartitionedArgs => {
   const result: PartitionedArgs = {
     open: state.open,
     positional: state.positional,
+    showOpenFile: state.showOpenFile,
     valid: isPartitionValid(state),
   }
   attachPartitionOptionals(result, state)
@@ -482,6 +502,9 @@ const buildRunArgs = (parts: PartitionedArgs): { mode: 'run' } & RunArgs => {
     inputPath,
     mode: 'run',
     open: parts.open,
+  }
+  if (parts.showOpenFile) {
+    result.showOpenFile = true
   }
   attachRunOptionals(result, parts)
   return result
@@ -613,6 +636,35 @@ if (import.meta.vitest) {
     it('--document-name の値位置に別フラグが来た場合は invalid', () => {
       expect(parseArgs(['--document-name', '--no-open', 'spec.md'])).toEqual({
         mode: 'invalid',
+      })
+    })
+  })
+
+  describe('parseArgs: --show-open-file', () => {
+    it('--show-open-file 指定で showOpenFile=true を返す', () => {
+      expect(parseArgs(['--show-open-file', 'spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        mode: 'run',
+        open: true,
+        showOpenFile: true,
+      })
+    })
+
+    it('--show-open-file 未指定では showOpenFile を含まない (= 既定 hidden)', () => {
+      const result = parseArgs(['spec.md'])
+      expect(result).toEqual({ inputPath: 'spec.md', mode: 'run', open: true })
+      if (result.mode === 'run') {
+        expect(result.showOpenFile).toBeUndefined()
+      }
+    })
+
+    it('--show-open-file は --no-open / output-dir と組み合わせられる', () => {
+      expect(parseArgs(['--no-open', '--show-open-file', 'spec.md', '/tmp/out'])).toEqual({
+        inputPath: 'spec.md',
+        mode: 'run',
+        open: false,
+        outputDir: '/tmp/out',
+        showOpenFile: true,
       })
     })
   })

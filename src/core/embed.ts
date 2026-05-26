@@ -143,6 +143,8 @@ const HTML_TAG_RE = /<html\b[^>]*>/i
 const DATA_THEME_RE = /\bdata-theme="[^"]*"/
 const DATA_COMMENTS_WIDTH_RE = /\bdata-comments-width="[^"]*"/
 const DATA_PAGE_NAV_WIDTH_RE = /\bdata-page-nav-width="[^"]*"/
+const DATA_TOOLBAR_OPEN_FILE_RE = /\bdata-toolbar-open-file="[^"]*"/
+const TITLE_RE = /(<title\b[^>]*>)([\s\S]*?)(<\/title>)/i
 
 // data-name が無い既存テンプレートでも安全に補えるように、置換と挿入を関数として分離する。
 // 関数化により rewriteReviewHtml 側を no-ternary / prefer-ternary 双方に抵触せず保てる。
@@ -220,6 +222,47 @@ export const upsertHtmlDataPageNavWidth = (reviewHtml: string, value: number): s
   const [tag] = match
   const newTag = replaceDataPageNavWidth(tag, escapeHtml(String(value)))
   return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length)
+}
+
+const replaceDataToolbarOpenFile = (openingTag: string, value: string): string => {
+  if (DATA_TOOLBAR_OPEN_FILE_RE.test(openingTag)) {
+    return openingTag.replace(DATA_TOOLBAR_OPEN_FILE_RE, `data-toolbar-open-file="${value}"`)
+  }
+  return openingTag.replace(/>$/, ` data-toolbar-open-file="${value}">`)
+}
+
+/**
+ * `<html>` 開きタグに `data-toolbar-open-file="off"` を挿入する (idempotent)。
+ * CLI が --show-open-file を指定していない時にだけ呼び、ブラウザ側 toolbar.ts はこの属性で
+ * Open file ボタンと隠し input を起動時に DOM から削除する (DESIGN.md §3 入力 1 のフットガン
+ * を CLI 経路で構造的に塞ぐ意図)。値は `'off'` のみで運用するため型でも literal に絞る。
+ */
+export const upsertHtmlDataToolbarOpenFile = (reviewHtml: string, value: 'off'): string => {
+  const match = HTML_TAG_RE.exec(reviewHtml)
+  if (!match) {
+    throw new Error('review.html に <html> タグが見つかりません')
+  }
+  const [tag] = match
+  const newTag = replaceDataToolbarOpenFile(tag, escapeHtml(value))
+  return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length)
+}
+
+/**
+ * `<title>` の中身を書き換える (idempotent)。ブラウザタブ・ファイル共有先で配布物を識別できるよう、
+ * CLI 経路では `"MDXG Redline — <docName>"` 形式で上書きする (DESIGN.md §5.e)。
+ * <title> タグが見つからない場合は no-op (フェイタルではなく warning 相当)。
+ * <title> 中の特殊文字は HTML escape される (信頼境界、DESIGN.md §11)。
+ */
+export const rewriteTitle = (reviewHtml: string, newTitle: string): string => {
+  const match = TITLE_RE.exec(reviewHtml)
+  if (!match) {
+    return reviewHtml
+  }
+  const [fullMatch, openingTag, , closingTag] = match
+  const replaced = `${openingTag}${escapeHtml(newTitle)}${closingTag}`
+  return (
+    reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length)
+  )
 }
 
 /**
@@ -658,6 +701,65 @@ if (import.meta.vitest) {
       const html = baseHtml
       rewriteInitialStatus(html, 'x')
       expect(html).toBe(baseHtml)
+    })
+  })
+
+  describe('upsertHtmlDataToolbarOpenFile', () => {
+    it('data-toolbar-open-file="off" を <html> タグに挿入する', () => {
+      const html = '<html lang="ja"><body></body></html>'
+      const out = upsertHtmlDataToolbarOpenFile(html, 'off')
+      expect(out).toContain('<html lang="ja" data-toolbar-open-file="off">')
+    })
+
+    it('既存の data-toolbar-open-file 属性を上書きする (idempotent)', () => {
+      const html = '<html lang="ja" data-toolbar-open-file="off"><body></body></html>'
+      const out = upsertHtmlDataToolbarOpenFile(html, 'off')
+      const matches = out.match(/data-toolbar-open-file/g) ?? []
+      expect(matches.length).toBe(1)
+      expect(out).toContain('data-toolbar-open-file="off"')
+    })
+
+    it('<html> タグが無いと Error を投げる', () => {
+      expect(() => upsertHtmlDataToolbarOpenFile('<body></body>', 'off')).toThrow(/<html>/)
+    })
+
+    it('元文字列を破壊しない', () => {
+      const html = '<html><body></body></html>'
+      upsertHtmlDataToolbarOpenFile(html, 'off')
+      expect(html).toBe('<html><body></body></html>')
+    })
+  })
+
+  describe('rewriteTitle', () => {
+    it('<title> の中身を新しいタイトルに置換する', () => {
+      const html = '<html><head><title>MDXG Redline</title></head></html>'
+      const out = rewriteTitle(html, 'MDXG Redline — spec.md')
+      expect(out).toContain('<title>MDXG Redline — spec.md</title>')
+      expect(out).not.toContain('<title>MDXG Redline</title>')
+    })
+
+    it('新タイトル中の < / > / & / " / \' を HTML escape する (XSS 経路を塞ぐ)', () => {
+      const html = '<html><head><title>old</title></head></html>'
+      const out = rewriteTitle(html, '<script>"&\'</script>')
+      expect(out).toContain('<title>&lt;script&gt;&quot;&amp;&#39;&lt;/script&gt;</title>')
+    })
+
+    it('再適用しても idempotent (rewrite 結果に再度かけて同じ最終文字列)', () => {
+      const html = '<html><head><title>初期</title></head></html>'
+      const once = rewriteTitle(html, 'MDXG Redline — spec.md')
+      const twice = rewriteTitle(once, 'MDXG Redline — spec.md')
+      expect(twice).toBe(once)
+    })
+
+    it('<title> タグが無い HTML は no-op (warning 相当、Error にしない)', () => {
+      const html = '<html><head></head></html>'
+      expect(rewriteTitle(html, 'x')).toBe(html)
+    })
+
+    it('元文字列を破壊しない', () => {
+      const html = '<html><head><title>x</title></head></html>'
+      rewriteTitle(html, 'y')
+      expect(html).toBe('<html><head><title>x</title></head></html>')
     })
   })
 

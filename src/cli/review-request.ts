@@ -26,11 +26,13 @@ import {
   rewriteEmbeddedShikiLangs,
   rewriteInitialStatus,
   rewriteReviewHtml,
+  rewriteTitle,
   stripMarkdownExt,
   upsertEmbeddedMdMeta,
   upsertHtmlDataCommentsWidth,
   upsertHtmlDataPageNavWidth,
   upsertHtmlDataTheme,
+  upsertHtmlDataToolbarOpenFile,
 } from '../core/embed'
 import { dirname, resolve } from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
@@ -119,6 +121,21 @@ const applyPageNavWidthHint = (html: string, pageNavWidth: RunArgs['pageNavWidth
   return upsertHtmlDataPageNavWidth(html, pageNavWidth)
 }
 
+// --show-open-file 未指定時は <html data-toolbar-open-file="off"> を注入し、
+// ブラウザ側 toolbar.ts が #btn-load / #file-md を起動時に DOM から削除する。
+// CLI 経路で別 MD を誤読み込みする事故 (state.comments 初期化) を構造的に塞ぐ (DESIGN.md §5.g)。
+const applyToolbarOpenFileHint = (html: string, showOpenFile: RunArgs['showOpenFile']): string => {
+  if (showOpenFile === true) {
+    return html
+  }
+  return upsertHtmlDataToolbarOpenFile(html, 'off')
+}
+
+// CLI 出力 HTML の <title> を `MDXG Redline — <docName>` に書き換える。ブラウザタブ /
+// ファイル共有先で配布物を識別しやすくするためで、standalone HTML (CLI 非経由) は元のまま。
+const applyTitleRewrite = (html: string, docName: string): string =>
+  rewriteTitle(html, `MDXG Redline — ${docName}`)
+
 /**
  * `--shiki-langs` の指定 (未指定時は auto と同じ) から注入対象の正規名集合を決める pure 関数。
  * - auto / 未指定: markdown を scan して使用されている grammar を集める
@@ -187,7 +204,9 @@ const composeReviewHtml = async (args: RunArgs, ctx: EmbedContext): Promise<stri
   const withTheme = applyThemeHint(embedded, args.themeHint)
   const withComments = applyCommentsWidthHint(withTheme, args.commentsWidth)
   const withPageNav = applyPageNavWidthHint(withComments, args.pageNavWidth)
-  const withShiki = await applyShikiLangs(withPageNav, args, ctx)
+  const withToolbar = applyToolbarOpenFileHint(withPageNav, args.showOpenFile)
+  const withTitle = applyTitleRewrite(withToolbar, ctx.docName)
+  const withShiki = await applyShikiLangs(withTitle, args, ctx)
   const statusText = formatLoadedStatus(ctx.docName, ctx.docHash)
   const withStatus = rewriteInitialStatus(withShiki, statusText)
   return upsertEmbeddedMdMeta(withStatus)

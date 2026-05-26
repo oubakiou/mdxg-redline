@@ -14,7 +14,7 @@ DESIGN.md §3 / §13 / §14 で 1 ファイルが兼任している「① 単独
 | [MUST] 既存配布契約（clone 直後に `npm run build` 抜きで実行可能）を維持      | ✓    | `dist/standalone.html` / `dist/embed-template.html` / `dist/review-request.mjs` / `dist/shiki-langs/*.json` がすべて commit 対象。partial clone / 手動削除での欠落時は CLI が ENOENT を捕えて案内エラーを出す既存挙動を引き継ぐ |
 | [SHOULD] サイズ増分はファイル数分離分のみ（個別ファイルの肥大化を起こさない） | 未   | `dist/standalone.html` ≒ 現行 `dist/review.html` + Shiki grammar all (raw 約 5.2 MB / gzip 約 1.5 MB)、`dist/embed-template.html` ≒ 現行 `dist/review.html`（grammar 注入なしの 314 KB / gzip 95 KB 相当）                      |
 | [SHOULD] CSP / inline 不変条件 / 信頼境界が両 HTML で揃う                     | 未   | DESIGN.md §11 の CSP（`script-src 'self' 'unsafe-inline'` 等）・`<meta http-equiv="Content-Security-Policy">` 配置・`<script id="embedded-md">` / `<script id="embedded-feedback">` の構造的不変条件が両ファイルで同一          |
-| [SHOULD] CLI 生成 HTML では Open file ボタンが既定で非表示                    | 未   | CLI 経由で生成された embed-template ベースの配布 HTML を開いた時、`#btn-open` と隠し `<input type="file">` が DOM から削除されている。`--show-open-file` フラグ付与時のみ表示。`standalone.html` は常に表示                     |
+| [SHOULD] CLI 生成 HTML では Open file ボタンが既定で非表示                    | 未   | CLI 経由で生成された embed-template ベースの配布 HTML を開いた時、`#btn-load` と隠し `<input type="file">` が DOM から削除されている。`--show-open-file` フラグ付与時のみ表示。`standalone.html` は常に表示                     |
 
 追加実装（規格上は SHOULD 未満だが UX 上有用）：
 
@@ -163,7 +163,7 @@ export function mdxgInlineShikiLangs(): Plugin {
 embed-template ベースの CLI 出力 HTML は「特定の MD をレビューする」固定文脈で配布されるため、ヘッダの Open file ボタンで別 MD を読み込まれると `state.comments` が初期化される事故（DESIGN.md §3 入力 1 「再選択時の挙動」）が起きる。CLI 経路では既定で Open file ボタンを構造的に出さない。
 
 - `--show-open-file` を指定した時のみ Open file ボタンを残す（明示 opt-in）
-- 適用範囲は `#btn-open` ボタンと隠し `<input id="file-md" type="file" hidden>` の 2 要素のみ。Comments ▾ メニュー内の Copy / Export / Write feedback.json はすべて常時表示
+- 適用範囲は `#btn-load` ボタンと隠し `<input id="file-md" type="file" hidden>` の 2 要素のみ。Comments ▾ メニュー内の Copy / Export / Write feedback.json はすべて常時表示
 - `standalone.html` は CLI を経由しないため属性が付かず、常に Open file ボタンが表示される（既存挙動を維持）
 
 CLI からブラウザへの伝達は既存の「`<html data-*>` ヒント属性」パターン（DESIGN.md §7c の `data-theme` / `data-comments-width` / `data-page-nav-width`）に揃える：
@@ -172,9 +172,9 @@ CLI からブラウザへの伝達は既存の「`<html data-*>` ヒント属性
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/cli/parse-args.ts` | `--show-open-file` を boolean フラグとしてパース。`parseArgs` の戻り値に `showOpenFile: boolean` を追加（既定 `false`）                                                                             |
 | `src/core/embed.ts`     | `showOpenFile === false` の時に `<html>` タグへ `data-toolbar-open-file="off"` 属性を注入。`true` の時は属性を追加しない（属性が無いことが「表示」のデフォルト）                                    |
-| `src/app/toolbar.ts`    | 起動時に `document.documentElement.dataset.toolbarOpenFile === 'off'` を判定し、`#btn-open` と `#file-md` を `remove()` で DOM から削除。`<head>` inline script で paint 前に消すことで FOUC を防ぐ |
+| `src/app/toolbar.ts`    | 起動時に `document.documentElement.dataset.toolbarOpenFile === 'off'` を判定し、`#btn-load` と `#file-md` を `remove()` で DOM から削除。`<head>` inline script で paint 前に消すことで FOUC を防ぐ |
 | `localStorage` への保存 | しない（CLI ヒントは「その配布物の起動時のみ有効」で十分。永続化させると次回別の embed-template 起動時に意図せず引き継がれる）                                                                      |
-| `standalone.html`       | 属性が付かないため `#btn-open` / `#file-md` はそのまま残る                                                                                                                                          |
+| `standalone.html`       | 属性が付かないため `#btn-load` / `#file-md` はそのまま残る                                                                                                                                          |
 
 値域は `'off'` 1 値のみ。`<html data-theme>` のような複数値は不要なため、入力としても `--show-open-file` フラグ 1 つで十分（`--show-open-file=true|false` 形式は採らない）。ホワイトリスト検証は `dataset.toolbarOpenFile === 'off'` の equality 比較で完結する。
 
@@ -219,8 +219,8 @@ CLI からブラウザへの伝達は既存の「`<html data-*>` ヒント属性
 
 - `src/cli/parse-args.ts` に boolean フラグとしてパースを追加。HELP_TEXT も更新
 - `src/core/embed.ts` で `showOpenFile === false` 時に `<html>` タグへ `data-toolbar-open-file="off"` 属性を注入する pure ロジックを追加
-- `src/app/toolbar.ts` で起動時に `dataset.toolbarOpenFile === 'off'` を判定し、`#btn-open` / `#file-md` を `remove()`。`<head>` inline script で paint 前に消す経路も同時に追加（FOUC 防止、§7c の theme と同じパターン）
-- `src/review.html` 側は構造変更なし（既存の `#btn-open` / `#file-md` のまま）
+- `src/app/toolbar.ts` で起動時に `dataset.toolbarOpenFile === 'off'` を判定し、`#btn-load` / `#file-md` を `remove()`。`<head>` inline script で paint 前に消す経路も同時に追加（FOUC 防止、§7c の theme と同じパターン）
+- `src/review.html` 側は構造変更なし（既存の `#btn-load` / `#file-md` のまま）
 
 成果物：CLI 経路で生成された HTML を開いた時に Open file ボタンが既定で消える。`--show-open-file` 指定時は残る。`standalone.html` は影響を受けない
 
@@ -326,7 +326,7 @@ A 採用時の論点：
 
 A 採用時の論点：
 
-- **適用範囲**：`#btn-open` ボタンと隠し `<input id="file-md" type="file" hidden>` の 2 要素のみ。Copy / Export / Write feedback.json は CLI 経路でも常時表示（フィードバック書き出しは CLI 経路の主目的）
+- **適用範囲**：`#btn-load` ボタンと隠し `<input id="file-md" type="file" hidden>` の 2 要素のみ。Copy / Export / Write feedback.json は CLI 経路でも常時表示（フィードバック書き出しは CLI 経路の主目的）
 - **DOM 削除 vs `display: none`**：`remove()` で DOM から消す。`display: none` だと keyboard tab order や DOM クエリで意図せず触れる経路が残り、信頼境界として弱い
 - **永続化なし**：`localStorage` には保存しない。CLI ヒントは「その配布物の起動時のみ有効」。永続化させると次回別の embed-template 起動時に意図せず引き継がれる（`data-theme` は 3 状態の永続的選好だが、Open file の表示有無は配布物単位の固定属性なので扱いが異なる）
 
@@ -373,9 +373,9 @@ A 採用時の論点：
   - `--show-open-file=true` 形式は受け付けない（boolean フラグであることの確認）
 
 - `app/toolbar.ts`（happy-dom 環境テストが整っていれば）：
-  - `documentElement.dataset.toolbarOpenFile === 'off'` で `#btn-open` / `#file-md` が `remove()` される
+  - `documentElement.dataset.toolbarOpenFile === 'off'` で `#btn-load` / `#file-md` が `remove()` される
   - 属性無しの時は両要素が DOM に残る
-  - 削除後も Comments ▾ メニュー内の Copy / Export / Write feedback.json は引き続き動作する（既存機能との非干渉、削除対象は `#btn-open` / `#file-md` の 2 要素に限定されることの確認）
+  - 削除後も Comments ▾ メニュー内の Copy / Export / Write feedback.json は引き続き動作する（既存機能との非干渉、削除対象は `#btn-load` / `#file-md` の 2 要素に限定されることの確認）
 
 ### 手動視覚チェックリスト
 

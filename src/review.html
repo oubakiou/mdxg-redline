@@ -7,7 +7,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; connect-src 'none'; script-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'"
     />
-    <title>Markdown Review — Inline Comments for Agents</title>
+    <title>MDXG Redline</title>
     <!-- FOUC 防止のため stylesheet より前で paint 直前に .dark を付ける。
          優先順位 P1: localStorage > <html data-theme> > prefers-color-scheme
          (DESIGN.md §7c / §12 §1 Theming 行)。
@@ -94,6 +94,16 @@
         var ivh = window.innerHeight
         if (ivh > 0)
           document.documentElement.style.setProperty('--initial-viewport-height', ivh + 'px')
+      } catch (e) {}
+      // --- Open file ボタンの paint 前抑制 (DESIGN.md §5.g) ---
+      // CLI 経路 (review-request) は `<html data-toolbar-open-file="off">` を埋め込んで
+      // ボタン表示を抑止する。CSS でも `html[data-toolbar-open-file="off"] #btn-load` を
+      // display:none にしているため stylesheet 適用後は隠れるが、念のため stylesheet 解析前に
+      // .toolbar-open-file-off class を <html> に付けて視覚抑制の起点を前倒しする。
+      try {
+        if (document.documentElement.getAttribute('data-toolbar-open-file') === 'off') {
+          document.documentElement.classList.add('toolbar-open-file-off')
+        }
       } catch (e) {}
     </script>
     <link rel="stylesheet" href="./styles/review.css" />

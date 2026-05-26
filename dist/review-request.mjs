@@ -132,6 +132,7 @@ var THEME_FLAG = "--theme";
 var SHIKI_LANGS_FLAG = "--shiki-langs";
 var COMMENTS_WIDTH_FLAG = "--comments-width";
 var PAGE_NAV_WIDTH_FLAG = "--page-nav-width";
+var SHOW_OPEN_FILE_FLAG = "--show-open-file";
 var THEME_VALUES = [
 	"system",
 	"light",
@@ -248,6 +249,12 @@ Options:
                          Written as a <html data-page-nav-width> attribute and
                          follows the same precedence rules as --comments-width.
   --no-open              Generate the HTML but do not launch a browser.
+  --show-open-file       Keep the "Open file" button visible in the generated
+                         HTML's header. By default (without this flag), CLI
+                         output hides the button to prevent accidentally
+                         loading a different markdown (which would discard the
+                         current comments). The standalone HTML — opened
+                         directly without the CLI — always shows the button.
   -h, --help             Print this help and exit. Takes precedence over all
                          other arguments and flags when present.
 
@@ -270,6 +277,7 @@ var INITIAL_PARTITION_STATE = {
 	pendingTheme: false,
 	positional: [],
 	shikiLangs: null,
+	showOpenFile: false,
 	themeHint: null,
 	valid: true
 };
@@ -342,6 +350,10 @@ var consumeStandaloneFlag = (acc, token) => {
 	if (token === NO_OPEN_FLAG) return {
 		...acc,
 		open: false
+	};
+	if (token === SHOW_OPEN_FILE_FLAG) return {
+		...acc,
+		showOpenFile: true
 	};
 	return null;
 };
@@ -447,6 +459,7 @@ var partitionArgs = (argv) => {
 	const result = {
 		open: state.open,
 		positional: state.positional,
+		showOpenFile: state.showOpenFile,
 		valid: isPartitionValid(state)
 	};
 	attachPartitionOptionals(result, state);
@@ -474,6 +487,7 @@ var buildRunArgs = (parts) => {
 		mode: "run",
 		open: parts.open
 	};
+	if (parts.showOpenFile) result.showOpenFile = true;
 	attachRunOptionals(result, parts);
 	return result;
 };
@@ -572,6 +586,8 @@ var HTML_TAG_RE = /<html\b[^>]*>/i;
 var DATA_THEME_RE = /\bdata-theme="[^"]*"/;
 var DATA_COMMENTS_WIDTH_RE = /\bdata-comments-width="[^"]*"/;
 var DATA_PAGE_NAV_WIDTH_RE = /\bdata-page-nav-width="[^"]*"/;
+var DATA_TOOLBAR_OPEN_FILE_RE = /\bdata-toolbar-open-file="[^"]*"/;
+var TITLE_RE = /(<title\b[^>]*>)([\s\S]*?)(<\/title>)/i;
 var replaceDataName = (openingTag, escapedName) => {
 	if (DATA_NAME_RE.test(openingTag)) return openingTag.replace(DATA_NAME_RE, `data-name="${escapedName}"`);
 	return openingTag.replace(/>$/, ` data-name="${escapedName}">`);
@@ -624,6 +640,36 @@ var upsertHtmlDataPageNavWidth = (reviewHtml, value) => {
 	const [tag] = match;
 	const newTag = replaceDataPageNavWidth(tag, escapeHtml(String(value)));
 	return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length);
+};
+var replaceDataToolbarOpenFile = (openingTag, value) => {
+	if (DATA_TOOLBAR_OPEN_FILE_RE.test(openingTag)) return openingTag.replace(DATA_TOOLBAR_OPEN_FILE_RE, `data-toolbar-open-file="${value}"`);
+	return openingTag.replace(/>$/, ` data-toolbar-open-file="${value}">`);
+};
+/**
+* `<html>` 開きタグに `data-toolbar-open-file="off"` を挿入する (idempotent)。
+* CLI が --show-open-file を指定していない時にだけ呼び、ブラウザ側 toolbar.ts はこの属性で
+* Open file ボタンと隠し input を起動時に DOM から削除する (DESIGN.md §3 入力 1 のフットガン
+* を CLI 経路で構造的に塞ぐ意図)。値は `'off'` のみで運用するため型でも literal に絞る。
+*/
+var upsertHtmlDataToolbarOpenFile = (reviewHtml, value) => {
+	const match = HTML_TAG_RE.exec(reviewHtml);
+	if (!match) throw new Error("review.html に <html> タグが見つかりません");
+	const [tag] = match;
+	const newTag = replaceDataToolbarOpenFile(tag, escapeHtml(value));
+	return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length);
+};
+/**
+* `<title>` の中身を書き換える (idempotent)。ブラウザタブ・ファイル共有先で配布物を識別できるよう、
+* CLI 経路では `"MDXG Redline — <docName>"` 形式で上書きする (DESIGN.md §5.e)。
+* <title> タグが見つからない場合は no-op (フェイタルではなく warning 相当)。
+* <title> 中の特殊文字は HTML escape される (信頼境界、DESIGN.md §11)。
+*/
+var rewriteTitle = (reviewHtml, newTitle) => {
+	const match = TITLE_RE.exec(reviewHtml);
+	if (!match) return reviewHtml;
+	const [fullMatch, openingTag, , closingTag] = match;
+	const replaced = `${openingTag}${escapeHtml(newTitle)}${closingTag}`;
+	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
 };
 /**
 * `<script id="embedded-shiki-langs">` の中身を grammars の JSON で書き換える。
@@ -848,6 +894,11 @@ var applyPageNavWidthHint = (html, pageNavWidth) => {
 	if (typeof pageNavWidth !== "number") return html;
 	return upsertHtmlDataPageNavWidth(html, pageNavWidth);
 };
+var applyToolbarOpenFileHint = (html, showOpenFile) => {
+	if (showOpenFile === true) return html;
+	return upsertHtmlDataToolbarOpenFile(html, "off");
+};
+var applyTitleRewrite = (html, docName) => rewriteTitle(html, `MDXG Redline — ${docName}`);
 /**
 * `--shiki-langs` の指定 (未指定時は auto と同じ) から注入対象の正規名集合を決める pure 関数。
 * - auto / 未指定: markdown を scan して使用されている grammar を集める
@@ -882,7 +933,7 @@ var applyShikiLangs = async (html, args, ctx) => {
 	return rewriteEmbeddedShikiLangs(html, await loadShikiGrammars(resolveShikiLangSet(args.shikiLangs, ctx.markdown), ctx.scriptDir));
 };
 var composeReviewHtml = async (args, ctx) => {
-	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyShikiLangs(applyPageNavWidthHint(applyCommentsWidthHint(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args.commentsWidth), args.pageNavWidth), args, ctx), formatLoadedStatus(ctx.docName, ctx.docHash)));
+	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyShikiLangs(applyTitleRewrite(applyToolbarOpenFileHint(applyPageNavWidthHint(applyCommentsWidthHint(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args.commentsWidth), args.pageNavWidth), args.showOpenFile), ctx.docName), args, ctx), formatLoadedStatus(ctx.docName, ctx.docHash)));
 };
 var runEmbed = async (args) => {
 	const ctx = await prepareEmbed(args);
