@@ -87,7 +87,7 @@ export const parsePageNavWidthValue = (raw: string): number | null => {
 /**
  * `--shiki-langs <mode>` のパース結果。
  * - `auto`: markdown をスキャンして必要 grammar だけを注入 (CLI 既定)
- * - `all`: 27 言語すべてを注入
+ * - `all`: Shiki bundled 全言語を注入
  * - `none`: 注入しない (全コードブロックを plain text fallback)
  * - `list`: CSV で明示指定された正規名集合だけを注入 (エイリアスは正規化済み)
  *
@@ -163,7 +163,8 @@ Options:
                          for syntax highlighting. One of:
                            auto  Scan the input markdown and embed only the
                                  grammars used by fenced blocks (default).
-                           all   Embed all 27 supported grammars (heaviest).
+                           all   Embed all Shiki-bundled grammars (heaviest,
+                                 ~235 languages, ~5.5 MB gzipped).
                            none  Embed no grammars (all code blocks render as
                                  plain text).
                            <csv> Comma-separated list of language identifiers
@@ -291,7 +292,7 @@ const consumeThemeValue = (acc: PartitionState, token: string): PartitionState =
 
 // --shiki-langs の値位置。auto / all / none / CSV を受け付ける。`-` 始まりは値欠落扱い。
 // CSV のうち未サポート識別子は parseShikiLangsValue 内で silently drop されるため、
-// `--shiki-langs nim,brainfuck` のような全滅入力でも invalid にはせず空 list (= none と同等) を返す。
+// `--shiki-langs mylang,xxx-fake` のような全滅入力でも invalid にはせず空 list (= none と同等) を返す。
 const consumeShikiLangsValue = (acc: PartitionState, token: string): PartitionState => {
   if (token.startsWith('--')) {
     return { ...acc, valid: false }
@@ -797,7 +798,7 @@ if (import.meta.vitest) {
     })
 
     it('未サポート言語のみの指定は空 list (= none と等価) を返す', () => {
-      const parsed = parseShikiLangsValue('nim,brainfuck')
+      const parsed = parseShikiLangsValue('mylang,xxx-fake')
       expect(parsed.kind).toBe('list')
       if (parsed.kind === 'list') {
         expect(parsed.langs.size).toBe(0)
@@ -805,7 +806,7 @@ if (import.meta.vitest) {
     })
 
     it('既知 + 未知の混在は既知のみが残る', () => {
-      const parsed = parseShikiLangsValue('ts,nim,py')
+      const parsed = parseShikiLangsValue('ts,mylang,py')
       expect(parsed.kind).toBe('list')
       if (parsed.kind === 'list') {
         expect([...parsed.langs].toSorted()).toEqual(['python', 'typescript'])

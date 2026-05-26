@@ -18,7 +18,7 @@ End users only need a **single HTML file** (`standalone.html`). No server, no ex
 - **Two input paths**: Embed markdown into the HTML up front, or pick a file from the browser
 - **Read-only**: Never mutates the source markdown
 - **Virtual Pages (Stacked View)**: H1 / H2 boundaries split the document into virtual pages rendered as paper-like sheets stacked vertically (Word / Pages style). A left TOC sidebar, H3–H6 outline under the active page, and Prev/Next row deliver MDXG §6–§9 conformance
-- **Syntax highlighting**: Shiki (`github-light` + `github-dark`) renders fenced code blocks for 27 languages, with a copy button injected onto each block
+- **Syntax highlighting**: Shiki (`github-light` + `github-dark`) renders fenced code blocks for all Shiki-bundled languages (~235 grammars), with a copy button injected onto each block
 - **Resizable side panels**: The left TOC (180–480px) and the right Conversation sidebar (280–640px) can be dragged independently and collapsed. State persists in `localStorage`, and distributors can pre-set the initial values with `--page-nav-width` / `--comments-width`
 - **Light / dark themes**: Initial value follows `prefers-color-scheme`; a 3-state toolbar toggle cycles through `system → light → dark`. The choice is persisted to `localStorage`, and distributors can pre-set the initial hint with `--theme`
 
@@ -108,6 +108,23 @@ sequenceDiagram
 
 See [docs/DESIGN.md §8 Workspace Protocol](docs/DESIGN.md#8-ワークスペースプロトコル) for the full file-naming protocol and lifecycle.
 
+## Keyboard shortcuts
+
+A WASD-based global keymap lets you drive the entire UI with the left hand only. All shortcuts are single keys without modifiers, so no browser-native shortcut (`Cmd/Ctrl+F` etc.) is overridden.
+
+| Key       | Action                                                                             |
+| --------- | ---------------------------------------------------------------------------------- |
+| `a` / `d` | Move focus to the previous / next pane (TOC ↔ doc ↔ comments, cycles at both ends) |
+| `w` / `s` | Move focus up / down within the current pane (line scroll in the doc pane)         |
+| `e`       | Activate the focused item (same as `Enter` / click)                                |
+| `f`       | Open the in-document search                                                        |
+| `h`       | Open the keyboard shortcuts help                                                   |
+| `Esc`     | Close any open modal, menu, or search                                              |
+
+`↑↓` / `Home` / `End` / `Enter` continue to work in parallel for MDXG §13 compliance. When focus is in a text field (search box, comment editor), single-letter shortcuts are bypassed so typing is never disturbed.
+
+See [docs/DESIGN.md §13 Keyboard Navigation](docs/DESIGN.md#13-keyboard-navigationキーボードナビゲーション) for the full affordance design (focus visualization, dispatch table, etc.).
+
 ## Output JSON
 
 ```jsonc
@@ -144,7 +161,7 @@ The [Markdown Experience Guidelines (MDXG)](https://github.com/vercel-labs/mdxg)
 | MDXG section             | Required level | Current status                                                                           |
 | ------------------------ | -------------- | ---------------------------------------------------------------------------------------- |
 | §1 Theming               | MUST (Viewer)  | Compliant (DADS theme + 3-state toggle following `prefers-color-scheme`)                 |
-| §2 Code Block Rendering  | MUST (Viewer)  | Compliant (Shiki dual theme over 27 languages, copy button injected per block)           |
+| §2 Code Block Rendering  | MUST (Viewer)  | Compliant (Shiki dual theme over all bundled languages (~235), copy button per block)    |
 | §3 Task Lists            | MUST (Viewer)  | Supported via marked defaults                                                            |
 | §4 Images                | MUST (Viewer)  | Partial (relative image paths not resolved due to the trust boundary)                    |
 | §5 Tables                | MUST (Viewer)  | Compliant (horizontal scrolling supported)                                               |
@@ -152,8 +169,8 @@ The [Markdown Experience Guidelines (MDXG)](https://github.com/vercel-labs/mdxg)
 | §7 Page Navigation       | MUST (Viewer)  | Compliant (Stacked View with all pages stacked vertically, left TOC + page scroll-spy)   |
 | §8 Page Outline          | MUST (Viewer)  | Compliant (H3–H6 inline outline under the active page + IntersectionObserver scroll-spy) |
 | §9 Sequential Navigation | MUST (Viewer)  | Compliant (Prev / Next row integrated into the left TOC header, hidden at boundaries)    |
-| §10 Search               | MUST (Viewer)  | Not supported yet                                                                        |
-| §13 Keyboard Navigation  | MUST (Viewer)  | Partial (accessible names audited, page-nav keyboard operations not yet implemented)     |
+| §10 Search               | MUST (Viewer)  | Compliant (`f` opens an in-document search bar with debounced live highlighting)         |
+| §13 Keyboard Navigation  | MUST (Viewer)  | Compliant (WASD-based left-hand keymap + MDXG-required arrow / Enter / Home/End)         |
 
 For the roadmap ahead, see [docs/DESIGN.md §12 MDXG compliance roadmap and future extensions](docs/DESIGN.md#12-mdxg-準拠ロードマップ今後の拡張).
 

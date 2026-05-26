@@ -3,6 +3,7 @@ node_modules/
 *.log
 .vite/
 coverage/
+.pnpm-store/
 
 # 個人設定
 .claude/settings.local.json

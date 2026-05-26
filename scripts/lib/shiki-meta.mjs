@@ -6,40 +6,13 @@
 
 import { bundledLanguages, bundledLanguagesInfo } from 'shiki'
 
-// docs/mdxg-rendering-code-block.archive.md §3.2 が指定する 28 言語。
-// `bash` / `shell` は Shiki 内部で `shellscript` に集約されるため、正規化後の正規名は 27 個になる。
-// エイリアス側 (`bash` / `sh` / `shell` / `zsh`) は ALIAS_TO_CANONICAL の経路で同じ正規名に
-// マップされるので、利用者から見えるサポート範囲は変わらない。
-export const SPEC_LANGS = [
-  'javascript',
-  'typescript',
-  'python',
-  'bash',
-  'json',
-  'html',
-  'css',
-  'markdown',
-  'yaml',
-  'toml',
-  'rust',
-  'go',
-  'java',
-  'c',
-  'cpp',
-  'ruby',
-  'php',
-  'sql',
-  'shell',
-  'diff',
-  'jsx',
-  'tsx',
-  'xml',
-  'swift',
-  'kotlin',
-  'scala',
-  'zig',
-  'lua',
-]
+// Shiki bundledLanguagesInfo の全言語をサポート対象とする (フル同梱)。
+// standalone.html は全 grammar が pre-inline されるため ~41 MB / gzip ~5.5 MB に肥大するが、
+// CLI 経路では `--shiki-langs auto` (既定) で markdown スキャン結果に応じて必要分だけ inject
+// されるため、配布されるレビュー HTML のサイズは変わらない。
+// エイリアス (`bash` / `sh` / `shell` / `zsh` 等) は ALIAS_TO_CANONICAL の経路で同じ正規名に
+// マップされる。
+export const SPEC_LANGS = bundledLanguagesInfo.map((info) => info.id)
 
 const hasAlias = (info, raw) => Array.isArray(info.aliases) && info.aliases.includes(raw)
 
@@ -127,9 +100,9 @@ export const formatAliasesTs = ({ aliasMap, canonicals, shikiVersion }) => {
 // 再生成: \`node scripts/generate-shiki-aliases.mjs\` または \`npm run build\`。
 // Shiki version: ${shikiVersion}
 //
-// docs/mdxg-rendering-code-block.archive.md §3.2 / §5.j が定める 28 言語の指定を
-// Shiki bundledLanguagesInfo の正規名へ canonicalize し、エイリアスを併せて吐き出した結果。
-// CLI (--shiki-langs=<csv>) と browser 側 Shiki 初期化、scanFencedLangs が同じマップを参照する。
+// Shiki bundledLanguagesInfo の全言語 (フル同梱) を正規名へ canonicalize し、エイリアスを
+// 併せて吐き出した結果。CLI (--shiki-langs=<csv>) と browser 側 Shiki 初期化、scanFencedLangs
+// が同じマップを参照する。
 
 // 言語 ID として "c" のような 1 文字識別子を含む必要があるため id-length を無効化。
 /* eslint-disable id-length */

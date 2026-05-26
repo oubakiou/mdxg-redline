@@ -5,7 +5,7 @@
 // marked.lexer ベースで実装することで、リスト配下 / 引用配下 / ネストフェンスを含む
 // GFM 仕様の細部追従を marked に委譲する (docs/mdxg-rendering-code-block.archive.md §5.k 参照)。
 //
-// 未サポート言語識別子 (`nim` や typo、日本語混入など) は警告せず単に集合から除外する。
+// 未サポート言語識別子 (typo や日本語混入、fictional 名など) は警告せず単に集合から除外する。
 // レビュー対象 LLM 生成 markdown には言語識別子の typo や日本語混入が頻出するため、
 // 検出のたびに stderr 警告を出すと出力が冗長化して本質的なエラーを埋もれさせる。
 
@@ -114,8 +114,8 @@ if (import.meta.vitest) {
     })
 
     it('未サポート / 空文字 / 空白のみは null', () => {
-      expect(normalizeLangIdentifier('nim')).toBeNull()
-      expect(normalizeLangIdentifier('brainfuck')).toBeNull()
+      expect(normalizeLangIdentifier('mylang')).toBeNull()
+      expect(normalizeLangIdentifier('xxx-fake')).toBeNull()
       expect(normalizeLangIdentifier('')).toBeNull()
       expect(normalizeLangIdentifier('   ')).toBeNull()
     })
@@ -162,7 +162,7 @@ if (import.meta.vitest) {
     })
 
     it('未サポート言語識別子は無視する (ホワイトリスト外)', () => {
-      const langs = scanFencedLangs('```nim\nlet x = 1\n```\n\n```ts\nlet y = 1\n```\n')
+      const langs = scanFencedLangs('```mylang\nlet x = 1\n```\n\n```ts\nlet y = 1\n```\n')
       expect([...langs]).toEqual(['typescript'])
     })
 

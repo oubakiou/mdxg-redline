@@ -131,7 +131,7 @@ if (import.meta.vitest) {
 
     it('collectValidGrammarLists はホワイトリスト外を除外する', () => {
       const fixture: Record<string, unknown> = {
-        nim: [{ scope: 'source.nim' }],
+        mylang: [{ scope: 'source.mylang' }],
         'not-a-list': 'string-value',
         typescript: [{ scope: 'source.ts' }],
       }

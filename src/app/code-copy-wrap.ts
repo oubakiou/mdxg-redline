@@ -41,7 +41,7 @@ const buildCopyButton = (pre: HTMLElement): HTMLButtonElement => {
 /**
  * `<pre data-lang="…">` の値から表示用ラベルテキストを決める。
  * 正規名にマップできれば正規名 (`ts → typescript` / `sh → bash`)、
- * 27 言語ホワイトリスト外で正規化できない識別子は生 lang をそのまま返す
+ * Shiki bundled 全言語のホワイトリスト外で正規化できない識別子は生 lang をそのまま返す
  * (`nim` や typo を含むフェンスでもラベルが消えないようにする)。
  */
 const resolveLangLabelText = (rawLang: string): string =>
