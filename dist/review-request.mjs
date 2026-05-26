@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { marked } from "marked";
+import { readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
-import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
-import process from "node:process";
+import process$1 from "node:process";
 import { createReadStream } from "node:fs";
 import { createServer } from "node:http";
 //#region src/core/shiki-aliases.generated.ts
@@ -628,6 +628,10 @@ var SHIKI_LANGS_FLAG = "--shiki-langs";
 var COMMENTS_WIDTH_FLAG = "--comments-width";
 var PAGE_NAV_WIDTH_FLAG = "--page-nav-width";
 var SHOW_OPEN_FILE_FLAG = "--show-open-file";
+var CLEAN_FLAG = "--clean";
+var YES_FLAG = "--yes";
+var KEEP_FLAG = "--keep";
+var HEX_16_PATTERN = /^[0-9a-f]{16}$/i;
 var THEME_VALUES = [
 	"system",
 	"light",
@@ -754,13 +758,109 @@ Options:
   -h, --help             Print this help and exit. Takes precedence over all
                          other arguments and flags when present.
 
+Cleanup mode:
+  --clean <dir>          Remove all *-<docHash>-review.html and
+                         *-<docHash>-feedback.json files in <dir> (top level
+                         only). By default runs in dry-run mode and only
+                         prints the candidates; pass --yes to actually delete.
+  --yes                  With --clean, perform deletion (no prompt). Without
+                         --yes, --clean is dry-run.
+  --keep <docHash>       With --clean, preserve files whose 16-hex docHash
+                         matches. May be repeated.
+
 Examples:
   mdxg-redline spec.md
   mdxg-redline spec.md ./reviews
   mdxg-redline --no-open spec.md
   mdxg-redline --theme dark spec.md
   cat spec.md | mdxg-redline - --document-name spec.md
+  mdxg-redline --clean ./reviews
+  mdxg-redline --clean ./reviews --yes
+  mdxg-redline --clean ./reviews --keep a1b2c3d4e5f6a7b8 --yes
 `;
+var INITIAL_CLEAN_STATE = {
+	dir: null,
+	keep: /* @__PURE__ */ new Set(),
+	pendingDir: false,
+	pendingKeep: false,
+	valid: true,
+	yes: false
+};
+var consumeCleanDirValue = (acc, token) => {
+	if (token.startsWith("--")) return {
+		...acc,
+		valid: false
+	};
+	return {
+		...acc,
+		dir: token,
+		pendingDir: false
+	};
+};
+var consumeCleanKeepValue = (acc, token) => {
+	if (!HEX_16_PATTERN.test(token)) return {
+		...acc,
+		valid: false
+	};
+	const next = new Set(acc.keep);
+	next.add(token.toLowerCase());
+	return {
+		...acc,
+		keep: next,
+		pendingKeep: false
+	};
+};
+var markCleanFlag = (acc) => {
+	if (acc.dir !== null || acc.pendingDir) return {
+		...acc,
+		valid: false
+	};
+	return {
+		...acc,
+		pendingDir: true
+	};
+};
+var CLEAN_FLAG_TABLE = [
+	{
+		flag: CLEAN_FLAG,
+		mark: markCleanFlag
+	},
+	{
+		flag: KEEP_FLAG,
+		mark: (acc) => ({
+			...acc,
+			pendingKeep: true
+		})
+	},
+	{
+		flag: YES_FLAG,
+		mark: (acc) => ({
+			...acc,
+			yes: true
+		})
+	}
+];
+var stepCleanArg = (acc, token) => {
+	if (!acc.valid) return acc;
+	if (acc.pendingDir) return consumeCleanDirValue(acc, token);
+	if (acc.pendingKeep) return consumeCleanKeepValue(acc, token);
+	const entry = CLEAN_FLAG_TABLE.find((row) => row.flag === token);
+	if (!entry) return {
+		...acc,
+		valid: false
+	};
+	return entry.mark(acc);
+};
+var parseCleanArgs = (argv) => {
+	const state = argv.reduce(stepCleanArg, INITIAL_CLEAN_STATE);
+	if (!state.valid || state.pendingDir || state.pendingKeep || state.dir === null) return { mode: "invalid" };
+	return {
+		dir: state.dir,
+		keep: state.keep,
+		mode: "clean",
+		yes: state.yes
+	};
+};
 var INITIAL_PARTITION_STATE = {
 	commentsWidth: null,
 	documentName: null,
@@ -987,13 +1087,17 @@ var buildRunArgs = (parts) => {
 	attachRunOptionals(result, parts);
 	return result;
 };
-var parseArgs = (argv) => {
-	if (argv.length === 0) return { mode: "help" };
-	if (argv.some((token) => HELP_FLAGS.has(token))) return { mode: "help" };
+var parseRunArgs = (argv) => {
 	const parts = partitionArgs(argv);
 	if (!parts.valid) return { mode: "invalid" };
 	if (parts.positional.length < 1 || parts.positional.length > 2) return { mode: "invalid" };
 	return buildRunArgs(parts);
+};
+var parseArgs = (argv) => {
+	if (argv.length === 0) return { mode: "help" };
+	if (argv.some((token) => HELP_FLAGS.has(token))) return { mode: "help" };
+	if (argv.includes(CLEAN_FLAG)) return parseCleanArgs(argv);
+	return parseRunArgs(argv);
 };
 var sanitizeMdFileName = (name) => {
 	const cleaned = name.replace(/\p{Cc}/gu, "_").replace(/[\\/]/g, "_");
@@ -1196,6 +1300,88 @@ var rewriteReviewHtml = (reviewHtml, markdown, docName) => {
 	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
 };
 //#endregion
+//#region src/cli/clean.ts
+/**
+* `<mdFileName>-<16桁hex>-(review.html|feedback.json)` 形式のファイル名を識別する正規表現。
+* 大小無視は parseReviewMdFilename 削除前の挙動と整合させるための保険で、CLI 自体は
+* 小文字 hex で出力するため通常は小文字でマッチする。
+*/
+var REVIEW_ARTIFACT_PATTERN = /^(.+)-([0-9a-f]{16})-(review\.html|feedback\.json)$/i;
+var matchEntry = (filename) => {
+	const match = REVIEW_ARTIFACT_PATTERN.exec(filename);
+	if (!match) return null;
+	const [, mdFileName, hash, suffix] = match;
+	if (suffix !== "review.html" && suffix !== "feedback.json") return null;
+	return {
+		docHash: hash.toLowerCase(),
+		filename,
+		mdFileName,
+		suffix
+	};
+};
+/**
+* ファイル名列を「削除候補 / `--keep` で温存 / 規約外で skip」の 3 つに振り分ける pure 関数。
+* I/O を持たないため in-source test で全分岐を網羅する。
+*/
+var classifyEntries = (filenames, keepHashes) => {
+	const matched = filenames.map((filename) => matchEntry(filename)).filter((entry) => entry !== null);
+	const skipped = filenames.filter((filename) => matchEntry(filename) === null);
+	const toDelete = matched.filter((entry) => !keepHashes.has(entry.docHash));
+	return {
+		kept: matched.filter((entry) => keepHashes.has(entry.docHash)),
+		skipped,
+		toDelete
+	};
+};
+var formatEntryLines = (header, entries) => {
+	if (entries.length === 0) return [];
+	return [header, ...entries.map((entry) => `  ${entry.filename}`)];
+};
+var formatDryRun = (dir, result) => {
+	if (result.toDelete.length === 0 && result.kept.length === 0) return `No review/feedback artifacts found in ${dir}.\n`;
+	const deleteLines = formatEntryLines(`[dry-run] Would delete ${result.toDelete.length} file(s) in ${dir}:`, result.toDelete);
+	const keepLines = formatEntryLines(`Kept ${result.kept.length} file(s) matching --keep:`, result.kept);
+	return `${[
+		...deleteLines,
+		...keepLines,
+		`Run with --yes to delete.`
+	].join("\n")}\n`;
+};
+var formatDeleted = (dir, deleted, kept) => {
+	if (deleted === 0 && kept === 0) return `No review/feedback artifacts found in ${dir}.\n`;
+	const head = `Deleted ${deleted} file(s) in ${dir}.\n`;
+	if (kept === 0) return head;
+	return `${head}Kept ${kept} file(s) matching --keep.\n`;
+};
+var deleteEntries = async (dir, entries, io) => {
+	await Promise.all(entries.map(async (entry) => io.unlink(resolve(dir, entry.filename))));
+};
+/**
+* `--clean` の実行エントリ。CLI 経由でも他テスト経路でも使えるよう、I/O は引数で受け取る。
+* 戻り値は process exit code 相当 (0 = success, 1 = failure)。
+*/
+var runClean = async (args, io) => {
+	const dirAbs = resolve(args.dir);
+	const result = classifyEntries(await io.readdir(dirAbs), args.keep);
+	if (!args.yes) {
+		io.stdout(formatDryRun(dirAbs, result));
+		return 0;
+	}
+	await deleteEntries(dirAbs, result.toDelete, io);
+	io.stdout(formatDeleted(dirAbs, result.toDelete.length, result.kept.length));
+	return 0;
+};
+var defaultCleanIo = {
+	readdir: async (path) => readdir(path),
+	stderr: (text) => {
+		process.stderr.write(text);
+	},
+	stdout: (text) => {
+		process.stdout.write(text);
+	},
+	unlink: async (path) => unlink(path)
+};
+//#endregion
 //#region src/cli/open-command.ts
 var isHostBrowserUnreachableViaFile = (env) => {
 	if (env.REMOTE_CONTAINERS === "true") return true;
@@ -1203,7 +1389,7 @@ var isHostBrowserUnreachableViaFile = (env) => {
 	const browser = env.BROWSER ?? "";
 	return browser.includes("vscode-server") && browser.includes("helpers/browser.sh");
 };
-var buildOpenCommand = (platform, path, env = process.env) => {
+var buildOpenCommand = (platform, path, env = process$1.env) => {
 	if (env.BROWSER) return {
 		args: [path],
 		command: env.BROWSER
@@ -1227,9 +1413,9 @@ var buildOpenCommand = (platform, path, env = process.env) => {
 	};
 };
 var openInBrowser = async (path) => new Promise((done) => {
-	const { args, command } = buildOpenCommand(process.platform, path, process.env);
+	const { args, command } = buildOpenCommand(process$1.platform, path, process$1.env);
 	execFile(command, args, (error) => {
-		if (error) process.stderr.write(`review-request: ブラウザを起動できませんでした (${command}: ${error.message})。上記のパスを手動で開いてください。\n`);
+		if (error) process$1.stderr.write(`review-request: ブラウザを起動できませんでした (${command}: ${error.message})。上記のパスを手動で開いてください。\n`);
 		done();
 	});
 });
@@ -1245,7 +1431,7 @@ var resolvePreferredPort = (env) => {
 	if (!raw) return DEFAULT_PORT;
 	const parsed = Number(raw);
 	if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
-		process.stderr.write(`review-request: ${PORT_ENV_VAR}="${raw}" は有効なポート番号ではないため ${String(DEFAULT_PORT)} を使います。\n`);
+		process$1.stderr.write(`review-request: ${PORT_ENV_VAR}="${raw}" は有効なポート番号ではないため ${String(DEFAULT_PORT)} を使います。\n`);
 		return DEFAULT_PORT;
 	}
 	return parsed;
@@ -1283,7 +1469,7 @@ var listenWithFallback = async (server, preferred) => {
 		if (!isPortInUseError(error)) throw error;
 	}
 	const result = await tryListen(server, 0);
-	process.stderr.write(`review-request: ポート ${String(preferred)} が使用中のため ${String(result.port)} を使います。${PORT_ENV_VAR} でデフォルトを上書きできます。今回はブラウザ側 IndexedDB のサイレント復元 (Write feedback.json の保存先記憶) が効かない可能性があります。\n`);
+	process$1.stderr.write(`review-request: ポート ${String(preferred)} が使用中のため ${String(result.port)} を使います。${PORT_ENV_VAR} でデフォルトを上書きできます。今回はブラウザ側 IndexedDB のサイレント復元 (Write feedback.json の保存先記憶) が効かない可能性があります。\n`);
 	return result;
 };
 var serveOnceAndAutoStop = async (filePath) => {
@@ -1294,7 +1480,7 @@ var serveOnceAndAutoStop = async (filePath) => {
 		});
 		createReadStream(filePath).pipe(res);
 	});
-	const listened = await listenWithFallback(server, resolvePreferredPort(process.env));
+	const listened = await listenWithFallback(server, resolvePreferredPort(process$1.env));
 	return {
 		done: new Promise((doneResolve) => {
 			const giveup = setTimeout(() => {
@@ -1311,12 +1497,12 @@ var serveOnceAndAutoStop = async (filePath) => {
 	};
 };
 var openOutput = async (outputPath) => {
-	if (!isHostBrowserUnreachableViaFile(process.env)) {
+	if (!isHostBrowserUnreachableViaFile(process$1.env)) {
 		await openInBrowser(outputPath);
 		return;
 	}
 	const handle = await serveOnceAndAutoStop(outputPath);
-	process.stderr.write(`review-request: VS Code Remote 環境を検知。HTTP サーバーを ${handle.url} で起動しました。初回アクセス後 ${SERVE_AUTOSTOP_MS / 1e3} 秒、リクエストが無ければ ${SERVE_GIVEUP_MS / 1e3} 秒で自動停止します。\n`);
+	process$1.stderr.write(`review-request: VS Code Remote 環境を検知。HTTP サーバーを ${handle.url} で起動しました。初回アクセス後 ${SERVE_AUTOSTOP_MS / 1e3} 秒、リクエストが無ければ ${SERVE_GIVEUP_MS / 1e3} 秒で自動停止します。\n`);
 	await openInBrowser(handle.url);
 	await handle.done;
 };
@@ -1330,14 +1516,14 @@ var toBuffer = (chunk) => {
 };
 var readStdin = async () => {
 	const chunks = [];
-	for await (const chunk of process.stdin) chunks.push(toBuffer(chunk));
+	for await (const chunk of process$1.stdin) chunks.push(toBuffer(chunk));
 	return Buffer.concat(chunks).toString("utf8");
 };
 var resolveInput = async (inputPath, documentName) => {
 	if (inputPath === STDIN_TOKEN) {
 		const markdown = await readStdin();
 		return {
-			defaultOutputDir: process.cwd(),
+			defaultOutputDir: process$1.cwd(),
 			docName: documentName ?? STDIN_DEFAULT_DOC_NAME,
 			markdown
 		};
@@ -1435,24 +1621,36 @@ var runEmbed = async (args) => {
 	const ctx = await prepareEmbed(args);
 	const result = await composeReviewHtml(args, ctx);
 	await writeFile(ctx.outputPath, result, "utf8");
-	process.stdout.write(`${ctx.outputPath}\n`);
+	process$1.stdout.write(`${ctx.outputPath}\n`);
 	if (args.open) await openOutput(ctx.outputPath);
 };
-var main = async () => {
-	const args = parseArgs(process.argv.slice(2));
+var handleNonRunModes = (args) => {
 	if (args.mode === "help") {
-		process.stdout.write(HELP_TEXT);
-		return;
+		process$1.stdout.write(HELP_TEXT);
+		return true;
 	}
 	if (args.mode === "invalid") {
-		process.stderr.write(`mdxg-redline: invalid arguments. Run \`mdxg-redline --help\` for usage.\n`);
-		process.exit(1);
+		process$1.stderr.write(`mdxg-redline: invalid arguments. Run \`mdxg-redline --help\` for usage.\n`);
+		process$1.exit(1);
 	}
-	await runEmbed(args);
+	return false;
+};
+var main = async () => {
+	const args = parseArgs(process$1.argv.slice(2));
+	if (handleNonRunModes(args)) return;
+	if (args.mode === "clean") {
+		const code = await runClean({
+			dir: args.dir,
+			keep: args.keep,
+			yes: args.yes
+		}, defaultCleanIo);
+		process$1.exit(code);
+	}
+	if (args.mode === "run") await runEmbed(args);
 };
 main().catch((error) => {
-	process.stderr.write(`review-request: ${errorMessage(error)}\n`);
-	process.exit(1);
+	process$1.stderr.write(`review-request: ${errorMessage(error)}\n`);
+	process$1.exit(1);
 });
 //#endregion
 export { resolveShikiLangSet };

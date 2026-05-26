@@ -34,6 +34,7 @@ import {
   upsertHtmlDataTheme,
   upsertHtmlDataToolbarOpenFile,
 } from '../core/embed'
+import { defaultCleanIo, runClean } from './clean'
 import { dirname, resolve } from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
 
@@ -224,11 +225,10 @@ const runEmbed = async (args: RunArgs): Promise<void> => {
   }
 }
 
-const main = async (): Promise<void> => {
-  const args = parseArgs(process.argv.slice(2))
+const handleNonRunModes = (args: ReturnType<typeof parseArgs>): boolean => {
   if (args.mode === 'help') {
     process.stdout.write(HELP_TEXT)
-    return
+    return true
   }
   if (args.mode === 'invalid') {
     process.stderr.write(
@@ -236,7 +236,21 @@ const main = async (): Promise<void> => {
     )
     process.exit(1)
   }
-  await runEmbed(args)
+  return false
+}
+
+const main = async (): Promise<void> => {
+  const args = parseArgs(process.argv.slice(2))
+  if (handleNonRunModes(args)) {
+    return
+  }
+  if (args.mode === 'clean') {
+    const code = await runClean({ dir: args.dir, keep: args.keep, yes: args.yes }, defaultCleanIo)
+    process.exit(code)
+  }
+  if (args.mode === 'run') {
+    await runEmbed(args)
+  }
 }
 
 // in-source test 実行時は main() が走らないようにする。

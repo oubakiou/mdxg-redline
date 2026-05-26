@@ -12,6 +12,10 @@ const SHIKI_LANGS_FLAG = '--shiki-langs'
 const COMMENTS_WIDTH_FLAG = '--comments-width'
 const PAGE_NAV_WIDTH_FLAG = '--page-nav-width'
 const SHOW_OPEN_FILE_FLAG = '--show-open-file'
+const CLEAN_FLAG = '--clean'
+const YES_FLAG = '--yes'
+const KEEP_FLAG = '--keep'
+const HEX_16_PATTERN = /^[0-9a-f]{16}$/i
 
 export type ThemeHint = 'system' | 'light' | 'dark'
 const THEME_VALUES = ['system', 'light', 'dark'] as const
@@ -198,12 +202,25 @@ Options:
   -h, --help             Print this help and exit. Takes precedence over all
                          other arguments and flags when present.
 
+Cleanup mode:
+  --clean <dir>          Remove all *-<docHash>-review.html and
+                         *-<docHash>-feedback.json files in <dir> (top level
+                         only). By default runs in dry-run mode and only
+                         prints the candidates; pass --yes to actually delete.
+  --yes                  With --clean, perform deletion (no prompt). Without
+                         --yes, --clean is dry-run.
+  --keep <docHash>       With --clean, preserve files whose 16-hex docHash
+                         matches. May be repeated.
+
 Examples:
   mdxg-redline spec.md
   mdxg-redline spec.md ./reviews
   mdxg-redline --no-open spec.md
   mdxg-redline --theme dark spec.md
   cat spec.md | mdxg-redline - --document-name spec.md
+  mdxg-redline --clean ./reviews
+  mdxg-redline --clean ./reviews --yes
+  mdxg-redline --clean ./reviews --keep a1b2c3d4e5f6a7b8 --yes
 `
 
 export interface RunArgs {
@@ -225,7 +242,95 @@ export interface RunArgs {
   showOpenFile?: boolean
 }
 
-export type ParsedArgs = { mode: 'help' } | { mode: 'invalid' } | ({ mode: 'run' } & RunArgs)
+export interface CleanArgsParsed {
+  dir: string
+  keep: ReadonlySet<string>
+  yes: boolean
+}
+
+export type ParsedArgs =
+  | { mode: 'help' }
+  | { mode: 'invalid' }
+  | ({ mode: 'run' } & RunArgs)
+  | ({ mode: 'clean' } & CleanArgsParsed)
+
+interface CleanPartitionState {
+  dir: string | null
+  keep: Set<string>
+  pendingDir: boolean
+  pendingKeep: boolean
+  valid: boolean
+  yes: boolean
+}
+
+const INITIAL_CLEAN_STATE: CleanPartitionState = {
+  dir: null,
+  keep: new Set(),
+  pendingDir: false,
+  pendingKeep: false,
+  valid: true,
+  yes: false,
+}
+
+const consumeCleanDirValue = (acc: CleanPartitionState, token: string): CleanPartitionState => {
+  if (token.startsWith('--')) {
+    return { ...acc, valid: false }
+  }
+  return { ...acc, dir: token, pendingDir: false }
+}
+
+const consumeCleanKeepValue = (acc: CleanPartitionState, token: string): CleanPartitionState => {
+  if (!HEX_16_PATTERN.test(token)) {
+    return { ...acc, valid: false }
+  }
+  const next = new Set(acc.keep)
+  next.add(token.toLowerCase())
+  return { ...acc, keep: next, pendingKeep: false }
+}
+
+// --clean は 1 回のみ許容する (複数指定で後勝ちになると意図が曖昧になり、誤って別ディレクトリを
+// 削除しかける事故が起きやすいため、構造的に弾く)。--yes は冪等なので重複でも valid のまま。
+// --keep は仕様上繰り返し指定で hash を蓄積するため、ここでは重複チェックしない。
+const markCleanFlag = (acc: CleanPartitionState): CleanPartitionState => {
+  if (acc.dir !== null || acc.pendingDir) {
+    return { ...acc, valid: false }
+  }
+  return { ...acc, pendingDir: true }
+}
+
+const CLEAN_FLAG_TABLE: readonly {
+  flag: string
+  mark: (acc: CleanPartitionState) => CleanPartitionState
+}[] = [
+  { flag: CLEAN_FLAG, mark: markCleanFlag },
+  { flag: KEEP_FLAG, mark: (acc): CleanPartitionState => ({ ...acc, pendingKeep: true }) },
+  { flag: YES_FLAG, mark: (acc): CleanPartitionState => ({ ...acc, yes: true }) },
+]
+
+const stepCleanArg = (acc: CleanPartitionState, token: string): CleanPartitionState => {
+  if (!acc.valid) {
+    return acc
+  }
+  if (acc.pendingDir) {
+    return consumeCleanDirValue(acc, token)
+  }
+  if (acc.pendingKeep) {
+    return consumeCleanKeepValue(acc, token)
+  }
+  const entry = CLEAN_FLAG_TABLE.find((row): boolean => row.flag === token)
+  if (!entry) {
+    return { ...acc, valid: false }
+  }
+  return entry.mark(acc)
+}
+
+const parseCleanArgs = (argv: readonly string[]): ParsedArgs => {
+  const state = argv.reduce<CleanPartitionState>(stepCleanArg, INITIAL_CLEAN_STATE)
+  if (!state.valid || state.pendingDir || state.pendingKeep || state.dir === null) {
+    return { mode: 'invalid' }
+  }
+  return { dir: state.dir, keep: state.keep, mode: 'clean', yes: state.yes }
+}
 
 interface PartitionedArgs {
   documentName?: string
@@ -514,13 +619,7 @@ const buildRunArgs = (parts: PartitionedArgs): { mode: 'run' } & RunArgs => {
 // 位置引数 (<input.md|->, [output-dir]) と --no-open / --document-name / -h / --help を
 // 混在順序で受け付ける。引数なし or -h / --help は help モード（他の引数が混じっていても
 // help を最優先する）。未知フラグ・位置引数の個数違反・--document-name の値欠落は invalid。
-export const parseArgs = (argv: readonly string[]): ParsedArgs => {
-  if (argv.length === 0) {
-    return { mode: 'help' }
-  }
-  if (argv.some((token): boolean => HELP_FLAGS.has(token))) {
-    return { mode: 'help' }
-  }
+const parseRunArgs = (argv: readonly string[]): ParsedArgs => {
   const parts = partitionArgs(argv)
   if (!parts.valid) {
     return { mode: 'invalid' }
@@ -529,6 +628,19 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     return { mode: 'invalid' }
   }
   return buildRunArgs(parts)
+}
+
+export const parseArgs = (argv: readonly string[]): ParsedArgs => {
+  if (argv.length === 0) {
+    return { mode: 'help' }
+  }
+  if (argv.some((token): boolean => HELP_FLAGS.has(token))) {
+    return { mode: 'help' }
+  }
+  if (argv.includes(CLEAN_FLAG)) {
+    return parseCleanArgs(argv)
+  }
+  return parseRunArgs(argv)
 }
 
 // mdFileName 部分のみに対する緩めサニタイズ。レビュー画面 / data-name の表示用途
@@ -699,6 +811,74 @@ if (import.meta.vitest) {
 
     it('未知のフラグは invalid', () => {
       expect(parseArgs(['--unknown', 'spec.md'])).toEqual({ mode: 'invalid' })
+    })
+  })
+
+  describe('parseArgs: --clean', () => {
+    it('--clean <dir> だけで dry-run の clean モードを返す', () => {
+      const parsed = parseArgs(['--clean', '/tmp/x'])
+      expect(parsed.mode).toBe('clean')
+      if (parsed.mode === 'clean') {
+        expect(parsed.dir).toBe('/tmp/x')
+        expect(parsed.yes).toBe(false)
+        expect([...parsed.keep]).toEqual([])
+      }
+    })
+
+    it('--yes 付きで yes=true', () => {
+      const parsed = parseArgs(['--clean', '/tmp/x', '--yes'])
+      expect(parsed.mode).toBe('clean')
+      if (parsed.mode === 'clean') {
+        expect(parsed.yes).toBe(true)
+      }
+    })
+
+    it('--keep を複数指定すると Set に重複なく蓄積される', () => {
+      const parsed = parseArgs([
+        '--clean',
+        '/tmp/x',
+        '--keep',
+        'a1b2c3d4e5f6a7b8',
+        '--keep',
+        'A1B2C3D4E5F6A7B8',
+        '--keep',
+        '1111111111111111',
+      ])
+      expect(parsed.mode).toBe('clean')
+      if (parsed.mode === 'clean') {
+        expect([...parsed.keep].toSorted()).toEqual(['1111111111111111', 'a1b2c3d4e5f6a7b8'])
+      }
+    })
+
+    it('--clean の値欠落は invalid', () => {
+      expect(parseArgs(['--clean'])).toEqual({ mode: 'invalid' })
+    })
+
+    it('--clean の値位置に別フラグが来た場合は invalid', () => {
+      expect(parseArgs(['--clean', '--yes'])).toEqual({ mode: 'invalid' })
+    })
+
+    it('--keep の値が 16 桁 hex でない場合は invalid', () => {
+      expect(parseArgs(['--clean', '/tmp/x', '--keep', 'abc'])).toEqual({ mode: 'invalid' })
+      expect(parseArgs(['--clean', '/tmp/x', '--keep', 'zzzzzzzzzzzzzzzz'])).toEqual({
+        mode: 'invalid',
+      })
+    })
+
+    it('--keep の値欠落は invalid', () => {
+      expect(parseArgs(['--clean', '/tmp/x', '--keep'])).toEqual({ mode: 'invalid' })
+    })
+
+    it('clean モードでは run モード用フラグ (--no-open / --theme 等) は invalid', () => {
+      expect(parseArgs(['--clean', '/tmp/x', '--no-open'])).toEqual({ mode: 'invalid' })
+      expect(parseArgs(['--clean', '/tmp/x', '--theme', 'dark'])).toEqual({ mode: 'invalid' })
+    })
+
+    it('--clean を 2 回以上指定すると invalid (後勝ちで誤ディレクトリ削除を防ぐ)', () => {
+      expect(parseArgs(['--clean', '/tmp/a', '--clean', '/tmp/b'])).toEqual({ mode: 'invalid' })
+      expect(parseArgs(['--clean', '/tmp/a', '--clean', '/tmp/b', '--yes'])).toEqual({
+        mode: 'invalid',
+      })
     })
   })
 
