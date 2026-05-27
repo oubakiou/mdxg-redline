@@ -64,23 +64,44 @@ const labelFromFootnoteLi = (li: HTMLElement): string | null => {
   return match[1]
 }
 
+const resolveFootnoteAnchor = (
+  li: HTMLElement,
+  positions: AnchorPositionsResult
+): BlockAnchor | null => {
+  const label = labelFromFootnoteLi(li)
+  if (label === null) {
+    return null
+  }
+  return positions.footnoteByLabel.get(label) ?? null
+}
+
+const assignFootnoteListItem = (
+  li: HTMLElement,
+  assignment: AnchorAssignmentState,
+  positions: AnchorPositionsResult
+): void => {
+  assignment.blockIndex += 1
+  const id = formatBlockId(assignment.blockIndex)
+  li.dataset.blockId = id
+  // `<li>` は標準で focusable ではなく、Step 5 の `el.focus()` が footnote-ref クリック後に
+  // no-op になってしまうため `tabindex="-1"` を付与する (docs/mdxg-footnotes.md Step 7)。
+  // Tab 順には乗らない programmatic focus target として機能し、jump 後の視覚 focus indicator
+  // と次の Tab 移動の起点が成立する。
+  li.tabIndex = -1
+  state.blockOriginalHTML.set(id, li.innerHTML)
+  const anchor = resolveFootnoteAnchor(li, positions)
+  if (anchor !== null) {
+    assignment.anchors.set(id, anchor)
+  }
+}
+
 const assignFootnoteListItems = (
   section: HTMLElement,
   assignment: AnchorAssignmentState,
   positions: AnchorPositionsResult
 ): void => {
   for (const li of section.querySelectorAll<HTMLElement>(':scope > ol > li')) {
-    assignment.blockIndex += 1
-    const id = formatBlockId(assignment.blockIndex)
-    li.dataset.blockId = id
-    state.blockOriginalHTML.set(id, li.innerHTML)
-    const label = labelFromFootnoteLi(li)
-    if (label !== null) {
-      const position = positions.footnoteByLabel.get(label)
-      if (position) {
-        assignment.anchors.set(id, position)
-      }
-    }
+    assignFootnoteListItem(li, assignment, positions)
   }
 }
 
