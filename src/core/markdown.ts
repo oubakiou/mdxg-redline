@@ -1,4 +1,5 @@
-import { Renderer, marked } from 'marked'
+import { Marked, Renderer } from 'marked'
+import footnote from 'marked-footnote'
 
 // sort-imports は multiple specifier を single specifier より前に並べる一方、
 // alphabetical 順では `escape` (e) が `mermaid-attrs` (m) より先になり両立しない。
@@ -7,6 +8,14 @@ import { MERMAID_ATTR, MERMAID_ATTR_VALUE } from './mermaid-attrs'
 import { type MathSegment, scanMath } from './math'
 import { escapeHtml } from './escape'
 /* eslint-enable sort-imports */
+
+// 本モジュール専用の Marked instance に marked-footnote を載せる。global `marked`
+// (block-anchors / scan-fenced-langs / scan-mermaid / math が共有) には use しない:
+// marked-footnote は lexer 出力先頭に synthetic な type:'footnotes' placeholder token を
+// 必ず挿入するため、global を共有する他モジュールの top-level token 走査が黙って崩れる
+// (docs/mdxg-footnotes.md §4 Step 2 / Step 1 PoC で確定)。
+const markedInstance = new Marked()
+markedInstance.use(footnote())
 
 const ALLOWED_LINK_SCHEMES = new Set(['http:', 'https:'])
 // http: は CSP の img-src と揃えて意図的に除外している。平文通信と外部追跡経路を構造的に塞ぐ。
@@ -265,7 +274,7 @@ export const renderMarkdown = (
   highlighter?: CodeHighlighter | null,
   options?: MarkdownRenderOptions
 ): string => {
-  const result = marked.parse(markdown, {
+  const result = markedInstance.parse(markdown, {
     breaks: false,
     gfm: true,
     renderer: createRenderer(highlighter, options),
