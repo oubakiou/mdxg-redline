@@ -70,8 +70,31 @@ const findDisplayEnd = (text: string, from: number): number => {
   return -1
 }
 
+const isWhitespaceBefore = (text: string, pos: number): boolean => {
+  const ch = text[pos - 1]
+  return ch === ' ' || ch === '\t' || ch === '\n'
+}
+
+// opening `$` の直後 (matchInline で渡される start+1 位置) が空白 or 数字なら inline 数式の
+// 開始として扱わない (Pandoc 風境界条件、$100 のような通貨表記を構造的に除外する、§5.i)。
+// 数字を弾くのは KaTeX 数式 source が数字始まりになるケースが極めて稀 (係数は文字 / 演算子で
+// 接続するのが典型) なので副作用が小さい。display $$ にはこの境界条件を適用しない (display は
+// 単独行で書かれるのが普通で自然言語混入のリスクが低い)。
+const isInvalidInlineOpening = (text: string, after: number): boolean => {
+  if (after >= text.length) {
+    return true
+  }
+  const ch = text.charAt(after)
+  if (ch === ' ' || ch === '\t' || ch === '\n') {
+    return true
+  }
+  return ch >= '0' && ch <= '9'
+}
+
 // inline 数式の終端 `$` 位置を返す。改行に遭遇した時点で打ち切り (-1)。
 // escape された `$` は終端として扱わない。見つからなければ -1。
+// closing `$` の直前が空白の場合も終端として扱わない (Pandoc 風境界条件、$ 100 のような
+// 開きっぱなしを抑制する。自然言語 `$` 誤検出対策の片側、§5.i)。
 const findInlineEnd = (text: string, from: number): number => {
   let cursor = from
   while (cursor < text.length) {
@@ -79,7 +102,7 @@ const findInlineEnd = (text: string, from: number): number => {
     if (ch === '\n') {
       return -1
     }
-    if (ch === '$' && !isEscapedDollar(text, cursor)) {
+    if (ch === '$' && !isEscapedDollar(text, cursor) && !isWhitespaceBefore(text, cursor)) {
       return cursor
     }
     cursor += 1
@@ -113,7 +136,12 @@ const matchDisplay = (text: string, start: number): MatchStep => {
 
 // `$` 直後位置から inline 終端を探し、見つかれば MathSegment と新カーソル位置を返す。
 // 見つからない場合は `$` 1 文字ぶん進めて plain text として残す。
+// 開始境界の Pandoc 風判定 (空白 / 数字直後を除外) も担い、`$100` のような通貨表記を
+// 数式境界として認識しないことで `--math auto` 誤検出を構造的に塞ぐ (§5.i)。
 const matchInline = (text: string, start: number): MatchStep => {
+  if (isInvalidInlineOpening(text, start + 1)) {
+    return { next: start + 1, segment: null }
+  }
   const endPos = findInlineEnd(text, start + 1)
   if (endPos === -1) {
     return { next: start + 1, segment: null }
@@ -247,6 +275,42 @@ if (import.meta.vitest) {
       expect(text.slice(seg.start, seg.end)).toBe(seg.raw)
       expect(seg.raw).toBe(String.raw`$\frac{a}{b}$`)
       expect(seg.source).toBe(String.raw`\frac{a}{b}`)
+    })
+  })
+
+  describe('scanMath: Pandoc 風境界条件 (§5.i 自然言語 $ 誤検出対策)', () => {
+    it('$ 直後が数字なら inline 数式と認識しない ($100 通貨表記)', () => {
+      expect(scanMath('Price is $100 here')).toEqual([])
+    })
+
+    it('複数の通貨表記が並んでも誤検出しない ($100 and $200)', () => {
+      expect(scanMath('Pay $100 and $200 today.')).toEqual([])
+    })
+
+    it('$ 直後が空白なら inline 数式と認識しない (開きっぱなしの $)', () => {
+      expect(scanMath('open $ then text $')).toEqual([])
+    })
+
+    it('closing $ の直前が空白なら閉じとして扱わない ($x $ y$ → 認識しない)', () => {
+      // $x ` ` 部分で $ 直前が空白なので閉じない。その後 ` y$` の y は適切な閉じ候補だが、
+      // 開きは依然 $x の前にある。$x → ... → y$ で挟むが、内部に半角空白で中断するため
+      // findInlineEnd は ` y` を経て y の次の `$` を検出する。`y$` の y は空白ではないので
+      // 閉じが成立する。実質的に `$x ... y$` 全体が 1 inline として検出される
+      const segments = scanMath('hello $x $ y$ tail')
+      expect(segments).toHaveLength(1)
+      expect(segments[0]).toMatchObject({ source: 'x $ y', type: 'inline' })
+    })
+
+    it(String.raw`境界条件強化後も $x^2$ / $\alpha$ / $a+b$ は数式として通る`, () => {
+      expect(scanMath('$x^2$')).toHaveLength(1)
+      expect(scanMath(String.raw`$\alpha$`)).toHaveLength(1)
+      expect(scanMath('$a+b$')).toHaveLength(1)
+    })
+
+    it('display $$ には境界条件を適用しない ($$1+2$$ 通る)', () => {
+      const segments = scanMath('$$1+2$$')
+      expect(segments).toHaveLength(1)
+      expect(segments[0]).toMatchObject({ source: '1+2', type: 'display' })
     })
   })
 

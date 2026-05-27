@@ -194,6 +194,28 @@ const textOffsetForTextNode = (
   return segment.start + offset
 }
 
+// blockEl 内の `[data-math]` 子孫のうち、`range` の中に完全に含まれるものの textContent 長を
+// 合算する。Step 6 で textSegments が `[data-math]` を skip するようにしたため、要素境界経路の
+// `range.toString().length` (math element の textContent も含む) と整合させるための補正。
+// upgrade 前 (raw `$x$` = 3 chars) と upgrade 後 (KaTeX 出力 MathML+HTML で数十 chars) の
+// 食い違いも同じ経路で吸収される。
+const skippedMathTextLengthInRange = (blockEl: Element, range: Range): number => {
+  const mathElements = blockEl.querySelectorAll<HTMLElement>('[data-math]')
+  let total = 0
+  for (const mathEl of mathElements) {
+    const elRange = document.createRange()
+    elRange.selectNode(mathEl)
+    // 要素全体が range の中に入っているか: range の start <= elRange.start かつ
+    // elRange.end <= range の end の両方を満たす場合のみカウント。
+    const startsAfterRangeStart = range.compareBoundaryPoints(Range.START_TO_START, elRange) <= 0
+    const endsBeforeRangeEnd = range.compareBoundaryPoints(Range.END_TO_END, elRange) >= 0
+    if (startsAfterRangeStart && endsBeforeRangeEnd) {
+      total += (mathEl.textContent ?? '').length
+    }
+  }
+  return total
+}
+
 const textOffsetForElementBoundary = (
   blockEl: Element,
   container: Node,
@@ -206,7 +228,9 @@ const textOffsetForElementBoundary = (
   const range = document.createRange()
   range.selectNodeContents(blockEl)
   range.setEnd(container, boundedOffset)
-  return range.toString().length
+  // textSegments と整合させるため、range 内の `[data-math]` 子孫の textContent を引く。
+  // textSegments は要素ごと skip するため、要素境界経路でも同じ長さを除外する必要がある。
+  return range.toString().length - skippedMathTextLengthInRange(blockEl, range)
 }
 
 /**

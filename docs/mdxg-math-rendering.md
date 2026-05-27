@@ -235,7 +235,7 @@ export function countMath(markdown: string): { inline: number; display: number }
     - **`data-math-source` 属性**: `MathSegment.source`（`$` 区切りを除いた LaTeX 本体）を `core/escape.ts` でエスケープしたもの。upgrade 時の `katex.renderToString` への入力として使う
   - 出力例：
     - inline: `<span data-math="inline" data-math-source="x^2 + y^2">$x^2 + y^2$</span>`
-    - display: `<div data-math="display" data-math-source="\frac{a}{b}">$$\frac{a}{b}$$</div>`
+    - display: `<span data-math="display" data-math-source="\frac{a}{b}">$$\frac{a}{b}$$</span>`（Step 9 で `<div>` から `<span>` に変更。renderer.text は marked が inline 文脈で呼ぶため `<div>` を返すと HTML5 parser が親 `<p>` を強制 close して構造が壊れる。block 表示は CSS の `display: block; margin: 1em 0; text-align: center` で再現、`src/styles/markdown.css` の `#doc [data-math="display"]`、§5.c 参照）
   - textContent に raw `$...$` を残すことで MDXG §14 [MUST] 「描画未サポート時は生の文法を保持」「ストリップ / 隠蔽してはならない」を初期 paint 時点から満たす（`--math off` 配布 / `--math auto` で 0 件時 / upgrade 失敗時のいずれでも raw `$...$` が読める）
   - `$` 区切りの除去は scan 段階で 1 回だけ実施（`MathSegment.source`）。renderer / upgrade 側で文字列処理しないことで、`$` の不一致や Unicode escape との混入を構造的に塞ぐ
   - 数式以外の部分は通常の text として連結
@@ -272,19 +272,16 @@ export function countMath(markdown: string): { inline: number; display: number }
 
 ### Step 6: §6 アンカリングと §10 Search の維持確認
 
-- §6 のブロックフラットテキストオフセット計算は `textContent` ベースで動く。`<span data-math="inline" data-math-source="x">$x$</span>` の textContent は upgrade 前は `$x$`、upgrade 後は KaTeX 出力（MathML / HTML テキスト）に変化する。**この textContent 変化がオフセット計算を狂わせる**ため、`selection.ts` の `textSegments` が `[data-math]` 要素に到達した時の挙動を次のとおりに統一する：
-  - 子孫を walk せず、要素 1 つ = テキストセグメント 1 つとして扱う
-  - 返すテキストは `data-math-source` 属性値を `data-math` 値でラップして再構成する（`'inline'` → `$<source>$` / `'display'` → `$$<source>$$`）
-  - `data-math` / `data-math-source` 属性は Step 5a の初期 render 時に確定し upgrade で書き換わらないため、再構成結果も upgrade 前後で不変
-  - `startOffset` / `endOffset` は upgrade 前後で不変が保証される
-- §10 Search の `<mark class="search-hl">` も同様に `[data-math]` 配下を 1 単位として扱い、検索クエリが再構成された raw 文字列（`$x$` / `\frac` 等の LaTeX ソース込み）に対してマッチする挙動とする（描画された数式テキストに対する検索ではない。レビュアーが LaTeX ソースで grep する用途）
-- in-source test に追加：
-  - upgrade 前後で `selection.ts` の `textSegments` の出力が一致すること（再構成ロジックの不変性）
-  - upgrade を 2 回呼んでも `data-math-applied` ガードで二重描画にならないこと（idempotent）
-  - KaTeX パースエラー時に `data-math-failed="1"` が付き、`data-math-source` 属性が保持されること（textSegments の再構成が引き続き動く）
-  - 検索クエリが LaTeX ソース（`\frac` 等）にマッチすること
+- §6 のブロックフラットテキストオフセット計算は `textContent` ベースで動く。`<span data-math="inline" data-math-source="x">$x$</span>` の textContent は upgrade 前は `$x$`、upgrade 後は KaTeX 出力（MathML / HTML テキスト）に変化する。**この textContent 変化がオフセット計算を狂わせる**ため、`selection.ts` の `textSegments` が `[data-math]` 要素を skip 対象として扱う：
+  - `SKIP_TEXT_SEGMENT_ATTR_NAMES = ['data-math']` で `hasAttribute('data-math')` の有無で skip 判定（値 `'inline'` / `'display'` は問わない）
+  - 子孫を walk せず、要素自体は無視されるため周辺 text node のオフセットが upgrade 前後で完全に不変になる
+  - 代償として「数式そのものへのコメント付与は対応外」（§1 で明文化）。§10 Search の LaTeX ソース検索は将来拡張に回す
+- **要素境界経路の整合** (Step 9 で追加): `textOffsetForElementBoundary` も同じく `[data-math]` 子孫の textContent を `range.toString().length` から引き算する。`selection.ts` の `skippedMathTextLengthInRange` が `Range.compareBoundaryPoints` で range 内に完全に含まれる math 要素を集計し、textSegments 経路と要素境界経路でオフセット基準を揃える（外部レビュー指摘 #3 への対応）
+- upgrade を 2 回呼んでも `data-math-applied` ガードで二重描画にならないこと（idempotent、Step 5b で保証）
+- KaTeX パースエラー時に `data-math-failed="1"` が付き、`data-math-source` 属性が保持されること（Step 5b で保証）
+- テスト環境に DOM がない (DESIGN.md §12 既知の制限) ため、Step 6 の DOM 不変条件テストは `SKIP_TEXT_SEGMENT_ATTR_NAMES` 配列の constant identity test で代替（attribute 名が `data-math` から逸脱したら fail）。実 DOM 検証は E2E build + ブラウザ手動確認に依存
 
-成果物：既存コメント / 検索が付いた markdown を 数式含みで再読込しても §6 / §10 が壊れないこと
+成果物：既存コメント / 検索が付いた markdown を 数式含みで再読込しても §6 オフセット整合性が壊れないこと
 
 ### Step 7: §1 Theming との連動
 
@@ -351,19 +348,21 @@ C 案の論点と mitigation：
 - **upgrade 中の選択操作**: Shiki / Mermaid と同じく `getSelection().toString().length > 0` でスキップし `selectionchange` で再試行
 - **既存 `<mark class="cmt">` の維持**: `[data-math]` 要素は `<span>` / `<div>` 単位で independent な subtree、upgrade で innerHTML が差し替わるが要素自体は残る。`blockOriginalHTML` の再構築で対応（Shiki / Mermaid と同じ）
 
-### c. 数式要素の DOM 配置：`<span data-math="inline">` / `<div data-math="display">`
+### c. 数式要素の DOM 配置：両タイプとも `<span data-math>` で出力し、display は CSS で block 化
 
-| 候補                                                    | 採用 | 理由                                                                                                                                                                                                |
-| ------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A. `[data-math]` 属性付きの `<span>` / `<div>`**      | ✓    | 既存 marked AST との統合が単純（renderer フックで属性付きタグを返すだけ）。upgrade 前後で要素自体は残り、§6 アンカリングの textSegments で `data-math-source` 経由の不変オフセットを実現可能        |
-| B. KaTeX 公式パターン `<span class="math math-inline">` | ✗    | KaTeX 自身が `katex` / `katex-display` クラスを upgrade 後に付与するため、初期 render 段階の class は upgrade との衝突を避ける名前にしたい。`data-math` 属性方式は KaTeX class とは独立に管理できる |
-| C. `<math>` (MathML) タグで初期 render                  | ✗    | marked renderer から MathML を生成するコストが高く、KaTeX 経由の生成と二重実装になる。upgrade で innerHTML を差し替える前提なら初期 render は plain text で十分                                     |
+| 候補                                                              | 採用 | 理由                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------------------------------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A. inline / display とも `<span data-math>` (CSS で block 化)** | ✓    | `renderer.text` は marked が paragraph / heading / list_item の inline 文脈で呼ぶため、ここで `<div>` を返すと HTML5 parser が `<p>` を強制 close して構造が壊れる (`<p>text </p><div>...</div><p> more</p>` のような分割)。block 表示は CSS の `display: block; margin: 1em 0; text-align: center` で再現でき、KaTeX upgrade 後の `.katex-display` も同じ値を当てるため整合する |
+| B. inline は `<span>`、display は `<div>`                         | ✗    | Step 5a で当初採用したが上記の HTML5 parser 強制 close 問題で構造が崩れる (Step 9 / 外部レビュー指摘 #2)。`<p>` 自動 close が起きると `#doc` 直下の `data-block-id` 連番が DOM 側で増え、`block-anchors` (lexer 側) との 1:1 対応が壊れる                                                                                                                                        |
+| C. `<math>` (MathML) タグで初期 render                            | ✗    | marked renderer から MathML を生成するコストが高く、KaTeX 経由の生成と二重実装になる。upgrade で innerHTML を差し替える前提なら初期 render は plain text で十分                                                                                                                                                                                                                  |
+| D. KaTeX 公式パターン `<span class="math math-inline">`           | ✗    | KaTeX 自身が `katex` / `katex-display` クラスを upgrade 後に付与するため、初期 render 段階の class は upgrade との衝突を避ける名前にしたい。`data-math` 属性方式は KaTeX class とは独立に管理できる                                                                                                                                                                              |
 
 A 案の追加考慮：
 
 - `data-math` の値は `'inline'` / `'display'` の 2 値のみ（数値や複雑な構造を持たせない）
 - `data-math-source` は Step 5a の初期 render 時に scan 結果から焼き込み（`$` 区切り除去済み）。upgrade では参照のみで書き換えない。textContent は raw `$...$` を保持し、§14 [MUST] の plain text fallback を初期 paint から成立させる
 - upgrade 後に付ける `data-math-applied="1"` / `data-math-failed="1"` の組合せで状態管理（Mermaid と対称）
+- display 表示は CSS `#doc [data-math="display"] { display: block; margin: 1em 0; text-align: center }` で再現。KaTeX upgrade 後は内側に出る `.katex-display` も同じ block 化を行うため二重指定だが値が同じで衝突しない
 
 ### d. CLI インターフェース：`--math <auto|on|off>` mode（vs boolean flag）
 
@@ -385,7 +384,7 @@ A 案の追加考慮：
 
 `auto` のリスク mitigation：
 
-- 自然言語 `$` の誤検出（`$100 と $200` 等）は §1 のスコープ宣言（`$...$` / `$$...$$` で数式を埋め込む前提）でユーザー責務とし、原稿側で `\$` エスケープを入れることで除外する（§5.i）。`scanMath` 自体はコードブロック / インラインコード内の `$` を marked AST 経由で構造的に除外するため、自然言語 `$` 単独使用の責務だけが原稿側に残る
+- 自然言語 `$` の誤検出（`$100 と $200` 等）は `scanMath` の Pandoc 風境界条件（opening `$` の直後が空白/数字なら除外、closing `$` の直前が空白なら除外）で **構造的に弾く**（Step 9、§5.i）。Step 5 初期は「ユーザー責務」として `\$` エスケープを必須化する方針だったが、外部レビュー指摘 #1 で「`--math auto` の趣旨と矛盾」「誤検出された `$100 and $` を KaTeX が `katex-error` で赤エラー表示」事故が指摘され、構造的除外に切り替えた。`scanMath` 自体はコードブロック / インラインコード内の `$` も marked AST 経由で除外する
 - markdown を編集している途中で意図せず `$` が混入した場合、配布物サイズが突然 +200〜310 KB gzip 増える経路ができる。CLI が auto モードで注入判定時に stderr へ `Detected N math expression(s). Embedding KaTeX runtime (fonts=<minimal|all>, ~+<sz> KB gzipped).` と件数 / フォント範囲 / サイズ概算を報告し、配布者が気づける導線を残す
 - 明示的に「絶対に注入したくない」配布者は `--math off` で意図表明できる
 
@@ -440,17 +439,22 @@ document.dispatchEvent(new Event('mdxg:katex-ready'))
 - `import()` での dynamic specifier 指定 → 採用不可（`id` 属性は specifier として解決できない）
 - blob URL 経由 → CSP に `blob:` 追加が必要、DESIGN.md §11 緩和を伴うため不採用
 
-### i. `\$` エスケープと自然言語 `$` の扱い
+### i. `\$` エスケープと自然言語 `$` の扱い（Pandoc 風境界条件）
 
-scanMath は `\$` を数式境界として扱わない。実装：
+scanMath は `\$` を数式境界として扱わず、加えて Pandoc / KaTeX auto-render が確立している境界条件を取り込む。実装：
 
-- `$...$` パターンマッチ時、先頭 `$` の直前文字が `\` なら除外（lookbehind）
-- 終端 `$` についても同様
+- `$...$` パターンマッチ時、先頭 `$` の直前文字が `\` なら escape として除外（lookbehind）
+- 終端 `$` についても escape 同様
 - ただし `\\$` （バックスラッシュのエスケープ + `$`）は数式境界として扱う（`\\` で literal backslash、`$` で数式開始）
+- **opening `$` の直後が空白 or 数字なら inline 数式として扱わない**（Pandoc 風境界条件、`$100` / `$ x` を除外する。Step 9 で追加）
+- **closing `$` の直前が空白なら閉じとして扱わない**（`$x ` のような開きっぱなしを抑制、Step 9 で追加）
+- display `$$...$$` には境界条件を適用しない（display は単独行で書かれるのが普通で、自然言語混入のリスクが低い）
 
-これにより `$100` のような自然言語表記は数式判定から除外されない（誤検出されたまま）が、`\$100` と明示エスケープすればユーザーが除外できる。§1 の対応スコープで「`$...$` / `$$...$$` で数式を埋め込む前提」を宣言しており、自然言語 `$` の責務は原稿側に倒す設計（Mermaid の `mermaid` フェンス明示指定と同様、`$` 区切りも「数式を書く意思の明示」として扱う）。`--math auto` 既定で自動注入される代わりに、配布者は原稿に `\$` エスケープを入れる責務を負う。
+これらの境界条件により、`$100 and $200 today` のような通貨表記は **エスケープなしで自動的に数式判定から除外される**。`$x^2$` / `$\alpha$` / `$a+b$` のような典型的な数式は引き続き通る。
 
-将来拡張：scanMath に「`$...$` の中身が valid LaTeX か簡易判定する heuristic」を入れて、明らかに数式でない `$100 と $200` パターンを除外する道もあるが、heuristic の精度トレードオフが大きく現状は採用しない。
+設計初期は「自然言語 `$` の責務は原稿側」として `\$` エスケープを必須とする方針を取っていたが、Step 9 の外部レビュー指摘 #1 で「`--math auto` の趣旨と矛盾するレベルの誤検出が頻発する」「誤検出した `$100 and $` を KaTeX に渡すと `katex-error` で赤い構文エラーが配布物に混入する」事故が指摘されたため、Pandoc 風境界条件で構造的に弾く方針に変更した。
+
+将来拡張：それでも `$x = $y$ $` のような奇妙なケースは誤検出され得る。`$...$` の中身が valid LaTeX か簡易判定する heuristic は精度トレードオフが大きいため現状は採用しない。`\$` エスケープは引き続きユーザーの最終手段として残す。
 
 ### j. KaTeX version pin と再生成のトリガ
 
@@ -528,9 +532,17 @@ A 案の追加考慮：
 
 - `core/markdown.ts`（既存テストに追加）：
   - `$...$` が `<span data-math="inline">` として出力される
-  - `$$...$$` が `<div data-math="display">` として出力される
+  - `$$...$$` が `<span data-math="display">` として出力される（Step 9 で `<div>` から変更、§5.c）
+  - `<div data-math` は出力されない（HTML5 parser の `<p>` 強制 close 回避）
   - `\$` がエスケープされて plain text として出力される
   - インラインコード内の `$` は data-math 属性を付けず通常の `<code>` 経路に流れる
+
+- `core/math.ts`（Step 9 で追加、Pandoc 風境界条件）：
+  - `Price is $100 here` のような通貨表記は数式境界として扱われない（opening `$` の直後が数字）
+  - `$100 and $200` の複数通貨も同様に検出されない
+  - `open $ then text` のような開きっぱなしも検出されない（opening `$` の直後が空白）
+  - `$x^2$` / `$\alpha$` / `$a+b$` のような典型的数式は引き続き検出される
+  - display `$$1+2$$` は境界条件を適用せず通る（display は単独行で書かれる前提）
 
 ### 手動視覚チェックリスト
 
@@ -589,7 +601,7 @@ A 案の追加考慮：
 | KaTeX version up で API 契約が変わる                                    | `package.json` で exact pin。version up 時は本ドキュメントの §5.f / §5.g / Step 5b を再評価                                                                                                                                                                                                                                                                                                        |
 | LaTeX 構文エラー時に部分描画が残る                                      | `katex.renderToString` は `throwOnError: false` で完全な error コンテナを返す。部分描画は発生せず、error コンテナだけが innerHTML に入る                                                                                                                                                                                                                                                           |
 | `dist/katex/` の commit による repo サイズ増                            | 受け入れる。`dist/shiki-langs/` / `dist/mermaid.mjs` と同じく「clone 直後に `npm run build` 抜きで CLI が動く」配布契約を保つ。`katex` の version pin で頻繁な差分は出ず、~1.5 MB の追加 commit 容量は許容範囲                                                                                                                                                                                     |
-| 自然言語 `$` 表記の誤検出                                               | §1 のスコープ宣言（`$...$` / `$$...$$` で数式を埋め込む前提）でユーザー責務とし、原稿側で `\$` エスケープを入れる（§5.i）。`auto` 既定でも CLI が件数を stderr 報告するため、配布者が誤検出に気づける導線を残す。将来 heuristic 判定の追加は §5.i に拡張余地として残す                                                                                                                             |
+| 自然言語 `$` 表記の誤検出                                               | **解決済み (Step 9)**: `scanMath` の Pandoc 風境界条件（opening `$` 直後が空白/数字なら除外、closing `$` 直前が空白なら除外）で構造的に弾く。`$100 and $200 today` のような通貨表記はエスケープなしで素通りする。`$x^2$` / `$\alpha$` のような典型的数式は引き続き通る。詳細は §5.i                                                                                                                |
 | サイレント回帰（math 追加で Shiki / Mermaid / コメント / 検索が壊れる） | 既知ケースを in-source test + 手動チェックで網羅。CI で fail させる                                                                                                                                                                                                                                                                                                                                |
 | `$` が複数ライブラリ間で衝突（jQuery などのレガシー global）            | 本実装は `globalThis.$` を一切触らない。bridge global は `__mdxgKatex` 名前空間で隔離される                                                                                                                                                                                                                                                                                                        |
 

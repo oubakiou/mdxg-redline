@@ -1715,12 +1715,22 @@ var findDisplayEnd = (text, from) => {
 	}
 	return -1;
 };
+var isWhitespaceBefore = (text, pos) => {
+	const ch = text[pos - 1];
+	return ch === " " || ch === "	" || ch === "\n";
+};
+var isInvalidInlineOpening = (text, after) => {
+	if (after >= text.length) return true;
+	const ch = text.charAt(after);
+	if (ch === " " || ch === "	" || ch === "\n") return true;
+	return ch >= "0" && ch <= "9";
+};
 var findInlineEnd = (text, from) => {
 	let cursor = from;
 	while (cursor < text.length) {
 		const ch = text[cursor];
 		if (ch === "\n") return -1;
-		if (ch === "$" && !isEscapedDollar(text, cursor)) return cursor;
+		if (ch === "$" && !isEscapedDollar(text, cursor) && !isWhitespaceBefore(text, cursor)) return cursor;
 		cursor += 1;
 	}
 	return -1;
@@ -1744,6 +1754,10 @@ var matchDisplay = (text, start) => {
 	};
 };
 var matchInline = (text, start) => {
+	if (isInvalidInlineOpening(text, start + 1)) return {
+		next: start + 1,
+		segment: null
+	};
 	const endPos = findInlineEnd(text, start + 1);
 	if (endPos === -1) return {
 		next: start + 1,

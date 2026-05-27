@@ -185,12 +185,15 @@ const createCodeRenderer =
 // 書けるのに足りる「literal `"` を `&quot;` に潰す」だけに絞る (`&quot;` は再変換されない)。
 const escapeMathSourceAttr = (source: string): string => source.replace(/"/g, '&quot;')
 
+// `<span>` で出力する理由: `renderer.text` は marked が paragraph / heading / list_item の
+// inline 文脈で呼ぶため、ここで block element (`<div>`) を返すと HTML5 parser が `<p>` を
+// 強制 close して構造が壊れる (`<p>text <div>...</div> more</p>` → `<p>text </p><div>...</div>
+// <p> more</p>`)。display 数式の見た目 (中央寄せ + 余白) は CSS の `display: block; margin;
+// text-align: center` で再現する (`src/styles/markdown.css` の `#doc [data-math="display"]`)。
+// KaTeX upgrade 後は `.katex-display` クラスも同じ block 化を行うため CSS 上書きと整合する。
 const formatMathSegment = (segment: MathSegment, rawContent: string): string => {
   const sourceAttr = escapeMathSourceAttr(segment.source)
-  if (segment.type === 'inline') {
-    return `<span data-math="inline" data-math-source="${sourceAttr}">${rawContent}</span>`
-  }
-  return `<div data-math="display" data-math-source="${sourceAttr}">${rawContent}</div>`
+  return `<span data-math="${segment.type}" data-math-source="${sourceAttr}">${rawContent}</span>`
 }
 
 const collectMathParts = (text: string, segments: readonly MathSegment[]): string[] => {
@@ -445,11 +448,15 @@ if (import.meta.vitest) {
       expect(html).toContain('>$x^2 + y^2$<')
     })
 
-    it('$$...$$ display 数式は <div data-math="display"> で出力される', () => {
+    it('$$...$$ display 数式は <span data-math="display"> で出力される (block 表示は CSS で再現)', () => {
+      // renderer.text は paragraph 内 inline 文脈で呼ばれるため、display も <span> で出力する。
+      // <div> を返すと HTML5 parser が <p> を強制 close して構造が壊れる (§5.c / Step 9)。
       const html = renderMarkdown('$$\\frac{a}{b}$$\n')
-      expect(html).toContain('<div data-math="display"')
+      expect(html).toContain('<span data-math="display"')
       expect(html).toContain(String.raw`data-math-source="\frac{a}{b}"`)
-      expect(html).toContain(String.raw`>$$\frac{a}{b}$$</div>`)
+      expect(html).toContain(String.raw`>$$\frac{a}{b}$$</span>`)
+      // <p><div> ような不正な構造を作っていないこと
+      expect(html).not.toContain('<div data-math')
     })
 
     it('inline と display が混在しても文書順に検出される', () => {
