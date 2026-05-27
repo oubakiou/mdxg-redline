@@ -310,6 +310,44 @@
   accent-color: var(--doc-checkbox-accent);
 }
 
+/* MDXG §14 Math Rendering (docs/mdxg-math-rendering.md §7 / Step 7)。
+   KaTeX 既定 CSS は数式 color を `color` プロパティで指定し font-size は 1.21em で
+   親に追従する。本実装は以下の 3 点を上書きする:
+   - color を --doc-ink に揃え、本文と同じ light / dark 配色で読めるようにする
+   - font-size を 1em に抑える (1.21em は本文より大きく、レビュー時に視線が泳ぐ)
+   - エラー時の katex-error コンテナは --danger 配色 + 薄背景で「描画失敗」を明示する
+   --doc-ink の値は markdown.css 末尾の :where(.dark) #doc で動的に切替わるため、
+   KaTeX 出力 SVG / MathML / HTML の文字色は CSS variable 経由でテーマトグルに追従する
+   (Mermaid と異なり SVG / MathML を再生成する必要が無い)。 */
+#doc .katex {
+  color: var(--doc-ink);
+  font-size: 1em;
+}
+#doc .katex-display {
+  color: var(--doc-ink);
+  margin: 1em 0;
+}
+#doc .katex-error {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  padding: 0 0.2em;
+  border-radius: 2px;
+}
+
+/* upgrade 前 / 失敗時の `[data-math]` raw `$...$` を読みやすくするための affordance。
+   KaTeX runtime が未注入のとき / 注入後でも upgrade が間に合っていない paint 直後 /
+   構文エラーで `data-math-failed` が立ったときに、LaTeX ソースが等幅で目に入る形にする。
+   `[data-math-applied]` が立ったら本ルールは選択対象外になり、KaTeX 出力を素直に見せる。
+   `display` は `<div>` (block) で出力されるが、KaTeX 自身が中央寄せ (`.katex-display`) を
+   適用するため div の display は変えない。 */
+#doc [data-math]:not([data-math-applied]) {
+  font-family: var(--doc-font-mono);
+  opacity: 0.7;
+}
+#doc [data-math-failed] {
+  font-family: var(--doc-font-mono);
+}
+
 /* dark 上書き。<html>.dark の付与は head 内 inline script が担う。
    :where() で詳細度ゼロ化することで、ユーザー差し替え CSS の `#doc { ... }` ルールが
    dark 状態でも上書き勝ちできる (上記 .dark との契約参照)。
