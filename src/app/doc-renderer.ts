@@ -271,10 +271,22 @@ const parseDocFragment = (
   return { documentary, footnotesSection }
 }
 
+// `positions.documentary` の長さは「DOM 上に top-level Element として出てくる documentary block の
+// 個数」と 1:1 で一致する前提を持つ。前提が壊れると以降の block の `data-source-line` が滑り、
+// `distributeDocumentaryBlocks` が誤った page に配賦して回帰を起こす。
+// `core/block-anchors.ts` の `NON_RENDERING_DOCUMENTARY_TYPES` が `html` / `def` / `space` を
+// 落として保つ契約だが、marked / marked-footnote の version up や renderer override の変更で
+// 壊れた場合に silently regress するのを避けるため、不一致を console.warn で観測可能にする。
 const annotateBlocksWithSourceLine = (
   blocks: readonly HTMLElement[],
   positions: AnchorPositionsResult
 ): void => {
+  if (blocks.length !== positions.documentary.length) {
+    /* eslint-disable-next-line no-console */
+    console.warn(
+      `[doc-renderer] documentary anchor count mismatch: blocks=${blocks.length} positions=${positions.documentary.length}. Page distribution may be off.`
+    )
+  }
   const limit = Math.min(blocks.length, positions.documentary.length)
   for (let index = 0; index < limit; index += 1) {
     blocks[index].setAttribute('data-source-line', String(positions.documentary[index].sourceLine))

@@ -146,6 +146,19 @@ const processFootnoteToken = (
   })
 }
 
+// `core/markdown.ts` の `renderer.html = escapeHtml(html)` は raw HTML を **要素ゼロのテキスト**として
+// 出力する (DESIGN.md §11 信頼境界の方針)。そのため `type: 'html'` トークンは documentary anchor を
+// 持つべきではなく、含めると DOM 上の要素数とズレて以降の block の `data-source-line` が滑る。
+// `space` と同じく「cursor は進めるが anchor を発行しない」扱いに揃える。
+//
+// `def` (link reference definition `[foo]: url`) は marked v12 では独立 token として lexer 出力に
+// 出ないが (paragraph 等に統合される)、marked の version up 等で type:'def' が直接出るケースが
+// 復活した場合も同じく DOM 出力ゼロなので、防御的に skip 対象に入れる。
+const NON_RENDERING_DOCUMENTARY_TYPES: ReadonlySet<string> = new Set(['html', 'def', 'space'])
+
+const isNonRenderingDocumentaryToken = (token: { type: string }): boolean =>
+  NON_RENDERING_DOCUMENTARY_TYPES.has(token.type)
+
 const processSingleToken = (
   context: ProcessTokenContext,
   token: { depth?: unknown; label?: unknown; raw: string; type: string }
@@ -156,7 +169,7 @@ const processSingleToken = (
   }
   if (token.type === 'footnote') {
     processFootnoteToken(context, token)
-  } else if (token.type !== 'space') {
+  } else if (!isNonRenderingDocumentaryToken(token)) {
     processDocumentaryToken(context, token)
   }
   context.lineCursor += countNewlines(token.raw)
@@ -253,6 +266,33 @@ if (import.meta.vitest) {
       expect(requireAnchor(anchors, 'b003').headingPath).toEqual(['# H1'])
       expect(requireAnchor(anchors, 'b004').sourceLine).toBe(9)
       expect(requireAnchor(anchors, 'b004').headingPath).toEqual(['# H1'])
+    })
+
+    // `core/markdown.ts` の `renderer.html = escapeHtml(html)` は raw HTML を要素ゼロのテキストとして
+    // 出力するため、`html` token を documentary anchor に含めると DOM 要素数とズレて以降の block の
+    // `data-source-line` が滑る (review feedback で指摘された Step 4 の 1:1 不変条件破綻)。
+    // `html` トークンは skip されるが、その raw が消費する行数だけ cursor を進める必要がある。
+    it('html token (raw HTML block) は documentary anchor を発行せず、後続 block の sourceLine も乱さない', () => {
+      const anchors = buildBlockAnchors('before\n\n<div>x</div>\n\nafter\n')
+      // 期待: 2 個の documentary anchor のみ (before / after)、html は skip
+      expect(anchors.size).toBe(2)
+      expect(requireAnchor(anchors, 'b001').sourceLine).toBe(1)
+      // 'before' (1) + space '\n\n' (2-3) + html '<div>x</div>\n\n' (3-5) = after は line 5
+      expect(requireAnchor(anchors, 'b002').sourceLine).toBe(5)
+    })
+
+    it('html token を heading の合間に挟んでも以降の heading path / sourceLine が崩れない', () => {
+      const anchors = buildBlockAnchors('# A\n\nP1\n\n<div>raw</div>\n\n## B\n\nP2\n')
+      // documentary: # A (b001) / P1 (b002) / ## B (b003) / P2 (b004)、html は skip
+      expect(anchors.size).toBe(4)
+      expect(requireAnchor(anchors, 'b001').sourceLine).toBe(1) // # A
+      expect(requireAnchor(anchors, 'b002').sourceLine).toBe(3) // P1
+      expect(requireAnchor(anchors, 'b002').headingPath).toEqual(['# A'])
+      // # A (1) + \n\n (2-3) + P1 (3) + \n\n (4-5) + html (5-7) + \n\n は html.raw 内 + ## B = 7
+      expect(requireAnchor(anchors, 'b003').sourceLine).toBe(7) // ## B
+      expect(requireAnchor(anchors, 'b003').headingPath).toEqual(['# A'])
+      expect(requireAnchor(anchors, 'b004').sourceLine).toBe(9) // P2
+      expect(requireAnchor(anchors, 'b004').headingPath).toEqual(['# A', '## B'])
     })
   })
 }
