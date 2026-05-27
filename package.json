@@ -26,7 +26,8 @@
   ],
   "type": "module",
   "scripts": {
-    "build": "vp build --config vite.mermaid.config.ts && vp build && vp build --config vite.review-request.config.ts",
+    "build": "vp build --config vite.mermaid.config.ts && vp build --config vite.katex.config.ts && node scripts/build-katex-css.mjs && vp build && vp build --config vite.review-request.config.ts",
+    "build:katex": "vp build --config vite.katex.config.ts && node scripts/build-katex-css.mjs",
     "build:mermaid": "vp build --config vite.mermaid.config.ts",
     "build:review-request": "vp build --config vite.review-request.config.ts",
     "build:watch": "vp build --watch",
@@ -35,6 +36,7 @@
     "test:watch": "vp test --watch"
   },
   "dependencies": {
+    "katex": "0.16.47",
     "marked": "^12.0.2",
     "mermaid": "11.15.0",
     "shiki": "^4.0.2"

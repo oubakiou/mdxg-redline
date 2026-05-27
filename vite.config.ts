@@ -78,6 +78,17 @@ const EMBEDDED_SHIKI_LANGS_RE_BUILD =
 const EMBEDDED_MERMAID_RE_BUILD =
   /(<script\b(?=[^>]*\bid="embedded-mermaid")(?=[^>]*\btype="module")[^>]*>)([\s\S]*?)(<\/script>)/i
 
+// KaTeX runtime / CSS / fonts-extra CSS 注入用 (docs/mdxg-math-rendering.md §5.k / §5.l)。
+// CLI 経路は embed.ts の rewriteEmbeddedKatex (Step 4 で追加) を使うが、standalone build は
+// build chain 専用にここで inline する。standalone はフォント範囲 `all` 固定なので
+// fonts-extra も無条件に書き込む。Mermaid と完全に対称。
+const EMBEDDED_KATEX_JS_RE_BUILD =
+  /(<script\b(?=[^>]*\bid="embedded-katex")(?=[^>]*\btype="module")[^>]*>)([\s\S]*?)(<\/script>)/i
+const EMBEDDED_KATEX_CSS_RE_BUILD =
+  /(<style\b(?=[^>]*\bid="embedded-katex-css")[^>]*>)([\s\S]*?)(<\/style>)/i
+const EMBEDDED_KATEX_FONTS_EXTRA_CSS_RE_BUILD =
+  /(<style\b(?=[^>]*\bid="embedded-katex-fonts-extra-css")[^>]*>)([\s\S]*?)(<\/style>)/i
+
 const inlineMermaidIntoHtml = (html: string, runtime: string): string => {
   const match = EMBEDDED_MERMAID_RE_BUILD.exec(html)
   if (!match) {
@@ -90,6 +101,42 @@ const inlineMermaidIntoHtml = (html: string, runtime: string): string => {
   // src/mermaid-entry.ts に含まれており runtime 末尾に焼き込まれている。ここでは
   // literal </script> だけを escape して書き込む (embed.ts の escapeScriptTagInJs と同じ規約)。
   const escaped = runtime.replace(/<\/script>/gi, String.raw`<\/script>`)
+  const replaced = `${openingTag}${escaped}${closingTag}`
+  return html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length)
+}
+
+const inlineKatexJsIntoHtml = (html: string, runtime: string): string => {
+  const match = EMBEDDED_KATEX_JS_RE_BUILD.exec(html)
+  if (!match) {
+    throw new Error(
+      'review.html に id="embedded-katex" の <script> タグが見つかりません (build plugin)'
+    )
+  }
+  const [fullMatch, openingTag, , closingTag] = match
+  // bridge コード (`globalThis.__mdxgKatex = katex; document.dispatchEvent(...)`) は
+  // src/katex-entry.ts に含まれており runtime 末尾に焼き込まれている。
+  // literal </script> だけ escape (Mermaid と同じ規約)。
+  const escaped = runtime.replace(/<\/script>/gi, String.raw`<\/script>`)
+  const replaced = `${openingTag}${escaped}${closingTag}`
+  return html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length)
+}
+
+interface CssInlineTarget {
+  blockId: string
+  re: RegExp
+}
+
+const inlineCssBlock = (html: string, css: string, target: CssInlineTarget): string => {
+  const match = target.re.exec(html)
+  if (!match) {
+    throw new Error(
+      `review.html に id="${target.blockId}" の <style> タグが見つかりません (build plugin)`
+    )
+  }
+  const [fullMatch, openingTag, , closingTag] = match
+  // literal </style> を <\/style> に escape (markdown-css inline と同じ規約、
+  // CSS コメントや content: 値に閉じタグ文字列が混入してもパースが壊れないため)。
+  const escaped = css.replace(/<\/style>/gi, String.raw`<\/style>`)
   const replaced = `${openingTag}${escaped}${closingTag}`
   return html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length)
 }
@@ -140,6 +187,37 @@ const readMermaidRuntimeIfPresent = async (distDir: string): Promise<string | nu
   }
 }
 
+interface KatexAssets {
+  fontsExtraCss: string
+  js: string
+  minimalCss: string
+}
+
+// docs/mdxg-math-rendering.md §5.k に従い standalone.html には KaTeX runtime / CSS /
+// fonts-extra CSS を build 時に default で inline する (フォント範囲は `all` 相当固定)。
+// 3 ファイルのいずれかが見つからない場合 (npm run build を通さず単体で vite.config.ts を
+// 回した場合) は標準エラーに警告だけ出して inline 自体を skip し、standalone.html は raw
+// `$...$` plain text fallback で動作する形にする (build を fail させない、Mermaid と同じ規約)。
+const readKatexAssetsIfPresent = async (distDir: string): Promise<KatexAssets | null> => {
+  try {
+    const [js, minimalCss, fontsExtraCss] = await Promise.all([
+      readFile(resolve(distDir, 'katex', 'katex.mjs'), 'utf8'),
+      readFile(resolve(distDir, 'katex', 'katex.css'), 'utf8'),
+      readFile(resolve(distDir, 'katex', 'katex-fonts-extra.css'), 'utf8'),
+    ])
+    return { fontsExtraCss, js, minimalCss }
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[mdxg-split-outputs] dist/katex/* が見つからないため standalone.html への KaTeX inline を skip しました。`vp build --config vite.katex.config.ts && node scripts/build-katex-css.mjs` を先に実行してください。'
+      )
+      return null
+    }
+    throw error
+  }
+}
+
 const loadShikiGrammars = async (distDir: string): Promise<Record<string, unknown>> => {
   const canonicals = canonicalizeSpec()
   const grammars: Record<string, unknown> = {}
@@ -152,14 +230,32 @@ const loadShikiGrammars = async (distDir: string): Promise<Record<string, unknow
   return grammars
 }
 
+const inlineKatexAssets = (html: string, assets: KatexAssets): string => {
+  const withJs = inlineKatexJsIntoHtml(html, assets.js)
+  const withMinimal = inlineCssBlock(withJs, assets.minimalCss, {
+    blockId: 'embedded-katex-css',
+    re: EMBEDDED_KATEX_CSS_RE_BUILD,
+  })
+  // standalone は `--math-fonts all` 相当固定 (docs/mdxg-math-rendering.md §5.k) なので
+  // fonts-extra も無条件に書き込む。CLI 経路は --math-fonts minimal のとき書かない。
+  return inlineCssBlock(withMinimal, assets.fontsExtraCss, {
+    blockId: 'embedded-katex-fonts-extra-css',
+    re: EMBEDDED_KATEX_FONTS_EXTRA_CSS_RE_BUILD,
+  })
+}
+
 const buildStandaloneHtml = async (distDir: string, html: string): Promise<string> => {
   const grammars = await loadShikiGrammars(distDir)
-  const withShiki = inlineGrammarsIntoHtml(html, grammars)
+  let result = inlineGrammarsIntoHtml(html, grammars)
   const mermaidRuntime = await readMermaidRuntimeIfPresent(distDir)
-  if (mermaidRuntime === null) {
-    return withShiki
+  if (mermaidRuntime !== null) {
+    result = inlineMermaidIntoHtml(result, mermaidRuntime)
   }
-  return inlineMermaidIntoHtml(withShiki, mermaidRuntime)
+  const katexAssets = await readKatexAssetsIfPresent(distDir)
+  if (katexAssets !== null) {
+    result = inlineKatexAssets(result, katexAssets)
+  }
+  return result
 }
 
 // `<style id="markdown-css">` の中身を src/styles/markdown.css で埋める build / dev 共通 plugin。

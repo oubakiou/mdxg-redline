@@ -145,6 +145,20 @@
          インスタンスを bridge し `mdxg:mermaid-ready` イベントを発火する規約
          (docs/mdxg-diagram-rendering.md §3.2 / §5.k)。 -->
     <script id="embedded-mermaid" type="module"></script>
+    <!-- standalone build と review-request CLI (--math auto/on) が KaTeX runtime ESM を
+         注入する。空のままだと $...$ / $$...$$ は raw な markdown 文法のまま plain text
+         表示で fallback (MDXG §14 [MUST])。注入時は末尾で `globalThis.__mdxgKatex` に
+         インスタンスを bridge し `mdxg:katex-ready` イベントを発火する規約
+         (docs/mdxg-math-rendering.md §3.2 / §5.h)。 -->
+    <script id="embedded-katex" type="module"></script>
+    <!-- KaTeX 用 CSS (minimal フォントセット = Main / AMS / Math / Size1-4 の data URI 込み)。
+         standalone build / CLI --math 注入時に build-katex-css.mjs の出力が書き込まれる
+         (docs/mdxg-math-rendering.md §5.g / §5.l)。 -->
+    <style id="embedded-katex-css"></style>
+    <!-- KaTeX 用 追加フォント CSS (extra セット = Caligraphic / Fraktur / Script /
+         SansSerif / Typewriter)。standalone build / CLI --math-fonts all 指定時のみ書き込まれる。
+         minimal セット運用では空のまま残り、該当 family は OS フォントへ fallback する。 -->
+    <style id="embedded-katex-fonts-extra-css"></style>
 
     <!-- Skip to navigation (MDXG §13)。
          focus 時のみ画面左上に visible になり、Enter で TOC の active page-nav-link に焦点を移す。
