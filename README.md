@@ -14,13 +14,14 @@ End users only need a **single HTML file** (`standalone.html`). No server, no ex
 ## Features
 
 - **Location-aware inline comments**: Select any text range, leave a comment, and export JSON that pinpoints each comment with `headingPath` and `sourceLine`
-- **Single-file HTML distribution**: All dependencies (including `marked` and Shiki core / JS engine / 2 themes) are inlined — no CDN references
-- **Two input paths**: Embed markdown into the HTML up front, or pick a file from the browser
-- **Read-only**: Never mutates the source markdown
-- **Virtual Pages (Stacked View)**: H1 / H2 boundaries split the document into virtual pages rendered as paper-like sheets stacked vertically (Word / Pages style). A left TOC sidebar, H3–H6 outline under the active page, and Prev/Next row deliver MDXG §6–§9 conformance
-- **Syntax highlighting**: Shiki (`github-light` + `github-dark`) renders fenced code blocks for all Shiki-bundled languages (~235 grammars), with a copy button injected onto each block
-- **Resizable side panels**: The left TOC (180–480px) and the right Conversation sidebar (280–640px) can be dragged independently and collapsed. State persists in `localStorage`, and distributors can pre-set the initial values with `--page-nav-width` / `--comments-width`
-- **Light / dark themes**: Initial value follows `prefers-color-scheme`; a 3-state toolbar toggle cycles through `system → light → dark`. The choice is persisted to `localStorage`, and distributors can pre-set the initial hint with `--theme`
+- **Single-file HTML usage (standalone build)**: All dependencies including the syntax highlighter (Shiki) and Diagram Rendering (Mermaid) are inlined — no CDN references
+- **CLI usage (`npx mdxg-redline`)**: Designed for LLM-to-human markdown review workflows (e.g. via agent skills). Unlike the standalone build, only the dependencies the target markdown actually uses get inlined, keeping the artifact size minimal
+- **Read-only**: Rendering conforms to [MDXG Viewer](https://github.com/vercel-labs/mdxg), the read-only renderer profile of the Markdown Experience Guidelines
+- **Virtual Pages (Stacked View)**: H1 / H2 boundaries split the document into paper-like sheets stacked vertically; the entire document can be read end-to-end with a single scroll gesture (Word / Pages style)
+- **WASD keyboard navigation**: `a / w / s / d / e / f` cover pane movement, scrolling, activation, and search entirely with the left hand
+- **Syntax highlighting**: Fenced code blocks render for all Shiki-bundled languages (~235 grammars)
+- **Mermaid support**: ` ```mermaid ` blocks render as SVG
+- **Swappable markdown preview stylesheet**: Replace the body preview CSS with your own via the CLI `--markdown-css <path>` flag
 
 ## Usage
 
@@ -51,15 +52,16 @@ npx mdxg-redline --help                                    # print full usage an
 
 #### Options
 
-| Option                                   | Description                                                                                                                                                                            | Default            |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| `--no-open`                              | Suppress browser launch. The output path is always printed to stdout so CI scripts and agents can capture it                                                                           | (launches browser) |
-| `--document-name <name>`                 | Override the document name (used for the `data-name` attribute and the output filename prefix). Recommended when reading from stdin to get a meaningful filename                       | input MD basename  |
-| `--theme <system\|light\|dark>`          | Initial theme hint for the generated HTML (`<html data-theme>`)                                                                                                                        | unset              |
-| `--comments-width <0\|280-640>`          | Initial width of the comments panel (px). `0` starts with the panel closed (only the right edge tab visible)                                                                           | `360` / open       |
-| `--page-nav-width <0\|180-480>`          | Initial width of the left pages panel (px). `0` starts with the panel closed (only the left edge tab visible)                                                                          | `220` / open       |
-| `--shiki-langs <auto\|all\|none\|<csv>>` | Shiki grammar injection mode. `auto` scans the markdown for fenced languages, `all` injects all 27, `none` skips injection (plain text fallback), `<csv>` takes a list like `ts,js,py` | `auto`             |
-| `--help`                                 | Print the usage help and exit                                                                                                                                                          | —                  |
+| Option                                   | Description                                                                                                                                                                                                                                                     | Default              |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `--no-open`                              | Suppress browser launch. The output path is always printed to stdout so CI scripts and agents can capture it                                                                                                                                                    | (launches browser)   |
+| `--document-name <name>`                 | Override the document name (used for the `data-name` attribute and the output filename prefix). Recommended when reading from stdin to get a meaningful filename                                                                                                | input MD basename    |
+| `--theme <system\|light\|dark>`          | Initial theme hint for the generated HTML (`<html data-theme>`)                                                                                                                                                                                                 | unset                |
+| `--comments-width <0\|280-640>`          | Initial width of the comments panel (px). `0` starts with the panel closed (only the right edge tab visible)                                                                                                                                                    | `360` / open         |
+| `--page-nav-width <0\|180-480>`          | Initial width of the left pages panel (px). `0` starts with the panel closed (only the left edge tab visible)                                                                                                                                                   | `220` / open         |
+| `--shiki-langs <auto\|all\|none\|<csv>>` | Shiki grammar injection mode. `auto` scans the markdown for fenced languages, `all` injects all 27, `none` skips injection (plain text fallback), `<csv>` takes a list like `ts,js,py`                                                                          | `auto`               |
+| `--markdown-css <path>`                  | Replace the markdown preview stylesheet. Only the `<style id="markdown-css">` block inside the distributed HTML is swapped; layout / chrome (review.css) is untouched. Author rules under the `#doc` scope. See `dist/markdown.sample.css` for a starting point | bundled markdown.css |
+| `--help`                                 | Print the usage help and exit                                                                                                                                                                                                                                   | —                    |
 
 **UI hint precedence**: Values written by `--theme` / `--comments-width` / `--page-nav-width` are evaluated by the receiving inline script as **`localStorage` (the user's UI interaction history) > CLI hint > default (`prefers-color-scheme` / default width)**. When the CLI option is omitted, the attribute itself is not emitted and the default decision path runs unchanged.
 

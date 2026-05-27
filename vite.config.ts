@@ -6,6 +6,7 @@ import {
 } from './scripts/lib/shiki-meta.mjs'
 import { dirname, resolve } from 'node:path'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { inlineMarkdownCssIntoHtml } from './src/build/inline-markdown-css.ts'
 // fmt が `type Plugin` を先頭に並べ替える一方 lint の sort-imports は
 // identifier 文字列順 (defineConfig が先) を求める。両者の合意点が無いため当該行のみ無効化する。
 // eslint-disable-next-line sort-imports
@@ -161,6 +162,23 @@ const buildStandaloneHtml = async (distDir: string, html: string): Promise<strin
   return inlineMermaidIntoHtml(withShiki, mermaidRuntime)
 }
 
+// `<style id="markdown-css">` の中身を src/styles/markdown.css で埋める build / dev 共通 plugin。
+// 中核ロジック (HTML コメント mask + regex match + `</style>` escape) は
+// src/build/inline-markdown-css.ts に集約済みで、CLI 経路 (--markdown-css / embed.ts の
+// rewriteEmbeddedMarkdownCss) と build inline が同一の関数を通る。回帰防止テスト
+// (HTML コメント中の literal を無視する等) は同ファイルの in-source test 群で担保されるため、
+// ここでは plugin の I/O (markdown.css 読み込み + transformIndexHtml hook への接続) だけを書く。
+const markdownCssInlinePlugin = (): Plugin => ({
+  name: 'mdxg-markdown-css-inline',
+  transformIndexHtml: {
+    handler: async (html: string): Promise<string> => {
+      const css = await readFile(resolve(ROOT_DIR, 'src', 'styles', 'markdown.css'), 'utf8')
+      return inlineMarkdownCssIntoHtml(html, css)
+    },
+    order: 'pre',
+  },
+})
+
 const splitOutputsPlugin = (): Plugin => ({
   apply: 'build',
   closeBundle: async (): Promise<void> => {
@@ -225,7 +243,7 @@ export default defineConfig({
       'unicorn/no-null': 'off',
     },
   },
-  plugins: [viteSingleFile(), shikiAssetsPlugin(), splitOutputsPlugin()],
+  plugins: [markdownCssInlinePlugin(), viteSingleFile(), shikiAssetsPlugin(), splitOutputsPlugin()],
   root: 'src',
   test: {
     includeSource: ['**/*.ts'],

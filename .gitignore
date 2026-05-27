@@ -3,7 +3,13 @@ node_modules/
 *.log
 .vite/
 coverage/
+
+# このリポジトリは npm 専用
+# 誤ってpnpm vitestなどを実行するとpnpm installが暗黙的に実行され
+# node_modules/.bin/vp が pnpm shim で上書きされて `vp` 直叩きが壊れる事象あり
 .pnpm-store/
+pnpm-lock.yaml
+pnpm-workspace.yaml
 
 # 個人設定
 .claude/settings.local.json

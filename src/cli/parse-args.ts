@@ -13,6 +13,7 @@ const COMMENTS_WIDTH_FLAG = '--comments-width'
 const PAGE_NAV_WIDTH_FLAG = '--page-nav-width'
 const SHOW_OPEN_FILE_FLAG = '--show-open-file'
 const MERMAID_FLAG = '--mermaid'
+const MARKDOWN_CSS_FLAG = '--markdown-css'
 const CLEAN_FLAG = '--clean'
 const YES_FLAG = '--yes'
 const KEEP_FLAG = '--keep'
@@ -226,6 +227,11 @@ Options:
                                  distribution HTML.
                            off   Never inject. \`\`\`mermaid blocks fall back to
                                  Shiki-highlighted code blocks (MDXG §15 [MUST]).
+  --markdown-css <path>  Replace the bundled markdown preview stylesheet with the
+                         CSS file at <path>. Targets only the markdown preview
+                         (#doc scope). Layout / chrome (review.css) is not
+                         affected. Useful for distributing review HTML with a
+                         custom typographic theme.
   --no-open              Generate the HTML but do not launch a browser.
   --show-open-file       Keep the "Open file" button visible in the generated
                          HTML's header. By default (without this flag), CLI
@@ -276,6 +282,13 @@ export interface RunArgs {
    * #btn-load / #file-md を DOM から削除する (DESIGN.md §5.g)。
    */
   showOpenFile?: boolean
+  /**
+   * `--markdown-css <path>` で指定された CSS ファイルパス。指定時は CLI が中身を読み、
+   * 配布 HTML の `<style id="markdown-css">` をユーザー指定の CSS で差し替える
+   * (DESIGN.md §3 / §12 §1 Theming)。未指定なら省略 (build 時 inline 済みの `src/styles/markdown.css`
+   * がそのまま使われる)。
+   */
+  markdownCssPath?: string
 }
 
 export interface CleanArgsParsed {
@@ -370,6 +383,7 @@ const parseCleanArgs = (argv: readonly string[]): ParsedArgs => {
 
 interface PartitionedArgs {
   documentName?: string
+  markdownCssPath?: string
   mermaid?: MermaidMode
   open: boolean
   pageNavWidth?: number
@@ -383,10 +397,12 @@ interface PartitionedArgs {
 
 interface PartitionState {
   documentName: string | null
+  markdownCssPath: string | null
   mermaid: MermaidMode | null
   open: boolean
   pageNavWidth: number | null
   pendingDocName: boolean
+  pendingMarkdownCss: boolean
   pendingMermaid: boolean
   pendingPageNavWidth: boolean
   pendingShikiLangs: boolean
@@ -403,11 +419,13 @@ interface PartitionState {
 const INITIAL_PARTITION_STATE: PartitionState = {
   commentsWidth: null,
   documentName: null,
+  markdownCssPath: null,
   mermaid: null,
   open: true,
   pageNavWidth: null,
   pendingCommentsWidth: false,
   pendingDocName: false,
+  pendingMarkdownCss: false,
   pendingMermaid: false,
   pendingPageNavWidth: false,
   pendingShikiLangs: false,
@@ -470,6 +488,16 @@ const consumeMermaidValue = (acc: PartitionState, token: string): PartitionState
   return { ...acc, mermaid: parsed, pendingMermaid: false }
 }
 
+// --markdown-css の値位置。任意のパス文字列を受け入れ、ファイル存在チェックは CLI 側で行う。
+// `-` 始まりは値欠落扱い。stdin (`-`) は別系統 (input markdown) でしか使わないため、CSS で
+// `-` を許す必要はない。
+const consumeMarkdownCssValue = (acc: PartitionState, token: string): PartitionState => {
+  if (token.startsWith('--') || token === '-') {
+    return { ...acc, valid: false }
+  }
+  return { ...acc, markdownCssPath: token, pendingMarkdownCss: false }
+}
+
 // --page-nav-width の値位置。0 or 180–480 の整数のみ valid。
 const consumePageNavWidthValue = (acc: PartitionState, token: string): PartitionState => {
   if (token.startsWith('--')) {
@@ -512,6 +540,10 @@ const VALUE_FLAG_TABLE: readonly {
     mark: (acc): PartitionState => ({ ...acc, pendingPageNavWidth: true }),
   },
   { flag: MERMAID_FLAG, mark: (acc): PartitionState => ({ ...acc, pendingMermaid: true }) },
+  {
+    flag: MARKDOWN_CSS_FLAG,
+    mark: (acc): PartitionState => ({ ...acc, pendingMarkdownCss: true }),
+  },
 ]
 
 const consumeValueFlag = (acc: PartitionState, token: string): PartitionState | null => {
@@ -539,6 +571,7 @@ const consumeFlag = (acc: PartitionState, token: string): PartitionState => {
 // 抑えるためテーブル駆動で書く。
 type PendingFlagKey =
   | 'pendingDocName'
+  | 'pendingMarkdownCss'
   | 'pendingMermaid'
   | 'pendingPageNavWidth'
   | 'pendingShikiLangs'
@@ -555,6 +588,7 @@ const PENDING_VALUE_TABLE: readonly {
   { consume: consumeCommentsWidthValue, key: 'pendingCommentsWidth' },
   { consume: consumePageNavWidthValue, key: 'pendingPageNavWidth' },
   { consume: consumeMermaidValue, key: 'pendingMermaid' },
+  { consume: consumeMarkdownCssValue, key: 'pendingMarkdownCss' },
 ]
 
 const consumePendingValue = (acc: PartitionState, token: string): PartitionState | null => {
@@ -596,6 +630,9 @@ const attachPartitionStringOptionals = (result: PartitionedArgs, state: Partitio
   if (state.mermaid !== null) {
     result.mermaid = state.mermaid
   }
+  if (state.markdownCssPath !== null) {
+    result.markdownCssPath = state.markdownCssPath
+  }
 }
 
 const attachPartitionNumberOptionals = (result: PartitionedArgs, state: PartitionState): void => {
@@ -619,7 +656,8 @@ const isPartitionValid = (state: PartitionState): boolean =>
   !state.pendingShikiLangs &&
   !state.pendingCommentsWidth &&
   !state.pendingPageNavWidth &&
-  !state.pendingMermaid
+  !state.pendingMermaid &&
+  !state.pendingMarkdownCss
 
 const partitionArgs = (argv: readonly string[]): PartitionedArgs => {
   const state = argv.reduce<PartitionState>(stepArg, INITIAL_PARTITION_STATE)
@@ -648,6 +686,9 @@ const attachRunStringOptionals = (
   }
   if (typeof parts.themeHint === 'string') {
     result.themeHint = parts.themeHint
+  }
+  if (typeof parts.markdownCssPath === 'string') {
+    result.markdownCssPath = parts.markdownCssPath
   }
 }
 
@@ -1348,6 +1389,7 @@ if (import.meta.vitest) {
     const collectPendingKeys = (state: PartitionState): readonly PendingFlagKey[] => {
       const keys: PendingFlagKey[] = [
         'pendingDocName',
+        'pendingMarkdownCss',
         'pendingMermaid',
         'pendingPageNavWidth',
         'pendingShikiLangs',

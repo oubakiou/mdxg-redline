@@ -629,6 +629,7 @@ var COMMENTS_WIDTH_FLAG = "--comments-width";
 var PAGE_NAV_WIDTH_FLAG = "--page-nav-width";
 var SHOW_OPEN_FILE_FLAG = "--show-open-file";
 var MERMAID_FLAG = "--mermaid";
+var MARKDOWN_CSS_FLAG = "--markdown-css";
 var CLEAN_FLAG = "--clean";
 var YES_FLAG = "--yes";
 var KEEP_FLAG = "--keep";
@@ -773,6 +774,11 @@ Options:
                                  distribution HTML.
                            off   Never inject. \`\`\`mermaid blocks fall back to
                                  Shiki-highlighted code blocks (MDXG §15 [MUST]).
+  --markdown-css <path>  Replace the bundled markdown preview stylesheet with the
+                         CSS file at <path>. Targets only the markdown preview
+                         (#doc scope). Layout / chrome (review.css) is not
+                         affected. Useful for distributing review HTML with a
+                         custom typographic theme.
   --no-open              Generate the HTML but do not launch a browser.
   --show-open-file       Keep the "Open file" button visible in the generated
                          HTML's header. By default (without this flag), CLI
@@ -889,11 +895,13 @@ var parseCleanArgs = (argv) => {
 var INITIAL_PARTITION_STATE = {
 	commentsWidth: null,
 	documentName: null,
+	markdownCssPath: null,
 	mermaid: null,
 	open: true,
 	pageNavWidth: null,
 	pendingCommentsWidth: false,
 	pendingDocName: false,
+	pendingMarkdownCss: false,
 	pendingMermaid: false,
 	pendingPageNavWidth: false,
 	pendingShikiLangs: false,
@@ -969,6 +977,17 @@ var consumeMermaidValue = (acc, token) => {
 		pendingMermaid: false
 	};
 };
+var consumeMarkdownCssValue = (acc, token) => {
+	if (token.startsWith("--") || token === "-") return {
+		...acc,
+		valid: false
+	};
+	return {
+		...acc,
+		markdownCssPath: token,
+		pendingMarkdownCss: false
+	};
+};
 var consumePageNavWidthValue = (acc, token) => {
 	if (token.startsWith("--")) return {
 		...acc,
@@ -1038,6 +1057,13 @@ var VALUE_FLAG_TABLE = [
 			...acc,
 			pendingMermaid: true
 		})
+	},
+	{
+		flag: MARKDOWN_CSS_FLAG,
+		mark: (acc) => ({
+			...acc,
+			pendingMarkdownCss: true
+		})
 	}
 ];
 var consumeValueFlag = (acc, token) => {
@@ -1079,6 +1105,10 @@ var PENDING_VALUE_TABLE = [
 	{
 		consume: consumeMermaidValue,
 		key: "pendingMermaid"
+	},
+	{
+		consume: consumeMarkdownCssValue,
+		key: "pendingMarkdownCss"
 	}
 ];
 var consumePendingValue = (acc, token) => {
@@ -1101,6 +1131,7 @@ var attachPartitionStringOptionals = (result, state) => {
 	if (state.themeHint !== null) result.themeHint = state.themeHint;
 	if (state.shikiLangs !== null) result.shikiLangs = state.shikiLangs;
 	if (state.mermaid !== null) result.mermaid = state.mermaid;
+	if (state.markdownCssPath !== null) result.markdownCssPath = state.markdownCssPath;
 };
 var attachPartitionNumberOptionals = (result, state) => {
 	if (state.commentsWidth !== null) result.commentsWidth = state.commentsWidth;
@@ -1110,7 +1141,7 @@ var attachPartitionOptionals = (result, state) => {
 	attachPartitionStringOptionals(result, state);
 	attachPartitionNumberOptionals(result, state);
 };
-var isPartitionValid = (state) => state.valid && !state.pendingDocName && !state.pendingTheme && !state.pendingShikiLangs && !state.pendingCommentsWidth && !state.pendingPageNavWidth && !state.pendingMermaid;
+var isPartitionValid = (state) => state.valid && !state.pendingDocName && !state.pendingTheme && !state.pendingShikiLangs && !state.pendingCommentsWidth && !state.pendingPageNavWidth && !state.pendingMermaid && !state.pendingMarkdownCss;
 var partitionArgs = (argv) => {
 	const state = argv.reduce(stepArg, INITIAL_PARTITION_STATE);
 	const result = {
@@ -1127,6 +1158,7 @@ var attachRunStringOptionals = (result, parts) => {
 	if (typeof outputDir === "string") result.outputDir = outputDir;
 	if (typeof parts.documentName === "string") result.documentName = parts.documentName;
 	if (typeof parts.themeHint === "string") result.themeHint = parts.themeHint;
+	if (typeof parts.markdownCssPath === "string") result.markdownCssPath = parts.markdownCssPath;
 };
 var attachRunNonStringOptionals = (result, parts) => {
 	if (parts.shikiLangs) result.shikiLangs = parts.shikiLangs;
@@ -1177,6 +1209,24 @@ var REPLACEMENTS = {
 	">": "&gt;"
 };
 var escapeHtml = (value) => value.replace(/[&<>"']/g, (ch) => REPLACEMENTS[ch] || ch);
+//#endregion
+//#region src/build/inline-markdown-css.ts
+var MARKDOWN_CSS_RE = /(<style\b(?=[^>]*\bid="markdown-css")[^>]*>)([\s\S]*?)(<\/style>)/i;
+var maskHtmlComments = (html) => html.replace(/<!--[\s\S]*?-->/g, (match) => " ".repeat(match.length));
+var escapeStyleTagInCss = (cssSource) => cssSource.replace(/<\/style>/gi, String.raw`<\/style>`);
+/**
+* `<style id="markdown-css">` の中身を `css` で書き換えた新しい HTML 文字列を返す。
+* 元文字列は変更しない。該当 `<style>` タグが無ければ Error を投げる
+* (呼び出し側が CLI / build エラーに変換)。
+*/
+var inlineMarkdownCssIntoHtml = (html, css) => {
+	const masked = maskHtmlComments(html);
+	const match = MARKDOWN_CSS_RE.exec(masked);
+	if (!match) throw new Error("template HTML に id=\"markdown-css\" の <style> タグが見つかりません");
+	const [fullMatch, openingTag, , closingTag] = match;
+	const replaced = `${openingTag}${escapeStyleTagInCss(css)}${closingTag}`;
+	return html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length);
+};
 //#endregion
 //#region src/core/embed.ts
 /**
@@ -1382,6 +1432,16 @@ var rewriteEmbeddedShikiLangs = (reviewHtml, grammars) => {
 	const replaced = `${openingTag}${encodeEmbeddedShikiLangs(grammars)}${closingTag}`;
 	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
 };
+/**
+* `<style id="markdown-css">` の中身をユーザー指定の CSS で書き換える。デフォルトでは build 時に
+* `src/styles/markdown.css` の内容が inline されており、CLI `--markdown-css <path>` が指定された
+* ときだけ呼ばれる (DESIGN.md §3 / §12 §1 Theming)。
+*
+* 中核ロジックは src/build/inline-markdown-css.ts に集約 (build 時 inline と CLI rewrite で
+* 同一実装を共有)。回帰防止テスト (HTML コメント中の literal を無視する等) も同ファイルに
+* 集約済み。embed.ts 側は他の rewrite* 関数群との並びを保つための薄い public alias。
+*/
+var rewriteEmbeddedMarkdownCss = inlineMarkdownCssIntoHtml;
 /**
 * template HTML の文字列を受け取り、`<script id="embedded-md">` の中身と data-name 属性を
 * 書き換えた新しい HTML 文字列を返す。元文字列は変更しない。
@@ -1765,6 +1825,10 @@ var readMermaidRuntime = async (scriptDir) => {
 		throw error;
 	}
 };
+var applyMarkdownCss = async (html, args) => {
+	if (typeof args.markdownCssPath !== "string") return html;
+	return rewriteEmbeddedMarkdownCss(html, await readFile(args.markdownCssPath, "utf8"));
+};
 var applyMermaid = async (html, args, ctx) => {
 	if (!shouldInjectMermaid(args.mermaid, ctx.markdown)) return html;
 	const { escapedScriptCount, html: rewritten } = rewriteEmbeddedMermaid(html, await readMermaidRuntime(ctx.scriptDir));
@@ -1777,7 +1841,7 @@ var applyHintRewrites = (args, ctx) => {
 	return applyTitleRewrite(applyToolbarOpenFileHint(applyPageNavWidthHint(applyCommentsWidthHint(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args.commentsWidth), args.pageNavWidth), args.showOpenFile), ctx.docName);
 };
 var composeReviewHtml = async (args, ctx) => {
-	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyMermaid(await applyShikiLangs(applyHintRewrites(args, ctx), args, ctx), args, ctx), formatLoadedStatus(ctx.docName, ctx.docHash)));
+	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyMarkdownCss(await applyMermaid(await applyShikiLangs(applyHintRewrites(args, ctx), args, ctx), args, ctx), args), formatLoadedStatus(ctx.docName, ctx.docHash)));
 };
 var runEmbed = async (args) => {
 	const ctx = await prepareEmbed(args);

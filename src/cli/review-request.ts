@@ -24,6 +24,7 @@ import {
   computeDocHash,
   deriveReviewHtmlName,
   formatLoadedStatus,
+  rewriteEmbeddedMarkdownCss,
   rewriteEmbeddedMermaid,
   rewriteEmbeddedShikiLangs,
   rewriteInitialStatus,
@@ -232,6 +233,18 @@ const readMermaidRuntime = async (scriptDir: string): Promise<string> => {
   }
 }
 
+// --markdown-css 未指定時はテンプレートに inline 済みのデフォルト markdown.css をそのまま使い、
+// 指定時のみ <style id="markdown-css"> の中身をユーザー CSS で差し替える (DESIGN.md §3 / §12 §1 Theming)。
+// readReviewHtml / readMermaidRuntime と同じ理由 (CLI から見た暗黙の前提依存) で、未生成テンプレート
+// 経路ではなくユーザー指定パスの ENOENT は元の Node メッセージで返す (利用者が指定したパスのため)。
+const applyMarkdownCss = async (html: string, args: RunArgs): Promise<string> => {
+  if (typeof args.markdownCssPath !== 'string') {
+    return html
+  }
+  const css = await readFile(args.markdownCssPath, 'utf8')
+  return rewriteEmbeddedMarkdownCss(html, css)
+}
+
 const applyMermaid = async (html: string, args: RunArgs, ctx: EmbedContext): Promise<string> => {
   if (!shouldInjectMermaid(args.mermaid, ctx.markdown)) {
     return html
@@ -265,8 +278,9 @@ const composeReviewHtml = async (args: RunArgs, ctx: EmbedContext): Promise<stri
   const withHints = applyHintRewrites(args, ctx)
   const withShiki = await applyShikiLangs(withHints, args, ctx)
   const withMermaid = await applyMermaid(withShiki, args, ctx)
+  const withMarkdownCss = await applyMarkdownCss(withMermaid, args)
   const statusText = formatLoadedStatus(ctx.docName, ctx.docHash)
-  const withStatus = rewriteInitialStatus(withMermaid, statusText)
+  const withStatus = rewriteInitialStatus(withMarkdownCss, statusText)
   return upsertEmbeddedMdMeta(withStatus)
 }
 

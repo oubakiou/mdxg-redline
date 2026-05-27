@@ -5,7 +5,8 @@
   "features": {
     // https://github.com/devcontainers/features/tree/main/src/node
     "ghcr.io/devcontainers/features/node:1": {
-      "version": "lts"
+      "version": "lts",
+      "pnpmVersion": "none"
     },
     // https://github.com/devcontainers/features/tree/main/src/github-cli
     "ghcr.io/devcontainers/features/github-cli:1": {

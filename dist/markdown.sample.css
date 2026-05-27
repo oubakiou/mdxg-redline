@@ -1,0 +1,360 @@
+/* --markdown-css カスタマイズのサンプル CSS for mdxg-redline.
+   GitHub markdown の見た目を模倣している (Reference: https://github.com/sindresorhus/github-markdown-css, MIT)。
+   自前テーマを書く際の出発点 / リファレンスとして使えるよう、#doc スコープに閉じた最小構成で書いてある。
+
+   使い方:
+     node dist/review-request.mjs --markdown-css dist/markdown.sample.css spec.md
+
+   スコープ規約 (src/styles/markdown.css と同じ契約):
+   - すべてのルールは #doc 配下に閉じる (chrome / layout の review.css と干渉させない)
+   - light / dark の切替は #doc の CSS variables を `:where(.dark) #doc` で上書きする方式
+   - :where() で詳細度ゼロのため、後段のユーザー差し替え CSS の #doc ルールが勝つ */
+
+#doc {
+  --doc-font-system:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji';
+  --doc-font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* GitHub Primer light tokens (github.com の readme と同等) */
+  --doc-paper: #ffffff;
+  --doc-ink: #1f2328;
+  --doc-mute: #59636e;
+  --doc-border: #d1d9e0;
+  --doc-rule: #d1d9e0b3;
+  --doc-link: #0969da;
+  --doc-link-hover: #0550ae;
+  --doc-quote-fg: #59636e;
+  --doc-quote-rule: #d1d9e0;
+  --doc-code-bg: #818b981f;
+  --doc-code-block-bg: #f6f8fa;
+  --doc-code-ink: #1f2328;
+  --doc-code-rule: transparent;
+  --doc-thead-bg: #f6f8fa;
+  --doc-row-alt-bg: #f6f8fa;
+  --doc-checkbox-accent: #0969da;
+  --doc-page-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+
+  font-family: var(--doc-font-system);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--doc-ink);
+  word-wrap: break-word;
+}
+
+#doc:empty {
+  display: none;
+}
+
+.virtual-page {
+  box-sizing: border-box;
+  max-width: 1012px;
+  min-height: calc(var(--initial-viewport-height, 100vh) - 160px);
+  margin: 0 auto 32px;
+  padding: 32px 48px;
+  background-color: var(--doc-paper);
+  border: 1px solid var(--doc-border);
+  border-radius: 6px;
+  box-shadow: var(--doc-page-shadow);
+}
+
+.virtual-page:last-child {
+  margin-bottom: 0;
+}
+
+/* --- 見出し: h1/h2 のみ下線、margin-top は最初の要素なら 0 (GitHub と同じ) --- */
+#doc h1,
+#doc h2,
+#doc h3,
+#doc h4,
+#doc h5,
+#doc h6 {
+  margin-top: 24px;
+  margin-bottom: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--doc-ink);
+}
+
+#doc h1 {
+  padding-bottom: 0.3em;
+  font-size: 2em;
+  border-bottom: 1px solid var(--doc-rule);
+}
+
+#doc h2 {
+  padding-bottom: 0.3em;
+  font-size: 1.5em;
+  border-bottom: 1px solid var(--doc-rule);
+}
+
+#doc h3 {
+  font-size: 1.25em;
+}
+
+#doc h4 {
+  font-size: 1em;
+}
+
+#doc h5 {
+  font-size: 0.875em;
+}
+
+#doc h6 {
+  font-size: 0.85em;
+  color: var(--doc-mute);
+}
+
+/* --- 段落 / リンク --- */
+#doc p {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+#doc a {
+  color: var(--doc-link);
+  text-decoration: none;
+  background-color: transparent;
+}
+
+#doc a:hover {
+  color: var(--doc-link-hover);
+  text-decoration: underline;
+}
+
+#doc strong {
+  font-weight: 600;
+}
+
+#doc hr {
+  height: 0.25em;
+  margin: 24px 0;
+  padding: 0;
+  background-color: var(--doc-border);
+  border: 0;
+}
+
+/* --- リスト --- */
+#doc ul,
+#doc ol {
+  margin-top: 0;
+  margin-bottom: 16px;
+  padding-left: 2em;
+}
+
+#doc li + li {
+  margin-top: 0.25em;
+}
+
+#doc li > ul,
+#doc li > ol {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+#doc input[type='checkbox'] {
+  margin-right: 0.5em;
+  accent-color: var(--doc-checkbox-accent);
+}
+
+/* --- blockquote --- */
+#doc blockquote {
+  margin: 0 0 16px;
+  padding: 0 1em;
+  color: var(--doc-quote-fg);
+  border-left: 0.25em solid var(--doc-quote-rule);
+  background-color: transparent;
+  border-radius: 0;
+}
+
+#doc blockquote > :first-child {
+  margin-top: 0;
+}
+
+#doc blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+/* --- inline code --- */
+#doc code {
+  padding: 0.2em 0.4em;
+  margin: 0;
+  font-size: 85%;
+  font-family: var(--doc-font-mono);
+  background-color: var(--doc-code-bg);
+  border: 0;
+  border-radius: 6px;
+  color: var(--doc-ink);
+  white-space: break-spaces;
+}
+
+/* --- code block (fenced) ---
+   GitHub のコードブロックは light/dark で背景色が変わるため、Shiki span の配色も合わせて
+   light variant で github-light、dark variant で github-dark を採用する形に倒す */
+#doc pre {
+  margin-top: 0;
+  margin-bottom: 16px;
+  padding: 16px;
+  overflow: auto;
+  font-size: 85%;
+  line-height: 1.45;
+  background-color: var(--doc-code-block-bg);
+  border: 1px solid var(--doc-code-rule);
+  border-radius: 6px;
+  color: var(--doc-code-ink);
+}
+
+#doc pre code {
+  display: inline;
+  max-width: auto;
+  padding: 0;
+  margin: 0;
+  overflow: visible;
+  font-size: 100%;
+  line-height: inherit;
+  word-wrap: normal;
+  background-color: transparent;
+  border: 0;
+  border-radius: 0;
+  white-space: pre;
+  color: inherit;
+}
+
+#doc pre.shiki {
+  color: var(--doc-code-ink);
+}
+
+/* デフォルト markdown.css は両モードとも dark コード背景なので shiki-dark 一択だったが、
+   GitHub 風では light モードで github-light、dark モードで github-dark を採用する */
+:where(#doc) pre.shiki span {
+  color: var(--shiki-light);
+}
+
+:where(.dark #doc) pre.shiki span {
+  color: var(--shiki-dark);
+}
+
+#doc .code-block-wrap {
+  position: relative;
+  margin-bottom: 16px;
+}
+
+#doc .code-block-wrap > pre {
+  margin-bottom: 0;
+}
+
+#doc .code-copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--doc-ink);
+  background-color: var(--doc-paper);
+  border: 1px solid var(--doc-border);
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
+}
+
+#doc .code-block-wrap:hover .code-copy-btn,
+#doc .code-copy-btn:focus-visible {
+  opacity: 1;
+}
+
+#doc .code-lang-label ~ .code-copy-btn {
+  top: calc(2.05rem - 1px);
+}
+
+#doc .code-lang-label {
+  display: table;
+  max-width: 100%;
+  padding: 4px 12px;
+  margin-bottom: -1px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--doc-mute);
+  background-color: var(--doc-thead-bg);
+  border: 1px solid var(--doc-border);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  user-select: none;
+  pointer-events: none;
+}
+
+#doc .code-lang-label + pre {
+  border-top-left-radius: 0;
+}
+
+/* --- 表 --- */
+#doc .table-wrap {
+  margin-top: 0;
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+
+#doc table {
+  display: table;
+  width: max-content;
+  max-width: 100%;
+  margin-top: 0;
+  margin-bottom: 0;
+  border-spacing: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+#doc thead {
+  background-color: var(--doc-thead-bg);
+}
+
+#doc th,
+#doc td {
+  padding: 6px 13px;
+  border: 1px solid var(--doc-border);
+}
+
+#doc th {
+  font-weight: 600;
+  text-align: left;
+}
+
+#doc tr:nth-child(2n) {
+  background-color: var(--doc-row-alt-bg);
+}
+
+/* --- 画像 --- */
+#doc img {
+  max-width: 100%;
+  height: auto;
+  background-color: var(--doc-paper);
+  border-radius: 6px;
+}
+
+/* --- dark variant ---
+   GitHub Primer dark tokens。:where() で詳細度ゼロのため、ユーザー差し替え CSS の
+   #doc ルールが dark 状態でも上書き勝ちできる (markdown.css と同じ契約) */
+:where(.dark) #doc {
+  --doc-paper: #0d1117;
+  --doc-ink: #e6edf3;
+  --doc-mute: #9198a1;
+  --doc-border: #3d444d;
+  --doc-rule: #3d444db3;
+  --doc-link: #4493f8;
+  --doc-link-hover: #79b4fc;
+  --doc-quote-fg: #9198a1;
+  --doc-quote-rule: #3d444d;
+  --doc-code-bg: #818b9826;
+  --doc-code-block-bg: #151b23;
+  --doc-code-ink: #e6edf3;
+  --doc-thead-bg: #151b23;
+  --doc-row-alt-bg: #151b23;
+  --doc-checkbox-accent: #4493f8;
+  --doc-page-shadow: 0 0 0 transparent;
+}

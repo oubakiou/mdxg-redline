@@ -4,6 +4,7 @@
 // `crypto.subtle` は Node 20+ / モダンブラウザ双方で globalThis.crypto として利用可能。
 
 import { escapeHtml } from './escape'
+import { inlineMarkdownCssIntoHtml } from '../build/inline-markdown-css'
 
 /**
  * markdown 本文の SHA-256 を計算し、先頭 8 バイトを 16 文字の hex 文字列で返す。
@@ -123,6 +124,12 @@ const EMBEDDED_SHIKI_LANGS_RE =
 // `dist/mermaid.mjs` の bundle 結果 (素の JS source) を中身として書き込む。
 const EMBEDDED_MERMAID_RE =
   /(<script\b(?=[^>]*\bid="embedded-mermaid")(?=[^>]*\btype="module")[^>]*>)([\s\S]*?)(<\/script>)/i
+
+// 本文プレビュー用 markdown CSS 差し替え経路 (DESIGN.md §3 / §12 §1 Theming)。
+// CLI `--markdown-css` 指定時の差し替え responsibility はこのファイルが持つが、中核ロジック
+// (HTML コメント mask + regex match + `</style>` escape) は src/build/inline-markdown-css.ts に
+// 集約しており、build 時の markdownCssInlinePlugin (vite.config.ts) と同一の実装を共有する。
+// 回帰防止テストも同ファイルの in-source test 群で担保する。
 
 // Mermaid bundle 中の literal `</script>` を `<\/script>` に escape する。
 // embedded-md / embedded-shiki-langs の `<` Unicode escape とは別経路 (こちらは素の JS source な
@@ -316,6 +323,17 @@ export const rewriteEmbeddedShikiLangs = (
 }
 
 /**
+ * `<style id="markdown-css">` の中身をユーザー指定の CSS で書き換える。デフォルトでは build 時に
+ * `src/styles/markdown.css` の内容が inline されており、CLI `--markdown-css <path>` が指定された
+ * ときだけ呼ばれる (DESIGN.md §3 / §12 §1 Theming)。
+ *
+ * 中核ロジックは src/build/inline-markdown-css.ts に集約 (build 時 inline と CLI rewrite で
+ * 同一実装を共有)。回帰防止テスト (HTML コメント中の literal を無視する等) も同ファイルに
+ * 集約済み。embed.ts 側は他の rewrite* 関数群との並びを保つための薄い public alias。
+ */
+export const rewriteEmbeddedMarkdownCss = inlineMarkdownCssIntoHtml
+
+/**
  * template HTML の文字列を受け取り、`<script id="embedded-md">` の中身と data-name 属性を
  * 書き換えた新しい HTML 文字列を返す。元文字列は変更しない。
  * embedded-md タグが見つからない場合は Error を投げる（呼び出し側が CLI エラーに変換）。
@@ -401,6 +419,17 @@ if (import.meta.vitest) {
       const html = baseHtml
       rewriteEmbeddedShikiLangs(html, { typescript: [] })
       expect(html).toBe(baseHtml)
+    })
+  })
+
+  describe('rewriteEmbeddedMarkdownCss', () => {
+    // 詳細テストは src/build/inline-markdown-css.ts の in-source test 群に集約。
+    // ここは embed.ts 経由の public alias が機能していることだけを確認する smoke test。
+    it('alias として inlineMarkdownCssIntoHtml と同一の挙動 (smoke)', () => {
+      const html =
+        '<html><head><style id="markdown-css">/* default */</style></head><body></body></html>'
+      const out = rewriteEmbeddedMarkdownCss(html, '#doc { color: red; }')
+      expect(out).toContain('<style id="markdown-css">#doc { color: red; }</style>')
     })
   })
 

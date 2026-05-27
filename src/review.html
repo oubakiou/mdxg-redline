@@ -107,7 +107,17 @@
       } catch (e) {}
     </script>
     <link rel="stylesheet" href="./styles/review.css" />
-    <link rel="stylesheet" href="./styles/markdown.css" />
+    <!-- 直下の style ブロックは build / dev とも transformIndexHtml plugin が中身を埋める。
+         CLI (review-request --markdown-css <path>) でユーザー指定 CSS に差し替え可能
+         (DESIGN.md §3 / §12 §1 Theming)。review.css (chrome / layout) より後ろに置くことで、
+         本文プレビュー側の cascade が勝つようにする。viteSingleFile は link 経由の CSS を
+         style 統合するが、id 付きの直書き style ブロックは統合対象外で残り、CLI から id で
+         identify できる。⚠️ ここに id="markdown-css" の literal を書くと build plugin /
+         CLI rewrite の regex が誤マッチして HTML を破壊する (embed.ts の他 rewrite と同じ
+         運用) ため、コメント中では属性 literal を書かないこと。 -->
+    <style id="markdown-css">
+      /* injected by build (transformIndexHtml) — overridable via --markdown-css */
+    </style>
   </head>
   <body>
     <!-- ============================================================================
