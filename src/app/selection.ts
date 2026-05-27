@@ -49,7 +49,12 @@ export interface BuiltDomRange {
  * レビュー対象 markdown 由来でなく、その text node を含めると wrap の有無 (再描画前後 /
  * ネストブロック vs トップレベル) で textContent が変動しオフセットがズレるため。
  */
-const SKIP_TEXT_SEGMENT_CLASSES = ['code-copy-btn', 'code-lang-label']
+// `sr-only` は marked-footnote 1.4.0 が <section.footnotes> 冒頭に強制挿入する
+// `<h2 id="footnote-label" class="sr-only">Footnotes</h2>` を textSegments から外すための
+// クラス指定 (docs/mdxg-footnotes.md §3.1 / §4.3)。a11y 用 visible-hidden な合成見出しを
+// コメント / 検索の対象に含めない。命名規約として `sr-only` は本実装内で footnote section
+// 専用の用途しか持たないため、generic class として skip しても他経路への副作用は無い。
+const SKIP_TEXT_SEGMENT_CLASSES = ['code-copy-btn', 'code-lang-label', 'sr-only']
 
 // upgrade 済み mermaid ブロックは「ダイアグラム全体を検索 / コメント対象外にする」案 A
 // (docs/mdxg-diagram-rendering.md §4 Step 6) のため、<pre[data-mermaid-applied]> と
@@ -77,7 +82,20 @@ const SKIP_TEXT_SEGMENT_ATTRS: readonly { attr: string; value: string }[] = [
 
 // 属性の有無だけで skip 判定する (値は問わない) 系統。`data-math` は 'inline' / 'display' の
 // 2 値を取るが、いずれも skip 対象なので値マッチではなく hasAttribute で十分。
-const SKIP_TEXT_SEGMENT_ATTR_NAMES: readonly string[] = ['data-math']
+//
+// `data-footnote-ref` / `data-footnote-backref` は marked-footnote 1.4.0 が脚注の参照 / backref
+// `<a>` に付与する属性 (docs/mdxg-footnotes.md §3.1 / §5.e / §6 / Step 6)。
+// - ref: `<sup><a id="footnote-ref-<id>" data-footnote-ref ...>N</a></sup>` の `<a>` を skip する
+//   ことで `<sup>` 配下の合成 `N` 文字を textSegments から外す。DOM textContent (1 文字) と
+//   source markdown (`[^<id>]` 4+ 文字) の長さ差で offset がズレる現象を構造的に防ぐ
+//   (Math `[data-math]` skip と同じパターン)。raw `[^<id>]` への変換経路は将来の拡張で対応
+// - backref: 合成 UI 要素 (`↩` の単一文字、source markdown には存在しない) を walk skip して
+//   コメント / 検索の対象から外す
+const SKIP_TEXT_SEGMENT_ATTR_NAMES: readonly string[] = [
+  'data-math',
+  'data-footnote-ref',
+  'data-footnote-backref',
+]
 
 const shouldSkipForTextSegments = (node: Node): boolean => {
   if (!(node instanceof Element)) {
@@ -476,6 +494,28 @@ if (import.meta.vitest) {
   describe('SKIP_TEXT_SEGMENT_ATTR_NAMES (data-math 連動契約)', () => {
     it("'data-math' を skip 対象として含む", () => {
       expect(SKIP_TEXT_SEGMENT_ATTR_NAMES).toContain('data-math')
+    })
+  })
+
+  // docs/mdxg-footnotes.md §3.1 / §5.e / §6 / Step 6: marked-footnote 1.4.0 が出力する
+  // `<a data-footnote-ref>` / `<a data-footnote-backref>` を `<sup>` 配下から skip することで、
+  // source markdown (`[^<id>]` 4+ 文字) と DOM textContent (`1` 1 文字) の食い違いで offset が
+  // ズレるのを防ぐ。backref の `↩` も合成 UI 要素として走査対象から外す。
+  describe('SKIP_TEXT_SEGMENT_ATTR_NAMES (data-footnote-* 連動契約)', () => {
+    it("'data-footnote-ref' を skip 対象として含む", () => {
+      expect(SKIP_TEXT_SEGMENT_ATTR_NAMES).toContain('data-footnote-ref')
+    })
+
+    it("'data-footnote-backref' を skip 対象として含む", () => {
+      expect(SKIP_TEXT_SEGMENT_ATTR_NAMES).toContain('data-footnote-backref')
+    })
+  })
+
+  // marked-footnote 1.4.0 が `<section[data-footnotes]>` 冒頭に強制挿入する
+  // `<h2 id="footnote-label" class="sr-only">Footnotes</h2>` を skip するための class 契約。
+  describe('SKIP_TEXT_SEGMENT_CLASSES (sr-only 連動契約)', () => {
+    it("'sr-only' を skip 対象として含む", () => {
+      expect(SKIP_TEXT_SEGMENT_CLASSES).toContain('sr-only')
     })
   })
 }
