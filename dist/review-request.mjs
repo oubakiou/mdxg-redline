@@ -581,7 +581,7 @@ var ALIAS_TO_CANONICAL = {
 };
 //#endregion
 //#region src/core/scan-fenced-langs.ts
-var isTokenLike$1 = (value) => {
+var isTokenLike$2 = (value) => {
 	if (typeof value !== "object" || value === null) return false;
 	return typeof value.type === "string";
 };
@@ -603,7 +603,7 @@ var collectCodeLang = (token, acc) => {
 };
 var walkTokens$1 = (tokens, acc) => {
 	if (!Array.isArray(tokens)) return;
-	for (const token of tokens) if (isTokenLike$1(token)) {
+	for (const token of tokens) if (isTokenLike$2(token)) {
 		collectCodeLang(token, acc);
 		walkTokens$1(token.tokens, acc);
 		walkTokens$1(token.items, acc);
@@ -629,6 +629,8 @@ var COMMENTS_WIDTH_FLAG = "--comments-width";
 var PAGE_NAV_WIDTH_FLAG = "--page-nav-width";
 var SHOW_OPEN_FILE_FLAG = "--show-open-file";
 var MERMAID_FLAG = "--mermaid";
+var MATH_FLAG = "--math";
+var MATH_FONTS_FLAG = "--math-fonts";
 var MARKDOWN_CSS_FLAG = "--markdown-css";
 var CLEAN_FLAG = "--clean";
 var YES_FLAG = "--yes";
@@ -689,6 +691,22 @@ var isMermaidMode = (value) => MERMAID_VALUES.includes(value);
 var parseMermaidValue = (value) => {
 	const trimmed = value.trim();
 	if (isMermaidMode(trimmed)) return trimmed;
+	return null;
+};
+/**
+* `--math` の値を MathMode にパースする。MermaidMode と同じ literal を共有しているので
+* 受け付ける値も同じ。CLI 側の dispatch だけが分かれる。
+*/
+var parseMathValue = (value) => parseMermaidValue(value);
+var MATH_FONTS_VALUES = ["minimal", "all"];
+var isMathFontsMode = (value) => MATH_FONTS_VALUES.includes(value);
+/**
+* `--math-fonts` の値を MathFontsMode にパースする。pure な関数で、CLI 引数パースと
+* 単体テストの両方から再利用する。未知の値・空文字は null を返し、CLI 側で invalid 扱い。
+*/
+var parseMathFontsValue = (value) => {
+	const trimmed = value.trim();
+	if (isMathFontsMode(trimmed)) return trimmed;
 	return null;
 };
 var parseShikiLangsKeyword = (trimmed) => {
@@ -774,6 +792,23 @@ Options:
                                  distribution HTML.
                            off   Never inject. \`\`\`mermaid blocks fall back to
                                  Shiki-highlighted code blocks (MDXG §15 [MUST]).
+  --math <value>         Control KaTeX runtime injection for $...$ / $$...$$
+                         math expressions (MDXG §14). One of:
+                           auto  Inject KaTeX only if the markdown contains at
+                                 least one math expression (default).
+                           on    Always inject. Adds ~250 / ~350 KB gzipped
+                                 depending on --math-fonts.
+                           off   Never inject. $...$ / $$...$$ render as raw
+                                 markdown text (MDXG §14 [MUST]).
+  --math-fonts <value>   Choose the KaTeX woff2 font set embedded as data URI
+                         (only meaningful when KaTeX is injected). One of:
+                           minimal  Main / AMS / Math / Size1-4 only, +~110 KB
+                                    gzipped (default). \\mathcal / \\mathfrak /
+                                    \\mathscr / SansSerif / Typewriter fall back
+                                    to the host's system font.
+                           all      Embed all 20 woff2 families, +~220 KB gzipped.
+                                    Use when the document relies on rare math
+                                    glyphs (\\mathcal{X}, \\mathfrak{X}, ...).
   --markdown-css <path>  Replace the bundled markdown preview stylesheet with the
                          CSS file at <path>. Targets only the markdown preview
                          (#doc scope). Layout / chrome (review.css) is not
@@ -896,12 +931,16 @@ var INITIAL_PARTITION_STATE = {
 	commentsWidth: null,
 	documentName: null,
 	markdownCssPath: null,
+	math: null,
+	mathFonts: null,
 	mermaid: null,
 	open: true,
 	pageNavWidth: null,
 	pendingCommentsWidth: false,
 	pendingDocName: false,
 	pendingMarkdownCss: false,
+	pendingMath: false,
+	pendingMathFonts: false,
 	pendingMermaid: false,
 	pendingPageNavWidth: false,
 	pendingShikiLangs: false,
@@ -975,6 +1014,38 @@ var consumeMermaidValue = (acc, token) => {
 		...acc,
 		mermaid: parsed,
 		pendingMermaid: false
+	};
+};
+var consumeMathValue = (acc, token) => {
+	if (token.startsWith("--")) return {
+		...acc,
+		valid: false
+	};
+	const parsed = parseMathValue(token);
+	if (parsed === null) return {
+		...acc,
+		valid: false
+	};
+	return {
+		...acc,
+		math: parsed,
+		pendingMath: false
+	};
+};
+var consumeMathFontsValue = (acc, token) => {
+	if (token.startsWith("--")) return {
+		...acc,
+		valid: false
+	};
+	const parsed = parseMathFontsValue(token);
+	if (parsed === null) return {
+		...acc,
+		valid: false
+	};
+	return {
+		...acc,
+		mathFonts: parsed,
+		pendingMathFonts: false
 	};
 };
 var consumeMarkdownCssValue = (acc, token) => {
@@ -1059,6 +1130,20 @@ var VALUE_FLAG_TABLE = [
 		})
 	},
 	{
+		flag: MATH_FLAG,
+		mark: (acc) => ({
+			...acc,
+			pendingMath: true
+		})
+	},
+	{
+		flag: MATH_FONTS_FLAG,
+		mark: (acc) => ({
+			...acc,
+			pendingMathFonts: true
+		})
+	},
+	{
 		flag: MARKDOWN_CSS_FLAG,
 		mark: (acc) => ({
 			...acc,
@@ -1107,6 +1192,14 @@ var PENDING_VALUE_TABLE = [
 		key: "pendingMermaid"
 	},
 	{
+		consume: consumeMathValue,
+		key: "pendingMath"
+	},
+	{
+		consume: consumeMathFontsValue,
+		key: "pendingMathFonts"
+	},
+	{
 		consume: consumeMarkdownCssValue,
 		key: "pendingMarkdownCss"
 	}
@@ -1130,8 +1223,12 @@ var attachPartitionStringOptionals = (result, state) => {
 	if (state.documentName !== null) result.documentName = state.documentName;
 	if (state.themeHint !== null) result.themeHint = state.themeHint;
 	if (state.shikiLangs !== null) result.shikiLangs = state.shikiLangs;
-	if (state.mermaid !== null) result.mermaid = state.mermaid;
 	if (state.markdownCssPath !== null) result.markdownCssPath = state.markdownCssPath;
+};
+var attachPartitionExtensionOptionals = (result, state) => {
+	if (state.mermaid !== null) result.mermaid = state.mermaid;
+	if (state.math !== null) result.math = state.math;
+	if (state.mathFonts !== null) result.mathFonts = state.mathFonts;
 };
 var attachPartitionNumberOptionals = (result, state) => {
 	if (state.commentsWidth !== null) result.commentsWidth = state.commentsWidth;
@@ -1139,9 +1236,10 @@ var attachPartitionNumberOptionals = (result, state) => {
 };
 var attachPartitionOptionals = (result, state) => {
 	attachPartitionStringOptionals(result, state);
+	attachPartitionExtensionOptionals(result, state);
 	attachPartitionNumberOptionals(result, state);
 };
-var isPartitionValid = (state) => state.valid && !state.pendingDocName && !state.pendingTheme && !state.pendingShikiLangs && !state.pendingCommentsWidth && !state.pendingPageNavWidth && !state.pendingMermaid && !state.pendingMarkdownCss;
+var isPartitionValid = (state) => state.valid && !state.pendingDocName && !state.pendingTheme && !state.pendingShikiLangs && !state.pendingCommentsWidth && !state.pendingPageNavWidth && !state.pendingMermaid && !state.pendingMath && !state.pendingMathFonts && !state.pendingMarkdownCss;
 var partitionArgs = (argv) => {
 	const state = argv.reduce(stepArg, INITIAL_PARTITION_STATE);
 	const result = {
@@ -1164,11 +1262,16 @@ var attachRunNonStringOptionals = (result, parts) => {
 	if (parts.shikiLangs) result.shikiLangs = parts.shikiLangs;
 	if (typeof parts.commentsWidth === "number") result.commentsWidth = parts.commentsWidth;
 	if (typeof parts.pageNavWidth === "number") result.pageNavWidth = parts.pageNavWidth;
+};
+var attachRunExtensionOptionals = (result, parts) => {
 	if (parts.mermaid) result.mermaid = parts.mermaid;
+	if (parts.math) result.math = parts.math;
+	if (parts.mathFonts) result.mathFonts = parts.mathFonts;
 };
 var attachRunOptionals = (result, parts) => {
 	attachRunStringOptionals(result, parts);
 	attachRunNonStringOptionals(result, parts);
+	attachRunExtensionOptionals(result, parts);
 };
 var buildRunArgs = (parts) => {
 	const [inputPath] = parts.positional;
@@ -1213,7 +1316,7 @@ var escapeHtml = (value) => value.replace(/[&<>"']/g, (ch) => REPLACEMENTS[ch] |
 //#region src/build/inline-markdown-css.ts
 var MARKDOWN_CSS_RE = /(<style\b(?=[^>]*\bid="markdown-css")[^>]*>)([\s\S]*?)(<\/style>)/i;
 var maskHtmlComments = (html) => html.replace(/<!--[\s\S]*?-->/g, (match) => " ".repeat(match.length));
-var escapeStyleTagInCss = (cssSource) => cssSource.replace(/<\/style>/gi, String.raw`<\/style>`);
+var escapeStyleTagInCss$1 = (cssSource) => cssSource.replace(/<\/style>/gi, String.raw`<\/style>`);
 /**
 * `<style id="markdown-css">` の中身を `css` で書き換えた新しい HTML 文字列を返す。
 * 元文字列は変更しない。該当 `<style>` タグが無ければ Error を投げる
@@ -1224,7 +1327,7 @@ var inlineMarkdownCssIntoHtml = (html, css) => {
 	const match = MARKDOWN_CSS_RE.exec(masked);
 	if (!match) throw new Error("template HTML に id=\"markdown-css\" の <style> タグが見つかりません");
 	const [fullMatch, openingTag, , closingTag] = match;
-	const replaced = `${openingTag}${escapeStyleTagInCss(css)}${closingTag}`;
+	const replaced = `${openingTag}${escapeStyleTagInCss$1(css)}${closingTag}`;
 	return html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length);
 };
 //#endregion
@@ -1326,6 +1429,57 @@ var rewriteEmbeddedMermaid = (reviewHtml, runtime) => {
 	return {
 		escapedScriptCount: count,
 		html: reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length)
+	};
+};
+var EMBEDDED_KATEX_JS_RE = /(<script\b(?=[^>]*\bid="embedded-katex")(?=[^>]*\btype="module")[^>]*>)([\s\S]*?)(<\/script>)/i;
+var EMBEDDED_KATEX_CSS_RE = /(<style\b(?=[^>]*\bid="embedded-katex-css")[^>]*>)([\s\S]*?)(<\/style>)/i;
+var EMBEDDED_KATEX_FONTS_EXTRA_CSS_RE = /(<style\b(?=[^>]*\bid="embedded-katex-fonts-extra-css")[^>]*>)([\s\S]*?)(<\/style>)/i;
+var escapeStyleTagInCss = (cssSource) => cssSource.replace(/<\/style>/gi, String.raw`<\/style>`);
+var rewriteStyleBlock = (html, css, target) => {
+	const match = target.re.exec(html);
+	if (!match) throw new Error(`template HTML に id="${target.blockId}" の <style> タグが見つかりません`);
+	const [fullMatch, openingTag, , closingTag] = match;
+	const replaced = `${openingTag}${escapeStyleTagInCss(css)}${closingTag}`;
+	return html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length);
+};
+var rewriteKatexJs = (html, js) => {
+	const match = EMBEDDED_KATEX_JS_RE.exec(html);
+	if (!match) throw new Error("template HTML に id=\"embedded-katex\" の <script> タグが見つかりません");
+	const [fullMatch, openingTag, , closingTag] = match;
+	const { count, escaped } = escapeScriptTagInJs(js);
+	const replaced = `${openingTag}${escaped}${closingTag}`;
+	return {
+		escapedScriptCount: count,
+		html: html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length)
+	};
+};
+/**
+* `<script id="embedded-katex" type="module">` / `<style id="embedded-katex-css">` /
+* `<style id="embedded-katex-fonts-extra-css">` の 3 ブロックを KaTeX runtime / CSS で
+* 書き換える (Mermaid と完全に対称、docs/mdxg-math-rendering.md §3.2 / §5.l)。
+*
+* - `assets.fontsExtraCss` が undefined のとき (CLI `--math-fonts minimal` 既定) は
+*   fonts-extra ブロックには触らず空のまま残す。standalone build は vite.config.ts 側で
+*   全 family を inline する別経路を持つ
+* - 該当タグが無ければ Error を投げる
+* - `escapedScriptCount` は `js` 内の literal `<\/script>` 件数を返す (CLI が stderr 報告用)
+*/
+var rewriteEmbeddedKatex = (reviewHtml, assets) => {
+	const { escapedScriptCount, html: withJs } = rewriteKatexJs(reviewHtml, assets.js);
+	const withMinimal = rewriteStyleBlock(withJs, assets.minimalCss, {
+		blockId: "embedded-katex-css",
+		re: EMBEDDED_KATEX_CSS_RE
+	});
+	if (typeof assets.fontsExtraCss !== "string") return {
+		escapedScriptCount,
+		html: withMinimal
+	};
+	return {
+		escapedScriptCount,
+		html: rewriteStyleBlock(withMinimal, assets.fontsExtraCss, {
+			blockId: "embedded-katex-fonts-extra-css",
+			re: EMBEDDED_KATEX_FONTS_EXTRA_CSS_RE
+		})
 	};
 };
 var DATA_NAME_RE = /\bdata-name="[^"]*"/;
@@ -1537,6 +1691,131 @@ var defaultCleanIo = {
 		process.stdout.write(text);
 	},
 	unlink: async (path) => unlink(path)
+};
+//#endregion
+//#region src/core/math.ts
+var isTokenLike$1 = (value) => {
+	if (typeof value !== "object" || value === null) return false;
+	return typeof value.type === "string";
+};
+var isEscapedDollar = (text, pos) => {
+	let backslashes = 0;
+	let cursor = pos - 1;
+	while (cursor >= 0 && text[cursor] === "\\") {
+		backslashes += 1;
+		cursor -= 1;
+	}
+	return backslashes % 2 === 1;
+};
+var findDisplayEnd = (text, from) => {
+	let cursor = from;
+	while (cursor < text.length - 1) {
+		if (text[cursor] === "$" && text[cursor + 1] === "$" && !isEscapedDollar(text, cursor)) return cursor;
+		cursor += 1;
+	}
+	return -1;
+};
+var findInlineEnd = (text, from) => {
+	let cursor = from;
+	while (cursor < text.length) {
+		const ch = text[cursor];
+		if (ch === "\n") return -1;
+		if (ch === "$" && !isEscapedDollar(text, cursor)) return cursor;
+		cursor += 1;
+	}
+	return -1;
+};
+var matchDisplay = (text, start) => {
+	const endPos = findDisplayEnd(text, start + 2);
+	if (endPos === -1) return {
+		next: start + 2,
+		segment: null
+	};
+	const closeEnd = endPos + 2;
+	return {
+		next: closeEnd,
+		segment: {
+			end: closeEnd,
+			raw: text.slice(start, closeEnd),
+			source: text.slice(start + 2, endPos),
+			start,
+			type: "display"
+		}
+	};
+};
+var matchInline = (text, start) => {
+	const endPos = findInlineEnd(text, start + 1);
+	if (endPos === -1) return {
+		next: start + 1,
+		segment: null
+	};
+	const closeEnd = endPos + 1;
+	return {
+		next: closeEnd,
+		segment: {
+			end: closeEnd,
+			raw: text.slice(start, closeEnd),
+			source: text.slice(start + 1, endPos),
+			start,
+			type: "inline"
+		}
+	};
+};
+var stepAt = (text, cursor) => {
+	if (text[cursor] !== "$" || isEscapedDollar(text, cursor)) return {
+		next: cursor + 1,
+		segment: null
+	};
+	if (text[cursor + 1] === "$") return matchDisplay(text, cursor);
+	return matchInline(text, cursor);
+};
+/**
+* `$...$` (inline) / `$$...$$` (display) 数式を 1 つの plain text 入力から検出する。
+* 結果は `start` 昇順、display を inline より先に判定する (`$$...$$` を `$...$` 2 個と
+* 誤解釈しない)。`MathSegment.source` は `$` 区切りを除去した LaTeX 本体で、
+* 後段の renderer / upgrade はこれを `katex.renderToString` に直接渡せる。
+*/
+var scanMath = (text) => {
+	const segments = [];
+	let cursor = 0;
+	while (cursor < text.length) {
+		const step = stepAt(text, cursor);
+		if (step.segment !== null) segments.push(step.segment);
+		cursor = step.next;
+	}
+	return segments;
+};
+var tokenRawText = (token) => {
+	if (typeof token.raw === "string") return token.raw;
+	if (typeof token.text === "string") return token.text;
+	return "";
+};
+var addSegmentsToCounts = (segments, counts) => {
+	for (const segment of segments) if (segment.type === "inline") counts.inline += 1;
+	else counts.display += 1;
+};
+var isWalkableToken = (token) => token.type !== "code" && token.type !== "codespan";
+var accumulateMathCounts = (tokens, counts) => {
+	if (!Array.isArray(tokens)) return;
+	for (const token of tokens) if (isTokenLike$1(token) && isWalkableToken(token)) if (token.type === "text") addSegmentsToCounts(scanMath(tokenRawText(token)), counts);
+	else {
+		accumulateMathCounts(token.tokens, counts);
+		accumulateMathCounts(token.items, counts);
+	}
+};
+/**
+* markdown 全体から `$...$` / `$$...$$` の件数を inline / display 別に集計する。
+* code / codespan 配下の `$` は marked AST 上で別トークンに分離されているため自動的に除外される。
+* CLI の `--math auto` 注入判定 (`countMath(md).inline + countMath(md).display > 0`) で使う。
+*/
+var countMath = (markdown) => {
+	const tokens = marked.lexer(markdown);
+	const counts = {
+		display: 0,
+		inline: 0
+	};
+	accumulateMathCounts(tokens, counts);
+	return counts;
 };
 //#endregion
 //#region src/cli/open-command.ts
@@ -1837,11 +2116,74 @@ var applyMermaid = async (html, args, ctx) => {
 	if (escapedScriptCount > 0) process$1.stderr.write(`(escaped ${escapedScriptCount} literal <\/script> in mermaid runtime)\n`);
 	return rewritten;
 };
+/**
+* `--math` mode と markdown 内容から KaTeX runtime を注入すべきか判定する pure 関数
+* (Mermaid と完全に対称、docs/mdxg-math-rendering.md §3.2 / §5.e)。
+* - mode 未指定 / `auto`: countMath で inline + display > 0 のときのみ true
+* - `on`: 常に true
+* - `off`: 常に false
+*/
+var shouldInjectKatex = (mode, markdown) => {
+	if (mode === "off") return false;
+	if (mode === "on") return true;
+	const counts = countMath(markdown);
+	return counts.inline + counts.display > 0;
+};
+var readKatexAsset = async (path) => {
+	try {
+		return await readFile(path, "utf8");
+	} catch (error) {
+		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(`${path} が見つかりません。先に \`npm run build\` を実行して dist/katex/ を生成してください。`, { cause: error });
+		throw error;
+	}
+};
+var MATH_SIZE_HINT = {
+	all: "+~340 KB",
+	minimal: "+~250 KB"
+};
+var readKatexAssets = async (scriptDir, fontsMode) => {
+	const [js, minimalCss] = await Promise.all([readKatexAsset(resolve(scriptDir, "katex", "katex.mjs")), readKatexAsset(resolve(scriptDir, "katex", "katex.css"))]);
+	const sizeHintGzip = MATH_SIZE_HINT[fontsMode];
+	if (fontsMode === "minimal") return {
+		js,
+		minimalCss,
+		sizeHintGzip
+	};
+	return {
+		fontsExtraCss: await readKatexAsset(resolve(scriptDir, "katex", "katex-fonts-extra.css")),
+		js,
+		minimalCss,
+		sizeHintGzip
+	};
+};
+var reportKatexInjection = (report) => {
+	const counts = countMath(report.markdown);
+	const total = counts.inline + counts.display;
+	process$1.stderr.write(`Detected ${total} math expression(s). Embedding KaTeX runtime (fonts=${report.fontsMode}, ${report.sizeHintGzip} gzipped).\n`);
+	if (report.escapedScriptCount > 0) process$1.stderr.write(`(escaped ${report.escapedScriptCount} literal <\/script> in KaTeX runtime)\n`);
+};
+var applyKatex = async (html, args, ctx) => {
+	if (!shouldInjectKatex(args.math, ctx.markdown)) return html;
+	const fontsMode = args.mathFonts ?? "minimal";
+	const assets = await readKatexAssets(ctx.scriptDir, fontsMode);
+	const { escapedScriptCount, html: rewritten } = rewriteEmbeddedKatex(html, {
+		fontsExtraCss: assets.fontsExtraCss,
+		js: assets.js,
+		minimalCss: assets.minimalCss
+	});
+	reportKatexInjection({
+		escapedScriptCount,
+		fontsMode,
+		markdown: ctx.markdown,
+		sizeHintGzip: assets.sizeHintGzip
+	});
+	return rewritten;
+};
 var applyHintRewrites = (args, ctx) => {
 	return applyTitleRewrite(applyToolbarOpenFileHint(applyPageNavWidthHint(applyCommentsWidthHint(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args.commentsWidth), args.pageNavWidth), args.showOpenFile), ctx.docName);
 };
 var composeReviewHtml = async (args, ctx) => {
-	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyMarkdownCss(await applyMermaid(await applyShikiLangs(applyHintRewrites(args, ctx), args, ctx), args, ctx), args), formatLoadedStatus(ctx.docName, ctx.docHash)));
+	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyMarkdownCss(await applyKatex(await applyMermaid(await applyShikiLangs(applyHintRewrites(args, ctx), args, ctx), args, ctx), args, ctx), args), formatLoadedStatus(ctx.docName, ctx.docHash)));
 };
 var runEmbed = async (args) => {
 	const ctx = await prepareEmbed(args);
@@ -1879,4 +2221,4 @@ main().catch((error) => {
 	process$1.exit(1);
 });
 //#endregion
-export { resolveShikiLangSet, shouldInjectMermaid };
+export { resolveShikiLangSet, shouldInjectKatex, shouldInjectMermaid };

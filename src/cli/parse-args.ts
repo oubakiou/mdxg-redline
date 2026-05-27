@@ -13,6 +13,8 @@ const COMMENTS_WIDTH_FLAG = '--comments-width'
 const PAGE_NAV_WIDTH_FLAG = '--page-nav-width'
 const SHOW_OPEN_FILE_FLAG = '--show-open-file'
 const MERMAID_FLAG = '--mermaid'
+const MATH_FLAG = '--math'
+const MATH_FONTS_FLAG = '--math-fonts'
 const MARKDOWN_CSS_FLAG = '--markdown-css'
 const CLEAN_FLAG = '--clean'
 const YES_FLAG = '--yes'
@@ -109,6 +111,46 @@ const isMermaidMode = (value: string): value is MermaidMode =>
 export const parseMermaidValue = (value: string): MermaidMode | null => {
   const trimmed = value.trim()
   if (isMermaidMode(trimmed)) {
+    return trimmed
+  }
+  return null
+}
+
+/**
+ * `--math <mode>` のパース結果 (docs/mdxg-math-rendering.md §3.2 / §4 Step 4)。
+ * - `auto` (既定): markdown を countMath で走査し、$...$ / $$...$$ があるときだけ KaTeX runtime を注入
+ * - `on`: 件数に関係なく必ず注入
+ * - `off`: 注入しない ($...$ / $$...$$ は raw な markdown 文法のまま plain text 表示)
+ *
+ * MermaidMode と意味論を完全に揃えるため同じ '`auto' | 'on' | 'off'` を再利用する。
+ */
+export type MathMode = MermaidMode
+
+/**
+ * `--math` の値を MathMode にパースする。MermaidMode と同じ literal を共有しているので
+ * 受け付ける値も同じ。CLI 側の dispatch だけが分かれる。
+ */
+export const parseMathValue = (value: string): MathMode | null => parseMermaidValue(value)
+
+/**
+ * `--math-fonts <mode>` のパース結果 (docs/mdxg-math-rendering.md §5.g / §5.l)。
+ * - `minimal` (既定): Main / AMS / Math / Size1-4 の 9 family のみ inline。\mathcal / \mathfrak /
+ *   \mathscr / SansSerif / Typewriter は OS フォントへ fallback
+ * - `all`: 全 20 family を inline。珍しい数式記号も完全な字形で描画
+ */
+export type MathFontsMode = 'all' | 'minimal'
+const MATH_FONTS_VALUES = ['minimal', 'all'] as const
+
+const isMathFontsMode = (value: string): value is MathFontsMode =>
+  (MATH_FONTS_VALUES as readonly string[]).includes(value)
+
+/**
+ * `--math-fonts` の値を MathFontsMode にパースする。pure な関数で、CLI 引数パースと
+ * 単体テストの両方から再利用する。未知の値・空文字は null を返し、CLI 側で invalid 扱い。
+ */
+export const parseMathFontsValue = (value: string): MathFontsMode | null => {
+  const trimmed = value.trim()
+  if (isMathFontsMode(trimmed)) {
     return trimmed
   }
   return null
@@ -227,6 +269,23 @@ Options:
                                  distribution HTML.
                            off   Never inject. \`\`\`mermaid blocks fall back to
                                  Shiki-highlighted code blocks (MDXG §15 [MUST]).
+  --math <value>         Control KaTeX runtime injection for $...$ / $$...$$
+                         math expressions (MDXG §14). One of:
+                           auto  Inject KaTeX only if the markdown contains at
+                                 least one math expression (default).
+                           on    Always inject. Adds ~250 / ~350 KB gzipped
+                                 depending on --math-fonts.
+                           off   Never inject. $...$ / $$...$$ render as raw
+                                 markdown text (MDXG §14 [MUST]).
+  --math-fonts <value>   Choose the KaTeX woff2 font set embedded as data URI
+                         (only meaningful when KaTeX is injected). One of:
+                           minimal  Main / AMS / Math / Size1-4 only, +~110 KB
+                                    gzipped (default). \\mathcal / \\mathfrak /
+                                    \\mathscr / SansSerif / Typewriter fall back
+                                    to the host's system font.
+                           all      Embed all 20 woff2 families, +~220 KB gzipped.
+                                    Use when the document relies on rare math
+                                    glyphs (\\mathcal{X}, \\mathfrak{X}, ...).
   --markdown-css <path>  Replace the bundled markdown preview stylesheet with the
                          CSS file at <path>. Targets only the markdown preview
                          (#doc scope). Layout / chrome (review.css) is not
@@ -289,6 +348,10 @@ export interface RunArgs {
    * がそのまま使われる)。
    */
   markdownCssPath?: string
+  /** --math モード。未指定なら省略 (CLI 側で auto を既定として解釈) */
+  math?: MathMode
+  /** --math-fonts モード。未指定なら省略 (CLI 側で minimal を既定として解釈) */
+  mathFonts?: MathFontsMode
 }
 
 export interface CleanArgsParsed {
@@ -384,6 +447,8 @@ const parseCleanArgs = (argv: readonly string[]): ParsedArgs => {
 interface PartitionedArgs {
   documentName?: string
   markdownCssPath?: string
+  math?: MathMode
+  mathFonts?: MathFontsMode
   mermaid?: MermaidMode
   open: boolean
   pageNavWidth?: number
@@ -398,11 +463,15 @@ interface PartitionedArgs {
 interface PartitionState {
   documentName: string | null
   markdownCssPath: string | null
+  math: MathMode | null
+  mathFonts: MathFontsMode | null
   mermaid: MermaidMode | null
   open: boolean
   pageNavWidth: number | null
   pendingDocName: boolean
   pendingMarkdownCss: boolean
+  pendingMath: boolean
+  pendingMathFonts: boolean
   pendingMermaid: boolean
   pendingPageNavWidth: boolean
   pendingShikiLangs: boolean
@@ -420,12 +489,16 @@ const INITIAL_PARTITION_STATE: PartitionState = {
   commentsWidth: null,
   documentName: null,
   markdownCssPath: null,
+  math: null,
+  mathFonts: null,
   mermaid: null,
   open: true,
   pageNavWidth: null,
   pendingCommentsWidth: false,
   pendingDocName: false,
   pendingMarkdownCss: false,
+  pendingMath: false,
+  pendingMathFonts: false,
   pendingMermaid: false,
   pendingPageNavWidth: false,
   pendingShikiLangs: false,
@@ -488,6 +561,30 @@ const consumeMermaidValue = (acc: PartitionState, token: string): PartitionState
   return { ...acc, mermaid: parsed, pendingMermaid: false }
 }
 
+// --math の値位置。auto / on / off のみ valid。--mermaid と完全に対称。
+const consumeMathValue = (acc: PartitionState, token: string): PartitionState => {
+  if (token.startsWith('--')) {
+    return { ...acc, valid: false }
+  }
+  const parsed = parseMathValue(token)
+  if (parsed === null) {
+    return { ...acc, valid: false }
+  }
+  return { ...acc, math: parsed, pendingMath: false }
+}
+
+// --math-fonts の値位置。minimal / all のみ valid。`-` 始まりは値欠落扱い。
+const consumeMathFontsValue = (acc: PartitionState, token: string): PartitionState => {
+  if (token.startsWith('--')) {
+    return { ...acc, valid: false }
+  }
+  const parsed = parseMathFontsValue(token)
+  if (parsed === null) {
+    return { ...acc, valid: false }
+  }
+  return { ...acc, mathFonts: parsed, pendingMathFonts: false }
+}
+
 // --markdown-css の値位置。任意のパス文字列を受け入れ、ファイル存在チェックは CLI 側で行う。
 // `-` 始まりは値欠落扱い。stdin (`-`) は別系統 (input markdown) でしか使わないため、CSS で
 // `-` を許す必要はない。
@@ -540,6 +637,8 @@ const VALUE_FLAG_TABLE: readonly {
     mark: (acc): PartitionState => ({ ...acc, pendingPageNavWidth: true }),
   },
   { flag: MERMAID_FLAG, mark: (acc): PartitionState => ({ ...acc, pendingMermaid: true }) },
+  { flag: MATH_FLAG, mark: (acc): PartitionState => ({ ...acc, pendingMath: true }) },
+  { flag: MATH_FONTS_FLAG, mark: (acc): PartitionState => ({ ...acc, pendingMathFonts: true }) },
   {
     flag: MARKDOWN_CSS_FLAG,
     mark: (acc): PartitionState => ({ ...acc, pendingMarkdownCss: true }),
@@ -572,6 +671,8 @@ const consumeFlag = (acc: PartitionState, token: string): PartitionState => {
 type PendingFlagKey =
   | 'pendingDocName'
   | 'pendingMarkdownCss'
+  | 'pendingMath'
+  | 'pendingMathFonts'
   | 'pendingMermaid'
   | 'pendingPageNavWidth'
   | 'pendingShikiLangs'
@@ -588,6 +689,8 @@ const PENDING_VALUE_TABLE: readonly {
   { consume: consumeCommentsWidthValue, key: 'pendingCommentsWidth' },
   { consume: consumePageNavWidthValue, key: 'pendingPageNavWidth' },
   { consume: consumeMermaidValue, key: 'pendingMermaid' },
+  { consume: consumeMathValue, key: 'pendingMath' },
+  { consume: consumeMathFontsValue, key: 'pendingMathFonts' },
   { consume: consumeMarkdownCssValue, key: 'pendingMarkdownCss' },
 ]
 
@@ -616,7 +719,7 @@ const stepArg = (acc: PartitionState, token: string): PartitionState => {
 }
 
 // 結果オブジェクトに optional フィールドを後付けで追加するヘルパ。max-statements を抑えるため
-// 文字列系と数値系で関数を分割する。
+// 文字列系・拡張モード系・数値系で関数を分割する。
 const attachPartitionStringOptionals = (result: PartitionedArgs, state: PartitionState): void => {
   if (state.documentName !== null) {
     result.documentName = state.documentName
@@ -627,11 +730,23 @@ const attachPartitionStringOptionals = (result: PartitionedArgs, state: Partitio
   if (state.shikiLangs !== null) {
     result.shikiLangs = state.shikiLangs
   }
+  if (state.markdownCssPath !== null) {
+    result.markdownCssPath = state.markdownCssPath
+  }
+}
+
+const attachPartitionExtensionOptionals = (
+  result: PartitionedArgs,
+  state: PartitionState
+): void => {
   if (state.mermaid !== null) {
     result.mermaid = state.mermaid
   }
-  if (state.markdownCssPath !== null) {
-    result.markdownCssPath = state.markdownCssPath
+  if (state.math !== null) {
+    result.math = state.math
+  }
+  if (state.mathFonts !== null) {
+    result.mathFonts = state.mathFonts
   }
 }
 
@@ -646,6 +761,7 @@ const attachPartitionNumberOptionals = (result: PartitionedArgs, state: Partitio
 
 const attachPartitionOptionals = (result: PartitionedArgs, state: PartitionState): void => {
   attachPartitionStringOptionals(result, state)
+  attachPartitionExtensionOptionals(result, state)
   attachPartitionNumberOptionals(result, state)
 }
 
@@ -657,6 +773,8 @@ const isPartitionValid = (state: PartitionState): boolean =>
   !state.pendingCommentsWidth &&
   !state.pendingPageNavWidth &&
   !state.pendingMermaid &&
+  !state.pendingMath &&
+  !state.pendingMathFonts &&
   !state.pendingMarkdownCss
 
 const partitionArgs = (argv: readonly string[]): PartitionedArgs => {
@@ -705,14 +823,27 @@ const attachRunNonStringOptionals = (
   if (typeof parts.pageNavWidth === 'number') {
     result.pageNavWidth = parts.pageNavWidth
   }
+}
+
+const attachRunExtensionOptionals = (
+  result: { mode: 'run' } & RunArgs,
+  parts: PartitionedArgs
+): void => {
   if (parts.mermaid) {
     result.mermaid = parts.mermaid
+  }
+  if (parts.math) {
+    result.math = parts.math
+  }
+  if (parts.mathFonts) {
+    result.mathFonts = parts.mathFonts
   }
 }
 
 const attachRunOptionals = (result: { mode: 'run' } & RunArgs, parts: PartitionedArgs): void => {
   attachRunStringOptionals(result, parts)
   attachRunNonStringOptionals(result, parts)
+  attachRunExtensionOptionals(result, parts)
 }
 
 const buildRunArgs = (parts: PartitionedArgs): { mode: 'run' } & RunArgs => {
@@ -1224,6 +1355,109 @@ if (import.meta.vitest) {
     })
   })
 
+  describe('parseMathValue / parseMathFontsValue', () => {
+    it('parseMathValue は auto / on / off を返す (MermaidMode と同じ literal)', () => {
+      expect(parseMathValue('auto')).toBe('auto')
+      expect(parseMathValue('on')).toBe('on')
+      expect(parseMathValue('off')).toBe('off')
+    })
+
+    it('parseMathValue は前後の空白を許容、未知の値は null', () => {
+      expect(parseMathValue('  auto  ')).toBe('auto')
+      expect(parseMathValue('yes')).toBeNull()
+      expect(parseMathValue('Auto')).toBeNull()
+      expect(parseMathValue('')).toBeNull()
+    })
+
+    it('parseMathFontsValue は minimal / all を返し、それ以外は null', () => {
+      expect(parseMathFontsValue('minimal')).toBe('minimal')
+      expect(parseMathFontsValue('all')).toBe('all')
+      expect(parseMathFontsValue('  minimal  ')).toBe('minimal')
+      expect(parseMathFontsValue('auto')).toBeNull()
+      expect(parseMathFontsValue('full')).toBeNull()
+      expect(parseMathFontsValue('Minimal')).toBeNull()
+      expect(parseMathFontsValue('')).toBeNull()
+    })
+  })
+
+  describe('parseArgs: --math / --math-fonts', () => {
+    it('--math auto / on / off が認識される', () => {
+      expect(parseArgs(['--math', 'auto', 'spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        math: 'auto',
+        mode: 'run',
+        open: true,
+      })
+      expect(parseArgs(['--math', 'on', 'spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        math: 'on',
+        mode: 'run',
+        open: true,
+      })
+      expect(parseArgs(['--math', 'off', 'spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        math: 'off',
+        mode: 'run',
+        open: true,
+      })
+    })
+
+    it('--math-fonts minimal / all が認識される', () => {
+      expect(parseArgs(['--math-fonts', 'minimal', 'spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        mathFonts: 'minimal',
+        mode: 'run',
+        open: true,
+      })
+      expect(parseArgs(['--math-fonts', 'all', 'spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        mathFonts: 'all',
+        mode: 'run',
+        open: true,
+      })
+    })
+
+    it('--math と --math-fonts は組み合わせて指定できる', () => {
+      expect(parseArgs(['--math', 'on', '--math-fonts', 'all', 'spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        math: 'on',
+        mathFonts: 'all',
+        mode: 'run',
+        open: true,
+      })
+    })
+
+    it('--math が末尾で値が無い場合は invalid', () => {
+      expect(parseArgs(['spec.md', '--math'])).toEqual({ mode: 'invalid' })
+    })
+
+    it('--math の値位置に別フラグが来た場合は invalid', () => {
+      expect(parseArgs(['--math', '--no-open', 'spec.md'])).toEqual({ mode: 'invalid' })
+    })
+
+    it('--math の値が許容外 (yes / Auto / 空文字) は invalid', () => {
+      expect(parseArgs(['--math', 'yes', 'spec.md'])).toEqual({ mode: 'invalid' })
+      expect(parseArgs(['--math', 'Auto', 'spec.md'])).toEqual({ mode: 'invalid' })
+    })
+
+    it('--math-fonts が末尾で値が無い場合は invalid', () => {
+      expect(parseArgs(['spec.md', '--math-fonts'])).toEqual({ mode: 'invalid' })
+    })
+
+    it('--math-fonts の値が許容外 (full / Minimal / 空文字) は invalid', () => {
+      expect(parseArgs(['--math-fonts', 'full', 'spec.md'])).toEqual({ mode: 'invalid' })
+      expect(parseArgs(['--math-fonts', 'Minimal', 'spec.md'])).toEqual({ mode: 'invalid' })
+    })
+
+    it('--math / --math-fonts 未指定時は対応プロパティを含まない', () => {
+      expect(parseArgs(['spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        mode: 'run',
+        open: true,
+      })
+    })
+  })
+
   describe('parseCommentsWidthValue', () => {
     it('0 は 0 を返す (closed 指定)', () => {
       expect(parseCommentsWidthValue('0')).toBe(0)
@@ -1390,6 +1624,8 @@ if (import.meta.vitest) {
       const keys: PendingFlagKey[] = [
         'pendingDocName',
         'pendingMarkdownCss',
+        'pendingMath',
+        'pendingMathFonts',
         'pendingMermaid',
         'pendingPageNavWidth',
         'pendingShikiLangs',

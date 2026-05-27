@@ -173,6 +173,87 @@ export const rewriteEmbeddedMermaid = (
   return { escapedScriptCount: count, html }
 }
 
+// KaTeX runtime / CSS / fonts-extra CSS 注入用 (docs/mdxg-math-rendering.md §3.2 / §5.k / §5.l)。
+// standalone build は vite.config.ts 側で同じ regex で inline するが、CLI 経路は本ファイルの
+// rewriteEmbeddedKatex を使う。両者で regex を揃えることで rewrite の安定性を維持する。
+const EMBEDDED_KATEX_JS_RE =
+  /(<script\b(?=[^>]*\bid="embedded-katex")(?=[^>]*\btype="module")[^>]*>)([\s\S]*?)(<\/script>)/i
+const EMBEDDED_KATEX_CSS_RE =
+  /(<style\b(?=[^>]*\bid="embedded-katex-css")[^>]*>)([\s\S]*?)(<\/style>)/i
+const EMBEDDED_KATEX_FONTS_EXTRA_CSS_RE =
+  /(<style\b(?=[^>]*\bid="embedded-katex-fonts-extra-css")[^>]*>)([\s\S]*?)(<\/style>)/i
+
+// CSS source の literal `</style>` を `<\/style>` に escape する (Mermaid の escapeScriptTagInJs と
+// 同じ規約、CSS コメントや content: 値に閉じタグ文字列が混入してもパースが壊れないため)。
+const escapeStyleTagInCss = (cssSource: string): string =>
+  cssSource.replace(/<\/style>/gi, String.raw`<\/style>`)
+
+interface StyleBlockTarget {
+  blockId: string
+  re: RegExp
+}
+
+const rewriteStyleBlock = (html: string, css: string, target: StyleBlockTarget): string => {
+  const match = target.re.exec(html)
+  if (!match) {
+    throw new Error(`template HTML に id="${target.blockId}" の <style> タグが見つかりません`)
+  }
+  const [fullMatch, openingTag, , closingTag] = match
+  const replaced = `${openingTag}${escapeStyleTagInCss(css)}${closingTag}`
+  return html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length)
+}
+
+const rewriteKatexJs = (html: string, js: string): { escapedScriptCount: number; html: string } => {
+  const match = EMBEDDED_KATEX_JS_RE.exec(html)
+  if (!match) {
+    throw new Error('template HTML に id="embedded-katex" の <script> タグが見つかりません')
+  }
+  const [fullMatch, openingTag, , closingTag] = match
+  const { count, escaped } = escapeScriptTagInJs(js)
+  const replaced = `${openingTag}${escaped}${closingTag}`
+  const next = html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length)
+  return { escapedScriptCount: count, html: next }
+}
+
+export interface KatexRuntimeAssets {
+  /** extra フォント CSS。`--math-fonts all` 指定時のみ渡す。undefined / 空文字なら no-op に近い書き換え */
+  fontsExtraCss?: string
+  /** KaTeX ESM runtime (`dist/katex/katex.mjs` の中身、bridge 込み) */
+  js: string
+  /** minimal フォントセットの CSS (`dist/katex/katex.css` の中身、9 family + 全 .katex ルール) */
+  minimalCss: string
+}
+
+/**
+ * `<script id="embedded-katex" type="module">` / `<style id="embedded-katex-css">` /
+ * `<style id="embedded-katex-fonts-extra-css">` の 3 ブロックを KaTeX runtime / CSS で
+ * 書き換える (Mermaid と完全に対称、docs/mdxg-math-rendering.md §3.2 / §5.l)。
+ *
+ * - `assets.fontsExtraCss` が undefined のとき (CLI `--math-fonts minimal` 既定) は
+ *   fonts-extra ブロックには触らず空のまま残す。standalone build は vite.config.ts 側で
+ *   全 family を inline する別経路を持つ
+ * - 該当タグが無ければ Error を投げる
+ * - `escapedScriptCount` は `js` 内の literal `</script>` 件数を返す (CLI が stderr 報告用)
+ */
+export const rewriteEmbeddedKatex = (
+  reviewHtml: string,
+  assets: KatexRuntimeAssets
+): { escapedScriptCount: number; html: string } => {
+  const { escapedScriptCount, html: withJs } = rewriteKatexJs(reviewHtml, assets.js)
+  const withMinimal = rewriteStyleBlock(withJs, assets.minimalCss, {
+    blockId: 'embedded-katex-css',
+    re: EMBEDDED_KATEX_CSS_RE,
+  })
+  if (typeof assets.fontsExtraCss !== 'string') {
+    return { escapedScriptCount, html: withMinimal }
+  }
+  const withExtra = rewriteStyleBlock(withMinimal, assets.fontsExtraCss, {
+    blockId: 'embedded-katex-fonts-extra-css',
+    re: EMBEDDED_KATEX_FONTS_EXTRA_CSS_RE,
+  })
+  return { escapedScriptCount, html: withExtra }
+}
+
 const DATA_NAME_RE = /\bdata-name="[^"]*"/
 const HTML_TAG_RE = /<html\b[^>]*>/i
 const DATA_THEME_RE = /\bdata-theme="[^"]*"/
@@ -824,6 +905,98 @@ if (import.meta.vitest) {
     it('元文字列を破壊しない', () => {
       const html = baseHtml
       rewriteEmbeddedMermaid(html, 'x')
+      expect(html).toBe(baseHtml)
+    })
+  })
+
+  describe('rewriteEmbeddedKatex', () => {
+    const baseHtml =
+      '<html><body>' +
+      '<script id="embedded-katex" type="module"></script>' +
+      '<style id="embedded-katex-css"></style>' +
+      '<style id="embedded-katex-fonts-extra-css"></style>' +
+      '</body></html>'
+
+    it('minimal セット (fontsExtraCss 未指定) で 2 ブロックだけ書き込み、extra は空のまま残す', () => {
+      const assets = {
+        js: 'globalThis.__mdxgKatex = {};',
+        minimalCss: '.katex{color:red}',
+      }
+      const { escapedScriptCount, html } = rewriteEmbeddedKatex(baseHtml, assets)
+      expect(escapedScriptCount).toBe(0)
+      expect(html).toContain(`>${assets.js}</script>`)
+      expect(html).toContain(`<style id="embedded-katex-css">${assets.minimalCss}</style>`)
+      expect(html).toContain('<style id="embedded-katex-fonts-extra-css"></style>')
+    })
+
+    it('fontsExtraCss 指定で 3 ブロック全て書き込む (--math-fonts all 経路)', () => {
+      const assets = {
+        fontsExtraCss: '@font-face{font-family:Caligraphic}',
+        js: 'globalThis.__mdxgKatex = {};',
+        minimalCss: '.katex{color:red}',
+      }
+      const { html } = rewriteEmbeddedKatex(baseHtml, assets)
+      expect(html).toContain(`>${assets.js}</script>`)
+      expect(html).toContain(`<style id="embedded-katex-css">${assets.minimalCss}</style>`)
+      expect(html).toContain(
+        `<style id="embedded-katex-fonts-extra-css">${assets.fontsExtraCss}</style>`
+      )
+    })
+
+    it(String.raw`js 内の literal </script> を <\/script> に escape して件数を返す`, () => {
+      const assets = {
+        js: 'var s = "</script>"; var t = "</SCRIPT>";',
+        minimalCss: '',
+      }
+      const { escapedScriptCount, html } = rewriteEmbeddedKatex(baseHtml, assets)
+      expect(escapedScriptCount).toBe(2)
+      const opening = html.indexOf('<script id="embedded-katex"')
+      const tagOpenEnd = html.indexOf('>', opening) + 1
+      const closing = html.indexOf('</script>', tagOpenEnd)
+      const body = html.slice(tagOpenEnd, closing)
+      expect(body.toLowerCase()).not.toContain('</script>')
+      expect(body).toContain(String.raw`<\/script>`)
+    })
+
+    it(String.raw`css 内の literal </style> を <\/style> に escape する`, () => {
+      const assets = {
+        js: '',
+        minimalCss: '/* contains </style> in comment */ .katex { content: "</style>" }',
+      }
+      const { html } = rewriteEmbeddedKatex(baseHtml, assets)
+      const cssOpen = html.indexOf('<style id="embedded-katex-css"')
+      const cssTagOpenEnd = html.indexOf('>', cssOpen) + 1
+      const cssClose = html.indexOf('</style>', cssTagOpenEnd)
+      const cssBody = html.slice(cssTagOpenEnd, cssClose)
+      expect(cssBody.toLowerCase()).not.toContain('</style>')
+      expect(cssBody).toContain(String.raw`<\/style>`)
+    })
+
+    it('embedded-katex script タグが無いと Error を投げる', () => {
+      expect(() => rewriteEmbeddedKatex('<html></html>', { js: 'x', minimalCss: '' })).toThrow(
+        /embedded-katex/
+      )
+    })
+
+    it('embedded-katex-css style タグが無いと Error を投げる', () => {
+      const html = '<html><script id="embedded-katex" type="module"></script></html>'
+      expect(() => rewriteEmbeddedKatex(html, { js: 'x', minimalCss: 'y' })).toThrow(
+        /embedded-katex-css/
+      )
+    })
+
+    it('fontsExtraCss 指定時に該当タグが無いと Error を投げる', () => {
+      const html =
+        '<html><script id="embedded-katex" type="module"></script>' +
+        '<style id="embedded-katex-css"></style></html>'
+      expect(() =>
+        rewriteEmbeddedKatex(html, { fontsExtraCss: 'z', js: 'x', minimalCss: 'y' })
+      ).toThrow(/embedded-katex-fonts-extra-css/)
+    })
+
+    it('元文字列を破壊しない', () => {
+      const html = baseHtml
+      rewriteEmbeddedKatex(html, { js: 'x', minimalCss: 'y' })
       expect(html).toBe(baseHtml)
     })
   })
