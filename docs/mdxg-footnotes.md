@@ -67,17 +67,17 @@ Stacked View（DESIGN.md §12 §7 Page Navigation）で全 virtual-page section 
 - 1 個以上の脚注定義があれば、`Page[]` 末尾に次の synthetic page を append：
   ```ts
   {
-    slug: 'footnotes',
+    slug: 'footnotes', // 本物の H1「Footnotes」と衝突する場合は resolveUniqueSlug で 'footnotes-2' 等に解決
     title: 'Footnotes',
     depth: 1,
-    sourceLineStart: -1, // synthetic
+    sourceLineStart: -1, // synthetic sentinel
     sourceLineEnd: -1,
-    markdown: '', // marked が AST から footnote section を直接生成するため empty
+    markdown: '', // 文書由来の本文行を持たない sentinel。脚注セクション本体は別経路 (Step 4.3) で挿入する
     ancestorHeadingPath: [],
     headings: [],
   }
   ```
-- `doc-renderer.ts` の Stacked View 描画ループは通常の page と同様に `<section class="virtual-page" data-page-slug="footnotes">` として描画。ただし markdown が empty のため、内部の脚注 HTML は marked の `footnote` トークン処理から直接挿入される
+- `doc-renderer.ts` の Stacked View 描画ループは通常の page と同様に `<section class="virtual-page" data-page-slug="<resolved-slug>">` として描画する。**この section の中身は synthetic page の `markdown: ''` を marked に渡して生成するのではなく、Step 4 の「全文 1 回 parse + 配賦」フローで `marked.parse(fullMarkdown)` の出力末尾から `<section class="footnotes">` を `extractFootnoteSection` で切り出して appendChild する**（空 markdown を marked に再度渡しても脚注セクションは出力されないため、この経路でしか脚注 DOM は挿入されない）。詳細は Step 4.3
 
 **round-trip 不変条件の再定義**：DESIGN.md §12 §6 Virtual Pages は「全ページの `markdown` を連結すると元 markdown と完全一致する」不変条件を持つが、footnotes synthetic page は文書由来ではないため `markdown: ''` でこれを破る。本実装ではこの不変条件を「**文書由来 page (`sourceLineStart !== -1`) のみ対象**」に再定義する。`page-split.ts` のテストにこの sentinel 判定を追加し、synthetic page を round-trip 検査から除外する。Step 9 で DESIGN.md §12 §6 にこの再定義を追記する
 
@@ -413,10 +413,11 @@ A 案の論点と mitigation：
   - 脚注定義なし markdown では synthetic page が追加されない
   - 本物の H1「Footnotes」と synthetic slug の衝突解消（synthetic 側に `-2` が付く）
 
-- `app/pages.ts`（既存テストに追加）：
-  - `resolveTargetFromHash('#fn-1')` が element ID フォールバック経由で footnotes page の `pageIndex` を返す
-  - `resolveTargetFromHash('#fnref-1')` が参照を含む元 page の `pageIndex` を返す
-  - 該当 ID が存在しない hash は `null` を返す
+- `app/review.ts`（新規テスト）：
+  - `handleFootnoteHashClick('#fn-1')` が対象 `<li id="fn-1">` を含む footnotes page へ `navigateToTarget` を呼び、`true` を返す
+  - `handleFootnoteHashClick('#fnref-1')` が参照を含む元 page へ navigate し、`true` を返す
+  - 該当 ID が存在しない `#fn-unknown` / page slug 形式 `#p:overview` では `false` を返し、`navigateToTarget` を呼ばない（page slug 経路と構造的に分離されていることの確認）
+- `app/pages.ts`：既存の `resolveTargetFromHash` は戻り型 `NavigateTarget` のまま不変（footnote 経路の追加で本体には触れない）
 
 - `app/selection.ts`（既存テストに追加）：
   - `<sup class="footnote-ref">` 配下の textSegments が raw `[^<id>]` を返す
@@ -436,7 +437,7 @@ A 案の論点と mitigation：
   - footnotes synthetic page の `<section class="virtual-page">` に `<section class="footnotes">` が 1 個だけ含まれる
 
 - `app/doc-renderer.ts`（既存テストに追加）：
-  - footnotes synthetic page が `<section class="virtual-page" data-page-slug="footnotes">` として描画される
+  - footnotes synthetic page が `<section class="virtual-page" data-page-slug="<resolved-slug>">` として描画される（`resolved-slug` は通常 `'footnotes'`、本物の H1「Footnotes」と衝突する文書では `resolveUniqueSlug` 経由で `'footnotes-2'` 等。テストは `state.pages[pages.length - 1].slug` を読んで期待値を組み立て、固定文字列 `"footnotes"` は assert しない）
   - 各定義 `<li id="fn-<id>">` に `data-block-id` が振られている
 
 ### 手動視覚チェックリスト
