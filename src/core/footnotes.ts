@@ -18,6 +18,7 @@ import footnote from 'marked-footnote'
 
 /* eslint-disable sort-imports */
 import { escapeHtml } from './escape'
+import { renderInlineSafely } from './markdown'
 /* eslint-enable sort-imports */
 
 const createMarkedWithFootnote = (): Marked => {
@@ -107,16 +108,14 @@ const stripFootnoteMarker = (raw: string, label: string): string => {
   return raw.slice(idx + marker.length).trim()
 }
 
-// orphan の本文を inline markdown としてレンダリングする。Step 2 PoC
-// (.temp/footnote-poc-step2.mjs) で fresh Marked instance の `parseInline` が
-// crash しないことを確認済み。
-const renderInlineMarkdown = (markdown: string): string => {
-  const result = createMarkedWithFootnote().parseInline(markdown)
-  if (typeof result === 'string') {
-    return result
-  }
-  return ''
-}
+// orphan の本文を inline markdown としてレンダリングする。
+//
+// 以前は fresh Marked instance の `parseInline` を呼んでいたが、本実装の Renderer override
+// (raw HTML escape / link allowlist / image allowlist) を経由せず、`[^orphan]: <img src=x
+// onerror=...>` のような markdown が任意 JS 実行に化ける XSS 経路になっていた
+// (review feedback Critical 指摘)。`core/markdown.ts` の `renderInlineSafely` 経由で
+// 同じ Renderer override を共通化し、信頼境界を 1 箇所に集中させる (DESIGN.md §11)。
+const renderInlineMarkdown = (markdown: string): string => renderInlineSafely(markdown)
 
 const createSyntheticFootnotesSection = (doc: Document): HTMLElement => {
   const section = doc.createElement('section')
@@ -131,18 +130,48 @@ const createSyntheticFootnotesSection = (doc: Document): HTMLElement => {
   return section
 }
 
+const buildBackrefHtml = (label: string): string => {
+  const safeLabel = escapeHtml(label)
+  // backref は orphan に対応する `<a id="footnote-ref-<label>">` が DOM 上に存在しないため
+  // クリックしても no-op になる (handleFootnoteHashClick の getElementById null チェックで吸収)。
+  // 視覚的に他定義と同じ形を保つ目的で href 自体は残す。
+  return `<a href="#footnote-ref-${safeLabel}" data-footnote-backref aria-label="Back to reference ${safeLabel}">↩</a>`
+}
+
+/**
+ * orphan `<li>` の innerHTML を組み立てる pure helper。`bodyHtml` の形状によって 2 経路に
+ * 分岐する (review feedback Medium 指摘への対応):
+ *
+ * - **inline-only** (`<p>` 開きタグを含まない、`renderInlineSafely` が outer `<p>` を剥がした単一
+ *   段落): `<p>{body} {backref}</p>` で包む
+ * - **block-level** (`<p>...</p>` を 1 つ以上含む複数段落): bodyHtml をそのまま採用し、最後の
+ *   `</p>` の直前に backref を埋め込む (marked-footnote の通常出力と同じ「最後の段落末尾に
+ *   backref」形状に揃える)
+ *
+ * 単純に `<p>{body} {backref}</p>` で常に包むと、複数段落 body のときに `<p><p>...</p>...</p>`
+ * の入れ子が発生し、HTML5 パーサの p-element auto-close で `<p></p><p>...</p>...` に
+ * 平坦化されて DOM 構造が壊れる (review feedback で指摘された回帰)。
+ */
+const composeOrphanItemInnerHtml = (bodyHtml: string, label: string): string => {
+  const backref = buildBackrefHtml(label)
+  if (!bodyHtml.includes('<p>')) {
+    return `<p>${bodyHtml} ${backref}</p>`
+  }
+  const lastClosingP = bodyHtml.lastIndexOf('</p>')
+  if (lastClosingP === -1) {
+    // `<p>` 開きはあるが `</p>` 閉じが無い予期しない形。renderInlineSafely の挙動上は
+    // 起き得ないが、防御的に backref を末尾追加するフォールバック経路を用意する。
+    return `${bodyHtml} ${backref}`
+  }
+  return `${bodyHtml.slice(0, lastClosingP)} ${backref}${bodyHtml.slice(lastClosingP)}`
+}
+
 const buildOrphanItem = (doc: Document, label: string, raw: string): HTMLLIElement => {
   const bodyHtml = renderInlineMarkdown(stripFootnoteMarker(raw, label))
   const li = doc.createElement('li')
   li.id = `footnote-${label}`
   li.setAttribute('data-footnote-orphan', '1')
-  const para = doc.createElement('p')
-  const safeLabel = escapeHtml(label)
-  // backref は orphan に対応する `<a id="footnote-ref-<label>">` が DOM 上に存在しないため
-  // クリックしても no-op になる (handleFootnoteHashClick の getElementById null チェックで吸収)。
-  // 視覚的に他定義と同じ形を保つ目的で href 自体は残す。
-  para.innerHTML = `${bodyHtml} <a href="#footnote-ref-${safeLabel}" data-footnote-backref aria-label="Back to reference ${safeLabel}">↩</a>`
-  li.appendChild(para)
+  li.innerHTML = composeOrphanItemInnerHtml(bodyHtml, label)
   return li
 }
 
@@ -260,6 +289,63 @@ if (import.meta.vitest) {
         countFootnoteDefinitions('b[^2].\n\n[^2]: B\n')
         countFootnoteDefinitions('c[^3].\n\n[^3]: C\n')
       }).not.toThrow()
+    })
+  })
+
+  // review feedback Medium 指摘: `renderInlineSafely` が複数段落 markdown に対して
+  // block-level HTML を返したとき、buildOrphanItem が常に `<p>` で包む実装だと
+  // `<p><p>...</p>...</p>` の入れ子が p-element auto-close で `<p></p><p>...</p>...` に
+  // 平坦化されて DOM 構造が壊れる。`composeOrphanItemInnerHtml` の分岐ロジックで
+  // marked-footnote の通常出力 (最後の段落末尾に backref) と同じ形状に揃える契約をテストで pin する。
+  describe('composeOrphanItemInnerHtml (orphan li innerHTML 組み立て)', () => {
+    it('単一段落 (inline-only) bodyHtml は <p>{body} {backref}</p> で包む', () => {
+      const html = composeOrphanItemInnerHtml('hello world', '1')
+      expect(html).toBe(
+        '<p>hello world <a href="#footnote-ref-1" data-footnote-backref aria-label="Back to reference 1">↩</a></p>'
+      )
+    })
+
+    it('inline 装飾 (<strong> 等) を含む単一段落も <p> 内に保持される', () => {
+      const html = composeOrphanItemInnerHtml('see <strong>bold</strong>', 'x')
+      expect(html).toContain('<p>see <strong>bold</strong> ')
+      expect(html).toContain('data-footnote-backref')
+      expect(html).toMatch(/<\/p>$/u)
+    })
+
+    it('複数段落 bodyHtml は外側を包まず、最後の <p> 内末尾に backref を埋め込む', () => {
+      const body = '<p>para a</p>\n<p>para b</p>\n'
+      const html = composeOrphanItemInnerHtml(body, 'x')
+      // 最初の <p> はそのまま、最後の <p> の `</p>` 直前に backref が入る
+      expect(html).toBe(
+        '<p>para a</p>\n<p>para b <a href="#footnote-ref-x" data-footnote-backref aria-label="Back to reference x">↩</a></p>\n'
+      )
+      // 入れ子 (<p><p>) を作っていないこと
+      expect(html).not.toMatch(/<p>\s*<p>/u)
+    })
+
+    it('label は HTML escape される (属性インジェクション防止)', () => {
+      const html = composeOrphanItemInnerHtml('body', 'x"y<z')
+      expect(html).toContain('href="#footnote-ref-x&quot;y&lt;z"')
+      expect(html).toContain('aria-label="Back to reference x&quot;y&lt;z"')
+      // 生の `<` `>` `"` が属性値内に漏れていない
+      expect(html).not.toContain('href="#footnote-ref-x"y<z"')
+    })
+
+    it('3 段落以上でも最後の </p> 直前にだけ backref が入る', () => {
+      const body = '<p>a</p>\n<p>b</p>\n<p>c</p>\n'
+      const html = composeOrphanItemInnerHtml(body, '1')
+      const backrefMatches = html.match(/data-footnote-backref/gu) ?? []
+      expect(backrefMatches.length).toBe(1)
+      // 最後の段落 c の </p> 直前に入っている
+      expect(html).toContain('<p>c <a href="#footnote-ref-1"')
+    })
+
+    it('予期しない `<p>` 開きあり / `</p>` 閉じ無しのケースは末尾に backref をフォールバック', () => {
+      // 本来 renderInlineSafely 経路ではあり得ない形 (防御的 fallback の挙動を pin)
+      const html = composeOrphanItemInnerHtml('<p>broken without close', '1')
+      expect(html).toBe(
+        '<p>broken without close <a href="#footnote-ref-1" data-footnote-backref aria-label="Back to reference 1">↩</a>'
+      )
     })
   })
 }

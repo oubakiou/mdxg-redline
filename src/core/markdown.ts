@@ -286,6 +286,35 @@ export const renderMarkdown = (
   return ''
 }
 
+// `renderMarkdown` 出力から **単一段落のみ** の outer `<p>...</p>\n?` を 1 段剥がす。
+// 中身に `</p>` を含まないことを `(?:(?!</p>)[\s\S])*` で明示することで、
+// 複数段落 (`<p>a</p>\n<p>b</p>\n`) のときは match しない (= block-level HTML をそのまま返す)。
+// 中身に raw `</p>` リテラルが入る可能性は本実装の `renderer.html = escapeHtml` で
+// 構造的に排除済み (DESIGN.md §11)。
+const SINGLE_PARAGRAPH_WRAP_RE = /^<p>((?:(?!<\/p>)[\s\S])*)<\/p>\n?$/u
+
+/**
+ * `markdown` を **inline 文脈**として安全に render する。
+ * marked の `parseInline` は本実装の Renderer override (raw HTML escape / link allowlist /
+ * image allowlist) を経由しないため、信頼できない markdown を inline render すると XSS の
+ * 経路になる。本関数は `renderMarkdown` を通して block render し、単一段落であれば outer
+ * `<p>...</p>` を剥がして inline-safe な HTML を返す経路で信頼境界を共通化する。
+ *
+ * 複数段落の markdown を渡した場合は剥がさず block-level HTML (`<p>...</p>\n<p>...</p>` 等)
+ * をそのまま返す。呼び出し側はその場合の DOM 構造を許容する文脈でのみ使うこと。
+ *
+ * 用途: 未参照定義 (orphan footnote) の本文 inline render など、
+ * 本文 markdown 由来コンテンツを `innerHTML` で DOM に焼き込む前段。
+ */
+export const renderInlineSafely = (markdown: string): string => {
+  const blockHtml = renderMarkdown(markdown)
+  const match = SINGLE_PARAGRAPH_WRAP_RE.exec(blockHtml)
+  if (match === null) {
+    return blockHtml
+  }
+  return match[1]
+}
+
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
 
@@ -578,6 +607,53 @@ if (import.meta.vitest) {
       })
       expect(html).not.toContain('onmouseover="alert(1)"')
       expect(html).toContain('&quot;')
+    })
+  })
+
+  // renderInlineSafely は orphan 脚注本文の inline render に使われる。renderer.html (raw HTML
+  // escape) / renderer.link (URL allowlist) / renderer.image (image allowlist) と同じ信頼境界を
+  // 通すことが review feedback Critical 指摘への対応の本質なので、それぞれの保護が効くことを
+  // pin する。
+  describe('renderInlineSafely (信頼境界の共通化)', () => {
+    it('単一段落 markdown では outer <p>...</p> を剥がして inline-safe HTML を返す', () => {
+      expect(renderInlineSafely('see **bold** here')).toBe('see <strong>bold</strong> here')
+    })
+
+    it('raw HTML タグは文字 escape される (renderer.html 連携)', () => {
+      const html = renderInlineSafely('<script>alert(1)</script>')
+      expect(html).not.toContain('<script>')
+      expect(html).toContain('&lt;script&gt;')
+    })
+
+    it('raw <img onerror> も文字 escape される (XSS 防止)', () => {
+      const html = renderInlineSafely('text <img src=x onerror=alert(1)> more')
+      expect(html).not.toMatch(/<img\b/u)
+      expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;')
+    })
+
+    /* eslint-disable no-script-url */
+    it('javascript: リンクは <a> を出さず text だけ残る (renderer.link allowlist)', () => {
+      const html = renderInlineSafely('[click](javascript:alert(1))')
+      expect(html).not.toMatch(/<a\b/u)
+      expect(html).not.toContain('javascript:')
+      expect(html).toContain('click')
+    })
+    /* eslint-enable no-script-url */
+
+    it('http: 画像は <img> を出さず alt だけ残る (renderer.image allowlist)', () => {
+      const html = renderInlineSafely('![insecure](http://example.com/a.png)')
+      expect(html).not.toMatch(/<img\b/u)
+      expect(html).toContain('insecure')
+    })
+
+    it('複数段落 markdown では outer <p> を剥がさず block-level HTML を返す', () => {
+      const html = renderInlineSafely('para a\n\npara b')
+      expect(html).toContain('<p>para a</p>')
+      expect(html).toContain('<p>para b</p>')
+    })
+
+    it('空文字列は空のまま (空段落 <p></p> でも内側空文字を返す)', () => {
+      expect(renderInlineSafely('')).toBe('')
     })
   })
 }

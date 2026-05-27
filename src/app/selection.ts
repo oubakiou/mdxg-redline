@@ -212,23 +212,41 @@ const textOffsetForTextNode = (
   return segment.start + offset
 }
 
-// blockEl 内の `[data-math]` 子孫のうち、`range` の中に完全に含まれるものの textContent 長を
-// 合算する。Step 6 で textSegments が `[data-math]` を skip するようにしたため、要素境界経路の
-// `range.toString().length` (math element の textContent も含む) と整合させるための補正。
-// upgrade 前 (raw `$x$` = 3 chars) と upgrade 後 (KaTeX 出力 MathML+HTML で数十 chars) の
-// 食い違いも同じ経路で吸収される。
-const skippedMathTextLengthInRange = (blockEl: Element, range: Range): number => {
-  const mathElements = blockEl.querySelectorAll<HTMLElement>('[data-math]')
+// textSegments が要素ごと skip する全カテゴリを 1 つのセレクタに集約する。
+// `shouldSkipForTextSegments` の判定 (SKIP_TEXT_SEGMENT_CLASSES / SKIP_TEXT_SEGMENT_ATTR_NAMES /
+// SKIP_TEXT_SEGMENT_ATTRS) と 1:1 対応させ、要素境界経路の `range.toString().length` 補正から
+// 漏れがないようにする (review feedback Medium 指摘: Step 6 で footnote skip を追加したが
+// 補正側が math 専用のままで `<sup>1</sup>` / `<a>↩</a>` 分の長さがズレる現象への対応)。
+const SKIP_TEXT_SEGMENT_SELECTOR = [
+  '[data-math]',
+  '[data-footnote-ref]',
+  '[data-footnote-backref]',
+  '.code-copy-btn',
+  '.code-lang-label',
+  '.sr-only',
+  `[${MERMAID_ATTR.applied}="${MERMAID_ATTR_VALUE}"]`,
+  `[${MERMAID_ATTR.svg}="${MERMAID_ATTR_VALUE}"]`,
+].join(', ')
+
+// blockEl 内の textSegments-skip 対象子孫のうち、`range` の中に完全に含まれるものの
+// textContent 長を合算する。textSegments は要素ごと skip して segment を発行しないため、
+// 要素境界経路 (`range.toString().length`) から同じ長さを引いて整合させる必要がある。
+//
+// upgrade 前後で textContent が変わる math (`$x$` 3 chars → KaTeX 出力数十 chars) や、
+// source markdown と DOM で長さが違う footnote-ref (`[^1]` 4 chars → `1` 1 char) も
+// 同じ経路で吸収される。
+const skippedTextLengthInRange = (blockEl: Element, range: Range): number => {
+  const skipped = blockEl.querySelectorAll<HTMLElement>(SKIP_TEXT_SEGMENT_SELECTOR)
   let total = 0
-  for (const mathEl of mathElements) {
+  for (const el of skipped) {
     const elRange = document.createRange()
-    elRange.selectNode(mathEl)
+    elRange.selectNode(el)
     // 要素全体が range の中に入っているか: range の start <= elRange.start かつ
     // elRange.end <= range の end の両方を満たす場合のみカウント。
     const startsAfterRangeStart = range.compareBoundaryPoints(Range.START_TO_START, elRange) <= 0
     const endsBeforeRangeEnd = range.compareBoundaryPoints(Range.END_TO_END, elRange) >= 0
     if (startsAfterRangeStart && endsBeforeRangeEnd) {
-      total += (mathEl.textContent ?? '').length
+      total += (el.textContent ?? '').length
     }
   }
   return total
@@ -246,9 +264,9 @@ const textOffsetForElementBoundary = (
   const range = document.createRange()
   range.selectNodeContents(blockEl)
   range.setEnd(container, boundedOffset)
-  // textSegments と整合させるため、range 内の `[data-math]` 子孫の textContent を引く。
+  // textSegments と整合させるため、range 内の skip 対象子孫の textContent を引く。
   // textSegments は要素ごと skip するため、要素境界経路でも同じ長さを除外する必要がある。
-  return range.toString().length - skippedMathTextLengthInRange(blockEl, range)
+  return range.toString().length - skippedTextLengthInRange(blockEl, range)
 }
 
 /**
