@@ -438,4 +438,54 @@ if (import.meta.vitest) {
       expect(countMath(md)).toEqual({ display: 0, inline: 0 })
     })
   })
+
+  // docs/mdxg-math-rendering.md §5.i「ブロック境界を跨ぐ `$` は検出対象外」を保証する。
+  // scanMath の入力は marked.lexer の text token 単位で、token 境界 (paragraph / list_item /
+  // blockquote / heading 等) を越えない。意図的な動作で、安全側に倒した結果として「跨ぎ `$`
+  // は描画されず raw 文字として残る」。配布物の安全性 (countMath = 0 で KaTeX 注入が走らない)
+  // と引き換えに、利用者は数式を同一段落内に収める / `$$...$$` で書く / `\$` でエスケープする
+  // のいずれかが必要。
+  describe('countMath: ブロック境界跨ぎ (§5.i 跨ぎ未対応の保証)', () => {
+    it('段落境界を跨ぐ $...$ は検出されない', () => {
+      const md = 'first paragraph $start\n\nnext paragraph end$ here\n'
+      expect(countMath(md)).toEqual({ display: 0, inline: 0 })
+    })
+
+    it('段落境界を跨ぐ $$...$$ は検出されない', () => {
+      const md = 'first paragraph $$start\n\nnext paragraph end$$ here\n'
+      expect(countMath(md)).toEqual({ display: 0, inline: 0 })
+    })
+
+    it('list item 境界を跨ぐ $...$ は検出されない (各 list_item.text は独立トークン)', () => {
+      const md = '- item with $start\n- next item end$ here\n'
+      expect(countMath(md)).toEqual({ display: 0, inline: 0 })
+    })
+
+    it('heading と paragraph を跨ぐ $...$ は検出されない', () => {
+      const md = '# Heading with $start\n\nBody paragraph end$ here\n'
+      expect(countMath(md)).toEqual({ display: 0, inline: 0 })
+    })
+
+    it('blockquote と paragraph を跨ぐ $...$ は検出されない', () => {
+      const md = '> quote with $start\n\nouter paragraph end$ here\n'
+      expect(countMath(md)).toEqual({ display: 0, inline: 0 })
+    })
+
+    it('同一段落内で改行を跨ぐ inline $...$ は検出されない (KaTeX デフォルト準拠)', () => {
+      const md = 'softbreak $start\nend$ here\n'
+      expect(countMath(md)).toEqual({ display: 0, inline: 0 })
+    })
+
+    it('同一段落内で改行を跨ぐ display $$...$$ は検出される (display は改行 OK)', () => {
+      const md = '$$\nx + y\n= z\n$$\n'
+      expect(countMath(md)).toEqual({ display: 1, inline: 0 })
+    })
+
+    it('跨ぎパターンと正常パターンが同居しても正常側だけ集計される', () => {
+      // 1 行目: 段落跨ぎ未満 (同一段落の有効な inline 1 件)
+      // 2 行目以降: 段落跨ぎ (検出されない)
+      const md = 'good $a$ here\n\ncross $start\n\nover end$ now\n'
+      expect(countMath(md)).toEqual({ display: 0, inline: 1 })
+    })
+  })
 }

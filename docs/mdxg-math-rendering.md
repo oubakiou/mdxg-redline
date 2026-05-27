@@ -452,6 +452,28 @@ scanMath は `\$` を数式境界として扱わず、加えて Pandoc / KaTeX a
 
 これらの最小フィルタにより、`$100 and $200 today` のような通貨表記は **エスケープなしで自動的に数式判定から除外され**、同時に `$2$` / `$2024$` のような数字始まり数式は正しく検出される。`$x^2$` / `$\alpha$` / `$a+b$` のような典型的数式も引き続き通る。
 
+#### ブロック境界を跨ぐ `$` は検出対象外
+
+`scanMath` の入力は **`marked.lexer` の text token 単位**であり、token 境界（paragraph / list_item / blockquote / heading 等）を越えて `$` をマッチさせない。意図的な設計で、安全側に倒した結果として「跨ぎ `$` は描画されず raw 文字として残る」「`countMath` が 0 を返すので `--math auto` で KaTeX 注入が走らない」挙動になる。
+
+| パターン                     | 例                                  | 振る舞い                                      |
+| ---------------------------- | ----------------------------------- | --------------------------------------------- |
+| 同一段落・同一行 inline      | `text $x^2$ here`                   | ✓ 1 件検出（典型）                            |
+| 同一段落・改行を跨ぐ inline  | `text $x^2\nfoo$ here`              | ✗ 改行で打ち切り（KaTeX デフォルト準拠）      |
+| 同一段落・改行を跨ぐ display | `$$\nx^2 + y^2\n= 1\n$$`            | ✓ 1 件検出（display は改行許容）              |
+| 段落境界跨ぎ                 | `text $start\n\nnew para end$`      | ✗ 0 件（marked が `paragraph` を 2 つに分離） |
+| list item 跨ぎ               | `- item $start\n- item end$`        | ✗ 0 件（各 `list_item.text` が独立トークン）  |
+| blockquote / heading 跨ぎ    | `# Heading $start\n\nBody end$`     | ✗ 0 件                                        |
+| コード / インラインコード内  | ` ```text\n$x$\n``` ` / `` `$x$` `` | ✗ 0 件（`code` / `codespan` は walk 対象外）  |
+
+跨ぎパターンは **配布物の安全性を損なわない**（KaTeX が `$start ... end$` を invalid LaTeX として `katex-error` で赤エラー表示する経路に乗らず、raw `$` が plain text として残るだけ）。一方でレビュー対象の利用者から見ると「数式を書いたつもりが描画されない」事故になり得るため、配布者は次のいずれかで対応する：
+
+1. **数式を同一段落内に収める**（典型）
+2. **`$$...$$` (display) として書く**（同一段落内なら改行を跨いでも検出される）
+3. **意図的に literal `$` を残したい場合は `\$` エスケープ**
+
+この挙動は `core/math.ts` の in-source test `countMath: ブロック境界跨ぎ` で 8 ケース（段落 / list item / heading / blockquote / softbreak / display 複数行 / 混在）を網羅して回帰防止する。
+
 #### Step 9 経緯（外部レビュー反映）
 
 - Step 5 初期: 「自然言語 `$` の責務は原稿側」として `\$` エスケープを必須とする方針 → 外部レビュー #1 で「`--math auto` の趣旨と矛盾するレベルの誤検出」「誤検出を KaTeX に渡すと `katex-error` で赤エラー混入」を指摘
