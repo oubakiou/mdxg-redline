@@ -21,6 +21,7 @@ MDXG Redline は、LLM エージェントが人間レビュワーから「長文
 - **WASD ベースのキーボードナビゲーション**: `a / w / s / d / e / f` の左手のみで pane 移動・スクロール・activate・検索が完結
 - **シンタックスハイライト**: Shiki bundled 全言語 (約 235) のフェンスコードを描画
 - **Mermaid 対応**: ` ```mermaid ` ブロックを SVG に描画
+- **数式描画**: `$i\hbar \frac{\partial}{\partial t}\Psi(\mathbf{r}, t) = \hat{H}\Psi(\mathbf{r}, t)$` のような `$...$` / `$$...$$` 記法で、 $i\hbar \frac{\partial}{\partial t}\Psi(\mathbf{r}, t) = \hat{H}\Psi(\mathbf{r}, t)$ のように数式を描画。
 - **マークダウンプレビューのスタイル差し替え**: 本文プレビュー部分の CSS を CLI `--markdown-css <path>` でユーザー定義 CSS に差し替え可能
 
 ## 使い方

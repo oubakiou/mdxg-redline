@@ -21,6 +21,7 @@ End users only need a **single HTML file** (`standalone.html`). No server, no ex
 - **WASD keyboard navigation**: `a / w / s / d / e / f` cover pane movement, scrolling, activation, and search entirely with the left hand
 - **Syntax highlighting**: Fenced code blocks render for all Shiki-bundled languages (~235 grammars)
 - **Mermaid support**: ` ```mermaid ` blocks render as SVG
+- **Math rendering**: write math with `$...$` / `$$...$$` syntax like `$i\hbar \frac{\partial}{\partial t}\Psi(\mathbf{r}, t) = \hat{H}\Psi(\mathbf{r}, t)$`, rendered via KaTeX as $i\hbar \frac{\partial}{\partial t}\Psi(\mathbf{r}, t) = \hat{H}\Psi(\mathbf{r}, t)$.
 - **Swappable markdown preview stylesheet**: Replace the body preview CSS with your own via the CLI `--markdown-css <path>` flag
 
 ## Usage
