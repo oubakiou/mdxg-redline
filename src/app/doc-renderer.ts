@@ -17,6 +17,7 @@ import { injectCopyButtons } from './code-copy-wrap'
 import { qs } from './dom-utils'
 import { reapplyAllMarks } from './mark-engine'
 import { renderMarkdown } from '../core/markdown'
+import { scheduleKatexUpgrade } from './katex'
 import { scheduleMermaidUpgrade } from './mermaid'
 import { state } from './app-state'
 
@@ -300,6 +301,16 @@ const scheduleShikiUpgrade = (doc: HTMLElement): void => {
   })
 }
 
+// paint 後の upgrade 3 系統 (Shiki / Mermaid / KaTeX) をまとめて schedule する。
+// それぞれが内部で「runtime 未注入時 / 対象 0 件は no-op」「選択中はスキップ + 再試行」
+// を満たしており互いに独立して走るため、ここでは順序を持たず並列に発火するだけで足りる。
+// renderDoc の max-statements 緩和を兼ねた分離 (Mermaid 追加時と同じパターン)。
+const schedulePostPaintUpgrades = (doc: HTMLElement): void => {
+  scheduleShikiUpgrade(doc)
+  scheduleMermaidUpgrade(doc)
+  scheduleKatexUpgrade(doc)
+}
+
 export const renderDoc = (): void => {
   const doc = qs('#doc')
   const wrap = qs('#doc-wrap')
@@ -309,11 +320,7 @@ export const renderDoc = (): void => {
   } else {
     mountRenderedDoc(doc, wrap)
     reapplyAllMarks()
-    scheduleShikiUpgrade(doc)
-    // Shiki と並行に paint 後 idle で Mermaid ```mermaid フェンスを SVG に upgrade する。
-    // runtime 未注入 / mermaid ブロック 0 件のときは内部で no-op になる
-    // (docs/mdxg-diagram-rendering.md §4 Step 5b)。
-    scheduleMermaidUpgrade(doc)
+    schedulePostPaintUpgrades(doc)
   }
   document.documentElement.classList.add('doc-ready')
 }

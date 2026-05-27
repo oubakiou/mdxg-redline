@@ -4,6 +4,7 @@ import { Renderer, marked } from 'marked'
 // alphabetical 順では `escape` (e) が `mermaid-attrs` (m) より先になり両立しない。
 /* eslint-disable sort-imports */
 import { MERMAID_ATTR, MERMAID_ATTR_VALUE } from './mermaid-attrs'
+import { type MathSegment, scanMath } from './math'
 import { escapeHtml } from './escape'
 /* eslint-enable sort-imports */
 
@@ -162,6 +163,60 @@ const createCodeRenderer =
     return renderFallbackCode(req)
   }
 
+// `$...$` / `$$...$$` 数式を escape 済みインラインテキスト中から検出し、
+// `<span data-math="inline">` / `<div data-math="display">` で包んで返す
+// (docs/mdxg-math-rendering.md §5.a / Step 5a)。
+//
+// 重要:
+// - marked v12 の `renderer.text` は inline parser が escape 済みの text を渡してくる。
+//   `<` などの記号は `&lt;` に変換されており、`$` だけは escape されないため scanMath が
+//   そのまま動く。`MathSegment.source` も escape 済み text の slice なので、属性値・
+//   textContent ともに HTML 安全な状態で書き出せる
+// - `data-math-source` 属性値には `$` 区切りを除去済みの clean LaTeX (`MathSegment.source`)
+//   が入る。Step 5b の upgrade は `getAttribute('data-math-source')` で値を取得して
+//   `katex.renderToString` に渡す経路を取り、textContent (raw `$...$`) は §14 [MUST] の
+//   plain text fallback として残す
+// - 装飾 (em / strong) と数式が同一テキスト内に並ぶケースは marked の inline parser が
+//   別 token に分離するため、ここではただ scanMath を呼ぶだけで OK (装飾内の `$...$` は
+//   装飾 token 内の text として独立に処理される)
+// `data-math-source` 属性値用の最小 escape。marked が inline parser 段階で `<` / `>` / `&` /
+// `"` を実体参照化済みなので、ここで `escapeHtml` を再適用すると二重 escape され、後段の
+// `getAttribute('data-math-source')` が clean な LaTeX を返さなくなる。属性値として安全に
+// 書けるのに足りる「literal `"` を `&quot;` に潰す」だけに絞る (`&quot;` は再変換されない)。
+const escapeMathSourceAttr = (source: string): string => source.replace(/"/g, '&quot;')
+
+const formatMathSegment = (segment: MathSegment, rawContent: string): string => {
+  const sourceAttr = escapeMathSourceAttr(segment.source)
+  if (segment.type === 'inline') {
+    return `<span data-math="inline" data-math-source="${sourceAttr}">${rawContent}</span>`
+  }
+  return `<div data-math="display" data-math-source="${sourceAttr}">${rawContent}</div>`
+}
+
+const collectMathParts = (text: string, segments: readonly MathSegment[]): string[] => {
+  const parts: string[] = []
+  let cursor = 0
+  for (const segment of segments) {
+    if (segment.start > cursor) {
+      parts.push(text.slice(cursor, segment.start))
+    }
+    parts.push(formatMathSegment(segment, text.slice(segment.start, segment.end)))
+    cursor = segment.end
+  }
+  if (cursor < text.length) {
+    parts.push(text.slice(cursor))
+  }
+  return parts
+}
+
+const renderMathInTextRun = (text: string): string => {
+  const segments = scanMath(text)
+  if (segments.length === 0) {
+    return text
+  }
+  return collectMathParts(text, segments).join('')
+}
+
 const createRenderer = (
   highlighter: CodeHighlighter | null | undefined,
   options?: MarkdownRenderOptions
@@ -169,6 +224,7 @@ const createRenderer = (
   const renderer = new Renderer()
   renderer.html = (html: string): string => escapeHtml(html)
   renderer.heading = createHeadingRenderer(options)
+  renderer.text = renderMathInTextRun
 
   // 信頼できない markdown を前提に、URL スキームを allowlist で絞る (DESIGN.md §11)。
   // 不許可リンクは <a> を出さず inner HTML をそのまま流して plain text 扱いにし、
@@ -377,6 +433,63 @@ if (import.meta.vitest) {
       expect(html).toContain('bad')
     })
     /* eslint-enable no-script-url */
+  })
+
+  describe('renderMarkdown math segments (MDXG §14 / data-math)', () => {
+    it('$x$ inline 数式は <span data-math="inline" data-math-source="…"> で出力される', () => {
+      const html = renderMarkdown('Try $x^2 + y^2$ here.\n')
+      expect(html).toContain(
+        '<span data-math="inline" data-math-source="x^2 + y^2">$x^2 + y^2$</span>'
+      )
+      // raw $...$ を textContent に残し、§14 [MUST] の plain text fallback を初期 paint から成立させる
+      expect(html).toContain('>$x^2 + y^2$<')
+    })
+
+    it('$$...$$ display 数式は <div data-math="display"> で出力される', () => {
+      const html = renderMarkdown('$$\\frac{a}{b}$$\n')
+      expect(html).toContain('<div data-math="display"')
+      expect(html).toContain(String.raw`data-math-source="\frac{a}{b}"`)
+      expect(html).toContain(String.raw`>$$\frac{a}{b}$$</div>`)
+    })
+
+    it('inline と display が混在しても文書順に検出される', () => {
+      const html = renderMarkdown('mixed $a$ and $$b$$ here\n')
+      const inlineIdx = html.indexOf('data-math="inline"')
+      const displayIdx = html.indexOf('data-math="display"')
+      expect(inlineIdx).toBeGreaterThanOrEqual(0)
+      expect(displayIdx).toBeGreaterThan(inlineIdx)
+    })
+
+    it('インラインコード `$x$` 内の $ は data-math に化けない', () => {
+      const html = renderMarkdown('inline code `$x$` should not match\n')
+      expect(html).not.toContain('data-math="inline"')
+      expect(html).toContain('<code>$x$</code>')
+    })
+
+    it('フェンスコード内の $ は data-math に化けない', () => {
+      const html = renderMarkdown('```ts\nconst price = "$100"\n```\n')
+      expect(html).not.toContain('data-math')
+    })
+
+    it(String.raw`\$ エスケープは数式境界として扱わず literal $ として残る`, () => {
+      const html = renderMarkdown('Cost is \\$100 and \\$200.\n')
+      expect(html).not.toContain('data-math')
+      expect(html).toContain('$100')
+      expect(html).toContain('$200')
+    })
+
+    it('data-math-source の値は HTML escape される (属性インジェクション防止)', () => {
+      // marked が inline parse 段階で `<` を escape するので、source に渡る時点で &lt; になる。
+      // ここでは追加で属性 escape 経路を通っていることを確認する目的で `"` を混ぜる
+      const html = renderMarkdown('$a"b$\n')
+      expect(html).not.toContain('data-math-source="a"b"')
+      expect(html).toContain('data-math-source="a&quot;b"')
+    })
+
+    it('数式が無い text run は data-math タグを 1 つも出さない', () => {
+      const html = renderMarkdown('plain paragraph with no math here.\n')
+      expect(html).not.toContain('data-math')
+    })
   })
 
   describe('renderMarkdown table rendering', () => {
