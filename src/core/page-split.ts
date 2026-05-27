@@ -9,6 +9,7 @@
 
 import { type Heading, type HeadingHit, extractPageHeadings, scanHeadings } from './page-outline'
 import { resolveUniqueSlug, slugifyOrFallback } from './slugify'
+import { countFootnoteDefinitions } from './footnotes'
 
 /**
  * 仮想ページ 1 枚分のデータ。
@@ -309,6 +310,51 @@ export const splitIntoPages = (markdown: string, options: SplitOptions = {}): Pa
   )
 }
 
+// footnotes synthetic page (MDXG §16 / docs/mdxg-footnotes.md §3.2 / §5.c) の sentinel。
+// round-trip 不変条件 (文書由来 page の markdown を連結すると元 markdown と一致する) を
+// 持たない synthetic page を区別するため、sourceLineStart / sourceLineEnd に -1 を入れる。
+// findPageIndexBySourceLine は sourceLine < 1 を early return null するため、synthetic page が
+// 文書由来 sourceLine と誤マッチすることは構造的に発生しない。
+const SYNTHETIC_PAGE_SOURCE_LINE = -1
+const FOOTNOTES_PAGE_TITLE = 'Footnotes'
+const FOOTNOTES_PAGE_SLUG_BASE = 'footnotes'
+
+/** footnotes synthetic page 等、文書由来でない page を判定する。round-trip テストの除外に使う。 */
+export const isSyntheticPage = (page: Page): boolean =>
+  page.sourceLineStart === SYNTHETIC_PAGE_SOURCE_LINE
+
+const buildFootnotesSyntheticPage = (pages: readonly Page[]): Page => {
+  const usedSlugs = new Set<string>(pages.map((page): string => page.slug))
+  return {
+    ancestorHeadingPath: [],
+    depth: 1,
+    headings: [],
+    index: pages.length,
+    markdown: '',
+    slug: resolveUniqueSlug(FOOTNOTES_PAGE_SLUG_BASE, usedSlugs),
+    sourceLineEnd: SYNTHETIC_PAGE_SOURCE_LINE,
+    sourceLineStart: SYNTHETIC_PAGE_SOURCE_LINE,
+    title: FOOTNOTES_PAGE_TITLE,
+  }
+}
+
+/**
+ * markdown に脚注定義 (`[^id]: text`) が ≥1 個含まれる場合、`pages` 末尾に footnotes
+ * synthetic page を append する。脚注定義が 0 個なら pages の浅いコピーを返す。
+ *
+ * slug は `'footnotes'` を base に文書内既存 slug と衝突しないよう `resolveUniqueSlug` で
+ * 解決する (本物の H1 / H2 "Footnotes" が存在する文書では `'footnotes-2'` 等になる)。
+ *
+ * `appendFootnotesPage(splitIntoPages(markdown, options), markdown)` の形で
+ * `state.pages` builder 経路に乗せる (docs/mdxg-footnotes.md §5.h)。
+ */
+export const appendFootnotesPage = (pages: readonly Page[], markdown: string): Page[] => {
+  if (countFootnoteDefinitions(markdown) === 0) {
+    return [...pages]
+  }
+  return [...pages, buildFootnotesSyntheticPage(pages)]
+}
+
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
 
@@ -574,6 +620,103 @@ if (import.meta.vitest) {
       const pages = splitIntoPages('# A\n\nbody')
       // line 1 "# A", line 2 "", line 3 "body"
       expect(pages[0].sourceLineEnd).toBe(3)
+    })
+  })
+
+  describe('appendFootnotesPage (MDXG §16 / docs/mdxg-footnotes.md §3.2)', () => {
+    it('脚注定義が無い markdown では synthetic page を追加しない (pages の浅いコピーを返す)', () => {
+      const pages = splitIntoPages('# A\n\nbody\n')
+      const result = appendFootnotesPage(pages, '# A\n\nbody\n')
+      expect(result).toHaveLength(pages.length)
+      expect(result).toEqual(pages)
+      // 同一参照ではなく浅いコピーを返す (呼び出し側の mutation 防止)
+      expect(result).not.toBe(pages)
+    })
+
+    it('脚注定義が ≥1 個ある markdown では footnotes synthetic page を末尾に追加する', () => {
+      const markdown = '# A\n\nSee[^1].\n\n[^1]: footnote text\n'
+      const pages = appendFootnotesPage(splitIntoPages(markdown), markdown)
+      expect(pages).toHaveLength(2)
+      const synthetic = pages[pages.length - 1]
+      expect(synthetic.slug).toBe('footnotes')
+      expect(synthetic.title).toBe('Footnotes')
+      expect(synthetic.depth).toBe(1)
+      expect(synthetic.index).toBe(1)
+    })
+
+    it('synthetic page は round-trip 不変条件を破る sentinel 値を持つ (markdown:"", sourceLine:-1)', () => {
+      const markdown = '# A\n\nSee[^1].\n\n[^1]: footnote text\n'
+      const pages = appendFootnotesPage(splitIntoPages(markdown), markdown)
+      const synthetic = pages[pages.length - 1]
+      expect(synthetic.markdown).toBe('')
+      expect(synthetic.headings).toEqual([])
+      expect(synthetic.ancestorHeadingPath).toEqual([])
+      expect(synthetic.sourceLineStart).toBe(-1)
+      expect(synthetic.sourceLineEnd).toBe(-1)
+    })
+
+    it('複数定義でも synthetic page は 1 枚 (page 単位は文書末集約)', () => {
+      const markdown = 'See[^a] and [^b].\n\n[^a]: A\n[^b]: B\n'
+      const pages = appendFootnotesPage(splitIntoPages(markdown), markdown)
+      const syntheticCount = pages.filter(isSyntheticPage).length
+      expect(syntheticCount).toBe(1)
+    })
+
+    it('本物の H1 "Footnotes" と衝突する場合は slug を `footnotes-2` に解決する', () => {
+      const markdown = '# Footnotes\n\nSee[^1].\n\n[^1]: text\n'
+      const pages = appendFootnotesPage(splitIntoPages(markdown), markdown)
+      const synthetic = pages[pages.length - 1]
+      // 文書由来の "Footnotes" 見出しが先に slug 'footnotes' を獲得しているため、
+      // synthetic page は resolveUniqueSlug 経由で 'footnotes-2' になる
+      expect(pages[0].slug).toBe('footnotes')
+      expect(synthetic.slug).toBe('footnotes-2')
+      expect(isSyntheticPage(synthetic)).toBe(true)
+    })
+
+    it('orphan のみ (本文で参照されていない定義) でも synthetic page は追加される', () => {
+      const markdown = 'plain paragraph.\n\n[^orphan]: never referenced.\n'
+      const pages = appendFootnotesPage(splitIntoPages(markdown), markdown)
+      const synthetic = pages[pages.length - 1]
+      expect(isSyntheticPage(synthetic)).toBe(true)
+      expect(synthetic.slug).toBe('footnotes')
+    })
+
+    it('未定義参照 (本文に `[^x]` があるが定義無し) では synthetic page を追加しない', () => {
+      const markdown = 'See [^missing] here.\n'
+      const pages = appendFootnotesPage(splitIntoPages(markdown), markdown)
+      expect(pages.some(isSyntheticPage)).toBe(false)
+    })
+  })
+
+  describe('isSyntheticPage / findPageIndexBySourceLine の synthetic page 除外', () => {
+    it('isSyntheticPage は sourceLineStart === -1 の page のみ true', () => {
+      const markdown = '# A\n\nbody\n\nSee[^1].\n\n[^1]: text\n'
+      const pages = appendFootnotesPage(splitIntoPages(markdown), markdown)
+      expect(isSyntheticPage(pages[0])).toBe(false)
+      expect(isSyntheticPage(pages[pages.length - 1])).toBe(true)
+    })
+
+    it('findPageIndexBySourceLine は synthetic page を sourceLine 範囲で誤マッチしない', () => {
+      const markdown = '# A\n\nbody\n\nSee[^1].\n\n[^1]: text\n'
+      const pages = appendFootnotesPage(splitIntoPages(markdown), markdown)
+      // 文書由来の sourceLine 1 / 3 はそれぞれ page 0 にマッチ
+      expect(findPageIndexBySourceLine(pages, 1)).toBe(0)
+      expect(findPageIndexBySourceLine(pages, 3)).toBe(0)
+      // synthetic page は -1 sentinel なので、文書由来 sourceLine では決して当たらない
+      expect(findPageIndexBySourceLine(pages, 100)).toBeNull()
+      // sourceLine < 1 の early-return は変わらず null
+      expect(findPageIndexBySourceLine(pages, -1)).toBeNull()
+      expect(findPageIndexBySourceLine(pages, 0)).toBeNull()
+    })
+  })
+
+  describe('round-trip 不変条件 (synthetic page の除外)', () => {
+    it('文書由来 page (isSyntheticPage === false) のみ連結すると元 markdown と一致する', () => {
+      const markdown = '# A\n\nbody[^1].\n\n[^1]: footnote\n'
+      const pages = appendFootnotesPage(splitIntoPages(markdown), markdown)
+      const documentaryPages = pages.filter((page): boolean => !isSyntheticPage(page))
+      const reconstructed = documentaryPages.map((page): string => page.markdown).join('')
+      expect(reconstructed).toBe(markdown)
     })
   })
 }

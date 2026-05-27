@@ -21,6 +21,7 @@ import {
   renderComments,
   wireCommentsKeyboardNav,
 } from './comments'
+import { appendFootnotesPage, splitIntoPages } from '../core/page-split'
 import {
   buildReviewExportPayload,
   commentCountLabel as formatCommentCount,
@@ -54,7 +55,6 @@ import { initCommentsResize } from './comments-resize'
 import { initPageNavResize } from './page-nav-resize'
 import { renderDoc } from './doc-renderer'
 import { setOnMarksReapplied } from './mark-engine'
-import { splitIntoPages } from '../core/page-split'
 import { wireFloater } from './floater'
 import { wireToolbar } from './toolbar'
 
@@ -323,7 +323,7 @@ const initStateFromMarkdown = async (name: string, text: string): Promise<LoadRe
   const docHash = await computeDocHash(text)
   state.docHash = docHash
   state.comments = []
-  state.pages = splitIntoPages(text, { docName: name })
+  state.pages = appendFootnotesPage(splitIntoPages(text, { docName: name }), text)
   const target = resolveTargetFromHash(globalThis.location.hash)
   state.activePageIndex = target.pageIndex
   return { docHash, target }
