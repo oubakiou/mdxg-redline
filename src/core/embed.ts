@@ -173,7 +173,7 @@ export const rewriteEmbeddedMermaid = (
   return { escapedScriptCount: count, html }
 }
 
-// KaTeX runtime / CSS / fonts-extra CSS 注入用 (docs/mdxg-math-rendering.md §3.2 / §5.k / §5.l)。
+// KaTeX runtime / CSS / fonts-extra CSS 注入用 (docs/mdxg-math-rendering.archive.md §3.2 / §5.k / §5.l)。
 // standalone build は vite.config.ts 側で同じ regex で inline するが、CLI 経路は本ファイルの
 // rewriteEmbeddedKatex を使う。両者で regex を揃えることで rewrite の安定性を維持する。
 const EMBEDDED_KATEX_JS_RE =
@@ -227,7 +227,7 @@ export interface KatexRuntimeAssets {
 /**
  * `<script id="embedded-katex" type="module">` / `<style id="embedded-katex-css">` /
  * `<style id="embedded-katex-fonts-extra-css">` の 3 ブロックを KaTeX runtime / CSS で
- * 書き換える (Mermaid と完全に対称、docs/mdxg-math-rendering.md §3.2 / §5.l)。
+ * 書き換える (Mermaid と完全に対称、docs/mdxg-math-rendering.archive.md §3.2 / §5.l)。
  *
  * - `assets.fontsExtraCss` が undefined のとき (CLI `--math-fonts minimal` 既定) は
  *   fonts-extra ブロックには触らず空のまま残す。standalone build は vite.config.ts 側で

@@ -1456,7 +1456,7 @@ var rewriteKatexJs = (html, js) => {
 /**
 * `<script id="embedded-katex" type="module">` / `<style id="embedded-katex-css">` /
 * `<style id="embedded-katex-fonts-extra-css">` の 3 ブロックを KaTeX runtime / CSS で
-* 書き換える (Mermaid と完全に対称、docs/mdxg-math-rendering.md §3.2 / §5.l)。
+* 書き換える (Mermaid と完全に対称、docs/mdxg-math-rendering.archive.md §3.2 / §5.l)。
 *
 * - `assets.fontsExtraCss` が undefined のとき (CLI `--math-fonts minimal` 既定) は
 *   fonts-extra ブロックには触らず空のまま残す。standalone build は vite.config.ts 側で
@@ -2131,7 +2131,7 @@ var applyMermaid = async (html, args, ctx) => {
 };
 /**
 * `--math` mode と markdown 内容から KaTeX runtime を注入すべきか判定する pure 関数
-* (Mermaid と完全に対称、docs/mdxg-math-rendering.md §3.2 / §5.e)。
+* (Mermaid と完全に対称、docs/mdxg-math-rendering.archive.md §3.2 / §5.e)。
 * - mode 未指定 / `auto`: countMath で inline + display > 0 のときのみ true
 * - `on`: 常に true
 * - `off`: 常に false

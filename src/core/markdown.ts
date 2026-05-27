@@ -165,7 +165,7 @@ const createCodeRenderer =
 
 // `$...$` / `$$...$$` 数式を escape 済みインラインテキスト中から検出し、
 // `<span data-math="inline">` / `<div data-math="display">` で包んで返す
-// (docs/mdxg-math-rendering.md §5.a / Step 5a)。
+// (docs/mdxg-math-rendering.archive.md §5.a / Step 5a)。
 //
 // 重要:
 // - marked v12 の `renderer.text` は inline parser が escape 済みの text を渡してくる。

@@ -1,6 +1,6 @@
 // markdown 内の `$...$` (inline) / `$$...$$` (display) 数式を検出する pure module。
 // CLI の `--math auto` 判定と、`core/markdown.ts` の renderer が `<span data-math>` /
-// `<div data-math>` を出力する範囲を決めるために使う (docs/mdxg-math-rendering.md §1 / §5.i)。
+// `<div data-math>` を出力する範囲を決めるために使う (docs/mdxg-math-rendering.archive.md §1 / §5.i)。
 //
 // scanMath は plain text に対するスキャナで、与えられた文字列中の数式範囲を返す。
 // countMath は marked.lexer で markdown 全体を走査し、`code` / `codespan` トークンを
@@ -439,7 +439,7 @@ if (import.meta.vitest) {
     })
   })
 
-  // docs/mdxg-math-rendering.md §5.i「ブロック境界を跨ぐ `$` は検出対象外」を保証する。
+  // docs/mdxg-math-rendering.archive.md §5.i「ブロック境界を跨ぐ `$` は検出対象外」を保証する。
   // scanMath の入力は marked.lexer の text token 単位で、token 境界 (paragraph / list_item /
   // blockquote / heading 等) を越えない。意図的な動作で、安全側に倒した結果として「跨ぎ `$`
   // は描画されず raw 文字として残る」。配布物の安全性 (countMath = 0 で KaTeX 注入が走らない)

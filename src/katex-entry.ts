@@ -1,7 +1,7 @@
 // vite.katex.config.ts の入口。`dist/katex/katex.mjs` として 1 ファイル ESM bundle を出力する。
 // インラインされた `<script id="embedded-katex" type="module">` ブロックとしてブラウザで実行され、
 // `globalThis.__mdxgKatex` に KaTeX インスタンスを bridge し `mdxg:katex-ready` イベントを
-// 発火する (docs/mdxg-math-rendering.md §3.2 / §5.h)。bridge をエントリ側に置くことで、
+// 発火する (docs/mdxg-math-rendering.archive.md §3.2 / §5.h)。bridge をエントリ側に置くことで、
 // CLI / build plugin 側は bundle 出力を `</script>` escape して挿入するだけで済む
 // (Mermaid と完全に対称、`src/mermaid-entry.ts` 参照)。
 //

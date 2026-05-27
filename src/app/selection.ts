@@ -59,7 +59,7 @@ const SKIP_TEXT_SEGMENT_CLASSES = ['code-copy-btn', 'code-lang-label']
 // しづらいため一括で除外する。未 upgrade (data-mermaid="1" のみ) の <pre> は通常どおり拾われ、
 // Shiki ハイライト fallback 時の検索 / コメント対象として残る。
 //
-// 数式 (`[data-math]`) も同じく skip 対象にする (docs/mdxg-math-rendering.md §6 / Step 6)。
+// 数式 (`[data-math]`) も同じく skip 対象にする (docs/mdxg-math-rendering.archive.md §6 / Step 6)。
 // 理由:
 //   - upgrade 前は `<span data-math="inline">$x$</span>` の textContent が `$x$` (3 文字)
 //   - upgrade 後は KaTeX 出力 (MathML + HTML span) で textContent が大きく変化
@@ -465,7 +465,7 @@ if (import.meta.vitest) {
     })
   })
 
-  // docs/mdxg-math-rendering.md §6 / Step 6: [data-math] 要素は upgrade 前後で textContent が
+  // docs/mdxg-math-rendering.archive.md §6 / Step 6: [data-math] 要素は upgrade 前後で textContent が
   // 大きく変化する (raw `$x$` → KaTeX 出力の MathML+HTML)。`shouldSkipForTextSegments` が
   // `SKIP_TEXT_SEGMENT_ATTR_NAMES` 経由で `data-math` を hasAttribute で skip 対象に含めることで、
   // textSegments の出力が upgrade 前後で完全に一致し、§6 アンカリングの cmt mark 貼付経路が

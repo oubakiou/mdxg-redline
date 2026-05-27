@@ -117,7 +117,7 @@ export const parseMermaidValue = (value: string): MermaidMode | null => {
 }
 
 /**
- * `--math <mode>` のパース結果 (docs/mdxg-math-rendering.md §3.2 / §4 Step 4)。
+ * `--math <mode>` のパース結果 (docs/mdxg-math-rendering.archive.md §3.2 / §4 Step 4)。
  * - `auto` (既定): markdown を countMath で走査し、$...$ / $$...$$ があるときだけ KaTeX runtime を注入
  * - `on`: 件数に関係なく必ず注入
  * - `off`: 注入しない ($...$ / $$...$$ は raw な markdown 文法のまま plain text 表示)
@@ -133,7 +133,7 @@ export type MathMode = MermaidMode
 export const parseMathValue = (value: string): MathMode | null => parseMermaidValue(value)
 
 /**
- * `--math-fonts <mode>` のパース結果 (docs/mdxg-math-rendering.md §5.g / §5.l)。
+ * `--math-fonts <mode>` のパース結果 (docs/mdxg-math-rendering.archive.md §5.g / §5.l)。
  * - `minimal` (既定): Main / AMS / Math / Size1-4 の 9 family のみ inline。\mathcal / \mathfrak /
  *   \mathscr / SansSerif / Typewriter は OS フォントへ fallback
  * - `all`: 全 20 family を inline。珍しい数式記号も完全な字形で描画
