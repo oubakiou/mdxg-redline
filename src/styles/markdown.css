@@ -357,6 +357,60 @@
   font-family: var(--doc-font-mono);
 }
 
+/* MDXG §16 Footnotes (docs/mdxg-footnotes.md §8) — marked-footnote 1.4.0 が出力する
+   class なし / 属性ベースの脚注セクションに対する theming。light / dark どちらでも
+   --doc-* トークン経由で配色が追従するため、テーマトグル時の再描画は不要。
+
+   - `<section.footnotes>` は文書末の合成セクションで、本文との視覚分離のため上罫線と
+     余白を付ける。脚注テキストは補助情報のため font-size を本文より小さく描画する
+   - 強制挿入される `<h2 id="footnote-label" class="sr-only">Footnotes</h2>` は
+     a11y 用 visible-hidden な見出しなので、Tailwind の `.sr-only` 慣習どおりに
+     スクリーンリーダーには読ませつつ視覚上は完全に隠す
+   - `<a data-footnote-ref>` / `<a data-footnote-backref>` はリンク色 (--doc-link) を
+     使い、本文 `<a>` と同じ配色 / hover を踏襲する。backref `↩` は本文側 inline 要素と
+     並んで読まれる目印として左マージンだけ僅かに開ける
+   - 未参照定義は core/footnotes.ts の post-processing で `data-footnote-orphan="1"` が
+     付くが、現状装飾は加えない (識別目的の機械可読 hint に留める; §5.j の方針) */
+#doc .footnotes,
+#doc [data-footnotes] {
+  margin-top: 2em;
+  padding-top: 1em;
+  border-top: 1px solid var(--doc-rule);
+  color: var(--doc-ink);
+  font-size: 0.9em;
+}
+#doc [data-footnote-ref] {
+  color: var(--doc-link);
+  text-decoration: none;
+}
+#doc [data-footnote-ref]:hover {
+  color: var(--doc-link-hover);
+  text-decoration: underline;
+}
+#doc [data-footnote-backref] {
+  margin-left: 0.3em;
+  color: var(--doc-link);
+  text-decoration: none;
+}
+#doc [data-footnote-backref]:hover {
+  color: var(--doc-link-hover);
+  text-decoration: underline;
+}
+/* a11y 用 visible-hidden パターン (Tailwind sr-only 互換)。
+   `<section.footnotes>` の h2 以外で `.sr-only` を使う場面は本実装には現状無いが、
+   将来他の合成見出しを sr-only で出す経路が増えても同じルールで隠せる。 */
+#doc .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* dark 上書き。<html>.dark の付与は head 内 inline script が担う。
    :where() で詳細度ゼロ化することで、ユーザー差し替え CSS の `#doc { ... }` ルールが
    dark 状態でも上書き勝ちできる (上記 .dark との契約参照)。
