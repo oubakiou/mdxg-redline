@@ -75,26 +75,25 @@ const isWhitespaceBefore = (text: string, pos: number): boolean => {
   return ch === ' ' || ch === '\t' || ch === '\n'
 }
 
-// opening `$` の直後 (matchInline で渡される start+1 位置) が空白 or 数字なら inline 数式の
-// 開始として扱わない (Pandoc 風境界条件、$100 のような通貨表記を構造的に除外する、§5.i)。
-// 数字を弾くのは KaTeX 数式 source が数字始まりになるケースが極めて稀 (係数は文字 / 演算子で
-// 接続するのが典型) なので副作用が小さい。display $$ にはこの境界条件を適用しない (display は
-// 単独行で書かれるのが普通で自然言語混入のリスクが低い)。
+// opening `$` の直後 (matchInline で渡される start+1 位置) が空白なら inline 数式の開始として
+// 扱わない (Pandoc 風境界条件の前半、`$ x` のような開きっぱなしを抑制、§5.i)。
+// **数字は弾かない**: `$2$` / `$2024$` / `$3.14$` のような数字始まり数式は正当な記法であり、
+// 早期に「数字始まり禁止」を入れると正当な数式まで巻き添えになる回帰が起きる (外部レビュー
+// 指摘 #4)。代わりに通貨表記 `$100 and $200` は「closing 候補の直前が ` ` (space)」で
+// `findInlineEnd` が弾く構造に倒し、最小フィルタで誤検出と正当検出の両立を保つ。
+// display `$$` にはこの境界条件を適用しない (display は単独行で書かれる前提で誤検出リスクが低い)。
 const isInvalidInlineOpening = (text: string, after: number): boolean => {
   if (after >= text.length) {
     return true
   }
   const ch = text.charAt(after)
-  if (ch === ' ' || ch === '\t' || ch === '\n') {
-    return true
-  }
-  return ch >= '0' && ch <= '9'
+  return ch === ' ' || ch === '\t' || ch === '\n'
 }
 
 // inline 数式の終端 `$` 位置を返す。改行に遭遇した時点で打ち切り (-1)。
 // escape された `$` は終端として扱わない。見つからなければ -1。
-// closing `$` の直前が空白の場合も終端として扱わない (Pandoc 風境界条件、$ 100 のような
-// 開きっぱなしを抑制する。自然言語 `$` 誤検出対策の片側、§5.i)。
+// closing `$` の直前が空白の場合も終端として扱わない (Pandoc 風境界条件の後半、`$100 and $200`
+// のような通貨表記の closing 成立を抑制、§5.i)。
 const findInlineEnd = (text: string, from: number): number => {
   let cursor = from
   while (cursor < text.length) {
@@ -136,8 +135,9 @@ const matchDisplay = (text: string, start: number): MatchStep => {
 
 // `$` 直後位置から inline 終端を探し、見つかれば MathSegment と新カーソル位置を返す。
 // 見つからない場合は `$` 1 文字ぶん進めて plain text として残す。
-// 開始境界の Pandoc 風判定 (空白 / 数字直後を除外) も担い、`$100` のような通貨表記を
-// 数式境界として認識しないことで `--math auto` 誤検出を構造的に塞ぐ (§5.i)。
+// 開始境界の Pandoc 風判定 (opening 直後の空白を除外、数字は除外しない) も担う。
+// `$100 and $200` のような通貨表記は **closing 候補の直前空白チェック (`findInlineEnd`)** で
+// 弾かれる構造に倒し、`$2$` / `$2024$` のような数字始まり数式の正当検出を保つ (§5.i / Step 9)。
 const matchInline = (text: string, start: number): MatchStep => {
   if (isInvalidInlineOpening(text, start + 1)) {
     return { next: start + 1, segment: null }
@@ -279,27 +279,48 @@ if (import.meta.vitest) {
   })
 
   describe('scanMath: Pandoc 風境界条件 (§5.i 自然言語 $ 誤検出対策)', () => {
-    it('$ 直後が数字なら inline 数式と認識しない ($100 通貨表記)', () => {
-      expect(scanMath('Price is $100 here')).toEqual([])
-    })
-
     it('複数の通貨表記が並んでも誤検出しない ($100 and $200)', () => {
+      // 通貨ペアは closing 候補の直前が ` ` (space) で findInlineEnd が弾くため数式不成立
       expect(scanMath('Pay $100 and $200 today.')).toEqual([])
     })
 
-    it('$ 直後が空白なら inline 数式と認識しない (開きっぱなしの $)', () => {
+    it('単独の通貨表記も closing $ が無いため認識しない', () => {
+      expect(scanMath('Price is $100 here')).toEqual([])
+    })
+
+    it('opening $ の直後が空白なら inline 数式と認識しない (開きっぱなしの $)', () => {
       expect(scanMath('open $ then text $')).toEqual([])
     })
 
-    it('closing $ の直前が空白なら閉じとして扱わない ($x $ y$ → 認識しない)', () => {
-      // $x ` ` 部分で $ 直前が空白なので閉じない。その後 ` y$` の y は適切な閉じ候補だが、
-      // 開きは依然 $x の前にある。$x → ... → y$ で挟むが、内部に半角空白で中断するため
-      // findInlineEnd は ` y` を経て y の次の `$` を検出する。`y$` の y は空白ではないので
-      // 閉じが成立する。実質的に `$x ... y$` 全体が 1 inline として検出される
+    it('closing $ の直前が空白の候補は skip し、後続の有効な closing $ で閉じる', () => {
+      // `$x $ y$` で:
+      //   - opening は `$x` の `$`、直後 `x` が非空白で成立
+      //   - 第 1 closing 候補は ` $` の `$` だが、直前が ` ` (space) で不成立 → skip
+      //   - 第 2 候補 `y$` の `$` は直前 `y` 非空白で成立
+      // 結果として `$x $ y$` 全体が 1 inline として検出され、source は `x $ y`
       const segments = scanMath('hello $x $ y$ tail')
       expect(segments).toHaveLength(1)
       expect(segments[0]).toMatchObject({ source: 'x $ y', type: 'inline' })
     })
+
+    it('有効な closing が無いケースは認識しない (`$x` で trail に `$` が無い)', () => {
+      expect(scanMath('hello $x tail with no closing here')).toEqual([])
+    })
+
+    it(
+      String.raw`数字始まりの正当な数式 ($2$ / $3.14$ / $2024$) は引き続き検出される (外部レビュー #4 回帰防止)`,
+      () => {
+        // Pandoc 仕様で opening 直後の数字は弾かれない。最小修正で「正当な数字始まり数式」を守る。
+        // Step 9 初版は数字始まりも巻き込んで弾いていたため、$2$ や行列の係数 ($2024$) の
+        // 数式が落ちる回帰が発生していた (外部レビュー指摘 #4)。closing 直前空白チェックだけで
+        // 通貨表記は十分排除でき、数字始まり数式の正当検出を保てる
+        expect(scanMath('$2$')).toHaveLength(1)
+        expect(scanMath('$3.14$')).toHaveLength(1)
+        expect(scanMath('$2024$')).toHaveLength(1)
+        expect(scanMath('$2$').at(0)).toMatchObject({ source: '2', type: 'inline' })
+        expect(scanMath('$3.14$').at(0)).toMatchObject({ source: '3.14', type: 'inline' })
+      }
+    )
 
     it(String.raw`境界条件強化後も $x^2$ / $\alpha$ / $a+b$ は数式として通る`, () => {
       expect(scanMath('$x^2$')).toHaveLength(1)

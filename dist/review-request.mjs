@@ -1722,8 +1722,7 @@ var isWhitespaceBefore = (text, pos) => {
 var isInvalidInlineOpening = (text, after) => {
 	if (after >= text.length) return true;
 	const ch = text.charAt(after);
-	if (ch === " " || ch === "	" || ch === "\n") return true;
-	return ch >= "0" && ch <= "9";
+	return ch === " " || ch === "	" || ch === "\n";
 };
 var findInlineEnd = (text, from) => {
 	let cursor = from;
