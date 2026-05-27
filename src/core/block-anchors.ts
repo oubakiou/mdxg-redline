@@ -2,7 +2,18 @@
 // トップレベルトークン列から組み立てる。レンダリング (markdown.ts) と export (review-export.ts)
 // の双方が参照する純粋ロジックで、DOM や Node 専用 API は持たない。
 
-import { marked } from 'marked'
+import { Marked } from 'marked'
+import footnote from 'marked-footnote'
+
+// footnote 拡張は global `marked` singleton に use しない (core/markdown.ts と同じ理由:
+// 共有 singleton の lexer 出力が壊れて他モジュールが silent に壊れる)。専用 instance に閉じる。
+// Step 1 PoC で確定した「同一 instance で lexer / parse cross-call すると crash する」bug の
+// 範囲外 (本モジュールは lexer のみ呼ぶ単方向)。
+const createFootnoteAwareLexer = (): Marked => {
+  const instance = new Marked()
+  instance.use(footnote())
+  return instance
+}
 
 /**
  * markdown ソース上のブロック位置と祖先見出しを保持する anchor。
@@ -43,39 +54,6 @@ const popSameOrDeeperHeadings = (headingStack: HeadingStackEntry[], headingDepth
   }
 }
 
-const addTokenAnchor = ({
-  anchors,
-  blockIndex,
-  headingStack,
-  lineCursor,
-  token,
-}: {
-  anchors: Map<string, BlockAnchor>
-  blockIndex: number
-  headingStack: HeadingStackEntry[]
-  lineCursor: number
-  token: { raw: string; type: string; depth?: unknown }
-}): number => {
-  const nextBlockIndex = blockIndex + 1
-  const blockId = blockIdFromIndex(nextBlockIndex)
-  const headingDepth = getHeadingDepth(token)
-
-  if (typeof headingDepth === 'number') {
-    popSameOrDeeperHeadings(headingStack, headingDepth)
-  }
-
-  anchors.set(blockId, {
-    headingPath: headingStack.map((heading): string => heading.raw),
-    sourceLine: lineCursor,
-  })
-
-  if (typeof headingDepth === 'number') {
-    headingStack.push({ level: headingDepth, raw: token.raw.replace(/\n+$/, '') })
-  }
-
-  return nextBlockIndex
-}
-
 const requireAnchor = (anchors: Map<string, BlockAnchor>, blockId: string): BlockAnchor => {
   const anchor = anchors.get(blockId)
   if (!anchor) {
@@ -84,25 +62,139 @@ const requireAnchor = (anchors: Map<string, BlockAnchor>, blockId: string): Bloc
   return anchor
 }
 
+interface AnchorPosition {
+  headingPath: string[]
+  sourceLine: number
+}
+
 /**
- * `marked.lexer` のトップレベルトークンを走査して、blockId → { sourceLine, headingPath } の Map を作る。
- * `space` トークンは DOM 上のブロックに対応しないため blockIndex を進めずに行カーソルだけ進める。
- * 連番採番は `cacheBlockOriginalHTML` が DOM 側で行うものと揃える前提（lexer の top-level token のうち space 以外）。
+ * lexer 出力から documentary block / footnote definition の anchor 情報を計算する。
+ * - documentary: top-level token のうち `space` / `footnotes` (synthetic placeholder) / `footnote` を
+ *   除いたものを文書順に並べた配列。DOM 側の `cacheBlockOriginalHTML` は section.virtual-page
+ *   配下の (footnotes section を除く) 子要素を文書順に走査するため、本配列の index と DOM 順が
+ *   1:1 で対応する
+ * - footnoteByLabel: `footnote` token を label でひける Map。marked-footnote は DOM 上で `<li>` を
+ *   **参照順**で並べる (Step 4 PoC `.temp/footnote-poc-order.mjs` で確認) ため、定義順を保つ lexer
+ *   側の sourceLine とは順序が異なる。よって配列 index ではなく label で逆引きする経路を取る
+ */
+export interface AnchorPositionsResult {
+  documentary: AnchorPosition[]
+  footnoteByLabel: Map<string, AnchorPosition>
+}
+
+const popHeadingsIfNeeded = (
+  headingStack: HeadingStackEntry[],
+  token: { depth?: unknown; raw: string; type: string }
+): void => {
+  const depth = getHeadingDepth(token)
+  if (typeof depth !== 'number') {
+    return
+  }
+  popSameOrDeeperHeadings(headingStack, depth)
+}
+
+const pushHeadingIfNeeded = (
+  headingStack: HeadingStackEntry[],
+  token: { depth?: unknown; raw: string; type: string }
+): void => {
+  const depth = getHeadingDepth(token)
+  if (typeof depth !== 'number') {
+    return
+  }
+  headingStack.push({ level: depth, raw: token.raw.replace(/\n+$/, '') })
+}
+
+const snapshotHeadingPath = (headingStack: HeadingStackEntry[]): string[] =>
+  headingStack.map((heading): string => heading.raw)
+
+const recordFootnoteAnchor = (
+  footnoteByLabel: Map<string, AnchorPosition>,
+  token: { label?: unknown; raw: string; type: string },
+  position: AnchorPosition
+): void => {
+  if (typeof token.label === 'string') {
+    footnoteByLabel.set(token.label, position)
+  }
+}
+
+interface ProcessTokenContext {
+  documentary: AnchorPosition[]
+  footnoteByLabel: Map<string, AnchorPosition>
+  headingStack: HeadingStackEntry[]
+  lineCursor: number
+}
+
+const processDocumentaryToken = (
+  context: ProcessTokenContext,
+  token: { depth?: unknown; raw: string; type: string }
+): void => {
+  popHeadingsIfNeeded(context.headingStack, token)
+  context.documentary.push({
+    headingPath: snapshotHeadingPath(context.headingStack),
+    sourceLine: context.lineCursor,
+  })
+  pushHeadingIfNeeded(context.headingStack, token)
+}
+
+const processFootnoteToken = (
+  context: ProcessTokenContext,
+  token: { label?: unknown; raw: string; type: string }
+): void => {
+  recordFootnoteAnchor(context.footnoteByLabel, token, {
+    headingPath: snapshotHeadingPath(context.headingStack),
+    sourceLine: context.lineCursor,
+  })
+}
+
+const processSingleToken = (
+  context: ProcessTokenContext,
+  token: { depth?: unknown; label?: unknown; raw: string; type: string }
+): void => {
+  // 'footnotes' (placeholder) は文書行を消費せず anchor も持たない
+  if (token.type === 'footnotes') {
+    return
+  }
+  if (token.type === 'footnote') {
+    processFootnoteToken(context, token)
+  } else if (token.type !== 'space') {
+    processDocumentaryToken(context, token)
+  }
+  context.lineCursor += countNewlines(token.raw)
+}
+
+/**
+ * 脚注対応版の anchor 計算。documentary block と footnote definition を分けて返す。
+ * 文書由来の `type:'footnotes'` placeholder token (raw="Footnotes", 文書行を消費しない) は
+ * cursor 加算からも除外する (Step 1 PoC で確定)。
+ */
+export const computeAnchorPositions = (markdown: string): AnchorPositionsResult => {
+  const tokens = createFootnoteAwareLexer().lexer(markdown)
+  const context: ProcessTokenContext = {
+    documentary: [],
+    footnoteByLabel: new Map(),
+    headingStack: [],
+    lineCursor: 1,
+  }
+  for (const token of tokens) {
+    processSingleToken(context, token)
+  }
+  return { documentary: context.documentary, footnoteByLabel: context.footnoteByLabel }
+}
+
+/**
+ * `cacheBlockOriginalHTML` の走査順 (section.virtual-page 配下の documentary 子要素) に対応する
+ * blockId → anchor の Map を作る。footnote definition は本 Map には含めない (DOM 側で label
+ * 逆引きで別経路で焼き込むため。docs/mdxg-footnotes.md §4)。
+ *
+ * documentary 順は `computeAnchorPositions` の documentary 配列をそのまま並べたもので、b001 から
+ * 連番採番する。
  */
 export const buildBlockAnchors = (markdown: string): Map<string, BlockAnchor> => {
-  const tokens = marked.lexer(markdown)
+  const { documentary } = computeAnchorPositions(markdown)
   const anchors = new Map<string, BlockAnchor>()
-  const headingStack: HeadingStackEntry[] = []
-  let lineCursor = 1
-  let blockIndex = 0
-
-  for (const token of tokens) {
-    if (token.type !== 'space') {
-      blockIndex = addTokenAnchor({ anchors, blockIndex, headingStack, lineCursor, token })
-    }
-    lineCursor += countNewlines(token.raw)
+  for (const [index, position] of documentary.entries()) {
+    anchors.set(blockIdFromIndex(index + 1), position)
   }
-
   return anchors
 }
 

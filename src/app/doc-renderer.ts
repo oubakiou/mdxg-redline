@@ -9,10 +9,15 @@
 // (identifier 文字列順) がこのファイルでは衝突するため、ファイル全体で無効化する。
 /* eslint-disable sort-imports */
 
-import { buildBlockAnchors } from '../core/block-anchors'
-import type { HighlighterCore } from 'shiki/core'
-import type { Page } from '../core/page-split'
+import {
+  type AnchorPositionsResult,
+  type BlockAnchor,
+  computeAnchorPositions,
+} from '../core/block-anchors'
+import { type Page, findPageIndexBySourceLine, isSyntheticPage } from '../core/page-split'
+import { extractFootnoteSection, renderOrphanFootnoteItems } from '../core/footnotes'
 import { getOrCreateHighlighter, highlightFenceWithShiki } from './shiki'
+import type { HighlighterCore } from 'shiki/core'
 import { injectCopyButtons } from './code-copy-wrap'
 import { qs } from './dom-utils'
 import { reapplyAllMarks } from './mark-engine'
@@ -27,24 +32,104 @@ const showEmptyDocument = (doc: HTMLElement, wrap: HTMLElement): void => {
   wrap.style.display = 'block'
 }
 
-/**
- * Stacked View 配下の全 `<section.virtual-page>` の子ブロックを文書順に走査し、
- * `b001` から連番の blockId を付与しつつ原 HTML をキャッシュする。
- * 以降の mark 再適用ではこのキャッシュをベースに HTML を巻き戻すため、レンダリング直後に必ず呼ぶ必要がある。
- */
-const cacheBlockOriginalHTML = (doc: HTMLElement): void => {
-  state.blockOriginalHTML.clear()
-  let blockIndex = 0
-  for (const section of doc.querySelectorAll<HTMLElement>(':scope > section.virtual-page')) {
-    for (const el of section.children) {
-      if (el instanceof HTMLElement) {
-        blockIndex += 1
-        const id = `b${String(blockIndex).padStart(3, '0')}`
-        el.dataset.blockId = id
-        state.blockOriginalHTML.set(id, el.innerHTML)
+const formatBlockId = (index: number): string => `b${String(index).padStart(3, '0')}`
+
+interface AnchorAssignmentState {
+  anchors: Map<string, BlockAnchor>
+  blockIndex: number
+  documentaryCursor: number
+}
+
+const assignDocumentaryBlock = (
+  el: HTMLElement,
+  assignment: AnchorAssignmentState,
+  positions: AnchorPositionsResult
+): void => {
+  assignment.blockIndex += 1
+  const id = formatBlockId(assignment.blockIndex)
+  el.dataset.blockId = id
+  state.blockOriginalHTML.set(id, el.innerHTML)
+  const position = positions.documentary[assignment.documentaryCursor]
+  if (position) {
+    assignment.anchors.set(id, position)
+  }
+  assignment.documentaryCursor += 1
+}
+
+const labelFromFootnoteLi = (li: HTMLElement): string | null => {
+  const match = /^footnote-(.+)$/u.exec(li.id)
+  if (match === null) {
+    return null
+  }
+  return match[1]
+}
+
+const assignFootnoteListItems = (
+  section: HTMLElement,
+  assignment: AnchorAssignmentState,
+  positions: AnchorPositionsResult
+): void => {
+  for (const li of section.querySelectorAll<HTMLElement>(':scope > ol > li')) {
+    assignment.blockIndex += 1
+    const id = formatBlockId(assignment.blockIndex)
+    li.dataset.blockId = id
+    state.blockOriginalHTML.set(id, li.innerHTML)
+    const label = labelFromFootnoteLi(li)
+    if (label !== null) {
+      const position = positions.footnoteByLabel.get(label)
+      if (position) {
+        assignment.anchors.set(id, position)
       }
     }
   }
+}
+
+const assignChildBlock = (
+  el: Element,
+  assignment: AnchorAssignmentState,
+  positions: AnchorPositionsResult
+): void => {
+  if (!(el instanceof HTMLElement)) {
+    return
+  }
+  if (el.matches('section[data-footnotes]')) {
+    assignFootnoteListItems(el, assignment, positions)
+  } else {
+    assignDocumentaryBlock(el, assignment, positions)
+  }
+}
+
+const assignSectionBlocks = (
+  section: HTMLElement,
+  assignment: AnchorAssignmentState,
+  positions: AnchorPositionsResult
+): void => {
+  for (const el of section.children) {
+    assignChildBlock(el, assignment, positions)
+  }
+}
+
+/**
+ * Stacked View 配下の全 `<section.virtual-page>` の子要素を文書順に走査し、blockId を採番する。
+ * `<section[data-footnotes]>` 配下の `<li id="footnote-<label>">` は label 経由で footnote anchor を
+ * 逆引き (DOM は参照順、lexer は定義順なので index ベースの 1:1 対応にできない、Step 4 PoC で確定)。
+ * その他の documentary block は文書順に lexer documentary anchor を sequential に消費する。
+ *
+ * blockOriginalHTML へのキャッシュも同経路で行うことで、mark 再適用 / Shiki upgrade 等の巻き戻しで
+ * 同じ blockId が同じ DOM 要素を指すことを構造的に保つ。
+ */
+const cacheBlocksAndBuildAnchors = (doc: HTMLElement): Map<string, BlockAnchor> => {
+  state.blockOriginalHTML.clear()
+  const positions = computeAnchorPositions(state.markdown)
+  const assignment: AnchorAssignmentState = {
+    anchors: new Map(),
+    blockIndex: 0,
+    documentaryCursor: 0,
+  }
+  for (const section of doc.querySelectorAll<HTMLElement>(':scope > section.virtual-page')) {
+    assignSectionBlocks(section, assignment, positions)
+  }
+  return assignment.anchors
 }
 
 /**
@@ -124,40 +209,155 @@ const refreshBlockOriginalHTML = (doc: HTMLElement): void => {
 }
 
 /**
- * 1 ページ分の markdown を `<section class="virtual-page">` に描画する。
+ * 空の `<section class="virtual-page">` を生成する。各 page に対応する受け皿で、後段で
+ * 全文 parse 出力の top-level block を sourceLine で配賦して appendChild する。
  * dataset.pageIndex / pageSlug は scroll-spy / TOC click / selection の page 帰属解決に使う。
- * heading slug は当該 page の H3–H6 だけを渡すため、ページを跨いだ slug 衝突は起こらない
- * (page-split.ts の outline 抽出で per-page 一意化済み)。
  */
-const renderPageSection = (page: Page): HTMLElement => {
+const createEmptyPageSection = (page: Page): HTMLElement => {
   const section = document.createElement('section')
   section.className = 'virtual-page'
   section.dataset.pageIndex = String(page.index)
   section.dataset.pageSlug = page.slug
-  section.innerHTML = renderMarkdown(page.markdown, null, {
-    headingSlugs: page.headings.map((heading): string => heading.slug),
-  })
   return section
 }
 
+const collectAllHeadingSlugs = (pages: readonly Page[]): string[] =>
+  pages
+    .filter((page): boolean => !isSyntheticPage(page))
+    .flatMap((page): string[] => page.headings.map((heading): string => heading.slug))
+
+interface ParsedDocFragments {
+  documentary: HTMLElement[]
+  footnotesSection: HTMLElement | null
+}
+
+const parseDocFragment = (
+  markdown: string,
+  headingSlugs: readonly string[]
+): ParsedDocFragments => {
+  const template = document.createElement('template')
+  template.innerHTML = renderMarkdown(markdown, null, { headingSlugs })
+  const fragment = template.content
+  const footnotesSection = extractFootnoteSection(fragment)
+  // fragment.children は live HTMLCollection だが、本ループ内では子要素を移動しないので
+  // 静的コピーを作らず直接 iterate して安全。移動は後続の distributeDocumentaryBlocks で行う。
+  const documentary: HTMLElement[] = []
+  for (const child of fragment.children) {
+    if (child instanceof HTMLElement) {
+      documentary.push(child)
+    }
+  }
+  return { documentary, footnotesSection }
+}
+
+const annotateBlocksWithSourceLine = (
+  blocks: readonly HTMLElement[],
+  positions: AnchorPositionsResult
+): void => {
+  const limit = Math.min(blocks.length, positions.documentary.length)
+  for (let index = 0; index < limit; index += 1) {
+    blocks[index].setAttribute('data-source-line', String(positions.documentary[index].sourceLine))
+  }
+}
+
+const parseSourceLine = (block: HTMLElement): number => {
+  const raw = block.getAttribute('data-source-line')
+  if (raw === null) {
+    return Number.NaN
+  }
+  return Number(raw)
+}
+
+const distributeDocumentaryBlocks = (
+  blocks: readonly HTMLElement[],
+  pages: readonly Page[],
+  sections: ReadonlyMap<number, HTMLElement>
+): void => {
+  // 配賦先 fallback: source line が解決できなかった block は文書冒頭 page (index 0) に積む。
+  // synthetic page は document 由来の sourceLine と当たらないため、ここに来ることはない。
+  for (const block of blocks) {
+    const pageIndex = findPageIndexBySourceLine(pages, parseSourceLine(block)) ?? 0
+    const target = sections.get(pageIndex) ?? sections.get(0)
+    if (target) {
+      target.appendChild(block)
+    }
+  }
+}
+
+const resolveFootnotesTargetSection = (
+  pages: readonly Page[],
+  sections: ReadonlyMap<number, HTMLElement>
+): HTMLElement | undefined => {
+  const syntheticIndex = pages.findIndex(isSyntheticPage)
+  if (syntheticIndex === -1) {
+    return sections.get(0)
+  }
+  return sections.get(syntheticIndex)
+}
+
+interface PlaceFootnotesArgs {
+  markdown: string
+  pages: readonly Page[]
+  rawSection: HTMLElement | null
+  sections: ReadonlyMap<number, HTMLElement>
+}
+
+const placeFootnotesSection = (args: PlaceFootnotesArgs): void => {
+  const finalSection = renderOrphanFootnoteItems(args.markdown, args.rawSection, document)
+  if (finalSection === null) {
+    return
+  }
+  const target = resolveFootnotesTargetSection(args.pages, args.sections)
+  if (target) {
+    target.appendChild(finalSection)
+  }
+}
+
 /**
- * Stacked View: 全 page を `<section.virtual-page>` で連続描画する。
- * ブロック原 HTML と markdown 上のアンカーは doc 全体で 1 度だけ計算し、
- * mark-engine が page を跨いだ document スコープ blockId で動けるようにする。
+ * Stacked View: 全 markdown を 1 回だけ parse し、各 top-level block を sourceLine で
+ * 所属 virtual-page に配賦する (docs/mdxg-footnotes.md §4 / §5.i)。`footnote-ref-*` /
+ * `footnote-*` の id 採番が単一 parse 呼び出し内でのみ一貫する marked-footnote の制約に
+ * 対応するため、page 単位 parse 戦略は廃止し、footnotes の有無に関わらず全文 parse + 配賦
+ * に統一する。
+ *
+ * footnotes synthetic section は最後に `renderOrphanFootnoteItems` 経由で orphan 救済 (MDXG
+ * §16 [MUST NOT]) を適用したうえで synthetic page にハードコード配置する。
  */
+const mountEmptyPageSections = (doc: HTMLElement): Map<number, HTMLElement> => {
+  const sections = new Map<number, HTMLElement>()
+  for (const page of state.pages) {
+    const section = createEmptyPageSection(page)
+    doc.appendChild(section)
+    sections.set(page.index, section)
+  }
+  return sections
+}
+
+const populatePageSectionsFromMarkdown = (sections: ReadonlyMap<number, HTMLElement>): void => {
+  const positions = computeAnchorPositions(state.markdown)
+  const { documentary, footnotesSection } = parseDocFragment(
+    state.markdown,
+    collectAllHeadingSlugs(state.pages)
+  )
+  annotateBlocksWithSourceLine(documentary, positions)
+  distributeDocumentaryBlocks(documentary, state.pages, sections)
+  placeFootnotesSection({
+    markdown: state.markdown,
+    pages: state.pages,
+    rawSection: footnotesSection,
+    sections,
+  })
+}
+
 const mountRenderedDoc = (doc: HTMLElement, wrap: HTMLElement): void => {
   wrap.style.display = 'none'
-  // C 案: 初期 render は highlighter を渡さず marked の plain 出力で paint を稼ぐ。
-  // ハイライトは scheduleShikiUpgrade で paint 後に追いかける。
   doc.innerHTML = ''
-  for (const page of state.pages) {
-    doc.appendChild(renderPageSection(page))
-  }
-  // cacheBlockOriginalHTML を injectCopyButtons より先に呼び、トップレベル <pre> の場合に
+  const sections = mountEmptyPageSections(doc)
+  populatePageSectionsFromMarkdown(sections)
+  // cacheBlocksAndBuildAnchors を injectCopyButtons より先に呼び、トップレベル <pre> の場合に
   // blockId が <pre> 自身に付与されるよう順序を保つ (wrap 後だと block-id は <div> 側に移る)。
-  cacheBlockOriginalHTML(doc)
+  state.blockAnchors = cacheBlocksAndBuildAnchors(doc)
   injectCopyButtons(doc)
-  state.blockAnchors = buildBlockAnchors(state.markdown)
 }
 
 const extractLangFromCode = (code: HTMLElement): string | null => {
