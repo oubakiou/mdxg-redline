@@ -58,16 +58,35 @@ const SKIP_TEXT_SEGMENT_CLASSES = ['code-copy-btn', 'code-lang-label']
 // 薄く、SVG 内 textContent (Mermaid 生成のノード / arrow ラベル) も検索結果として scrollIntoView
 // しづらいため一括で除外する。未 upgrade (data-mermaid="1" のみ) の <pre> は通常どおり拾われ、
 // Shiki ハイライト fallback 時の検索 / コメント対象として残る。
+//
+// 数式 (`[data-math]`) も同じく skip 対象にする (docs/mdxg-math-rendering.md §6 / Step 6)。
+// 理由:
+//   - upgrade 前は `<span data-math="inline">$x$</span>` の textContent が `$x$` (3 文字)
+//   - upgrade 後は KaTeX 出力 (MathML + HTML span) で textContent が大きく変化
+//   この変化を抱えたままだと §6 アンカリングのオフセット計算が upgrade 前後で食い違い、
+//   embedded-feedback の cmt mark が貼り直し時に飛ぶ。要素ごと skip すれば textSegments の
+//   出力は upgrade 前後で完全に同じになる (要素は無視され、周辺 text node の連続性も保たれる)。
+// トレードオフ:
+//   - 数式要素そのものに対するコメント付与は不可 (§1 の対応スコープ宣言で「数式へのコメント
+//     付与は対応外」と明文化済み)
+//   - §10 Search の「LaTeX ソース検索」(設計書 Step 6 §10) は将来拡張に回す
 const SKIP_TEXT_SEGMENT_ATTRS: readonly { attr: string; value: string }[] = [
   { attr: MERMAID_ATTR.applied, value: MERMAID_ATTR_VALUE },
   { attr: MERMAID_ATTR.svg, value: MERMAID_ATTR_VALUE },
 ]
+
+// 属性の有無だけで skip 判定する (値は問わない) 系統。`data-math` は 'inline' / 'display' の
+// 2 値を取るが、いずれも skip 対象なので値マッチではなく hasAttribute で十分。
+const SKIP_TEXT_SEGMENT_ATTR_NAMES: readonly string[] = ['data-math']
 
 const shouldSkipForTextSegments = (node: Node): boolean => {
   if (!(node instanceof Element)) {
     return false
   }
   if (SKIP_TEXT_SEGMENT_CLASSES.some((cls): boolean => node.classList.contains(cls))) {
+    return true
+  }
+  if (SKIP_TEXT_SEGMENT_ATTR_NAMES.some((attr): boolean => node.hasAttribute(attr))) {
     return true
   }
   return SKIP_TEXT_SEGMENT_ATTRS.some(
@@ -419,6 +438,20 @@ if (import.meta.vitest) {
       const nodeA = Symbol('a')
       const segments = [{ node: nodeA, start: 12 }]
       expect(textOffsetForTextNode(segments, nodeA, 0)).toBe(12)
+    })
+  })
+
+  // docs/mdxg-math-rendering.md §6 / Step 6: [data-math] 要素は upgrade 前後で textContent が
+  // 大きく変化する (raw `$x$` → KaTeX 出力の MathML+HTML)。`shouldSkipForTextSegments` が
+  // `SKIP_TEXT_SEGMENT_ATTR_NAMES` 経由で `data-math` を hasAttribute で skip 対象に含めることで、
+  // textSegments の出力が upgrade 前後で完全に一致し、§6 アンカリングの cmt mark 貼付経路が
+  // 壊れない。DOM ベースの統合テストは現在のテスト環境 (node、DOM 未提供) では書けないため
+  // (DESIGN.md §12「DOM 依存ロジックのテスト環境追加」が将来拡張として残る論点)、ここでは
+  // skip 経路の存在自体は SKIP_TEXT_SEGMENT_ATTR_NAMES 配列の constant に対する identity check で
+  // 担保する (production の attribute 名が `data-math` から逸脱したら本テストが落ちる)。
+  describe('SKIP_TEXT_SEGMENT_ATTR_NAMES (data-math 連動契約)', () => {
+    it("'data-math' を skip 対象として含む", () => {
+      expect(SKIP_TEXT_SEGMENT_ATTR_NAMES).toContain('data-math')
     })
   })
 }
