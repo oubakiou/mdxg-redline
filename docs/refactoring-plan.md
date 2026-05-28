@@ -105,17 +105,30 @@
 
 **リスク**: 中。既存テストが多い。安全に進めるなら「外部挙動を一切変えずファイル分割」→「spec table 化」の 2 段階で行う。
 
-### H6. `escapeStyleTagInCss` の重複排除
+### H6. `escapeStyleTagInCss` の重複排除（**却下**: build chain 制約で集約不可）
 
 **対象**: `src/core/embed.ts` + `src/build/inline-markdown-css.ts` + `vite.config.ts` の `inlineCssBlock`
 
-**現状**: DESIGN.md §11.a は「3 箇所に独立に存在、build chain 依存ゼロ要件のため重複許容」と記述しているが、共通モジュール化しても build chain 依存は増えない（`src/build/` 配下に切り出せばよい）。
+**当初の現状認識**: DESIGN.md §11.a は「3 箇所に独立に存在、build chain 依存ゼロ要件のため重複許容」と記述しているが、共通モジュール化しても build chain 依存は増えないように見えた（`src/build/` 配下に切り出せばよい）。
 
-**分割案**: `src/build/css-escape.ts` を新規作成し 3 箇所が参照。
+**当初の分割案**: `src/build/css-escape.ts` を新規作成し 3 箇所が参照。
 
-**効果**: 仕様変更の単一窓口化。
+**実機検証で判明した却下理由**:
 
-**リスク**: 低。ただし DESIGN.md §11.a の「3 箇所独立」記述を同時に更新する必要がある。
+実際に `src/build/css-escape.ts` を作って `inline-markdown-css.ts` から import する形を試した結果、`vite.config.ts` のロード時に以下のエラーで失敗する：
+
+```
+Failed to load configuration file. /workspaces/mdxg-redline/vite.config.ts
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module
+  '/workspaces/mdxg-redline/src/build/css-escape'
+  imported from /workspaces/mdxg-redline/src/build/inline-markdown-css.ts
+```
+
+`vite.config.ts` は vite-plus の loader で TypeScript として直接 Node に load され、Node ESM の解決規則で拡張子なしの相対 import を解決できない（`inline-markdown-css.ts` 冒頭のコメントが既にこれを記述）。`escape.ts` のような既存依存と同じ制約が `css-escape.ts` にも適用される。
+
+つまり DESIGN.md §11.a の「3 経路の依存ゼロ要件」は正しい認識で、本実装で集約は構造的に不可能。3 箇所の重複は build chain 制約に由来する必要悪として維持する。
+
+**結論**: 当初優先度「高」だったが、検証結果に基づき却下。DESIGN.md §11.a の記述はそのまま維持する。
 
 ## 3. 優先度: 中
 
