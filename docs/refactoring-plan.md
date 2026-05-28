@@ -128,7 +128,13 @@ Error [ERR_MODULE_NOT_FOUND]: Cannot find module
 
 つまり DESIGN.md §11.a の「3 経路の依存ゼロ要件」は正しい認識で、本実装で集約は構造的に不可能。3 箇所の重複は build chain 制約に由来する必要悪として維持する。
 
-**結論**: 当初優先度「高」だったが、検証結果に基づき却下。DESIGN.md §11.a の記述はそのまま維持する。
+**検討した代替案と却下理由**:
+
+- **(a) 拡張子付き相対 import (`.js` or `.ts`)**: Node ESM 標準解法だが、本リポジトリは tsconfig が拡張子なし import を前提に揃えてあり、`vite.config.ts` 配下だけ拡張子付きにすると残りの `src/` 配下と書き方が分裂する。さらに `.js` は TS source に対して論理的不整合 (実体は `.ts`)、`.ts` は vitest / Rolldown / tsc の解決経路ごとに対応差が出る。ビルド設定全体を `--moduleResolution NodeNext` 方針に倒す構造変更が前提になり、本 PR の H6 単体スコープでは正当化が難しい
+- **(b) vite plugin で resolve を補う**: `vite.config.ts` 自身のロード経路は vite plugin のスコープより外（vite-plus が config を import した時点で resolve が必要）。vite plugin で扱えるのは config 適用後の build 段なので問題の層が違う
+- **(c) `vite.config.ts` 側のみ inline コピーを残し、`embed.ts` + `inline-markdown-css.ts` の 2 経路だけ統合**: これは技術的に可能。ただし「3 経路ある」事実を 2 と 1 に分けても DRY の本質は変わらず、`vite.config.ts` 側だけが古い実装に取り残されて drift する新しい同期コストが生まれる。3 経路全部を独立に保つ現状の方が「全て一致しているか」のレビュー観点で扱いやすい
+
+**結論**: 当初優先度「高」だったが、検証結果に基づき却下。DESIGN.md §11.a の記述はそのまま維持する。将来 tsconfig 全体を NodeNext 化する別の動機が出てきた場合は、その PR で (a) を同時採用する形で再評価できる。
 
 ## 3. 優先度: 中
 
