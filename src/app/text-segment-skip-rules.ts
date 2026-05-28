@@ -66,3 +66,43 @@ export const SKIP_TEXT_SEGMENT_SELECTOR = [
   `[${MERMAID_ATTR.applied}="${MERMAID_ATTR_VALUE}"]`,
   `[${MERMAID_ATTR.svg}="${MERMAID_ATTR_VALUE}"]`,
 ].join(', ')
+
+if (import.meta.vitest) {
+  const { describe, expect, it } = import.meta.vitest
+
+  // docs/mdxg-math-rendering.archive.md §6 / Step 6: [data-math] 要素は upgrade 前後で textContent が
+  // 大きく変化する (raw `$x$` → KaTeX 出力の MathML+HTML)。`shouldSkipForTextSegments` が
+  // `SKIP_TEXT_SEGMENT_ATTR_NAMES` 経由で `data-math` を hasAttribute で skip 対象に含めることで、
+  // textSegments の出力が upgrade 前後で完全に一致し、§6 アンカリングの cmt mark 貼付経路が
+  // 壊れない。DOM ベースの統合テストは現在のテスト環境 (node、DOM 未提供) では書けないため
+  // (DESIGN.md §12「DOM 依存ロジックのテスト環境追加」が将来拡張として残る論点)、ここでは
+  // skip 経路の存在自体は SKIP_TEXT_SEGMENT_ATTR_NAMES 配列の constant に対する identity check で
+  // 担保する (production の attribute 名が `data-math` から逸脱したら本テストが落ちる)。
+  describe('SKIP_TEXT_SEGMENT_ATTR_NAMES (data-math 連動契約)', () => {
+    it("'data-math' を skip 対象として含む", () => {
+      expect(SKIP_TEXT_SEGMENT_ATTR_NAMES).toContain('data-math')
+    })
+  })
+
+  // docs/mdxg-footnotes.md §3.1 / §5.e / §6 / Step 6: marked-footnote 1.4.0 が出力する
+  // `<a data-footnote-ref>` / `<a data-footnote-backref>` を `<sup>` 配下から skip することで、
+  // source markdown (`[^<id>]` 4+ 文字) と DOM textContent (`1` 1 文字) の食い違いで offset が
+  // ズレるのを防ぐ。backref の `↩` も合成 UI 要素として走査対象から外す。
+  describe('SKIP_TEXT_SEGMENT_ATTR_NAMES (data-footnote-* 連動契約)', () => {
+    it("'data-footnote-ref' を skip 対象として含む", () => {
+      expect(SKIP_TEXT_SEGMENT_ATTR_NAMES).toContain('data-footnote-ref')
+    })
+
+    it("'data-footnote-backref' を skip 対象として含む", () => {
+      expect(SKIP_TEXT_SEGMENT_ATTR_NAMES).toContain('data-footnote-backref')
+    })
+  })
+
+  // marked-footnote 1.4.0 が `<section[data-footnotes]>` 冒頭に強制挿入する
+  // `<h2 id="footnote-label" class="sr-only">Footnotes</h2>` を skip するための class 契約。
+  describe('SKIP_TEXT_SEGMENT_CLASSES (sr-only 連動契約)', () => {
+    it("'sr-only' を skip 対象として含む", () => {
+      expect(SKIP_TEXT_SEGMENT_CLASSES).toContain('sr-only')
+    })
+  })
+}
