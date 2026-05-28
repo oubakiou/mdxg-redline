@@ -1,15 +1,16 @@
-// コメントパネル (右サイドバー) の横幅ドラッグ・開閉の DOM 連携。
-// 純粋ロジック (clamp / snap 判定 / 状態解決) は comments-width.ts に分離してあり、
-// 本ファイルは pointer / click event の wiring と localStorage / DOM への副作用に専念する。
+// 右パネル (comments) の resize handle + toggle tab を sidebar-resize.ts の factory に
+// 流し込む薄い wrapper。pointer 計算 (画面右端からの距離) と handle / tab の ID、body class、
+// scrollbar offset 観察 (右パネル固有) だけが本ファイルの責務。
 
 import {
   COMMENTS_DEFAULT_WIDTH,
   COMMENTS_MAX_WIDTH,
   COMMENTS_MIN_WIDTH,
-  type CommentsOpenState,
-  type CommentsState,
   applyCommentsState,
   clampCommentsWidth,
+  isCommentsOpenState,
+  isValidStoredCommentsWidth,
+  parseCommentsHint,
   readCommentsCliHint,
   readStoredCommentsOpen,
   readStoredCommentsWidth,
@@ -18,29 +19,7 @@ import {
   writeStoredCommentsOpen,
   writeStoredCommentsWidth,
 } from './comments-width'
-
-// max-width: 900px と同じ閾値。CSS media query と振る舞いを揃え、ドラッグ操作自体を
-// no-op にする (CSS 側で handle / toggle tab は display:none 済みだが、念のため pointer
-// event を無視して JS 副作用を発生させない)。
-const MOBILE_BREAKPOINT_PX = 900
-
-// module-level state. open=true のときの幅と open/closed フラグを別々に保持し、
-// closed 時も「次に開いた時の幅」を覚えておく (UX 要件)。
-const currentState: CommentsState = {
-  open: 'open',
-  width: COMMENTS_DEFAULT_WIDTH,
-}
-
-interface DragContext {
-  startWidth: number
-  startX: number
-}
-
-let dragContext: DragContext | null = null
-let activePointerId: number | null = null
-let activeElement: HTMLElement | null = null
-
-const isMobileView = (): boolean => globalThis.innerWidth <= MOBILE_BREAKPOINT_PX
+import { createSidebarResize } from './sidebar-resize'
 
 /**
  * 要素の `offsetWidth - clientWidth` から実描画上の vertical scrollbar 幅を求める純関数。
@@ -99,207 +78,45 @@ const observeDocPaneScrollbar = (): void => {
 // viewport 右端から pointerX までの距離が新しい幅になる。
 const widthFromPointer = (clientX: number): number => globalThis.innerWidth - clientX
 
-const currentAriaValueNow = (): number => {
-  if (currentState.open === 'open') {
-    return currentState.width
-  }
-  return 0
-}
-
-const updateAriaState = (): void => {
-  const handle = document.getElementById('comments-resize-handle')
-  if (handle) {
-    handle.setAttribute('aria-valuemin', String(COMMENTS_MIN_WIDTH))
-    handle.setAttribute('aria-valuemax', String(COMMENTS_MAX_WIDTH))
-    handle.setAttribute('aria-valuenow', String(currentAriaValueNow()))
-  }
-  const tab = document.getElementById('comments-toggle-tab')
-  if (tab) {
-    // タブは closed 状態のときだけ可視。aria-expanded のみ状態同期して、screen reader に
-    // 「open 状態なら表示要素は隠れている」ことを伝える。
-    tab.setAttribute('aria-expanded', String(currentState.open === 'open'))
-  }
-}
-
-const setOpenState = (open: CommentsOpenState): void => {
-  currentState.open = open
-  applyCommentsState(currentState)
-  writeStoredCommentsOpen(open)
-  updateAriaState()
-  // open/closed の切替で doc-pane の幅 (= scrollbar の有無 / 描画位置) が即時に変わるので、
-  // ResizeObserver の発火を待たず明示更新してオフセットの取りこぼしを防ぐ。
-  updateDocScrollbarOffset()
-}
-
-const setWidth = (width: number, persist: boolean): void => {
-  currentState.width = clampCommentsWidth(width)
-  applyCommentsState(currentState)
-  if (persist) {
-    writeStoredCommentsWidth(currentState.width)
-  }
-  updateAriaState()
-  // panel 幅変化で doc-pane の幅も変わり、scrollbar の有無や位置が変動し得る。
-  updateDocScrollbarOffset()
-}
-
-// closed 状態にあるとき open に戻す。stored width が次回開く幅として保持されている。
-const ensureOpen = (): void => {
-  if (currentState.open !== 'open') {
-    setOpenState('open')
-  }
-}
-
-interface DragStartInput {
-  clientX: number
-  element: HTMLElement
-  pointerId: number
-}
-
-// handle (panel 左端) は pointerdown 時点でクリック動作の余地がないため即ドラッグ開始する。
-// tab は click 専用 (onToggleClick) で drag を担わないため、開閉トグルとの混在による
-// 1 回目クリック抑止 bug は構造的に塞いである。
-const startDrag = (input: DragStartInput): void => {
-  dragContext = { startWidth: currentState.width, startX: input.clientX }
-  activePointerId = input.pointerId
-  activeElement = input.element
-  input.element.setPointerCapture(input.pointerId)
-  input.element.classList.add('dragging')
-  document.body.classList.add('comments-resizing')
-}
-
-const endDrag = (): void => {
-  if (activeElement !== null && activePointerId !== null) {
-    try {
-      activeElement.releasePointerCapture(activePointerId)
-    } catch {
-      // ignore: pointer は既に release されている可能性がある
-    }
-    activeElement.classList.remove('dragging')
-  }
-  document.body.classList.remove('comments-resizing')
-  dragContext = null
-  activePointerId = null
-  activeElement = null
-}
-
-// ドラッグ中で 240px 未満まで縮められた場合の snap 処理。closed に遷移するが、
-// localStorage 側の width は変更しない (次に開いた時に元の幅で復元するため)。
-const dragSnapToClosed = (): void => {
-  if (currentState.open !== 'closed') {
-    setOpenState('closed')
-  }
-}
-
-// ドラッグ中の幅更新。snap 判定 (240px 未満 → closed) を含む。
-// localStorage への width 書き込みは pointerup でまとめて行う。
-const handleDragMove = (clientX: number): void => {
-  if (dragContext === null) {
-    return
-  }
-  const raw = widthFromPointer(clientX)
-  if (shouldSnapCommentsToClosed(raw)) {
-    dragSnapToClosed()
-    return
-  }
-  ensureOpen()
-  setWidth(raw, false)
-}
-
-const isPrimaryButton = (event: PointerEvent): boolean => event.button === 0
-
-const onHandlePointerDown = (event: PointerEvent): void => {
-  if (isMobileView() || !isPrimaryButton(event)) {
-    return
-  }
-  if (!(event.currentTarget instanceof HTMLElement)) {
-    return
-  }
-  event.preventDefault()
-  startDrag({ clientX: event.clientX, element: event.currentTarget, pointerId: event.pointerId })
-}
-
-const onPointerMove = (event: PointerEvent): void => {
-  if (dragContext === null || activePointerId !== event.pointerId) {
-    return
-  }
-  handleDragMove(event.clientX)
-}
-
-const onPointerUp = (event: PointerEvent): void => {
-  if (dragContext === null || activePointerId !== event.pointerId) {
-    return
-  }
-  endDrag()
-  if (currentState.open === 'open') {
-    writeStoredCommentsWidth(currentState.width)
-  }
-}
-
-const onPointerCancel = (event: PointerEvent): void => {
-  if (activePointerId !== event.pointerId) {
-    return
-  }
-  endDrag()
-}
-
-// タブは closed のときしか可視ではないため、動作は「closed → open に復元」のみ。
-// pointerdown を扱わず click のみに集約することで、タッチ・トラックパッドで起きがちな
-// 数 px のジッタが drag 昇格を誤発火させて 1 回目の click が抑止される bug を構造的に塞ぐ。
-const onToggleClick = (event: MouseEvent): void => {
-  if (isMobileView()) {
-    return
-  }
-  if (currentState.open === 'closed') {
-    event.preventDefault()
-    setOpenState('open')
-  }
-}
-
-const applyInitialState = (): void => {
-  const resolved = resolveEffectiveCommentsState(
-    readStoredCommentsWidth(),
-    readStoredCommentsOpen(),
-    readCommentsCliHint()
-  )
-  currentState.open = resolved.open
-  currentState.width = clampCommentsWidth(resolved.width)
-  applyCommentsState(currentState)
-  updateAriaState()
-}
-
-const wireHandle = (handle: HTMLElement): void => {
-  handle.addEventListener('pointerdown', onHandlePointerDown)
-  handle.addEventListener('pointermove', onPointerMove)
-  handle.addEventListener('pointerup', onPointerUp)
-  handle.addEventListener('pointercancel', onPointerCancel)
-}
-
-const wireToggleTab = (tab: HTMLElement): void => {
-  tab.addEventListener('click', onToggleClick)
-}
+const controller = createSidebarResize({
+  ariaValueMax: COMMENTS_MAX_WIDTH,
+  ariaValueMin: COMMENTS_MIN_WIDTH,
+  bodyResizingClass: 'comments-resizing',
+  defaultWidth: COMMENTS_DEFAULT_WIDTH,
+  handleId: 'comments-resize-handle',
+  onAfterStateChange: updateDocScrollbarOffset,
+  toggleTabId: 'comments-toggle-tab',
+  widthFromPointer,
+  widthModule: {
+    applyState: applyCommentsState,
+    clampWidth: clampCommentsWidth,
+    isOpenState: isCommentsOpenState,
+    isValidStoredWidth: isValidStoredCommentsWidth,
+    parseHint: parseCommentsHint,
+    readCliHint: readCommentsCliHint,
+    readStoredOpen: readStoredCommentsOpen,
+    readStoredWidth: readStoredCommentsWidth,
+    resolveEffectiveState: resolveEffectiveCommentsState,
+    shouldSnapToClosed: shouldSnapCommentsToClosed,
+    writeStoredOpen: writeStoredCommentsOpen,
+    writeStoredWidth: writeStoredCommentsWidth,
+  },
+})
 
 /**
  * 起動時に呼び出す。localStorage / CLI hint から初期 CommentsState を解決し、
  * pointer / click event を handle と toggle tab に配線する。
  */
 export const initCommentsResize = (): void => {
-  applyInitialState()
+  controller.init()
   updateDocScrollbarOffset()
   observeDocPaneScrollbar()
-  const handle = document.getElementById('comments-resize-handle')
-  if (handle !== null) {
-    wireHandle(handle)
-  }
-  const tab = document.getElementById('comments-toggle-tab')
-  if (tab !== null) {
-    wireToggleTab(tab)
-  }
 }
 
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
 
-  describe('widthFromPointer', () => {
+  describe('widthFromPointer (右端からの距離)', () => {
     it('viewport 右端からの距離を返す', () => {
       const originalInnerWidth = globalThis.innerWidth
       Object.defineProperty(globalThis, 'innerWidth', {
