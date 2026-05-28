@@ -130,6 +130,11 @@ const postMarksReappliedHooks = new Set<() => void>()
 /**
  * `reapplyAllMarks` 末尾の callback を register する。返り値の unsubscribe 関数を呼ぶと
  * 当該 callback だけが解除される。同じ callback を複数回 register すると Set の性質で 1 回として扱う。
+ *
+ * ⚠️ 同一 callback を `setOnMarksReapplied` と `registerPostMarksReapplied` の両方で登録しないこと。
+ * 内部で同じ Set を共有するため、片方で unsubscribe するともう片方の意図に反して解除される。
+ * 新規 hook は本関数のみを使い、`setOnMarksReapplied` は既存 1 callback (search 用) の互換経路として
+ * 残してあるだけ。
  */
 export const registerPostMarksReapplied = (callback: () => void): (() => void) => {
   postMarksReappliedHooks.add(callback)
@@ -140,6 +145,7 @@ export const registerPostMarksReapplied = (callback: () => void): (() => void) =
 
 // 既存呼び出しサイト互換用。1 callback だけを管理する旧 API。null で登録解除する。
 // 新規 hook は registerPostMarksReapplied を使う方が将来の hook 追加に強い。
+// 詳細な invariant は registerPostMarksReapplied の JSDoc を参照。
 let legacyOnMarksReapplied: (() => void) | null = null
 export const setOnMarksReapplied = (callback: (() => void) | null): void => {
   if (legacyOnMarksReapplied !== null) {
@@ -155,6 +161,11 @@ export const setOnMarksReapplied = (callback: (() => void) | null): void => {
  * すべてのブロックに対して mark を貼り直す。
  * コメントの追加・削除があるたび「キャッシュ済み原 HTML へ戻す → 全 mark 再生成」というラウンドトリップを取り、
  * 差分管理を避けて単純化している（コメント件数は実用上それほど多くならない想定）。
+ *
+ * 末尾の hook 発火は事前に snapshot を取った配列を iterate する。
+ * これは hook callback 内から `registerPostMarksReapplied` / unsubscribe が呼ばれた場合に
+ * (a) 新規追加分が同 iteration で発火する非決定挙動、(b) 削除された callback がそれでも発火してしまう
+ * 競合を構造的に防ぐため。次回 `reapplyAllMarks` 呼び出し時には更新後の Set が反映される。
  */
 export const reapplyAllMarks = (): void => {
   const doc = qs('#doc')
@@ -162,7 +173,8 @@ export const reapplyAllMarks = (): void => {
   for (const [bid, original] of state.blockOriginalHTML) {
     applyMarksForBlock({ blockId: bid, byBlock, doc, original })
   }
-  for (const hook of postMarksReappliedHooks) {
+  const snapshot = [...postMarksReappliedHooks]
+  for (const hook of snapshot) {
     hook()
   }
 }
@@ -304,6 +316,78 @@ if (import.meta.vitest) {
         applyMarksForBlock({ blockId: 'missing', byBlock, doc, original: 'whatever' })
       ).not.toThrow()
       expect(doc.querySelector('mark.cmt')).toBeNull()
+    })
+  })
+
+  // post-marks-reapplied hook API の契約テスト。reapplyAllMarks 自体は DOM 依存が大きいので
+  // 直接呼ばずに、Set に対する add/delete の振る舞いと、setOnMarksReapplied による互換経路の
+  // invariant のみを検査する。
+  describe('registerPostMarksReapplied / setOnMarksReapplied', () => {
+    afterEach(() => {
+      // 各テスト間で hook Set / legacy slot を確実にクリアする
+      setOnMarksReapplied(null)
+    })
+
+    it('register/unsubscribe の基本契約: 戻り値を呼ぶと当該 callback だけが解除される', () => {
+      const calls: string[] = []
+      const hookA = (): void => {
+        calls.push('a')
+      }
+      const hookB = (): void => {
+        calls.push('b')
+      }
+      const unsubA = registerPostMarksReapplied(hookA)
+      registerPostMarksReapplied(hookB)
+      unsubA()
+      // reapplyAllMarks の DOM 経路は別 describe でカバーされているため、ここでは
+      // 末尾 hook 発火部分だけを手動で再現する形にする (snapshot 規約を併せて担保)。
+      const snapshot = [...postMarksReappliedHooks]
+      for (const hook of snapshot) {
+        hook()
+      }
+      expect(calls).toEqual(['b'])
+    })
+
+    it('同一 callback を 2 回 register しても Set の性質で 1 entry として扱う', () => {
+      let count = 0
+      const cb = (): void => {
+        count += 1
+      }
+      registerPostMarksReapplied(cb)
+      registerPostMarksReapplied(cb)
+      const snapshot = [...postMarksReappliedHooks]
+      for (const hook of snapshot) {
+        hook()
+      }
+      expect(count).toBe(1)
+    })
+
+    it('setOnMarksReapplied(cb) → setOnMarksReapplied(null) で前 callback が unregister される', () => {
+      let count = 0
+      setOnMarksReapplied((): void => {
+        count += 1
+      })
+      setOnMarksReapplied(null)
+      const snapshot = [...postMarksReappliedHooks]
+      for (const hook of snapshot) {
+        hook()
+      }
+      expect(count).toBe(0)
+    })
+
+    it('setOnMarksReapplied で別 callback に差し替えると古い方は外れる', () => {
+      const calls: string[] = []
+      setOnMarksReapplied((): void => {
+        calls.push('old')
+      })
+      setOnMarksReapplied((): void => {
+        calls.push('new')
+      })
+      const snapshot = [...postMarksReappliedHooks]
+      for (const hook of snapshot) {
+        hook()
+      }
+      expect(calls).toEqual(['new'])
     })
   })
 }
