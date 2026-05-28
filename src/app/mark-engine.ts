@@ -115,15 +115,40 @@ const applyMarksForBlock = ({
 }
 
 /**
- * `reapplyAllMarks` の末尾で呼ばれる callback。search.ts が search-hl の再貼付を register する。
- * cmt mark を貼り直すたびに search ハイライトを上書き再構築する経路を構造的に揃え、
- * Shiki upgrade / renderAll / コメント追加 / 削除のいずれの reapply 経路でも search が維持される。
+ * `reapplyAllMarks` の末尾で呼ばれる callback の集合。
+ * search.ts は search-hl の再貼付をここに register することで、cmt mark を貼り直すたびに
+ * search ハイライトが上書き再構築される。Shiki / Mermaid / KaTeX upgrade / renderAll /
+ * コメント追加 / 削除のいずれの reapply 経路でも search が維持される。
  *
- * Wire は `setOnMarksReapplied` で 1 つだけ。空 callback の登録解除は null を渡せばよい。
+ * 1 callback 制約だった旧 API `setOnMarksReapplied` も互換のため残してあるが、
+ * 新規 hook は `registerPostMarksReapplied` (複数 callback 可) を使うこと。
+ * 複数登録できる方が、将来 phase 別 (Shiki upgrade 後 / Mermaid 描画後 / KaTeX 描画後) の
+ * 後処理を追加する際の入り口が分散しない。
  */
-let onMarksReapplied: (() => void) | null = null
+const postMarksReappliedHooks = new Set<() => void>()
+
+/**
+ * `reapplyAllMarks` 末尾の callback を register する。返り値の unsubscribe 関数を呼ぶと
+ * 当該 callback だけが解除される。同じ callback を複数回 register すると Set の性質で 1 回として扱う。
+ */
+export const registerPostMarksReapplied = (callback: () => void): (() => void) => {
+  postMarksReappliedHooks.add(callback)
+  return (): void => {
+    postMarksReappliedHooks.delete(callback)
+  }
+}
+
+// 既存呼び出しサイト互換用。1 callback だけを管理する旧 API。null で登録解除する。
+// 新規 hook は registerPostMarksReapplied を使う方が将来の hook 追加に強い。
+let legacyOnMarksReapplied: (() => void) | null = null
 export const setOnMarksReapplied = (callback: (() => void) | null): void => {
-  onMarksReapplied = callback
+  if (legacyOnMarksReapplied !== null) {
+    postMarksReappliedHooks.delete(legacyOnMarksReapplied)
+  }
+  legacyOnMarksReapplied = callback
+  if (callback !== null) {
+    postMarksReappliedHooks.add(callback)
+  }
 }
 
 /**
@@ -137,8 +162,8 @@ export const reapplyAllMarks = (): void => {
   for (const [bid, original] of state.blockOriginalHTML) {
     applyMarksForBlock({ blockId: bid, byBlock, doc, original })
   }
-  if (onMarksReapplied !== null) {
-    onMarksReapplied()
+  for (const hook of postMarksReappliedHooks) {
+    hook()
   }
 }
 
