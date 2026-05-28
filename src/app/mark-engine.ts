@@ -157,6 +157,15 @@ const dummyComment = (overrides: Partial<Comment> = {}): Comment => ({
   ...overrides,
 })
 
+const buildDocWithBlock = (blockId: string, text: string): Element => {
+  const doc = document.createElement('div')
+  const block = document.createElement('p')
+  block.setAttribute('data-block-id', blockId)
+  block.textContent = text
+  doc.appendChild(block)
+  return doc
+}
+
 if (import.meta.vitest) {
   const { afterEach, beforeEach, describe, expect, it } = import.meta.vitest
 
@@ -214,6 +223,62 @@ if (import.meta.vitest) {
       const grouped = commentsGroupedByBlock()
       expect((grouped.get('b1') ?? []).map((comment): string => comment.id)).toEqual(['a', 'c'])
       expect((grouped.get('b2') ?? []).map((comment): string => comment.id)).toEqual(['b'])
+    })
+  })
+
+  describe('applyMarksForBlock (DOM)', () => {
+    it('単一テキストノード内の Range を <mark class="cmt"> で囲む', () => {
+      const doc = buildDocWithBlock('b1', 'Hello world')
+      const byBlock = new Map<string, Comment[]>([
+        ['b1', [dummyComment({ blockId: 'b1', endOffset: 11, id: 'c1', startOffset: 6 })]],
+      ])
+      applyMarksForBlock({ blockId: 'b1', byBlock, doc, original: 'Hello world' })
+
+      const marks = doc.querySelectorAll('mark.cmt')
+      const byId = new Map(
+        [...marks].map((mark): [string, string] => [
+          mark.getAttribute('data-comment-id') ?? '',
+          mark.textContent ?? '',
+        ])
+      )
+      expect(marks).toHaveLength(1)
+      expect(byId.get('c1')).toBe('world')
+    })
+
+    it('同一ブロック内の複数コメントを startOffset 降順で貼り、前方オフセットがずれない', () => {
+      const doc = buildDocWithBlock('b1', 'abcdefghij')
+      const byBlock = new Map<string, Comment[]>([
+        [
+          'b1',
+          [
+            dummyComment({ blockId: 'b1', endOffset: 3, id: 'first', startOffset: 0 }),
+            dummyComment({ blockId: 'b1', endOffset: 9, id: 'last', startOffset: 6 }),
+          ],
+        ],
+      ])
+      applyMarksForBlock({ blockId: 'b1', byBlock, doc, original: 'abcdefghij' })
+
+      const marks = doc.querySelectorAll('mark.cmt')
+      const byId = new Map(
+        [...marks].map((mark): [string, string] => [
+          mark.getAttribute('data-comment-id') ?? '',
+          mark.textContent ?? '',
+        ])
+      )
+      expect(marks).toHaveLength(2)
+      expect(byId.get('first')).toBe('abc')
+      expect(byId.get('last')).toBe('ghi')
+    })
+
+    it('block element が存在しなければ fail-soft で no-op', () => {
+      const doc = document.createElement('div')
+      const byBlock = new Map<string, Comment[]>([
+        ['missing', [dummyComment({ blockId: 'missing', id: 'x' })]],
+      ])
+      expect((): void =>
+        applyMarksForBlock({ blockId: 'missing', byBlock, doc, original: 'whatever' })
+      ).not.toThrow()
+      expect(doc.querySelector('mark.cmt')).toBeNull()
     })
   })
 }

@@ -342,6 +342,7 @@ export default defineConfig({
   plugins: [markdownCssInlinePlugin(), viteSingleFile(), shikiAssetsPlugin(), splitOutputsPlugin()],
   root: 'src',
   test: {
+    environment: 'happy-dom',
     includeSource: ['**/*.ts'],
   },
 })
