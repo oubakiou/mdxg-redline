@@ -211,6 +211,23 @@ export const renderOrphanFootnoteItems = (
   return targetSection
 }
 
+const buildFragmentWithSection = (innerHtml: string): DocumentFragment => {
+  const fragment = document.createDocumentFragment()
+  const host = document.createElement('div')
+  host.innerHTML = innerHtml
+  while (host.firstChild) {
+    fragment.appendChild(host.firstChild)
+  }
+  return fragment
+}
+
+const expectElement = <Element_ extends Element>(value: Element_ | null): Element_ => {
+  if (value === null) {
+    throw new Error('expected non-null element')
+  }
+  return value
+}
+
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
 
@@ -272,12 +289,6 @@ if (import.meta.vitest) {
       expect(getOrphanFootnoteIds('See [^missing] here.\n')).toEqual([])
     })
   })
-
-  // extractFootnoteSection / renderOrphanFootnoteItems の本体は DocumentFragment / HTMLElement
-  // 操作を含むため、本プロジェクト未導入の happy-dom 環境が必要となる
-  // (DESIGN.md §12 拡張候補参照、`src/app/search.ts` / `src/app/page-scroll-spy.ts` と同じ規約)。
-  // 別途 happy-dom 導入時にテストを足す。Step 2 では lexer 走査ベースの pure 関数を
-  // カバーし、DOM 経路は手動視覚チェックリスト (docs/mdxg-footnotes.md §6) に委ねる。
 
   describe('Marked instance 状態汚染回避 (Step 1 PoC で確定した bug への構造的対策)', () => {
     it('countFootnoteDefinitions を連続呼び出しても crash しない', () => {
@@ -346,6 +357,134 @@ if (import.meta.vitest) {
       expect(html).toBe(
         '<p>broken without close <a href="#footnote-ref-1" data-footnote-backref aria-label="Back to reference 1">↩</a>'
       )
+    })
+  })
+
+  describe('extractFootnoteSection (DOM)', () => {
+    it('<section data-footnotes> を fragment から切り出して返す', () => {
+      const fragment = buildFragmentWithSection(
+        '<p>body</p><section data-footnotes><ol><li>x</li></ol></section>'
+      )
+      const section = expectElement(extractFootnoteSection(fragment))
+      expect(section.hasAttribute('data-footnotes')).toBe(true)
+      // 副作用: fragment から remove されている
+      expect(fragment.querySelector('section[data-footnotes]')).toBeNull()
+      // 他のノードは残っている
+      expect(fragment.querySelector('p')).not.toBeNull()
+    })
+
+    it('該当 section が無ければ null を返し、fragment も変化しない', () => {
+      const fragment = buildFragmentWithSection('<p>only body</p>')
+      expect(extractFootnoteSection(fragment)).toBeNull()
+      expect(fragment.querySelector('p')).not.toBeNull()
+    })
+  })
+
+  describe('renderOrphanFootnoteItems (DOM)', () => {
+    it('orphan ゼロなら section をそのまま返す (副作用なし)', () => {
+      const fragment = buildFragmentWithSection(
+        '<section data-footnotes><ol><li>existing</li></ol></section>'
+      )
+      const section = expectElement(extractFootnoteSection(fragment))
+      const before = section.innerHTML
+      const result = renderOrphanFootnoteItems(
+        'plain.\n\n[^used]: u\n\nuse[^used].\n',
+        section,
+        document
+      )
+      expect(result).toBe(section)
+      expect(section.innerHTML).toBe(before)
+    })
+
+    it('既存 <section> 配下の <ol> に orphan li を append する', () => {
+      const fragment = buildFragmentWithSection(
+        '<section data-footnotes><ol><li id="footnote-used">u</li></ol></section>'
+      )
+      const section = expectElement(extractFootnoteSection(fragment))
+      const result = expectElement(
+        renderOrphanFootnoteItems(
+          'use[^used].\n\n[^used]: u\n[^orphan]: lonely\n',
+          section,
+          document
+        )
+      )
+      expect(result).toBe(section)
+      const items = [...result.querySelectorAll('ol > li')]
+      expect(items.map((li): string => li.id)).toEqual(['footnote-used', 'footnote-orphan'])
+      const orphan = expectElement(items.find((li): boolean => li.id === 'footnote-orphan') ?? null)
+      expect(orphan.getAttribute('data-footnote-orphan')).toBe('1')
+    })
+
+    it('section に <ol> が無ければ ensureOrphanOl が <ol> を合成する', () => {
+      const fragment = buildFragmentWithSection(
+        '<section data-footnotes><h2 class="sr-only">Footnotes</h2></section>'
+      )
+      const section = expectElement(extractFootnoteSection(fragment))
+      const result = expectElement(
+        renderOrphanFootnoteItems('plain.\n\n[^a]: A\n', section, document)
+      )
+      expect(result).toBe(section)
+      const ol = expectElement(result.querySelector(':scope > ol'))
+      const items = [...ol.querySelectorAll('li')]
+      expect(items.map((li): string => li.id)).toEqual(['footnote-a'])
+    })
+
+    it('section が null なら createSyntheticFootnotesSection で骨格を組み立てる', () => {
+      const result = expectElement(
+        renderOrphanFootnoteItems('plain.\n\n[^lonely]: x\n', null, document)
+      )
+      expect(result.tagName).toBe('SECTION')
+      expect(result.hasAttribute('data-footnotes')).toBe(true)
+      // sr-only な合成見出しが先頭に挿入されている (textSegments の SKIP_TEXT_SEGMENT_CLASSES 連動)
+      const heading = expectElement(result.querySelector('h2'))
+      expect(heading.id).toBe('footnote-label')
+      expect(heading.classList.contains('sr-only')).toBe(true)
+      // orphan li が <ol> 直下に並ぶ
+      const items = [...result.querySelectorAll('ol > li')]
+      expect(items.map((li): string => li.id)).toEqual(['footnote-lonely'])
+    })
+
+    it('backref <a> の href / aria-label が composeOrphanItemInnerHtml と一致する', () => {
+      const result = expectElement(
+        renderOrphanFootnoteItems('plain.\n\n[^note]: body\n', null, document)
+      )
+      const backref = expectElement(result.querySelector('a[data-footnote-backref]'))
+      expect(backref.getAttribute('href')).toBe('#footnote-ref-note')
+      expect(backref.getAttribute('aria-label')).toBe('Back to reference note')
+    })
+
+    it('orphan 定義複数件は markdown 出現順で並ぶ', () => {
+      const result = expectElement(
+        renderOrphanFootnoteItems('plain.\n\n[^z]: zeta\n[^a]: alpha\n[^m]: mu\n', null, document)
+      )
+      const items = [...result.querySelectorAll('ol > li')]
+      expect(items.map((li): string => li.id)).toEqual(['footnote-z', 'footnote-a', 'footnote-m'])
+    })
+
+    it('既存 section の li 順序を保ったまま orphan を末尾に追加する (merge で並び順崩れず重複もしない)', () => {
+      const fragment = buildFragmentWithSection(
+        '<section data-footnotes><ol>' +
+          '<li id="footnote-first">first</li>' +
+          '<li id="footnote-second">second</li>' +
+          '</ol></section>'
+      )
+      const section = expectElement(extractFootnoteSection(fragment))
+      const result = expectElement(
+        renderOrphanFootnoteItems(
+          'use[^first] then[^second].\n\n[^first]: f\n[^second]: s\n[^orphan]: o\n',
+          section,
+          document
+        )
+      )
+      const items = [...result.querySelectorAll('ol > li')]
+      expect(items.map((li): string => li.id)).toEqual([
+        'footnote-first',
+        'footnote-second',
+        'footnote-orphan',
+      ])
+      // 既存 li が二重に出ていない (orphan のみが追加)
+      const orphanFlags = items.filter((li): boolean => li.hasAttribute('data-footnote-orphan'))
+      expect(orphanFlags.map((li): string => li.id)).toEqual(['footnote-orphan'])
     })
   })
 }

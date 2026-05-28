@@ -439,6 +439,12 @@ export const getSelectionInfo = (): SelectionInfo | null => {
   return buildSelectionInfo({ ...resolved, offsets, selection })
 }
 
+const buildBlockForTest = (html: string): HTMLElement => {
+  const block = document.createElement('div')
+  block.innerHTML = html
+  return block
+}
+
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
 
@@ -534,6 +540,93 @@ if (import.meta.vitest) {
   describe('SKIP_TEXT_SEGMENT_CLASSES (sr-only 連動契約)', () => {
     it("'sr-only' を skip 対象として含む", () => {
       expect(SKIP_TEXT_SEGMENT_CLASSES).toContain('sr-only')
+    })
+  })
+
+  describe('textSegments (DOM)', () => {
+    it('plain text を 1 segment として返す (start=0, end=text.length)', () => {
+      const block = buildBlockForTest('Hello world')
+      const segments = textSegments(block)
+      expect(segments).toHaveLength(1)
+      expect(segments[0].start).toBe(0)
+      expect(segments[0].end).toBe(11)
+      expect(segments[0].node.textContent).toBe('Hello world')
+    })
+
+    it('inline 装飾をまたぐと複数 segment に分かれ、start/end が累積する', () => {
+      // `abc<strong>def</strong>ghi` → "abc" / "def" / "ghi" の 3 segment
+      const block = buildBlockForTest('abc<strong>def</strong>ghi')
+      const segments = textSegments(block)
+      expect(segments).toHaveLength(3)
+      expect(segments.map((seg): [number, number] => [seg.start, seg.end])).toEqual([
+        [0, 3],
+        [3, 6],
+        [6, 9],
+      ])
+    })
+
+    it('skip class (sr-only) 配下のテキストは segment に含めない', () => {
+      // marked-footnote 1.4.0 が挿入する <h2 class="sr-only">Footnotes</h2> 相当
+      const block = buildBlockForTest('<h2 class="sr-only">Footnotes</h2><p>body</p>')
+      const segments = textSegments(block)
+      expect(segments.map((seg): string | null => seg.node.textContent)).toEqual(['body'])
+    })
+
+    it('skip class (code-copy-btn / code-lang-label) 配下を除外する', () => {
+      const block = buildBlockForTest(
+        '<span class="code-lang-label">typescript</span>' +
+          '<pre>const x = 1</pre>' +
+          '<button class="code-copy-btn"><span>Copy</span></button>'
+      )
+      const segments = textSegments(block)
+      expect(segments.map((seg): string | null => seg.node.textContent)).toEqual(['const x = 1'])
+    })
+
+    it('skip 属性 [data-math] 配下を除外する (upgrade 前後で textContent 不変条件)', () => {
+      const block = buildBlockForTest(
+        'before <span data-math="inline" data-math-source="x">$x$</span> after'
+      )
+      const segments = textSegments(block)
+      // "$x$" 部分が消える。" before " と " after " で 2 segment (前後の空白込み)
+      expect(segments.map((seg): string | null => seg.node.textContent)).toEqual([
+        'before ',
+        ' after',
+      ])
+    })
+
+    it('skip 属性 [data-footnote-ref] 配下の <sup>N</sup> 文字を除外する', () => {
+      // marked-footnote 出力: <sup><a id="footnote-ref-1" data-footnote-ref href="#footnote-1">1</a></sup>
+      const block = buildBlockForTest(
+        'See<sup><a data-footnote-ref href="#footnote-1">1</a></sup>.'
+      )
+      const segments = textSegments(block)
+      // <a data-footnote-ref> 配下の "1" が消える。"See" と "." だけが残る
+      expect(segments.map((seg): string | null => seg.node.textContent)).toEqual(['See', '.'])
+    })
+
+    it('skip 属性 [data-footnote-backref] 配下の ↩ を除外する', () => {
+      const block = buildBlockForTest('body <a data-footnote-backref href="#footnote-ref-1">↩</a>')
+      const segments = textSegments(block)
+      expect(segments.map((seg): string | null => seg.node.textContent)).toEqual(['body '])
+    })
+
+    it('Mermaid upgrade 済み <pre[data-mermaid-applied]> 配下を除外する', () => {
+      const block = buildBlockForTest(
+        'before <pre data-mermaid="1" data-mermaid-applied="1" hidden><code>graph TD</code></pre> after'
+      )
+      const segments = textSegments(block)
+      expect(segments.map((seg): string | null => seg.node.textContent)).toEqual([
+        'before ',
+        ' after',
+      ])
+    })
+
+    it('未 upgrade (data-mermaid="1" のみ) の <pre> は通常どおり拾う (Shiki ハイライト fallback の検索対象)', () => {
+      const block = buildBlockForTest(
+        'before <pre data-mermaid="1"><code>graph TD</code></pre> after'
+      )
+      const segments = textSegments(block)
+      expect(segments.map((seg): string | null => seg.node.textContent)).toContain('graph TD')
     })
   })
 }

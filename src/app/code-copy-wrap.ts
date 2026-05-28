@@ -103,3 +103,92 @@ export const injectCopyButtons = (root: HTMLElement): void => {
     }
   }
 }
+
+const buildRootWithPre = (preHtml: string): HTMLElement => {
+  const root = document.createElement('div')
+  root.innerHTML = preHtml
+  return root
+}
+
+const expectElement = <Element_ extends Element>(value: Element_ | null): Element_ => {
+  if (value === null) {
+    throw new Error('expected non-null element')
+  }
+  return value
+}
+
+if (import.meta.vitest) {
+  const { describe, expect, it } = import.meta.vitest
+
+  describe('injectCopyButtons', () => {
+    it('裸の <pre> を <div class="code-block-wrap"> で囲む', () => {
+      const root = buildRootWithPre('<pre><code>x</code></pre>')
+      injectCopyButtons(root)
+      const wrap = expectElement(root.querySelector('div.code-block-wrap'))
+      const pre = expectElement(root.querySelector('pre'))
+      // <pre> は wrap の子になっている
+      expect(pre.parentElement).toBe(wrap)
+    })
+
+    it('Copy button を wrap 内に append する (aria-label / class 規約)', () => {
+      const root = buildRootWithPre('<pre><code>x</code></pre>')
+      injectCopyButtons(root)
+      const btn = expectElement(root.querySelector('button.code-copy-btn'))
+      const wrap = expectElement(root.querySelector('div.code-block-wrap'))
+      expect(btn.parentElement).toBe(wrap)
+      expect(btn.getAttribute('aria-label')).toBe('Copy code')
+      const span = expectElement(btn.querySelector('span'))
+      expect(span.textContent).toBe('Copy')
+    })
+
+    it('data-lang 付き <pre> は <span class="code-lang-label"> をその直前に挿入する', () => {
+      const root = buildRootWithPre('<pre data-lang="ts"><code>1</code></pre>')
+      injectCopyButtons(root)
+      const label = expectElement(root.querySelector('span.code-lang-label'))
+      // ts → typescript に正規化される (normalizeLangIdentifier 経由)
+      expect(label.textContent).toBe('typescript')
+      // <pre> の直前の sibling として置かれている (wrap の子のうち pre より前)
+      const pre = expectElement(root.querySelector('pre'))
+      expect(label.nextElementSibling).toBe(pre)
+    })
+
+    it('正規化できない data-lang は raw 値をそのままラベルにする', () => {
+      const root = buildRootWithPre('<pre data-lang="nim-custom"><code>x</code></pre>')
+      injectCopyButtons(root)
+      const label = expectElement(root.querySelector('span.code-lang-label'))
+      expect(label.textContent).toBe('nim-custom')
+    })
+
+    it('data-lang 無しなら code-lang-label は注入しない', () => {
+      const root = buildRootWithPre('<pre><code>x</code></pre>')
+      injectCopyButtons(root)
+      expect(root.querySelector('span.code-lang-label')).toBeNull()
+    })
+
+    it('idempotent: 既に wrap 済みの <pre> を再度通しても 2 重 wrap / 2 個目の button を作らない', () => {
+      const root = buildRootWithPre('<pre><code>x</code></pre>')
+      injectCopyButtons(root)
+      injectCopyButtons(root)
+      expect(root.querySelectorAll('div.code-block-wrap')).toHaveLength(1)
+      expect(root.querySelectorAll('button.code-copy-btn')).toHaveLength(1)
+    })
+
+    it('data-mermaid="1" の <pre> は wrap / button 注入対象外', () => {
+      const root = buildRootWithPre('<pre data-mermaid="1"><code>graph TD</code></pre>')
+      injectCopyButtons(root)
+      expect(root.querySelector('div.code-block-wrap')).toBeNull()
+      expect(root.querySelector('button.code-copy-btn')).toBeNull()
+    })
+
+    it('root 配下に複数 <pre> があれば全部を独立に wrap する', () => {
+      const root = buildRootWithPre(
+        '<pre data-lang="ts"><code>a</code></pre><pre><code>b</code></pre>'
+      )
+      injectCopyButtons(root)
+      expect(root.querySelectorAll('div.code-block-wrap')).toHaveLength(2)
+      expect(root.querySelectorAll('button.code-copy-btn')).toHaveLength(2)
+      // data-lang 付きの方だけラベルが出る
+      expect(root.querySelectorAll('span.code-lang-label')).toHaveLength(1)
+    })
+  })
+}

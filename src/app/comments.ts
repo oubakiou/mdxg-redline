@@ -327,6 +327,49 @@ export const activateCommentsMark = (mark: HTMLElement): void => {
   }
 }
 
+const appendMarkAndCard = (doc: HTMLElement, aside: HTMLElement, commentId: string): void => {
+  const mark = document.createElement('mark')
+  mark.className = 'cmt'
+  mark.dataset.commentId = commentId
+  doc.appendChild(mark)
+  const card = document.createElement('div')
+  card.className = 'cmt-card'
+  card.dataset.id = commentId
+  aside.appendChild(card)
+}
+
+// activateCommentsMark / focusCommentMarkAfterNavigate は document をルートに querySelector するため、
+// detached なツリーでは検証できない。body にぶら下げる fixture を用意する。
+const setupActiveSyncFixture = (commentIds: readonly string[]): void => {
+  document.body.innerHTML = ''
+  const doc = document.createElement('div')
+  doc.id = 'doc'
+  const aside = document.createElement('aside')
+  aside.className = 'comments'
+  for (const id of commentIds) {
+    appendMarkAndCard(doc, aside, id)
+  }
+  document.body.appendChild(doc)
+  document.body.appendChild(aside)
+}
+
+const datasetIdFor = (element: HTMLElement): string => {
+  if (element.tagName === 'MARK') {
+    return element.dataset.commentId ?? ''
+  }
+  return element.dataset.id ?? ''
+}
+
+const queryActiveIds = (selector: string): string[] => {
+  const results: string[] = []
+  for (const element of document.querySelectorAll(`${selector}.active`)) {
+    if (element instanceof HTMLElement) {
+      results.push(datasetIdFor(element))
+    }
+  }
+  return results
+}
+
 const commentForTest = (id: string): Comment => ({
   blockId: 'b001',
   comment: 'body',
@@ -379,6 +422,59 @@ if (import.meta.vitest) {
         'left',
         'right',
       ])
+    })
+  })
+
+  describe('activateCommentsMark (active 双方向同期)', () => {
+    it('mark クリック → 対応 .cmt-card に .active 付与、他カードは active を剥がす', () => {
+      setupActiveSyncFixture(['a', 'b'])
+      // 既存の active を仕込んでおき、clearActiveComments が剥がすことを確認
+      const other = document.querySelector('.cmt-card[data-id="b"]')
+      if (other instanceof HTMLElement) {
+        other.classList.add('active')
+      }
+      const targetMark = document.querySelector('mark.cmt[data-comment-id="a"]')
+      if (!(targetMark instanceof HTMLElement)) {
+        throw new Error('fixture missing')
+      }
+      activateCommentsMark(targetMark)
+      expect(queryActiveIds('mark.cmt')).toEqual(['a'])
+      expect(queryActiveIds('.cmt-card')).toEqual(['a'])
+    })
+
+    it('対応 .cmt-card が DOM に無くても fail-soft (mark 側だけ active 付与)', () => {
+      setupActiveSyncFixture([])
+      const doc = document.querySelector('#doc')
+      const mark = document.createElement('mark')
+      mark.className = 'cmt'
+      mark.dataset.commentId = 'orphan'
+      if (doc instanceof HTMLElement) {
+        doc.appendChild(mark)
+      }
+      expect((): void => {
+        activateCommentsMark(mark)
+      }).not.toThrow()
+      expect(mark.classList.contains('active')).toBe(true)
+      expect(document.querySelector('.cmt-card.active')).toBeNull()
+    })
+  })
+
+  describe('focusCommentMarkAfterNavigate (id 経由の active 同期)', () => {
+    it('id から mark + card 両方に .active を付与する', () => {
+      setupActiveSyncFixture(['x', 'y'])
+      focusCommentMarkAfterNavigate('y')
+      expect(queryActiveIds('mark.cmt')).toEqual(['y'])
+      expect(queryActiveIds('.cmt-card')).toEqual(['y'])
+    })
+
+    it('id 対応 mark が DOM に無ければ no-op (active 状態は変化しない)', () => {
+      setupActiveSyncFixture(['x'])
+      const existing = document.querySelector('mark.cmt[data-comment-id="x"]')
+      if (existing instanceof HTMLElement) {
+        existing.classList.add('active')
+      }
+      focusCommentMarkAfterNavigate('nonexistent')
+      expect(queryActiveIds('mark.cmt')).toEqual(['x']) // 以前の active が剥がれない
     })
   })
 }
