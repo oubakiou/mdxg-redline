@@ -23,6 +23,12 @@ const maskHtmlComments = (html: string): string =>
 // ユーザー CSS 中の文字列を style タグの閉じとして誤検出するのを構造的に防ぐ。
 // CSS の文法上 `</style>` が規則として現れることはまずないが、コメントや content: 値に
 // 書ける余地が残るため塞いでおく。
+//
+// CSS は JS 側と異なり上流に自動 escape が無く (vite-plugin-singlefile の replaceCss は
+// `@charset` 除去のみ、Rolldown/oxc 相当の CSS minifier 保護も無い)、本関数が CSS 側の
+// **実質的に唯一の防壁** として発動し得る。同等実装が `src/core/embed.ts` の KaTeX CSS 経路と
+// `vite.config.ts` の `inlineCssBlock` (build 時 standalone.html 用) にも独立に存在する
+// (3 経路とも build chain の依存ゼロ要件を優先し DRY より重複を許容)。
 const escapeStyleTagInCss = (cssSource: string): string =>
   cssSource.replace(/<\/style>/gi, String.raw`<\/style>`)
 

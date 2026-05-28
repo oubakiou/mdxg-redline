@@ -131,11 +131,17 @@ const EMBEDDED_MERMAID_RE =
 // 集約しており、build 時の markdownCssInlinePlugin (vite.config.ts) と同一の実装を共有する。
 // 回帰防止テストも同ファイルの in-source test 群で担保する。
 
-// Mermaid bundle 中の literal `</script>` を `<\/script>` に escape する。
+// Mermaid / KaTeX bundle 中の literal `</script>` を `<\/script>` に escape する。
 // embedded-md / embedded-shiki-langs の `<` Unicode escape とは別経路 (こちらは素の JS source な
 // ので JSON encode を経由できない)。Mermaid のエラーメッセージ / regex / コメントに `</script>` が
 // 混入し得る可能性をゼロにしないことで build を fail させない設計 (§3.2 注入経路)。
 // 戻り値で escape 件数を返し、CLI が stderr に報告する。
+//
+// 実運用上は no-op の二重保険: Rolldown / oxc minifier は string literal 中の `</script>` を
+// `<\/script>` に自動 escape するため、`dist/mermaid.mjs` / `dist/katex/katex.mjs` 段で既に
+// literal は 0 件。さらに `vite-plugin-singlefile` も inline 時に同種の escape を行う。
+// この関数は (a) 上流 escape が将来の bundler 更新で壊れた場合の defensive depth、
+// (b) `escapedScriptCount` 戻り値による CLI 観測経路、の 2 目的で維持する。
 const escapeScriptTagInJs = (jsSource: string): { count: number; escaped: string } => {
   let count = 0
   const escaped = jsSource.replace(/<\/script>/gi, (): string => {
@@ -185,6 +191,15 @@ const EMBEDDED_KATEX_FONTS_EXTRA_CSS_RE =
 
 // CSS source の literal `</style>` を `<\/style>` に escape する (Mermaid の escapeScriptTagInJs と
 // 同じ規約、CSS コメントや content: 値に閉じタグ文字列が混入してもパースが壊れないため)。
+//
+// JS 側と異なり、CSS には上流の自動 escape が無い: `vite-plugin-singlefile` の replaceCss は
+// `@charset` を剥がすだけで `</style>` を escape しない (`node_modules/vite-plugin-singlefile/
+// dist/esm/index.js` line 12-17 で確認)。Rolldown / oxc に相当する CSS minifier の保護も無い。
+// したがって本関数は **CSS 側の唯一の防壁** として実質的に発動し得る (現 KaTeX CSS は 0 件だが
+// 構造的なギャップは塞がる)。同実装が `src/build/inline-markdown-css.ts` の `escapeStyleTagInCss`
+// と `vite.config.ts` の `inlineCssBlock` (build 時の standalone.html 用 KaTeX CSS inline 経路)
+// にも独立に存在する。3 経路の依存ゼロ要件 (vite-plus loader の transitive import 制約) を
+// 優先して DRY より重複を許容している。
 const escapeStyleTagInCss = (cssSource: string): string =>
   cssSource.replace(/<\/style>/gi, String.raw`<\/style>`)
 
