@@ -296,6 +296,44 @@ export const scheduleKatexUpgrade = (docEl: HTMLElement): void => {
   scheduleIdle(run)
 }
 
+const buildMathElForTest = (
+  mode: 'display' | 'inline',
+  source: string | null,
+  flag?: 'applied' | 'failed'
+): HTMLElement => {
+  const el = document.createElement('span')
+  el.dataset.math = mode
+  if (source !== null) {
+    el.dataset.mathSource = source
+  }
+  if (flag === 'applied') {
+    el.dataset.mathApplied = '1'
+  } else if (flag === 'failed') {
+    el.dataset.mathFailed = '1'
+  }
+  el.textContent = source ?? ''
+  return el
+}
+
+const buildMathBlockForTest = (blockId: string, applied: boolean): HTMLElement => {
+  const block = document.createElement('div')
+  block.setAttribute('data-block-id', blockId)
+  const el = document.createElement('span')
+  el.dataset.math = 'inline'
+  el.dataset.mathSource = 'x'
+  if (applied) {
+    el.dataset.mathApplied = '1'
+  }
+  block.appendChild(el)
+  return block
+}
+
+const wrapInRoot = (block: HTMLElement): HTMLElement => {
+  const root = document.createElement('div')
+  root.appendChild(block)
+  return root
+}
+
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
 
@@ -341,6 +379,66 @@ if (import.meta.vitest) {
 
     it('正常な KaTeX 出力は false', () => {
       expect(isErrorRender('<span class="katex"><math xmlns="...">x</math></span>')).toBe(false)
+    })
+  })
+
+  describe('shouldSkipUpgrade (idempotency contract)', () => {
+    it('data-math-applied="1" は再入防止で skip', () => {
+      const el = buildMathElForTest('inline', 'x', 'applied')
+      expect(shouldSkipUpgrade(el)).toBe(true)
+    })
+
+    it('data-math-failed="1" は再試行抑止で skip', () => {
+      const el = buildMathElForTest('inline', 'x', 'failed')
+      expect(shouldSkipUpgrade(el)).toBe(true)
+    })
+
+    it('data-math-source 欠落要素は skip (renderToString に渡せないため)', () => {
+      const el = buildMathElForTest('inline', null)
+      expect(shouldSkipUpgrade(el)).toBe(true)
+    })
+
+    it('新規の data-math + data-math-source 付き要素は upgrade 対象', () => {
+      const el = buildMathElForTest('inline', 'x')
+      expect(shouldSkipUpgrade(el)).toBe(false)
+    })
+  })
+
+  describe('applyRenderedKatex (fail-soft フラグ遷移)', () => {
+    it('katex-error 含む HTML → data-math-failed="1" + innerHTML 差し替え', () => {
+      const el = buildMathElForTest('inline', 'x')
+      const status = applyRenderedKatex(el, '<span class="katex-error">err</span>')
+      expect(status).toBe('failed')
+      expect(el.dataset.mathFailed).toBe('1')
+      expect(el.dataset.mathApplied).toBeUndefined()
+      expect(el.innerHTML).toBe('<span class="katex-error">err</span>')
+    })
+
+    it('正常な KaTeX HTML → data-math-applied="1" + innerHTML 差し替え', () => {
+      const el = buildMathElForTest('inline', 'x')
+      const status = applyRenderedKatex(el, '<span class="katex"><math>x</math></span>')
+      expect(status).toBe('ok')
+      expect(el.dataset.mathApplied).toBe('1')
+      expect(el.dataset.mathFailed).toBeUndefined()
+      expect(el.innerHTML).toBe('<span class="katex"><math>x</math></span>')
+    })
+  })
+
+  describe('refreshKatexBlockOriginalHTML (blockOriginalHTML 更新契約)', () => {
+    it('data-math-applied="1" の親 block の innerHTML を state.blockOriginalHTML に格納', () => {
+      const block = buildMathBlockForTest('b-math', true)
+      const root = wrapInRoot(block)
+      state.blockOriginalHTML.delete('b-math')
+      refreshKatexBlockOriginalHTML(root)
+      expect(state.blockOriginalHTML.get('b-math')).toBe(block.innerHTML)
+    })
+
+    it('applied 属性なしの要素は state を触らない', () => {
+      const block = buildMathBlockForTest('b-math-untouched', false)
+      const root = wrapInRoot(block)
+      state.blockOriginalHTML.delete('b-math-untouched')
+      refreshKatexBlockOriginalHTML(root)
+      expect(state.blockOriginalHTML.has('b-math-untouched')).toBe(false)
     })
   })
 }

@@ -489,13 +489,31 @@ export const reapplySearchHighlights = (): void => {
   applySearchHighlights()
 }
 
+const buildSearchBlockForTest = (text: string): HTMLElement => {
+  const block = document.createElement('p')
+  block.setAttribute('data-block-id', 'b1')
+  block.textContent = text
+  return block
+}
+
+const fakeSearchMatch = (start: number, end: number, matchIndex: number): SearchMatch => ({
+  blockId: 'b1',
+  end,
+  matchIndex,
+  pageIndex: 0,
+  start,
+})
+
+const searchIndexOf = (mark: Element): string => {
+  if (mark instanceof HTMLElement) {
+    return mark.dataset.searchIndex ?? ''
+  }
+  return ''
+}
+
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
 
-  // DOM 操作系の本体は happy-dom 未導入のためテストしない (DESIGN.md §12 拡張候補参照)。
-  // ロジック検証は core/search.ts 側の findMatchesInText / nextMatchIndex / prevMatchIndex /
-  // formatMatchCount で網羅済み。ここでは module export の health check と
-  // resolveInitialCurrentIndex の境界条件をテストする。
   describe('search module exports', () => {
     it('public API が export されている', () => {
       expect(typeof openSearch).toBe('function')
@@ -522,6 +540,54 @@ if (import.meta.vitest) {
     it('match 1 件以上は 0', () => {
       expect(resolveInitialCurrentIndex(1)).toBe(0)
       expect(resolveInitialCurrentIndex(10)).toBe(0)
+    })
+  })
+
+  describe('wrapMatchInBlock (DOM)', () => {
+    it('単一テキストノード内の match を <mark class="search-hl"> で囲む', () => {
+      const block = buildSearchBlockForTest('Hello world')
+      wrapMatchInBlock(block, fakeSearchMatch(6, 11, 0))
+      const mark = block.querySelector('mark.search-hl')
+      expect(mark).not.toBeNull()
+      expect(mark instanceof HTMLElement && mark.textContent).toBe('world')
+      expect(mark instanceof HTMLElement && mark.dataset.searchIndex).toBe('0')
+    })
+
+    it('範囲が解決できない (block 外の offset) match は no-op で fail-soft', () => {
+      const block = buildSearchBlockForTest('short')
+      expect((): void => wrapMatchInBlock(block, fakeSearchMatch(100, 200, 0))).not.toThrow()
+      expect(block.querySelector('mark.search-hl')).toBeNull()
+    })
+  })
+
+  describe('applyMatchesForBlock (DOM)', () => {
+    it('複数 match を start 降順で wrap し、前方オフセットがずれない', () => {
+      const block = buildSearchBlockForTest('abcdefghij')
+      // 宣言順をシャッフルしても結果は同じ (内部で start 降順 sort)
+      applyMatchesForBlock(block, [fakeSearchMatch(0, 3, 0), fakeSearchMatch(6, 9, 1)])
+      const marks = block.querySelectorAll('mark.search-hl')
+      expect(marks).toHaveLength(2)
+      const byIndex = new Map(
+        [...marks].map((mark): [string, string] => [searchIndexOf(mark), mark.textContent ?? ''])
+      )
+      expect(byIndex.get('0')).toBe('abc')
+      expect(byIndex.get('1')).toBe('ghi')
+    })
+
+    it('既存 <mark class="cmt"> と共存する (search-hl は cmt 内にも貼れる)', () => {
+      const block = document.createElement('p')
+      block.setAttribute('data-block-id', 'b1')
+      // 'abcdefghij' 全体を cmt mark で wrap
+      block.innerHTML = '<mark class="cmt" data-comment-id="c1">abcdefghij</mark>'
+      // cmt 内の 'def' に search-hl を貼る (start=3, end=6)
+      applyMatchesForBlock(block, [fakeSearchMatch(3, 6, 0)])
+      const cmtMark = block.querySelector('mark.cmt')
+      const searchMark = block.querySelector('mark.search-hl')
+      expect(cmtMark).not.toBeNull()
+      expect(searchMark).not.toBeNull()
+      expect(searchMark instanceof HTMLElement && searchMark.textContent).toBe('def')
+      // cmt 全体の textContent は保たれる (textContent ベースで 10 chars のまま)
+      expect(cmtMark instanceof HTMLElement && cmtMark.textContent).toBe('abcdefghij')
     })
   })
 }

@@ -557,3 +557,76 @@ export const renderDoc = (): void => {
   }
   document.documentElement.classList.add('doc-ready')
 }
+
+const buildElementFromHtml = (html: string): HTMLElement => {
+  const element = document.createElement('div')
+  element.innerHTML = html
+  return element
+}
+
+if (import.meta.vitest) {
+  const { describe, expect, it } = import.meta.vitest
+
+  describe('innerHTMLForOriginalCache (動的装飾の焼き込み除外)', () => {
+    it('裸の HTML はそのまま返す (Shiki span 等は保持される想定)', () => {
+      const el = buildElementFromHtml(
+        '<pre class="shiki"><code><span class="line"><span style="color:#abc">x</span></span></code></pre>'
+      )
+      const result = innerHTMLForOriginalCache(el)
+      expect(result).toContain('<pre class="shiki">')
+      expect(result).toContain('style="color:#abc"')
+    })
+
+    it('mark.cmt を unwrap して中身のテキストだけ残す', () => {
+      const el = buildElementFromHtml('Hello <mark class="cmt" data-comment-id="c1">world</mark>!')
+      const result = innerHTMLForOriginalCache(el)
+      expect(result).toBe('Hello world!')
+    })
+
+    it('mark.search-hl を unwrap する', () => {
+      const el = buildElementFromHtml(
+        'see <mark class="search-hl" data-search-index="0">term</mark> here'
+      )
+      const result = innerHTMLForOriginalCache(el)
+      expect(result).toBe('see term here')
+    })
+
+    it('ネスト mark (cmt 内に search-hl) を両方 unwrap する', () => {
+      const el = buildElementFromHtml(
+        'before <mark class="cmt" data-comment-id="c1">a <mark class="search-hl" data-search-index="0">b</mark> c</mark> after'
+      )
+      const result = innerHTMLForOriginalCache(el)
+      expect(result).toBe('before a b c after')
+    })
+
+    it('<div class="code-block-wrap"> を中の <pre> で置き換える (button / lang-label は剥落)', () => {
+      const el = buildElementFromHtml(
+        '<div class="code-block-wrap">' +
+          '<span class="code-lang-label">typescript</span>' +
+          '<pre><code>const x = 1</code></pre>' +
+          '<button class="code-copy-btn"><span>Copy</span></button>' +
+          '</div>'
+      )
+      const result = innerHTMLForOriginalCache(el)
+      expect(result).toContain('<pre>')
+      expect(result).toContain('const x = 1')
+      expect(result).not.toContain('code-block-wrap')
+      expect(result).not.toContain('code-copy-btn')
+    })
+
+    it('mark の unwrap と code-block-wrap の剥離が両立する (合わせ技)', () => {
+      const el = buildElementFromHtml(
+        '<mark class="cmt" data-comment-id="c1">prelude</mark> ' +
+          '<div class="code-block-wrap">' +
+          '<pre><code>code</code></pre>' +
+          '<button class="code-copy-btn"><span>Copy</span></button>' +
+          '</div>'
+      )
+      const result = innerHTMLForOriginalCache(el)
+      expect(result).not.toContain('mark class="cmt"')
+      expect(result).not.toContain('code-block-wrap')
+      expect(result).toContain('prelude')
+      expect(result).toContain('<pre><code>code</code></pre>')
+    })
+  })
+}

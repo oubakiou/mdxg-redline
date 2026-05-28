@@ -396,6 +396,36 @@ export const redrawMermaidForTheme = (docEl: HTMLElement): void => {
   scheduleMermaidUpgrade(docEl)
 }
 
+const buildMermaidPreForTest = (textContent: string): HTMLElement => {
+  const pre = document.createElement('pre')
+  pre.setAttribute(MERMAID_ATTR.code, MERMAID_ATTR_VALUE)
+  pre.textContent = textContent
+  return pre
+}
+
+const buildMermaidBlockForTest = (blockId: string, applied: boolean): HTMLElement => {
+  const block = document.createElement('div')
+  block.setAttribute('data-block-id', blockId)
+  const pre = document.createElement('pre')
+  pre.setAttribute(MERMAID_ATTR.code, MERMAID_ATTR_VALUE)
+  if (applied) {
+    pre.setAttribute(MERMAID_ATTR.applied, MERMAID_ATTR_VALUE)
+  }
+  pre.textContent = 'graph TD'
+  block.appendChild(pre)
+  return block
+}
+
+const wrapInRoot = (block: HTMLElement): HTMLElement => {
+  const root = document.createElement('div')
+  root.appendChild(block)
+  return root
+}
+
+const noopVoid = (): void => {
+  /* noop */
+}
+
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
 
@@ -437,6 +467,90 @@ if (import.meta.vitest) {
     it('skip は変化なし', () => {
       const before = { changedAny: true, failedCount: 3 }
       expect(accumulateUpgradeResult(before, 'skip')).toEqual(before)
+    })
+  })
+
+  describe('shouldSkipUpgrade (idempotency contract)', () => {
+    it('新規 <pre data-mermaid="1"> は upgrade 対象 (skip しない)', () => {
+      const pre = buildMermaidPreForTest('graph TD\nA --> B')
+      expect(shouldSkipUpgrade(pre)).toBe(false)
+    })
+
+    it('data-mermaid-applied="1" は再入防止で skip', () => {
+      const pre = buildMermaidPreForTest('graph TD')
+      pre.dataset.mermaidApplied = '1'
+      expect(shouldSkipUpgrade(pre)).toBe(true)
+    })
+
+    it('data-mermaid-failed="1" は再試行抑止で skip', () => {
+      const pre = buildMermaidPreForTest('graph TD')
+      pre.dataset.mermaidFailed = '1'
+      expect(shouldSkipUpgrade(pre)).toBe(true)
+    })
+
+    it('textContent が空白のみの <pre> は skip', () => {
+      const pre = buildMermaidPreForTest('   \n\n   ')
+      expect(shouldSkipUpgrade(pre)).toBe(true)
+    })
+  })
+
+  describe('upgradeOneMermaidPre (fail-soft)', () => {
+    it('mermaid.render が throw すると "failed" を返し data-mermaid-failed="1" を立てる', async () => {
+      const pre = buildMermaidPreForTest('graph TD')
+      const fakeMermaid: MermaidLike = {
+        initialize: noopVoid,
+        render: async (): Promise<{ svg: string }> => Promise.reject(new Error('parse fail')),
+      }
+      const status = await upgradeOneMermaidPre(pre, fakeMermaid)
+      expect(status).toBe('failed')
+      expect(pre.dataset.mermaidFailed).toBe('1')
+      expect(pre.dataset.mermaidApplied).toBeUndefined()
+    })
+
+    it('SVG パース失敗 (非 <svg> root) は "failed" + data-mermaid-failed="1"', async () => {
+      const pre = buildMermaidPreForTest('graph TD')
+      const fakeMermaid: MermaidLike = {
+        initialize: noopVoid,
+        render: async (): Promise<{ svg: string }> =>
+          Promise.resolve({ svg: '<div>not svg</div>' }),
+      }
+      const status = await upgradeOneMermaidPre(pre, fakeMermaid)
+      expect(status).toBe('failed')
+      expect(pre.dataset.mermaidFailed).toBe('1')
+    })
+
+    it('既に applied=1 の <pre> は render を呼ばず "skip"', async () => {
+      const pre = buildMermaidPreForTest('graph TD')
+      pre.dataset.mermaidApplied = '1'
+      let called = false
+      const fakeMermaid: MermaidLike = {
+        initialize: noopVoid,
+        render: async (): Promise<{ svg: string }> => {
+          called = true
+          return Promise.resolve({ svg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>' })
+        },
+      }
+      const status = await upgradeOneMermaidPre(pre, fakeMermaid)
+      expect(status).toBe('skip')
+      expect(called).toBe(false)
+    })
+  })
+
+  describe('refreshMermaidBlockOriginalHTML (blockOriginalHTML 更新契約)', () => {
+    it('data-mermaid-applied="1" の <pre> 親 block の innerHTML を state.blockOriginalHTML に格納', () => {
+      const block = buildMermaidBlockForTest('b-test', true)
+      const root = wrapInRoot(block)
+      state.blockOriginalHTML.delete('b-test')
+      refreshMermaidBlockOriginalHTML(root)
+      expect(state.blockOriginalHTML.get('b-test')).toBe(block.innerHTML)
+    })
+
+    it('applied 属性なしの <pre> は state を触らない', () => {
+      const block = buildMermaidBlockForTest('b-untouched', false)
+      const root = wrapInRoot(block)
+      state.blockOriginalHTML.delete('b-untouched')
+      refreshMermaidBlockOriginalHTML(root)
+      expect(state.blockOriginalHTML.has('b-untouched')).toBe(false)
     })
   })
 }
