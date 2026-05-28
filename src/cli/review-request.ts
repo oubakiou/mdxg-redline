@@ -88,19 +88,45 @@ if (import.meta.vitest) {
       }
     })
 
-    it('run / clean mode は何もせず false を返す', () => {
+    // RunArgs の必須フィールドは inputPath / open / mode の 3 つ。optional は省略 (parseArgs の
+    // 出力スキーマと同じ minimal な形)。`as ReturnType<typeof parseArgs>` cast を避けることで、
+    // 将来 RunArgs / CleanArgsParsed に必須フィールドが追加されたとき型エラーで気付ける。
+    it('mode=run は何もせず false を返す', () => {
       const handled = handleNonRunModes({
-        commentsWidth: 360,
-        documentName: 'x.md',
         inputPath: 'x.md',
-        mathFonts: 'minimal',
         mode: 'run',
         open: false,
-        outputDir: '.',
-        pageNavWidth: 220,
-        showOpenFile: false,
-      } as ReturnType<typeof parseArgs>)
+      })
       expect(handled).toBe(false)
+    })
+
+    it('mode=clean は何もせず false を返す', () => {
+      const handled = handleNonRunModes({
+        dir: './reviews',
+        keep: new Set<string>(),
+        mode: 'clean',
+        yes: false,
+      })
+      expect(handled).toBe(false)
+    })
+
+    // mode=invalid は process.stderr に書いて process.exit(1) を呼ぶ。
+    // vitest のプロセスが落ちないよう exit / stderr を mock し、副作用を観測する。
+    it('mode=invalid は stderr に書いて process.exit(1) を呼ぶ', () => {
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation((): never => {
+        throw new Error('process.exit called')
+      })
+      try {
+        expect((): void => {
+          handleNonRunModes({ mode: 'invalid' })
+        }).toThrow('process.exit called')
+        expect(exitSpy).toHaveBeenCalledWith(1)
+        expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('invalid arguments'))
+      } finally {
+        stderrSpy.mockRestore()
+        exitSpy.mockRestore()
+      }
     })
   })
 }
