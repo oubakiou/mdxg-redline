@@ -74,7 +74,7 @@ const annotateBlocksWithSourceLine = (
   if (blocks.length !== positions.documentary.length) {
     /* eslint-disable-next-line no-console */
     console.warn(
-      `[doc-renderer] documentary anchor count mismatch: blocks=${blocks.length} positions=${positions.documentary.length}. Page distribution may be off.`
+      `[doc-mount] documentary anchor count mismatch: blocks=${blocks.length} positions=${positions.documentary.length}. Page distribution may be off.`
     )
   }
   const limit = Math.min(blocks.length, positions.documentary.length)
