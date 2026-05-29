@@ -577,7 +577,7 @@ var ALIAS_TO_CANONICAL = {
 	zenscript: "zenscript",
 	zig: "zig",
 	zsh: "shellscript",
-	"文言": "wenyan"
+	文言: "wenyan"
 };
 //#endregion
 //#region src/core/scan-fenced-langs.ts

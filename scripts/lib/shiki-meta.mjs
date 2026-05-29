@@ -76,11 +76,12 @@ export const buildAliasMap = (canonicals) => {
   return aliasMap
 }
 
-// vp の fmt が prefer single-quote / no-semi で、かつ object key は有効な JS 識別子なら
-// quote なし、そうでなければ quote 付き ('c++' など) に揃える。SPEC_LANGS / Shiki aliases は
-// ASCII の言語識別子しか含まないため、文字列値側はエスケープ不要 (バックスラッシュやシングル
-// クォートは出現しない)。
-const VALID_JS_IDENTIFIER_RE = /^[a-z_$][\w$]*$/iu
+// vp の fmt が prefer single-quote / no-semi で、かつ object key が有効な JS 識別子なら
+// quote なし、そうでなければ quote 付き ('c++' など) に揃える。formatter (quoteProps: asNeeded)
+// は Unicode 識別子 (例: 文言) からも quote を外すため、ここも ASCII ではなく Unicode の
+// ID_Start / ID_Continue で判定しないと生成直後の出力が lint で再整形され差分が出る。
+// 文字列値側は ASCII 言語識別子のみでエスケープ不要 (バックスラッシュ / シングルクォート非出現)。
+const VALID_JS_IDENTIFIER_RE = /^[\p{ID_Start}$_][\p{ID_Continue}$]*$/u
 const formatStringValue = (value) => `'${value}'`
 const formatObjectKey = (key) => {
   if (VALID_JS_IDENTIFIER_RE.test(key)) {
