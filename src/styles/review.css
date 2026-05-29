@@ -1286,23 +1286,67 @@ mark.search-hl.search-hl-current {
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: auto;
-  padding: 8px 12px;
+  /* pan/zoom は transform で動かすため、はみ出しはスクロールでなくクリップする。padding 0 で
+     SVG の layout 原点を body 左上に一致させ、カーソル基点ズームの座標計算 (computeZoomTransform)
+     を単純化する。touch-action: none でブラウザのスクロール/ピンチ既定動作を無効化する。
+     user-select: none は pan ドラッグ時に図内テキストが範囲選択されるのを防ぐ
+     (拡大モーダルは閲覧専用でテキスト選択は不要)。 */
+  overflow: hidden;
+  padding: 0;
   min-height: 0;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 .mermaid-modal-body svg {
-  /* モーダル body いっぱいに広げ、SVG viewBox の既定 preserveAspectRatio="xMidYMid meet" で
-     縦横比を保って最大表示する。これにより図全体（文字含む）が比例拡大される。inline の
+  /* 初期表示は body いっぱいに広げ、SVG viewBox の既定 preserveAspectRatio="xMidYMid meet" で
+     縦横比を保って最大表示する（図全体・文字が比例拡大）。その上に JS が transform
+     (translate + scale) でホイールズーム/ドラッグ pan を載せる。inline の
      `max-width: <自然幅>px` は fillModalBody が JS で剥がす（残ると拡大が頭打ちになる）。 */
   width: 100%;
   height: 100%;
-  /* 拡大モーダル内はこれ以上ズーム先が無いため通常カーソルに戻す（複製に残る inline
-     `cursor: zoom-in` も fillModalBody が剥がす）。 */
-  cursor: default;
+  cursor: grab;
+}
+.mermaid-modal-body.dragging svg {
+  cursor: grabbing;
 }
 .modal-header {
   padding: 16px 24px;
   border-bottom: 1px solid var(--rule);
+}
+.modal-mermaid .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.modal-zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.modal-zoom-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 4px;
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+.modal-zoom-hint-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.modal-zoom-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .modal-title {
   margin: 0;

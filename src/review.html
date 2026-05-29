@@ -497,6 +497,39 @@
       >
         <header class="modal-header">
           <h2 class="modal-title" id="mermaid-modal-title">Diagram</h2>
+          <div class="modal-zoom-controls">
+            <span class="modal-zoom-hint" aria-hidden="true">
+              <svg
+                class="modal-zoom-hint-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="6" y="3" width="12" height="18" rx="6" />
+                <line x1="12" y1="7" x2="12" y2="11" />
+              </svg>
+              Scroll to zoom &middot; drag to pan
+            </span>
+            <button
+              type="button"
+              class="btn modal-zoom-btn"
+              id="mermaid-modal-zoom-out"
+              aria-label="Zoom out"
+            >
+              &minus;
+            </button>
+            <button
+              type="button"
+              class="btn modal-zoom-btn"
+              id="mermaid-modal-zoom-in"
+              aria-label="Zoom in"
+            >
+              +
+            </button>
+          </div>
         </header>
         <div class="modal-body mermaid-modal-body" id="mermaid-modal-body"></div>
         <footer class="modal-actions">
