@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { marked } from "marked";
-import { readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
+import process$1 from "node:process";
+import { readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
-import process$1 from "node:process";
 import { createReadStream } from "node:fs";
 import { createServer } from "node:http";
 //#region src/core/shiki-aliases.generated.ts
@@ -618,16 +618,12 @@ var scanFencedLangs = (markdown) => {
 	walkTokens$1(marked.lexer(markdown), acc);
 	return acc;
 };
-//#endregion
-//#region src/cli/parse-args.ts
-var NO_OPEN_FLAG = "--no-open";
 var HELP_FLAGS = new Set(["--help", "-h"]);
 var DOCUMENT_NAME_FLAG = "--document-name";
 var THEME_FLAG = "--theme";
 var SHIKI_LANGS_FLAG = "--shiki-langs";
 var COMMENTS_WIDTH_FLAG = "--comments-width";
 var PAGE_NAV_WIDTH_FLAG = "--page-nav-width";
-var SHOW_OPEN_FILE_FLAG = "--show-open-file";
 var MERMAID_FLAG = "--mermaid";
 var MATH_FLAG = "--math";
 var MATH_FONTS_FLAG = "--math-fonts";
@@ -635,6 +631,7 @@ var MARKDOWN_CSS_FLAG = "--markdown-css";
 var CLEAN_FLAG = "--clean";
 var YES_FLAG = "--yes";
 var KEEP_FLAG = "--keep";
+var RECURSIVE_FLAG = "--recursive";
 var HEX_16_PATTERN = /^[0-9a-f]{16}$/i;
 var THEME_VALUES = [
 	"system",
@@ -701,8 +698,7 @@ var parseMathValue = (value) => parseMermaidValue(value);
 var MATH_FONTS_VALUES = ["minimal", "all"];
 var isMathFontsMode = (value) => MATH_FONTS_VALUES.includes(value);
 /**
-* `--math-fonts` の値を MathFontsMode にパースする。pure な関数で、CLI 引数パースと
-* 単体テストの両方から再利用する。未知の値・空文字は null を返し、CLI 側で invalid 扱い。
+* `--math-fonts` の値を MathFontsMode にパースする。pure。
 */
 var parseMathFontsValue = (value) => {
 	const trimmed = value.trim();
@@ -728,10 +724,12 @@ var parseShikiLangsList = (trimmed) => {
 	};
 };
 /**
-* `--shiki-langs` の値を ShikiLangsMode にパースする。pure な関数で、CLI 引数パースと
-* 単体テストの両方から再利用する。空白だけ / 未サポートのみは空 list (= none と等価) を返す。
+* `--shiki-langs` の値を ShikiLangsMode にパースする。pure。
+* 空白だけ / 未サポートのみは空 list (= none と等価) を返す。
 */
 var parseShikiLangsValue = (value) => parseShikiLangsKeyword(value.trim()) ?? parseShikiLangsList(value.trim());
+//#endregion
+//#region src/cli/help-text.ts
 var HELP_TEXT = `Usage: mdxg-redline [options] <input.md|-> [output-dir]
 
 Generate a review-request HTML with the markdown embedded and open it in
@@ -825,14 +823,17 @@ Options:
                          other arguments and flags when present.
 
 Cleanup mode:
-  --clean <dir>          Remove all *-<docHash>-review.html and
+  --clean [dir]          Remove all *-<docHash>-review.html and
                          *-<docHash>-feedback.json files in <dir> (top level
-                         only). By default runs in dry-run mode and only
+                         only). <dir> defaults to the current directory when
+                         omitted. By default runs in dry-run mode and only
                          prints the candidates; pass --yes to actually delete.
   --yes                  With --clean, perform deletion (no prompt). Without
                          --yes, --clean is dry-run.
   --keep <docHash>       With --clean, preserve files whose 16-hex docHash
                          matches. May be repeated.
+  -r, --recursive        With --clean, also descend into subdirectories
+                         (default: top level only).
 
 Examples:
   mdxg-redline spec.md
@@ -840,29 +841,29 @@ Examples:
   mdxg-redline --no-open spec.md
   mdxg-redline --theme dark spec.md
   cat spec.md | mdxg-redline - --document-name spec.md
+  mdxg-redline --clean
   mdxg-redline --clean ./reviews
   mdxg-redline --clean ./reviews --yes
   mdxg-redline --clean ./reviews --keep a1b2c3d4e5f6a7b8 --yes
+  mdxg-redline --clean ./reviews --recursive --yes
 `;
+//#endregion
+//#region src/cli/parse-args.ts
 var INITIAL_CLEAN_STATE = {
+	cleanSeen: false,
 	dir: null,
 	keep: /* @__PURE__ */ new Set(),
 	pendingDir: false,
 	pendingKeep: false,
+	recursive: false,
 	valid: true,
 	yes: false
 };
-var consumeCleanDirValue = (acc, token) => {
-	if (token.startsWith("--")) return {
-		...acc,
-		valid: false
-	};
-	return {
-		...acc,
-		dir: token,
-		pendingDir: false
-	};
-};
+var consumeCleanDirValue = (acc, token) => ({
+	...acc,
+	dir: token,
+	pendingDir: false
+});
 var consumeCleanKeepValue = (acc, token) => {
 	if (!HEX_16_PATTERN.test(token)) return {
 		...acc,
@@ -877,12 +878,13 @@ var consumeCleanKeepValue = (acc, token) => {
 	};
 };
 var markCleanFlag = (acc) => {
-	if (acc.dir !== null || acc.pendingDir) return {
+	if (acc.cleanSeen) return {
 		...acc,
 		valid: false
 	};
 	return {
 		...acc,
+		cleanSeen: true,
 		pendingDir: true
 	};
 };
@@ -904,12 +906,24 @@ var CLEAN_FLAG_TABLE = [
 			...acc,
 			yes: true
 		})
+	},
+	{
+		flag: RECURSIVE_FLAG,
+		mark: (acc) => ({
+			...acc,
+			recursive: true
+		})
+	},
+	{
+		flag: "-r",
+		mark: (acc) => ({
+			...acc,
+			recursive: true
+		})
 	}
 ];
-var stepCleanArg = (acc, token) => {
-	if (!acc.valid) return acc;
-	if (acc.pendingDir) return consumeCleanDirValue(acc, token);
-	if (acc.pendingKeep) return consumeCleanKeepValue(acc, token);
+var isCleanFlagToken = (token) => CLEAN_FLAG_TABLE.some((row) => row.flag === token);
+var consumeCleanFlag = (acc, token) => {
 	const entry = CLEAN_FLAG_TABLE.find((row) => row.flag === token);
 	if (!entry) return {
 		...acc,
@@ -917,13 +931,26 @@ var stepCleanArg = (acc, token) => {
 	};
 	return entry.mark(acc);
 };
+var stepCleanArg = (acc, token) => {
+	if (!acc.valid) return acc;
+	if (acc.pendingDir) {
+		if (token.startsWith("--") || isCleanFlagToken(token)) return stepCleanArg({
+			...acc,
+			pendingDir: false
+		}, token);
+		return consumeCleanDirValue(acc, token);
+	}
+	if (acc.pendingKeep) return consumeCleanKeepValue(acc, token);
+	return consumeCleanFlag(acc, token);
+};
 var parseCleanArgs = (argv) => {
 	const state = argv.reduce(stepCleanArg, INITIAL_CLEAN_STATE);
-	if (!state.valid || state.pendingDir || state.pendingKeep || state.dir === null) return { mode: "invalid" };
+	if (!state.valid || state.pendingKeep) return { mode: "invalid" };
 	return {
-		dir: state.dir,
+		dir: state.dir ?? ".",
 		keep: state.keep,
 		mode: "clean",
+		recursive: state.recursive,
 		yes: state.yes
 	};
 };
@@ -1076,11 +1103,11 @@ var consumePageNavWidthValue = (acc, token) => {
 	};
 };
 var consumeStandaloneFlag = (acc, token) => {
-	if (token === NO_OPEN_FLAG) return {
+	if (token === "--no-open") return {
 		...acc,
 		open: false
 	};
-	if (token === SHOW_OPEN_FILE_FLAG) return {
+	if (token === "--show-open-file") return {
 		...acc,
 		showOpenFile: true
 	};
@@ -1293,7 +1320,7 @@ var parseRunArgs = (argv) => {
 var parseArgs = (argv) => {
 	if (argv.length === 0) return { mode: "help" };
 	if (argv.some((token) => HELP_FLAGS.has(token))) return { mode: "help" };
-	if (argv.includes(CLEAN_FLAG)) return parseCleanArgs(argv);
+	if (argv.includes("--clean")) return parseCleanArgs(argv);
 	return parseRunArgs(argv);
 };
 var sanitizeMdFileName = (name) => {
@@ -1302,6 +1329,55 @@ var sanitizeMdFileName = (name) => {
 	if (/^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$/i.test(cleaned)) return `${cleaned}_`;
 	return cleaned;
 };
+//#endregion
+//#region src/core/embed/hash.ts
+/**
+* markdown 本文の SHA-256 を計算し、先頭 8 バイトを 16 文字の hex 文字列で返す。
+* docHash としてファイル命名規約 (`<mdFileName>-<docHash>-...`) や
+* Workspace の差分検知に使う。CLI とブラウザの双方からこの関数を直接呼ぶことで、
+* docHash の計算結果がプロセスを跨いで一致することを保証する。
+*/
+var computeDocHash = async (markdown) => {
+	const buf = new TextEncoder().encode(markdown);
+	const hash = await crypto.subtle.digest("SHA-256", buf);
+	return [...new Uint8Array(hash)].slice(0, 8).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+};
+//#endregion
+//#region src/core/embed/names.ts
+/**
+* MD ファイル名から `.md` / `.markdown` 拡張子を除いた basename を返す。
+* 大文字小文字無視。拡張子が無いファイル名はそのまま返す。
+* ファイル命名規約 §8 の `mdFileName` 部分を組み立てるベース。
+*/
+var stripMarkdownExt = (filename) => filename.replace(/\.(?:markdown|md)$/i, "");
+/** ファイル命名規約 §8 に従って配布用 HTML のファイル名を組み立てる */
+var deriveReviewHtmlName = (mdFileName, docHash) => `${mdFileName}-${docHash}-review.html`;
+//#endregion
+//#region src/core/embed/script-encoding.ts
+var escapeJsonForScriptTag = (jsonString) => jsonString.replace(/</g, String.raw`\u003C`);
+/**
+* markdown 本文を `<script id="embedded-md">` に埋め込み可能な JSON 文字列にエンコードする。
+* 復元は `JSON.parse` のみで完結する。
+*/
+var encodeEmbeddedMarkdown = (markdown) => escapeJsonForScriptTag(JSON.stringify(markdown));
+/**
+* Shiki grammar の集合を `<script id="embedded-shiki-langs">` に埋め込み可能な JSON 文字列に
+* エンコードする。grammars は `{ <canonical>: LanguageRegistration[] }` 形式の plain object で、
+* 復元側 (browser) は `JSON.parse` した後 createHighlighterCoreSync の `langs` に値を渡す。
+*/
+var encodeEmbeddedShikiLangs = (grammars) => escapeJsonForScriptTag(JSON.stringify(grammars));
+var escapeScriptTagInJs = (jsSource) => {
+	let count = 0;
+	const escaped = jsSource.replace(/<\/script>/gi, () => {
+		count += 1;
+		return String.raw`<\/script>`;
+	});
+	return {
+		count,
+		escaped
+	};
+};
+var escapeStyleTagInCss$1 = (cssSource) => cssSource.replace(/<\/style>/gi, String.raw`<\/style>`);
 //#endregion
 //#region src/core/escape.ts
 var REPLACEMENTS = {
@@ -1316,7 +1392,7 @@ var escapeHtml = (value) => value.replace(/[&<>"']/g, (ch) => REPLACEMENTS[ch] |
 //#region src/build/inline-markdown-css.ts
 var MARKDOWN_CSS_RE = /(<style\b(?=[^>]*\bid="markdown-css")[^>]*>)([\s\S]*?)(<\/style>)/i;
 var maskHtmlComments = (html) => html.replace(/<!--[\s\S]*?-->/g, (match) => " ".repeat(match.length));
-var escapeStyleTagInCss$1 = (cssSource) => cssSource.replace(/<\/style>/gi, String.raw`<\/style>`);
+var escapeStyleTagInCss = (cssSource) => cssSource.replace(/<\/style>/gi, String.raw`<\/style>`);
 /**
 * `<style id="markdown-css">` の中身を `css` で書き換えた新しい HTML 文字列を返す。
 * 元文字列は変更しない。該当 `<style>` タグが無ければ Error を投げる
@@ -1327,43 +1403,13 @@ var inlineMarkdownCssIntoHtml = (html, css) => {
 	const match = MARKDOWN_CSS_RE.exec(masked);
 	if (!match) throw new Error("template HTML に id=\"markdown-css\" の <style> タグが見つかりません");
 	const [fullMatch, openingTag, , closingTag] = match;
-	const replaced = `${openingTag}${escapeStyleTagInCss$1(css)}${closingTag}`;
+	const replaced = `${openingTag}${escapeStyleTagInCss(css)}${closingTag}`;
 	return html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length);
 };
 //#endregion
-//#region src/core/embed.ts
-/**
-* markdown 本文の SHA-256 を計算し、先頭 8 バイトを 16 文字の hex 文字列で返す。
-* docHash としてファイル命名規約 (`<mdFileName>-<docHash>-...`) や
-* Workspace の差分検知に使う。CLI とブラウザの双方からこの関数を直接呼ぶことで、
-* docHash の計算結果がプロセスを跨いで一致することを保証する。
-*/
-var computeDocHash = async (markdown) => {
-	const buf = new TextEncoder().encode(markdown);
-	const hash = await crypto.subtle.digest("SHA-256", buf);
-	return [...new Uint8Array(hash)].slice(0, 8).map((byte) => byte.toString(16).padStart(2, "0")).join("");
-};
-/**
-* MD ファイル名から `.md` / `.markdown` 拡張子を除いた basename を返す。
-* 大文字小文字無視。拡張子が無いファイル名はそのまま返す。
-* ファイル命名規約 §8 の `mdFileName` 部分を組み立てるベース。
-*/
-var stripMarkdownExt = (filename) => filename.replace(/\.(?:markdown|md)$/i, "");
-/** ファイル命名規約 §8 に従って配布用 HTML のファイル名を組み立てる */
-var deriveReviewHtmlName = (mdFileName, docHash) => `${mdFileName}-${docHash}-review.html`;
-var escapeJsonForScriptTag = (jsonString) => jsonString.replace(/</g, String.raw`\u003C`);
-/**
-* markdown 本文を `<script id="embedded-md">` に埋め込み可能な JSON 文字列にエンコードする。
-* 復元は `JSON.parse` のみで完結する。
-*/
-var encodeEmbeddedMarkdown = (markdown) => escapeJsonForScriptTag(JSON.stringify(markdown));
-/**
-* Shiki grammar の集合を `<script id="embedded-shiki-langs">` に埋め込み可能な JSON 文字列に
-* エンコードする。grammars は `{ <canonical>: LanguageRegistration[] }` 形式の plain object で、
-* 復元側 (browser) は `JSON.parse` した後 createHighlighterCoreSync の `langs` に値を渡す。
-*/
-var encodeEmbeddedShikiLangs = (grammars) => escapeJsonForScriptTag(JSON.stringify(grammars));
+//#region src/core/embed/html-rewrite.ts
 var EMBEDDED_MD_RE = /(<script\b(?=[^>]*\bid="embedded-md")(?=[^>]*\btype="text\/markdown")[^>]*>)([\s\S]*?)(<\/script>)/i;
+var EMBEDDED_SHIKI_LANGS_RE = /(<script\b(?=[^>]*\bid="embedded-shiki-langs")(?=[^>]*\btype="application\/json")[^>]*>)([\s\S]*?)(<\/script>)/i;
 var STATUS_SPAN_RE = /(<span\b(?=[^>]*\bid="status")[^>]*>)([\s\S]*?)(<\/span>)/i;
 var HEAD_OPEN_RE = /<head\b[^>]*>/i;
 var EMBEDDED_MD_META_RE = /\s*<meta\b[^>]*\bname="mdxg-redline:embedded-md"[^>]*\/?>/i;
@@ -1394,93 +1440,6 @@ var upsertEmbeddedMdMeta = (reviewHtml) => {
 	if (!headMatch) throw new Error("template HTML に <head> タグが見つかりません");
 	const insertPos = headMatch.index + headMatch[0].length;
 	return cleaned.slice(0, insertPos) + "\n    <meta name=\"mdxg-redline:embedded-md\" content=\"1\" />" + cleaned.slice(insertPos);
-};
-var EMBEDDED_SHIKI_LANGS_RE = /(<script\b(?=[^>]*\bid="embedded-shiki-langs")(?=[^>]*\btype="application\/json")[^>]*>)([\s\S]*?)(<\/script>)/i;
-var EMBEDDED_MERMAID_RE = /(<script\b(?=[^>]*\bid="embedded-mermaid")(?=[^>]*\btype="module")[^>]*>)([\s\S]*?)(<\/script>)/i;
-var escapeScriptTagInJs = (jsSource) => {
-	let count = 0;
-	const escaped = jsSource.replace(/<\/script>/gi, () => {
-		count += 1;
-		return String.raw`<\/script>`;
-	});
-	return {
-		count,
-		escaped
-	};
-};
-/**
-* `<script id="embedded-mermaid" type="module">` の中身を Mermaid ESM runtime で書き換える。
-* runtime は `dist/mermaid.mjs` の文字列を想定しており、bridge コード
-* (`globalThis.__mdxgMermaid = mermaid; document.dispatchEvent(...)`) は entry 側に含まれているため
-* ここでは追加しない。書き込み時に literal `<\/script>` を `<\/script>` に escape する。
-*
-* 戻り値の `escapedScriptCount` は CLI が stderr に「N 件 escape した」を報告する用 (運用上 0 件が
-* 普通だが、Mermaid version up でエラーメッセージ等に混入する可能性をゼロにしないため可視化する)。
-*
-* - `runtime` が空文字なら script タグの中身を空のまま残す (注入しない場合の no-op 経路)
-* - 該当タグが無ければ Error を投げる
-*/
-var rewriteEmbeddedMermaid = (reviewHtml, runtime) => {
-	const match = EMBEDDED_MERMAID_RE.exec(reviewHtml);
-	if (!match) throw new Error("template HTML に id=\"embedded-mermaid\" の <script> タグが見つかりません");
-	const [fullMatch, openingTag, , closingTag] = match;
-	const { count, escaped } = escapeScriptTagInJs(runtime);
-	const replaced = `${openingTag}${escaped}${closingTag}`;
-	return {
-		escapedScriptCount: count,
-		html: reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length)
-	};
-};
-var EMBEDDED_KATEX_JS_RE = /(<script\b(?=[^>]*\bid="embedded-katex")(?=[^>]*\btype="module")[^>]*>)([\s\S]*?)(<\/script>)/i;
-var EMBEDDED_KATEX_CSS_RE = /(<style\b(?=[^>]*\bid="embedded-katex-css")[^>]*>)([\s\S]*?)(<\/style>)/i;
-var EMBEDDED_KATEX_FONTS_EXTRA_CSS_RE = /(<style\b(?=[^>]*\bid="embedded-katex-fonts-extra-css")[^>]*>)([\s\S]*?)(<\/style>)/i;
-var escapeStyleTagInCss = (cssSource) => cssSource.replace(/<\/style>/gi, String.raw`<\/style>`);
-var rewriteStyleBlock = (html, css, target) => {
-	const match = target.re.exec(html);
-	if (!match) throw new Error(`template HTML に id="${target.blockId}" の <style> タグが見つかりません`);
-	const [fullMatch, openingTag, , closingTag] = match;
-	const replaced = `${openingTag}${escapeStyleTagInCss(css)}${closingTag}`;
-	return html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length);
-};
-var rewriteKatexJs = (html, js) => {
-	const match = EMBEDDED_KATEX_JS_RE.exec(html);
-	if (!match) throw new Error("template HTML に id=\"embedded-katex\" の <script> タグが見つかりません");
-	const [fullMatch, openingTag, , closingTag] = match;
-	const { count, escaped } = escapeScriptTagInJs(js);
-	const replaced = `${openingTag}${escaped}${closingTag}`;
-	return {
-		escapedScriptCount: count,
-		html: html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length)
-	};
-};
-/**
-* `<script id="embedded-katex" type="module">` / `<style id="embedded-katex-css">` /
-* `<style id="embedded-katex-fonts-extra-css">` の 3 ブロックを KaTeX runtime / CSS で
-* 書き換える (Mermaid と完全に対称、docs/mdxg-math-rendering.archive.md §3.2 / §5.l)。
-*
-* - `assets.fontsExtraCss` が undefined のとき (CLI `--math-fonts minimal` 既定) は
-*   fonts-extra ブロックには触らず空のまま残す。standalone build は vite.config.ts 側で
-*   全 family を inline する別経路を持つ
-* - 該当タグが無ければ Error を投げる
-* - `escapedScriptCount` は `js` 内の literal `<\/script>` 件数を返す (CLI が stderr 報告用)
-*/
-var rewriteEmbeddedKatex = (reviewHtml, assets) => {
-	const { escapedScriptCount, html: withJs } = rewriteKatexJs(reviewHtml, assets.js);
-	const withMinimal = rewriteStyleBlock(withJs, assets.minimalCss, {
-		blockId: "embedded-katex-css",
-		re: EMBEDDED_KATEX_CSS_RE
-	});
-	if (typeof assets.fontsExtraCss !== "string") return {
-		escapedScriptCount,
-		html: withMinimal
-	};
-	return {
-		escapedScriptCount,
-		html: rewriteStyleBlock(withMinimal, assets.fontsExtraCss, {
-			blockId: "embedded-katex-fonts-extra-css",
-			re: EMBEDDED_KATEX_FONTS_EXTRA_CSS_RE
-		})
-	};
 };
 var DATA_NAME_RE = /\bdata-name="[^"]*"/;
 var HTML_TAG_RE = /<html\b[^>]*>/i;
@@ -1611,86 +1570,80 @@ var rewriteReviewHtml = (reviewHtml, markdown, docName) => {
 	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
 };
 //#endregion
-//#region src/cli/clean.ts
+//#region src/core/embed/runtime-assets.ts
+var EMBEDDED_MERMAID_RE = /(<script\b(?=[^>]*\bid="embedded-mermaid")(?=[^>]*\btype="module")[^>]*>)([\s\S]*?)(<\/script>)/i;
+var EMBEDDED_KATEX_JS_RE = /(<script\b(?=[^>]*\bid="embedded-katex")(?=[^>]*\btype="module")[^>]*>)([\s\S]*?)(<\/script>)/i;
+var EMBEDDED_KATEX_CSS_RE = /(<style\b(?=[^>]*\bid="embedded-katex-css")[^>]*>)([\s\S]*?)(<\/style>)/i;
+var EMBEDDED_KATEX_FONTS_EXTRA_CSS_RE = /(<style\b(?=[^>]*\bid="embedded-katex-fonts-extra-css")[^>]*>)([\s\S]*?)(<\/style>)/i;
 /**
-* `<mdFileName>-<16桁hex>-(review.html|feedback.json)` 形式のファイル名を識別する正規表現。
-* 大小無視は parseReviewMdFilename 削除前の挙動と整合させるための保険で、CLI 自体は
-* 小文字 hex で出力するため通常は小文字でマッチする。
+* `<script id="embedded-mermaid" type="module">` の中身を Mermaid ESM runtime で書き換える。
+* runtime は `dist/mermaid.mjs` の文字列を想定しており、bridge コード
+* (`globalThis.__mdxgMermaid = mermaid; document.dispatchEvent(...)`) は entry 側に含まれているため
+* ここでは追加しない。書き込み時に literal `<\/script>` を `<\/script>` に escape する。
+*
+* 戻り値の `escapedScriptCount` は CLI が stderr に「N 件 escape した」を報告する用 (運用上 0 件が
+* 普通だが、Mermaid version up でエラーメッセージ等に混入する可能性をゼロにしないため可視化する)。
+*
+* - `runtime` が空文字なら script タグの中身を空のまま残す (注入しない場合の no-op 経路)
+* - 該当タグが無ければ Error を投げる
 */
-var REVIEW_ARTIFACT_PATTERN = /^(.+)-([0-9a-f]{16})-(review\.html|feedback\.json)$/i;
-var matchEntry = (filename) => {
-	const match = REVIEW_ARTIFACT_PATTERN.exec(filename);
-	if (!match) return null;
-	const [, mdFileName, hash, suffix] = match;
-	if (suffix !== "review.html" && suffix !== "feedback.json") return null;
+var rewriteEmbeddedMermaid = (reviewHtml, runtime) => {
+	const match = EMBEDDED_MERMAID_RE.exec(reviewHtml);
+	if (!match) throw new Error("template HTML に id=\"embedded-mermaid\" の <script> タグが見つかりません");
+	const [fullMatch, openingTag, , closingTag] = match;
+	const { count, escaped } = escapeScriptTagInJs(runtime);
+	const replaced = `${openingTag}${escaped}${closingTag}`;
 	return {
-		docHash: hash.toLowerCase(),
-		filename,
-		mdFileName,
-		suffix
+		escapedScriptCount: count,
+		html: reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length)
+	};
+};
+var rewriteStyleBlock = (html, css, target) => {
+	const match = target.re.exec(html);
+	if (!match) throw new Error(`template HTML に id="${target.blockId}" の <style> タグが見つかりません`);
+	const [fullMatch, openingTag, , closingTag] = match;
+	const replaced = `${openingTag}${escapeStyleTagInCss$1(css)}${closingTag}`;
+	return html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length);
+};
+var rewriteKatexJs = (html, js) => {
+	const match = EMBEDDED_KATEX_JS_RE.exec(html);
+	if (!match) throw new Error("template HTML に id=\"embedded-katex\" の <script> タグが見つかりません");
+	const [fullMatch, openingTag, , closingTag] = match;
+	const { count, escaped } = escapeScriptTagInJs(js);
+	const replaced = `${openingTag}${escaped}${closingTag}`;
+	return {
+		escapedScriptCount: count,
+		html: html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length)
 	};
 };
 /**
-* ファイル名列を「削除候補 / `--keep` で温存 / 規約外で skip」の 3 つに振り分ける pure 関数。
-* I/O を持たないため in-source test で全分岐を網羅する。
+* `<script id="embedded-katex" type="module">` / `<style id="embedded-katex-css">` /
+* `<style id="embedded-katex-fonts-extra-css">` の 3 ブロックを KaTeX runtime / CSS で
+* 書き換える (Mermaid と完全に対称、docs/mdxg-math-rendering.archive.md §3.2 / §5.l)。
+*
+* - `assets.fontsExtraCss` が undefined のとき (CLI `--math-fonts minimal` 既定) は
+*   fonts-extra ブロックには触らず空のまま残す。standalone build は vite.config.ts 側で
+*   全 family を inline する別経路を持つ
+* - 該当タグが無ければ Error を投げる
+* - `escapedScriptCount` は `js` 内の literal `<\/script>` 件数を返す (CLI が stderr 報告用)
 */
-var classifyEntries = (filenames, keepHashes) => {
-	const matched = filenames.map((filename) => matchEntry(filename)).filter((entry) => entry !== null);
-	const skipped = filenames.filter((filename) => matchEntry(filename) === null);
-	const toDelete = matched.filter((entry) => !keepHashes.has(entry.docHash));
-	return {
-		kept: matched.filter((entry) => keepHashes.has(entry.docHash)),
-		skipped,
-		toDelete
+var rewriteEmbeddedKatex = (reviewHtml, assets) => {
+	const { escapedScriptCount, html: withJs } = rewriteKatexJs(reviewHtml, assets.js);
+	const withMinimal = rewriteStyleBlock(withJs, assets.minimalCss, {
+		blockId: "embedded-katex-css",
+		re: EMBEDDED_KATEX_CSS_RE
+	});
+	if (typeof assets.fontsExtraCss !== "string") return {
+		escapedScriptCount,
+		html: withMinimal
 	};
-};
-var formatEntryLines = (header, entries) => {
-	if (entries.length === 0) return [];
-	return [header, ...entries.map((entry) => `  ${entry.filename}`)];
-};
-var formatDryRun = (dir, result) => {
-	if (result.toDelete.length === 0 && result.kept.length === 0) return `No review/feedback artifacts found in ${dir}.\n`;
-	const deleteLines = formatEntryLines(`[dry-run] Would delete ${result.toDelete.length} file(s) in ${dir}:`, result.toDelete);
-	const keepLines = formatEntryLines(`Kept ${result.kept.length} file(s) matching --keep:`, result.kept);
-	return `${[
-		...deleteLines,
-		...keepLines,
-		`Run with --yes to delete.`
-	].join("\n")}\n`;
-};
-var formatDeleted = (dir, deleted, kept) => {
-	if (deleted === 0 && kept === 0) return `No review/feedback artifacts found in ${dir}.\n`;
-	const head = `Deleted ${deleted} file(s) in ${dir}.\n`;
-	if (kept === 0) return head;
-	return `${head}Kept ${kept} file(s) matching --keep.\n`;
-};
-var deleteEntries = async (dir, entries, io) => {
-	await Promise.all(entries.map(async (entry) => io.unlink(resolve(dir, entry.filename))));
-};
-/**
-* `--clean` の実行エントリ。CLI 経由でも他テスト経路でも使えるよう、I/O は引数で受け取る。
-* 戻り値は process exit code 相当 (0 = success, 1 = failure)。
-*/
-var runClean = async (args, io) => {
-	const dirAbs = resolve(args.dir);
-	const result = classifyEntries(await io.readdir(dirAbs), args.keep);
-	if (!args.yes) {
-		io.stdout(formatDryRun(dirAbs, result));
-		return 0;
-	}
-	await deleteEntries(dirAbs, result.toDelete, io);
-	io.stdout(formatDeleted(dirAbs, result.toDelete.length, result.kept.length));
-	return 0;
-};
-var defaultCleanIo = {
-	readdir: async (path) => readdir(path),
-	stderr: (text) => {
-		process.stderr.write(text);
-	},
-	stdout: (text) => {
-		process.stdout.write(text);
-	},
-	unlink: async (path) => unlink(path)
+	return {
+		escapedScriptCount,
+		html: rewriteStyleBlock(withMinimal, assets.fontsExtraCss, {
+			blockId: "embedded-katex-fonts-extra-css",
+			re: EMBEDDED_KATEX_FONTS_EXTRA_CSS_RE
+		})
+	};
 };
 //#endregion
 //#region src/core/math.ts
@@ -1831,6 +1784,339 @@ var countMath = (markdown) => {
 	return counts;
 };
 //#endregion
+//#region src/cli/assets/katex.ts
+/**
+* `--math` mode と markdown 内容から KaTeX runtime を注入すべきか判定する pure 関数
+* (Mermaid と完全に対称、docs/mdxg-math-rendering.archive.md §3.2 / §5.e)。
+* - mode 未指定 / `auto`: countMath で inline + display > 0 のときのみ true
+* - `on`: 常に true
+* - `off`: 常に false
+*/
+var shouldInjectKatex = (mode, markdown) => {
+	if (mode === "off") return false;
+	if (mode === "on") return true;
+	const counts = countMath(markdown);
+	return counts.inline + counts.display > 0;
+};
+var readKatexAsset = async (path) => {
+	try {
+		return await readFile(path, "utf8");
+	} catch (error) {
+		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(`${path} が見つかりません。先に \`npm run build\` を実行して dist/katex/ を生成してください。`, { cause: error });
+		throw error;
+	}
+};
+var MATH_SIZE_HINT = {
+	all: "+~340 KB",
+	minimal: "+~250 KB"
+};
+var readKatexAssets = async (scriptDir, fontsMode) => {
+	const [js, minimalCss] = await Promise.all([readKatexAsset(resolve(scriptDir, "katex", "katex.mjs")), readKatexAsset(resolve(scriptDir, "katex", "katex.css"))]);
+	const sizeHintGzip = MATH_SIZE_HINT[fontsMode];
+	if (fontsMode === "minimal") return {
+		js,
+		minimalCss,
+		sizeHintGzip
+	};
+	return {
+		fontsExtraCss: await readKatexAsset(resolve(scriptDir, "katex", "katex-fonts-extra.css")),
+		js,
+		minimalCss,
+		sizeHintGzip
+	};
+};
+var reportKatexInjection = (report) => {
+	const counts = countMath(report.markdown);
+	const total = counts.inline + counts.display;
+	process$1.stderr.write(`Detected ${total} math expression(s). Embedding KaTeX runtime (fonts=${report.fontsMode}, ${report.sizeHintGzip} gzipped).\n`);
+	if (report.escapedScriptCount > 0) process$1.stderr.write(`(escaped ${report.escapedScriptCount} literal <\/script> in KaTeX runtime)\n`);
+};
+var applyKatex = async (html, args, ctx) => {
+	if (!shouldInjectKatex(args.math, ctx.markdown)) return html;
+	const fontsMode = args.mathFonts ?? "minimal";
+	const assets = await readKatexAssets(ctx.scriptDir, fontsMode);
+	const { escapedScriptCount, html: rewritten } = rewriteEmbeddedKatex(html, {
+		fontsExtraCss: assets.fontsExtraCss,
+		js: assets.js,
+		minimalCss: assets.minimalCss
+	});
+	reportKatexInjection({
+		escapedScriptCount,
+		fontsMode,
+		markdown: ctx.markdown,
+		sizeHintGzip: assets.sizeHintGzip
+	});
+	return rewritten;
+};
+//#endregion
+//#region src/core/scan-mermaid.ts
+var isTokenLike = (value) => {
+	if (typeof value !== "object" || value === null) return false;
+	return typeof value.type === "string";
+};
+var isMermaidLang = (raw) => {
+	if (typeof raw !== "string") return false;
+	const [head] = raw.trim().split(/\s+/u, 1);
+	return typeof head === "string" && head.toLowerCase() === "mermaid";
+};
+var isMermaidCodeToken = (token) => {
+	if (token.type !== "code") return false;
+	return isMermaidLang(token.lang);
+};
+var walkTokens = (tokens, counter) => {
+	if (!Array.isArray(tokens)) return;
+	for (const token of tokens) if (isTokenLike(token)) {
+		if (isMermaidCodeToken(token)) counter.value += 1;
+		walkTokens(token.tokens, counter);
+		walkTokens(token.items, counter);
+	}
+};
+/**
+* markdown 全体を走査して、`mermaid` 言語識別子付きフェンスの数を返す。
+* 大小文字は区別しない (`Mermaid` / `MERMAID` も検出)。
+* インラインコードや info string 中の "mermaid" 文字列は検出しない。
+*/
+var scanMermaidFences = (markdown) => {
+	const tokens = marked.lexer(markdown);
+	const counter = { value: 0 };
+	walkTokens(tokens, counter);
+	return counter.value;
+};
+//#endregion
+//#region src/cli/assets/mermaid.ts
+/**
+* `--mermaid` mode と markdown 内容から Mermaid runtime を注入すべきか判定する pure 関数。
+* - mode 未指定 / `auto`: scanMermaidFences > 0 のときのみ true
+* - `on`: 常に true
+* - `off`: 常に false
+*/
+var shouldInjectMermaid = (mode, markdown) => {
+	if (mode === "off") return false;
+	if (mode === "on") return true;
+	return scanMermaidFences(markdown) > 0;
+};
+var readMermaidRuntime = async (scriptDir) => {
+	const path = resolve(scriptDir, "mermaid.mjs");
+	try {
+		return await readFile(path, "utf8");
+	} catch (error) {
+		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(`${path} が見つかりません。先に \`npm run build\` を実行して dist/mermaid.mjs を生成してください。`, { cause: error });
+		throw error;
+	}
+};
+var applyMermaid = async (html, args, ctx) => {
+	if (!shouldInjectMermaid(args.mermaid, ctx.markdown)) return html;
+	const { escapedScriptCount, html: rewritten } = rewriteEmbeddedMermaid(html, await readMermaidRuntime(ctx.scriptDir));
+	const count = scanMermaidFences(ctx.markdown);
+	process$1.stderr.write(`Detected ${count} mermaid block(s). Embedding mermaid runtime (+~700 KB gzipped).\n`);
+	if (escapedScriptCount > 0) process$1.stderr.write(`(escaped ${escapedScriptCount} literal <\/script> in mermaid runtime)\n`);
+	return rewritten;
+};
+//#endregion
+//#region src/cli/error-message.ts
+var errorMessage = (error) => {
+	if (error instanceof Error) return error.message;
+	return String(error);
+};
+//#endregion
+//#region src/cli/assets/shiki.ts
+/**
+* `--shiki-langs` の指定 (未指定時は auto と同じ) から注入対象の正規名集合を決める pure 関数。
+* - auto / 未指定: markdown を scan して使用されている grammar を集める
+* - all: SHIKI_SUPPORTED_LANGS 全部
+* - none: 空 Set
+* - list: 指定された Set をそのまま使う
+*/
+var resolveShikiLangSet = (mode, markdown) => {
+	if (!mode || mode.kind === "auto") return scanFencedLangs(markdown);
+	if (mode.kind === "all") return new Set(SHIKI_SUPPORTED_LANGS);
+	if (mode.kind === "none") return /* @__PURE__ */ new Set();
+	return new Set(mode.langs);
+};
+var readGrammarJson = async (scriptDir, lang) => {
+	const path = resolve(scriptDir, "shiki-langs", `${lang}.json`);
+	try {
+		const content = await readFile(path, "utf8");
+		return JSON.parse(content);
+	} catch (error) {
+		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(`${path} が見つかりません。先に \`npm run build\` を実行して dist/shiki-langs/ を生成してください。`, { cause: error });
+		throw error;
+	}
+};
+var loadShikiGrammars = async (langs, scriptDir) => {
+	const grammars = {};
+	await Promise.all([...langs].map(async (lang) => {
+		grammars[lang] = await readGrammarJson(scriptDir, lang);
+	}));
+	return grammars;
+};
+var applyShikiLangs = async (html, args, ctx) => {
+	return rewriteEmbeddedShikiLangs(html, await loadShikiGrammars(resolveShikiLangSet(args.shikiLangs, ctx.markdown), ctx.scriptDir));
+};
+//#endregion
+//#region src/cli/input-source.ts
+var STDIN_TOKEN = "-";
+var STDIN_DEFAULT_DOC_NAME = "stdin.md";
+var toBuffer = (chunk) => {
+	if (Buffer.isBuffer(chunk)) return chunk;
+	return Buffer.from(String(chunk), "utf8");
+};
+var readStdin = async () => {
+	const chunks = [];
+	for await (const chunk of process$1.stdin) chunks.push(toBuffer(chunk));
+	return Buffer.concat(chunks).toString("utf8");
+};
+var resolveInput = async (inputPath, documentName) => {
+	if (inputPath === STDIN_TOKEN) {
+		const markdown = await readStdin();
+		return {
+			defaultOutputDir: process$1.cwd(),
+			docName: documentName ?? STDIN_DEFAULT_DOC_NAME,
+			markdown
+		};
+	}
+	const markdown = await readFile(inputPath, "utf8");
+	return {
+		defaultOutputDir: dirname(inputPath),
+		docName: documentName ?? basename(inputPath),
+		markdown
+	};
+};
+//#endregion
+//#region src/cli/compose-review-html.ts
+var readReviewHtml = async (path) => {
+	try {
+		return await readFile(path, "utf8");
+	} catch (error) {
+		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(`${path} が見つかりません。先に \`npm run build\` を実行して dist/embed-template.html を生成してください。`, { cause: error });
+		throw error;
+	}
+};
+var prepareEmbed = async (args) => {
+	const scriptDir = dirname(fileURLToPath(import.meta.url));
+	const [input, reviewHtml] = await Promise.all([resolveInput(args.inputPath, args.documentName), readReviewHtml(resolve(scriptDir, "embed-template.html"))]);
+	const docHash = await computeDocHash(input.markdown);
+	const mdFileName = sanitizeMdFileName(stripMarkdownExt(input.docName));
+	const outputPath = resolve(args.outputDir ?? input.defaultOutputDir, deriveReviewHtmlName(mdFileName, docHash));
+	return {
+		docHash,
+		docName: input.docName,
+		markdown: input.markdown,
+		outputPath,
+		reviewHtml,
+		scriptDir
+	};
+};
+var applyThemeHint = (html, themeHint) => {
+	if (typeof themeHint !== "string") return html;
+	return upsertHtmlDataTheme(html, themeHint);
+};
+var applyCommentsWidthHint = (html, commentsWidth) => {
+	if (typeof commentsWidth !== "number") return html;
+	return upsertHtmlDataCommentsWidth(html, commentsWidth);
+};
+var applyPageNavWidthHint = (html, pageNavWidth) => {
+	if (typeof pageNavWidth !== "number") return html;
+	return upsertHtmlDataPageNavWidth(html, pageNavWidth);
+};
+var applyToolbarOpenFileHint = (html, showOpenFile) => {
+	if (showOpenFile === true) return html;
+	return upsertHtmlDataToolbarOpenFile(html, "off");
+};
+var applyTitleRewrite = (html, docName) => rewriteTitle(html, `MDXG Redline — ${docName}`);
+var applyMarkdownCss = async (html, args) => {
+	if (typeof args.markdownCssPath !== "string") return html;
+	return rewriteEmbeddedMarkdownCss(html, await readFile(args.markdownCssPath, "utf8"));
+};
+var applyHintRewrites = (args, ctx) => {
+	return applyTitleRewrite(applyToolbarOpenFileHint(applyPageNavWidthHint(applyCommentsWidthHint(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args.commentsWidth), args.pageNavWidth), args.showOpenFile), ctx.docName);
+};
+var composeReviewHtml = async (args, ctx) => {
+	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyMarkdownCss(await applyKatex(await applyMermaid(await applyShikiLangs(applyHintRewrites(args, ctx), args, ctx), args, ctx), args, ctx), args), formatLoadedStatus(ctx.docName, ctx.docHash)));
+};
+//#endregion
+//#region src/cli/clean.ts
+/**
+* `<mdFileName>-<16桁hex>-(review.html|feedback.json)` 形式のファイル名を識別する正規表現。
+* 大小無視は parseReviewMdFilename 削除前の挙動と整合させるための保険で、CLI 自体は
+* 小文字 hex で出力するため通常は小文字でマッチする。
+*/
+var REVIEW_ARTIFACT_PATTERN = /^(.+)-([0-9a-f]{16})-(review\.html|feedback\.json)$/i;
+var matchEntry = (filename) => {
+	const match = REVIEW_ARTIFACT_PATTERN.exec(filename);
+	if (!match) return null;
+	const [, mdFileName, hash, suffix] = match;
+	if (suffix !== "review.html" && suffix !== "feedback.json") return null;
+	return {
+		docHash: hash.toLowerCase(),
+		filename,
+		mdFileName,
+		suffix
+	};
+};
+/**
+* ファイル名列を「削除候補 / `--keep` で温存 / 規約外で skip」の 3 つに振り分ける pure 関数。
+* I/O を持たないため in-source test で全分岐を網羅する。
+*/
+var classifyEntries = (filenames, keepHashes) => {
+	const matched = filenames.map((filename) => matchEntry(filename)).filter((entry) => entry !== null);
+	const skipped = filenames.filter((filename) => matchEntry(filename) === null);
+	const toDelete = matched.filter((entry) => !keepHashes.has(entry.docHash));
+	return {
+		kept: matched.filter((entry) => keepHashes.has(entry.docHash)),
+		skipped,
+		toDelete
+	};
+};
+var formatEntryLines = (header, entries) => {
+	if (entries.length === 0) return [];
+	return [header, ...entries.map((entry) => `  ${entry.filename}`)];
+};
+var formatDryRun = (dir, result) => {
+	if (result.toDelete.length === 0 && result.kept.length === 0) return `No review/feedback artifacts found in ${dir}.\n`;
+	const deleteLines = formatEntryLines(`[dry-run] Would delete ${result.toDelete.length} file(s) in ${dir}:`, result.toDelete);
+	const keepLines = formatEntryLines(`Kept ${result.kept.length} file(s) matching --keep:`, result.kept);
+	return `${[
+		...deleteLines,
+		...keepLines,
+		`Run with --yes to delete.`
+	].join("\n")}\n`;
+};
+var formatDeleted = (dir, deleted, kept) => {
+	if (deleted === 0 && kept === 0) return `No review/feedback artifacts found in ${dir}.\n`;
+	const head = `Deleted ${deleted} file(s) in ${dir}.\n`;
+	if (kept === 0) return head;
+	return `${head}Kept ${kept} file(s) matching --keep.\n`;
+};
+var deleteEntries = async (dir, entries, io) => {
+	await Promise.all(entries.map(async (entry) => io.unlink(resolve(dir, entry.filename))));
+};
+/**
+* `--clean` の実行エントリ。CLI 経由でも他テスト経路でも使えるよう、I/O は引数で受け取る。
+* 戻り値は process exit code 相当 (0 = success, 1 = failure)。
+*/
+var runClean = async (args, io) => {
+	const dirAbs = resolve(args.dir);
+	const result = classifyEntries(await io.readdir(dirAbs, { recursive: args.recursive }), args.keep);
+	if (!args.yes) {
+		io.stdout(formatDryRun(dirAbs, result));
+		return 0;
+	}
+	await deleteEntries(dirAbs, result.toDelete, io);
+	io.stdout(formatDeleted(dirAbs, result.toDelete.length, result.kept.length));
+	return 0;
+};
+var defaultCleanIo = {
+	readdir: async (path, opts = {}) => readdir(path, { recursive: opts.recursive === true }),
+	stderr: (text) => {
+		process.stderr.write(text);
+	},
+	stdout: (text) => {
+		process.stdout.write(text);
+	},
+	unlink: async (path) => unlink(path)
+};
+//#endregion
 //#region src/cli/open-command.ts
 var isHostBrowserUnreachableViaFile = (env) => {
 	if (env.REMOTE_CONTAINERS === "true") return true;
@@ -1956,248 +2242,7 @@ var openOutput = async (outputPath) => {
 	await handle.done;
 };
 //#endregion
-//#region src/cli/input-source.ts
-var STDIN_TOKEN = "-";
-var STDIN_DEFAULT_DOC_NAME = "stdin.md";
-var toBuffer = (chunk) => {
-	if (Buffer.isBuffer(chunk)) return chunk;
-	return Buffer.from(String(chunk), "utf8");
-};
-var readStdin = async () => {
-	const chunks = [];
-	for await (const chunk of process$1.stdin) chunks.push(toBuffer(chunk));
-	return Buffer.concat(chunks).toString("utf8");
-};
-var resolveInput = async (inputPath, documentName) => {
-	if (inputPath === STDIN_TOKEN) {
-		const markdown = await readStdin();
-		return {
-			defaultOutputDir: process$1.cwd(),
-			docName: documentName ?? STDIN_DEFAULT_DOC_NAME,
-			markdown
-		};
-	}
-	const markdown = await readFile(inputPath, "utf8");
-	return {
-		defaultOutputDir: dirname(inputPath),
-		docName: documentName ?? basename(inputPath),
-		markdown
-	};
-};
-//#endregion
-//#region src/core/scan-mermaid.ts
-var isTokenLike = (value) => {
-	if (typeof value !== "object" || value === null) return false;
-	return typeof value.type === "string";
-};
-var isMermaidLang = (raw) => {
-	if (typeof raw !== "string") return false;
-	const [head] = raw.trim().split(/\s+/u, 1);
-	return typeof head === "string" && head.toLowerCase() === "mermaid";
-};
-var isMermaidCodeToken = (token) => {
-	if (token.type !== "code") return false;
-	return isMermaidLang(token.lang);
-};
-var walkTokens = (tokens, counter) => {
-	if (!Array.isArray(tokens)) return;
-	for (const token of tokens) if (isTokenLike(token)) {
-		if (isMermaidCodeToken(token)) counter.value += 1;
-		walkTokens(token.tokens, counter);
-		walkTokens(token.items, counter);
-	}
-};
-/**
-* markdown 全体を走査して、`mermaid` 言語識別子付きフェンスの数を返す。
-* 大小文字は区別しない (`Mermaid` / `MERMAID` も検出)。
-* インラインコードや info string 中の "mermaid" 文字列は検出しない。
-*/
-var scanMermaidFences = (markdown) => {
-	const tokens = marked.lexer(markdown);
-	const counter = { value: 0 };
-	walkTokens(tokens, counter);
-	return counter.value;
-};
-//#endregion
 //#region src/cli/review-request.ts
-var errorMessage = (error) => {
-	if (error instanceof Error) return error.message;
-	return String(error);
-};
-var readReviewHtml = async (path) => {
-	try {
-		return await readFile(path, "utf8");
-	} catch (error) {
-		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(`${path} が見つかりません。先に \`npm run build\` を実行して dist/embed-template.html を生成してください。`, { cause: error });
-		throw error;
-	}
-};
-var prepareEmbed = async (args) => {
-	const scriptDir = dirname(fileURLToPath(import.meta.url));
-	const [input, reviewHtml] = await Promise.all([resolveInput(args.inputPath, args.documentName), readReviewHtml(resolve(scriptDir, "embed-template.html"))]);
-	const docHash = await computeDocHash(input.markdown);
-	const mdFileName = sanitizeMdFileName(stripMarkdownExt(input.docName));
-	const outputPath = resolve(args.outputDir ?? input.defaultOutputDir, deriveReviewHtmlName(mdFileName, docHash));
-	return {
-		docHash,
-		docName: input.docName,
-		markdown: input.markdown,
-		outputPath,
-		reviewHtml,
-		scriptDir
-	};
-};
-var applyThemeHint = (html, themeHint) => {
-	if (typeof themeHint !== "string") return html;
-	return upsertHtmlDataTheme(html, themeHint);
-};
-var applyCommentsWidthHint = (html, commentsWidth) => {
-	if (typeof commentsWidth !== "number") return html;
-	return upsertHtmlDataCommentsWidth(html, commentsWidth);
-};
-var applyPageNavWidthHint = (html, pageNavWidth) => {
-	if (typeof pageNavWidth !== "number") return html;
-	return upsertHtmlDataPageNavWidth(html, pageNavWidth);
-};
-var applyToolbarOpenFileHint = (html, showOpenFile) => {
-	if (showOpenFile === true) return html;
-	return upsertHtmlDataToolbarOpenFile(html, "off");
-};
-var applyTitleRewrite = (html, docName) => rewriteTitle(html, `MDXG Redline — ${docName}`);
-/**
-* `--shiki-langs` の指定 (未指定時は auto と同じ) から注入対象の正規名集合を決める pure 関数。
-* - auto / 未指定: markdown を scan して使用されている grammar を集める
-* - all: SHIKI_SUPPORTED_LANGS 全部
-* - none: 空 Set
-* - list: 指定された Set をそのまま使う
-*/
-var resolveShikiLangSet = (mode, markdown) => {
-	if (!mode || mode.kind === "auto") return scanFencedLangs(markdown);
-	if (mode.kind === "all") return new Set(SHIKI_SUPPORTED_LANGS);
-	if (mode.kind === "none") return /* @__PURE__ */ new Set();
-	return new Set(mode.langs);
-};
-var readGrammarJson = async (scriptDir, lang) => {
-	const path = resolve(scriptDir, "shiki-langs", `${lang}.json`);
-	try {
-		const content = await readFile(path, "utf8");
-		return JSON.parse(content);
-	} catch (error) {
-		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(`${path} が見つかりません。先に \`npm run build\` を実行して dist/shiki-langs/ を生成してください。`, { cause: error });
-		throw error;
-	}
-};
-var loadShikiGrammars = async (langs, scriptDir) => {
-	const grammars = {};
-	await Promise.all([...langs].map(async (lang) => {
-		grammars[lang] = await readGrammarJson(scriptDir, lang);
-	}));
-	return grammars;
-};
-var applyShikiLangs = async (html, args, ctx) => {
-	return rewriteEmbeddedShikiLangs(html, await loadShikiGrammars(resolveShikiLangSet(args.shikiLangs, ctx.markdown), ctx.scriptDir));
-};
-/**
-* `--mermaid` mode と markdown 内容から Mermaid runtime を注入すべきか判定する pure 関数。
-* - mode 未指定 / `auto`: scanMermaidFences > 0 のときのみ true
-* - `on`: 常に true
-* - `off`: 常に false
-*/
-var shouldInjectMermaid = (mode, markdown) => {
-	if (mode === "off") return false;
-	if (mode === "on") return true;
-	return scanMermaidFences(markdown) > 0;
-};
-var readMermaidRuntime = async (scriptDir) => {
-	const path = resolve(scriptDir, "mermaid.mjs");
-	try {
-		return await readFile(path, "utf8");
-	} catch (error) {
-		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(`${path} が見つかりません。先に \`npm run build\` を実行して dist/mermaid.mjs を生成してください。`, { cause: error });
-		throw error;
-	}
-};
-var applyMarkdownCss = async (html, args) => {
-	if (typeof args.markdownCssPath !== "string") return html;
-	return rewriteEmbeddedMarkdownCss(html, await readFile(args.markdownCssPath, "utf8"));
-};
-var applyMermaid = async (html, args, ctx) => {
-	if (!shouldInjectMermaid(args.mermaid, ctx.markdown)) return html;
-	const { escapedScriptCount, html: rewritten } = rewriteEmbeddedMermaid(html, await readMermaidRuntime(ctx.scriptDir));
-	const count = scanMermaidFences(ctx.markdown);
-	process$1.stderr.write(`Detected ${count} mermaid block(s). Embedding mermaid runtime (+~700 KB gzipped).\n`);
-	if (escapedScriptCount > 0) process$1.stderr.write(`(escaped ${escapedScriptCount} literal <\/script> in mermaid runtime)\n`);
-	return rewritten;
-};
-/**
-* `--math` mode と markdown 内容から KaTeX runtime を注入すべきか判定する pure 関数
-* (Mermaid と完全に対称、docs/mdxg-math-rendering.archive.md §3.2 / §5.e)。
-* - mode 未指定 / `auto`: countMath で inline + display > 0 のときのみ true
-* - `on`: 常に true
-* - `off`: 常に false
-*/
-var shouldInjectKatex = (mode, markdown) => {
-	if (mode === "off") return false;
-	if (mode === "on") return true;
-	const counts = countMath(markdown);
-	return counts.inline + counts.display > 0;
-};
-var readKatexAsset = async (path) => {
-	try {
-		return await readFile(path, "utf8");
-	} catch (error) {
-		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(`${path} が見つかりません。先に \`npm run build\` を実行して dist/katex/ を生成してください。`, { cause: error });
-		throw error;
-	}
-};
-var MATH_SIZE_HINT = {
-	all: "+~340 KB",
-	minimal: "+~250 KB"
-};
-var readKatexAssets = async (scriptDir, fontsMode) => {
-	const [js, minimalCss] = await Promise.all([readKatexAsset(resolve(scriptDir, "katex", "katex.mjs")), readKatexAsset(resolve(scriptDir, "katex", "katex.css"))]);
-	const sizeHintGzip = MATH_SIZE_HINT[fontsMode];
-	if (fontsMode === "minimal") return {
-		js,
-		minimalCss,
-		sizeHintGzip
-	};
-	return {
-		fontsExtraCss: await readKatexAsset(resolve(scriptDir, "katex", "katex-fonts-extra.css")),
-		js,
-		minimalCss,
-		sizeHintGzip
-	};
-};
-var reportKatexInjection = (report) => {
-	const counts = countMath(report.markdown);
-	const total = counts.inline + counts.display;
-	process$1.stderr.write(`Detected ${total} math expression(s). Embedding KaTeX runtime (fonts=${report.fontsMode}, ${report.sizeHintGzip} gzipped).\n`);
-	if (report.escapedScriptCount > 0) process$1.stderr.write(`(escaped ${report.escapedScriptCount} literal <\/script> in KaTeX runtime)\n`);
-};
-var applyKatex = async (html, args, ctx) => {
-	if (!shouldInjectKatex(args.math, ctx.markdown)) return html;
-	const fontsMode = args.mathFonts ?? "minimal";
-	const assets = await readKatexAssets(ctx.scriptDir, fontsMode);
-	const { escapedScriptCount, html: rewritten } = rewriteEmbeddedKatex(html, {
-		fontsExtraCss: assets.fontsExtraCss,
-		js: assets.js,
-		minimalCss: assets.minimalCss
-	});
-	reportKatexInjection({
-		escapedScriptCount,
-		fontsMode,
-		markdown: ctx.markdown,
-		sizeHintGzip: assets.sizeHintGzip
-	});
-	return rewritten;
-};
-var applyHintRewrites = (args, ctx) => {
-	return applyTitleRewrite(applyToolbarOpenFileHint(applyPageNavWidthHint(applyCommentsWidthHint(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args.commentsWidth), args.pageNavWidth), args.showOpenFile), ctx.docName);
-};
-var composeReviewHtml = async (args, ctx) => {
-	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyMarkdownCss(await applyKatex(await applyMermaid(await applyShikiLangs(applyHintRewrites(args, ctx), args, ctx), args, ctx), args, ctx), args), formatLoadedStatus(ctx.docName, ctx.docHash)));
-};
 var runEmbed = async (args) => {
 	const ctx = await prepareEmbed(args);
 	const result = await composeReviewHtml(args, ctx);
@@ -2223,6 +2268,7 @@ var main = async () => {
 		const code = await runClean({
 			dir: args.dir,
 			keep: args.keep,
+			recursive: args.recursive,
 			yes: args.yes
 		}, defaultCleanIo);
 		process$1.exit(code);
@@ -2234,4 +2280,4 @@ main().catch((error) => {
 	process$1.exit(1);
 });
 //#endregion
-export { resolveShikiLangSet, shouldInjectKatex, shouldInjectMermaid };
+export {};

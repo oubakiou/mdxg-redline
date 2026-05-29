@@ -1,6 +1,6 @@
 // AUTO-GENERATED — DO NOT EDIT.
 // 再生成: `node scripts/generate-shiki-aliases.mjs` または `npm run build`。
-// Shiki version: 4.0.2
+// Shiki version: 4.1.0
 //
 // Shiki bundledLanguagesInfo の全言語 (フル同梱) を正規名へ canonicalize し、エイリアスを
 // 併せて吐き出した結果。CLI (--shiki-langs=<csv>) と browser 側 Shiki 初期化、scanFencedLangs
