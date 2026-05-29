@@ -209,7 +209,7 @@ if (import.meta.vitest) {
     it('インストール済み shiki / SPEC_LANGS から再生成した内容が commit 済みファイルと一致', async () => {
       const [fs, meta, url, path] = await Promise.all([
         import('node:fs'),
-        import('../../scripts/lib/shiki-meta.mjs'),
+        import('../../scripts/lib/shiki-meta.ts'),
         import('node:url'),
         import('node:path'),
       ])

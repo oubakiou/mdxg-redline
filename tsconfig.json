@@ -12,6 +12,7 @@
   },
   "include": [
     "src/**/*.ts",
+    "scripts/**/*.ts",
     "vite.config.ts",
     "vite.review-request.config.ts",
     ".claude/**/*",

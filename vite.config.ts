@@ -3,7 +3,7 @@ import {
   canonicalizeSpec,
   formatAliasesTs,
   loadGrammar,
-} from './scripts/lib/shiki-meta.mjs'
+} from './scripts/lib/shiki-meta.ts'
 import { dirname, resolve } from 'node:path'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { inlineMarkdownCssIntoHtml } from './src/build/inline-markdown-css.ts'
@@ -205,7 +205,7 @@ const readKatexAssetsIfPresent = async (distDir: string): Promise<KatexAssets | 
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       console.warn(
-        '[mdxg-split-outputs] dist/katex/* が見つからないため standalone.html への KaTeX inline を skip しました。`vp build --config vite.katex.config.ts && node scripts/build-katex-css.mjs` を先に実行してください。'
+        '[mdxg-split-outputs] dist/katex/* が見つからないため standalone.html への KaTeX inline を skip しました。`vp build --config vite.katex.config.ts && node scripts/build-katex-css.ts` を先に実行してください。'
       )
       return null
     }

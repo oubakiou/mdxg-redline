@@ -74,7 +74,7 @@ npx mdxg-redline --help                                    # print full usage an
 - By default the CLI launches the system browser via `$BROWSER` → `open` (macOS) → `xdg-open` (Linux) → `cmd.exe /c start` (Windows), in that order
 - When VS Code Remote Containers / Codespaces is detected, the CLI instead starts a tiny HTTP server on `127.0.0.1` at port `51729` (override with `MDXG_REDLINE_PORT`) and hands the host browser an `http://localhost:<port>/...` URL (since `file://` paths in the container are invisible to the host). If the preferred port is busy, the CLI falls back to a random port and prints a warning to stderr — **note that random ports may not be forwarded to the host browser if `forwardPorts` is not set to `auto`, so pin a known-free `MDXG_REDLINE_PORT` (or register it in `devcontainer.json` `forwardPorts`) for reliable host access**
 
-Requires Node.js 20+ (see `engines.node` in `package.json`)
+Requires Node.js 24+ (see `engines.node` in `package.json`; the build scripts run as TypeScript directly under `node`, which relies on the type stripping stabilized in the current Node 24 LTS line)
 
 #### Standard loop between an LLM agent and a reviewer (Chromium-based browsers recommended)
 

@@ -1,5 +1,5 @@
 // AUTO-GENERATED — DO NOT EDIT.
-// 再生成: `node scripts/generate-shiki-aliases.mjs` または `npm run build`。
+// 再生成: `node scripts/generate-shiki-aliases.ts` または `npm run build`。
 // Shiki version: 4.1.0
 //
 // Shiki bundledLanguagesInfo の全言語 (フル同梱) を正規名へ canonicalize し、エイリアスを

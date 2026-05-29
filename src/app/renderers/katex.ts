@@ -442,7 +442,7 @@ if (import.meta.vitest) {
     })
   })
 
-  // KaTeX バージョン更新時の再評価チェックリスト (scripts/build-katex-css.mjs 冒頭 / §5.j) を
+  // KaTeX バージョン更新時の再評価チェックリスト (scripts/build-katex-css.ts 冒頭 / §5.j) を
   // version-pin assert に加えて継続的に守る contract test。実際に使う KATEX_OPTIONS と
   // isErrorRender を再利用し、pin した katex の挙動 / dist 構造が前提から逸脱したら fail させる。
   describe('KaTeX version contract (§5.j 再評価チェックリスト)', () => {

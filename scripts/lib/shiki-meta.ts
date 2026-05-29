@@ -1,10 +1,12 @@
 // Shiki bundledLanguagesInfo / bundledLanguages を読んで、
 // MDXG Redline で同梱する言語の正規名・エイリアス・grammar JSON を組み立てる pure module。
 //
-// scripts/generate-shiki-aliases.mjs と vite.config.ts の grammar emit plugin の両方が
+// scripts/generate-shiki-aliases.ts と vite.config.ts の grammar emit plugin の両方が
 // この lib を import することで、SPEC_LANGS のリストと canonicalize ロジックの単一の源を保つ。
 
-import { bundledLanguages, bundledLanguagesInfo } from 'shiki'
+import { type LanguageRegistration, bundledLanguages, bundledLanguagesInfo } from 'shiki'
+
+type LangInfo = (typeof bundledLanguagesInfo)[number]
 
 // Shiki bundledLanguagesInfo の全言語をサポート対象とする (フル同梱)。
 // standalone.html は全 grammar が pre-inline されるため ~41 MB / gzip ~5.5 MB に肥大するが、
@@ -12,11 +14,12 @@ import { bundledLanguages, bundledLanguagesInfo } from 'shiki'
 // されるため、配布されるレビュー HTML のサイズは変わらない。
 // エイリアス (`bash` / `sh` / `shell` / `zsh` 等) は ALIAS_TO_CANONICAL の経路で同じ正規名に
 // マップされる。
-export const SPEC_LANGS = bundledLanguagesInfo.map((info) => info.id)
+export const SPEC_LANGS: readonly string[] = bundledLanguagesInfo.map((info) => info.id)
 
-const hasAlias = (info, raw) => Array.isArray(info.aliases) && info.aliases.includes(raw)
+const hasAlias = (info: LangInfo, raw: string): boolean =>
+  Array.isArray(info.aliases) && info.aliases.includes(raw)
 
-const resolveCanonical = (raw) => {
+const resolveCanonical = (raw: string): string | null => {
   for (const info of bundledLanguagesInfo) {
     if (info.id === raw) {
       return info.id
@@ -32,9 +35,9 @@ const resolveCanonical = (raw) => {
  * SPEC_LANGS を Shiki 正規名集合に canonicalize する。重複は集約され、結果はソート済みの配列。
  * 未登録の識別子があれば Error を投げ、ビルドを止める (silent regression を防ぐ)。
  */
-export const canonicalizeSpec = () => {
-  const canonicalSet = new Set()
-  const unresolved = []
+export const canonicalizeSpec = (): string[] => {
+  const canonicalSet = new Set<string>()
+  const unresolved: string[] = []
   for (const raw of SPEC_LANGS) {
     const canonical = resolveCanonical(raw)
     if (canonical === null) {
@@ -51,7 +54,7 @@ export const canonicalizeSpec = () => {
   return [...canonicalSet].toSorted((left, right) => left.localeCompare(right))
 }
 
-const registerAliasesFor = (aliasMap, canonical) => {
+const registerAliasesFor = (aliasMap: Record<string, string>, canonical: string): void => {
   aliasMap[canonical] = canonical
   const info = bundledLanguagesInfo.find((entry) => entry.id === canonical)
   if (!info || !Array.isArray(info.aliases)) {
@@ -68,8 +71,8 @@ const registerAliasesFor = (aliasMap, canonical) => {
   }
 }
 
-export const buildAliasMap = (canonicals) => {
-  const aliasMap = {}
+export const buildAliasMap = (canonicals: readonly string[]): Record<string, string> => {
+  const aliasMap: Record<string, string> = {}
   for (const canonical of canonicals) {
     registerAliasesFor(aliasMap, canonical)
   }
@@ -82,15 +85,25 @@ export const buildAliasMap = (canonicals) => {
 // ID_Start / ID_Continue で判定しないと生成直後の出力が lint で再整形され差分が出る。
 // 文字列値側は ASCII 言語識別子のみでエスケープ不要 (バックスラッシュ / シングルクォート非出現)。
 const VALID_JS_IDENTIFIER_RE = /^[\p{ID_Start}$_][\p{ID_Continue}$]*$/u
-const formatStringValue = (value) => `'${value}'`
-const formatObjectKey = (key) => {
+const formatStringValue = (value: string): string => `'${value}'`
+const formatObjectKey = (key: string): string => {
   if (VALID_JS_IDENTIFIER_RE.test(key)) {
     return key
   }
   return `'${key}'`
 }
 
-export const formatAliasesTs = ({ aliasMap, canonicals, shikiVersion }) => {
+export interface FormatAliasesTsInput {
+  aliasMap: Record<string, string>
+  canonicals: readonly string[]
+  shikiVersion: string
+}
+
+export const formatAliasesTs = ({
+  aliasMap,
+  canonicals,
+  shikiVersion,
+}: FormatAliasesTsInput): string => {
   const aliasEntries = Object.entries(aliasMap)
     .toSorted(([left], [right]) => left.localeCompare(right))
     .map(([alias, canonical]) => `  ${formatObjectKey(alias)}: ${formatStringValue(canonical)},`)
@@ -100,7 +113,7 @@ export const formatAliasesTs = ({ aliasMap, canonicals, shikiVersion }) => {
   // "c" 等 1 文字の言語 ID を含むが id-length disable は emit しない:
   // vite.config.ts の `**/*.generated.ts` override で off にしているため。
   return `// AUTO-GENERATED — DO NOT EDIT.
-// 再生成: \`node scripts/generate-shiki-aliases.mjs\` または \`npm run build\`。
+// 再生成: \`node scripts/generate-shiki-aliases.ts\` または \`npm run build\`。
 // Shiki version: ${shikiVersion}
 //
 // Shiki bundledLanguagesInfo の全言語 (フル同梱) を正規名へ canonicalize し、エイリアスを
@@ -123,11 +136,13 @@ ${aliasEntries}
  * canonical 名から Shiki が動的 import する grammar (LanguageRegistration[]) を取り出す。
  * 結果はそのまま JSON.stringify 可能で、createHighlighterCoreSync の `langs: [...]` に渡せる。
  */
-export const loadGrammar = async (canonical) => {
-  const loader = bundledLanguages[canonical]
+export const loadGrammar = async (canonical: string): Promise<LanguageRegistration[]> => {
+  const loaders: Record<string, (() => Promise<{ default: LanguageRegistration[] }>) | undefined> =
+    bundledLanguages
+  const loader = loaders[canonical]
   if (typeof loader !== 'function') {
     throw new Error(`Shiki bundledLanguages に loader が無い: ${canonical}`)
   }
   const mod = await loader()
-  return mod.default ?? mod
+  return mod.default
 }

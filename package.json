@@ -26,8 +26,8 @@
   ],
   "type": "module",
   "scripts": {
-    "build": "vp build --config vite.mermaid.config.ts && vp build --config vite.katex.config.ts && node scripts/build-katex-css.mjs && vp build && vp build --config vite.review-request.config.ts",
-    "build:katex": "vp build --config vite.katex.config.ts && node scripts/build-katex-css.mjs",
+    "build": "vp build --config vite.mermaid.config.ts && vp build --config vite.katex.config.ts && node scripts/build-katex-css.ts && vp build && vp build --config vite.review-request.config.ts",
+    "build:katex": "vp build --config vite.katex.config.ts && node scripts/build-katex-css.ts",
     "build:mermaid": "vp build --config vite.mermaid.config.ts",
     "build:review-request": "vp build --config vite.review-request.config.ts",
     "build:watch": "vp build --watch",
@@ -54,6 +54,6 @@
     "vitest": "^4.1.1"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.0.0"
   }
 }
