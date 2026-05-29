@@ -25,10 +25,29 @@ const KATEX_DIST = resolve(ROOT_DIR, 'node_modules', 'katex', 'dist')
 const FONTS_DIR = resolve(KATEX_DIST, 'fonts')
 const OUT_DIR = resolve(ROOT_DIR, 'dist', 'katex')
 
-// Step 1 PoC で挙動を確定した KaTeX バージョン。major / minor / patch まで pin することで、
-// 仕様変更 (dist 構造 / fontset 構成 / `\href` の trust: false 挙動など) が起きた瞬間に
-// build を fail させて再評価を強制する (docs/mdxg-math-rendering.archive.md §5.j)。
-const EXPECTED_KATEX_VERSION = '0.16.47'
+// 挙動を実証した上で pin している KaTeX バージョン。major / minor / patch まで pin し、
+// 版が動いた瞬間に build を fail させて下記チェックリストの再評価を強制する。
+// 番号だけ上げて通す対応は禁止 (このアサート自体がそれを防ぐための番人)。
+//
+// === KaTeX バージョン更新時 再評価チェックリスト (これだけで完結する) ===
+//   1. trust:false セキュリティ境界: \href / \url / \includegraphics / \htmlClass /
+//      \htmlStyle / \htmlData を renderToString({ trust: false, strict: 'warn' }) に通し、
+//      <a href> / <img> / 任意 HTML / class 注入が出ず escape された best-effort 描画に
+//      なること。LLM 生成数式を信頼しない前提の XSS 防御線 (DESIGN.md §11)。
+//   2. フォントセット: katex.min.css の @font-face root が既知 12 種のみで新規/改名/削除が
+//      ないこと (minimal = Main/Math/AMS/Size1-4、extra = Caligraphic/Fraktur/Script/
+//      SansSerif/Typewriter)。全 @font-face block に woff2 url があること
+//      (.ttf/.woff を about:blank に潰し woff2 へ fallthrough する本スクリプトの前提)。
+//   3. renderToString API 契約: 同期で文字列を返し、文法エラー -> katex-error class /
+//      未知マクロ -> best-effort <mtext> (katex-error なし) の判定境界が維持されること
+//      (ブラウザ側 data-math-failed 判定がこの境界に依存)。
+//   4. </script> sanity: katex.mjs に literal </script> が含まれないこと (注入時の
+//      エンコード規約、core/embed.ts)。
+// 1 / 2 / 3 は src/app/renderers/katex.ts の "KaTeX version contract" in-source test で
+// 継続検証している (pin 更新時はそのテストを通せば 1-3 の実証になる)。4 は
+// src/core/embed/script-encoding.ts の escapeScriptTagInJs が無条件 escape で担保する。
+// 設計判断の背景は docs/mdxg-math-rendering.archive.md §5.f / §5.g / §5.j / Step 5b。
+const EXPECTED_KATEX_VERSION = '0.17.0'
 
 // minimal セットに含めるフォント family 名 (KaTeX_ prefix 後の root 名)。
 // 数式の支配的記法 (\frac / \sum / \int / ギリシャ文字 / 行列 / 角括弧 / \mathbb) を網羅する。
@@ -52,7 +71,8 @@ const assertKatexVersion = async () => {
   if (parsed.version !== EXPECTED_KATEX_VERSION) {
     throw new Error(
       `katex version mismatch: expected ${EXPECTED_KATEX_VERSION}, got ${parsed.version}. ` +
-        'docs/mdxg-math-rendering.archive.md §5.j に従い設計判断 (§5.f / §5.g / Step 5b) を再評価してください。'
+        '本ファイル冒頭の「再評価チェックリスト」(1.trust:false セキュリティ / 2.フォントセット / ' +
+        '3.renderToString 契約 / 4.</script> sanity) を実証してから EXPECTED_KATEX_VERSION を更新すること。'
     )
   }
 }

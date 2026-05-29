@@ -441,4 +441,75 @@ if (import.meta.vitest) {
       expect(state.blockOriginalHTML.has('b-math-untouched')).toBe(false)
     })
   })
+
+  // KaTeX バージョン更新時の再評価チェックリスト (scripts/build-katex-css.mjs 冒頭 / §5.j) を
+  // version-pin assert に加えて継続的に守る contract test。実際に使う KATEX_OPTIONS と
+  // isErrorRender を再利用し、pin した katex の挙動 / dist 構造が前提から逸脱したら fail させる。
+  describe('KaTeX version contract (§5.j 再評価チェックリスト)', () => {
+    const loadKatex = async (): Promise<KatexLike> => {
+      const mod = (await import('katex')) as { default: KatexLike }
+      return mod.default
+    }
+
+    const dangerousCommands = [
+      String.raw`\href{https://evil.example/}{x}`,
+      String.raw`\url{https://evil.example/}`,
+      String.raw`\includegraphics{x.png}`,
+      String.raw`\htmlClass{evil}{x}`,
+      String.raw`\htmlStyle{color:red}{x}`,
+      String.raw`\htmlData{a=b}{x}`,
+    ]
+
+    it('§5.f trust:false: 外部リソース系コマンドが <a>/href/<img>/class 注入を出さない', async () => {
+      const katex = await loadKatex()
+      for (const src of dangerousCommands) {
+        const out = katex.renderToString(src, { ...KATEX_OPTIONS, displayMode: false })
+        expect(out).not.toMatch(/<a[\s>]/i)
+        expect(out).not.toMatch(/href\s*=/i)
+        expect(out).not.toMatch(/<img[\s>]/i)
+        expect(out).not.toMatch(/class="[^"]*\bevil\b/i)
+      }
+    })
+
+    it('Step5b: renderToString は同期で katex 文字列を返す', async () => {
+      const katex = await loadKatex()
+      const out = katex.renderToString('x^2 + y^2', { ...KATEX_OPTIONS, displayMode: false })
+      expect(typeof out).toBe('string')
+      expect(out).toContain('katex')
+    })
+
+    it('Step5b: 文法エラーは isErrorRender=true (data-math-failed 判定の前提)', async () => {
+      const katex = await loadKatex()
+      const out = katex.renderToString(String.raw`\frac{`, { ...KATEX_OPTIONS, displayMode: false })
+      expect(isErrorRender(out)).toBe(true)
+    })
+
+    it('Step5b: 未知マクロは best-effort で isErrorRender=false', async () => {
+      const katex = await loadKatex()
+      const out = katex.renderToString(String.raw`\href{https://x.example/}{y}`, {
+        ...KATEX_OPTIONS,
+        displayMode: false,
+      })
+      expect(isErrorRender(out)).toBe(false)
+    })
+
+    it('§5.g フォントセット: katex.min.css の @font-face root は既知 12 種・全 woff2', async () => {
+      const fs = await import('node:fs')
+      const { createRequire } = await import('node:module')
+      const nodeRequire = createRequire(import.meta.url)
+      const cssPath = nodeRequire
+        .resolve('katex/package.json')
+        .replace(/package\.json$/, 'dist/katex.min.css')
+      const css = fs.readFileSync(cssPath, 'utf8')
+      const blocks = [...css.matchAll(/@font-face\{[^}]*\}/g)].map((match) => match[0])
+      // 既知 12 root のみ許容。負の lookahead で MainNew のような未知の長い root の
+      // prefix マッチを弾く (新規 family が増えたら fail させる)。
+      const knownRoot =
+        /font-family:"?KaTeX_(?:AMS|Caligraphic|Fraktur|Main|Math|SansSerif|Script|Size1|Size2|Size3|Size4|Typewriter)(?![A-Za-z0-9])/
+
+      expect(blocks.length).toBeGreaterThan(0)
+      expect(blocks.every((block) => knownRoot.test(block))).toBe(true)
+      expect(blocks.every((block) => /url\(fonts\/[^)]+\.woff2\)/.test(block))).toBe(true)
+    })
+  })
 }
