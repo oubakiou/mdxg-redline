@@ -15,6 +15,7 @@ import {
 } from './pages'
 import {
   activateCommentsMark,
+  configureCommentEdit,
   configureCommentsNavigation,
   focusCommentMarkAfterNavigate,
   renderComments,
@@ -26,7 +27,7 @@ import {
   commentCountLabel as formatCommentCount,
 } from '../core/review-export'
 import { changeOutputFolder, writeFeedback } from './workspace'
-import { closeCommentModal, wireCommentModal } from './comment-modal'
+import { closeCommentModal, openEditCommentModal, wireCommentModal } from './comment-modal'
 import { closeHelpModal, openHelpModal, toggleHelpModal, wireHelpModal } from './help-modal'
 import { closeMermaidModal, wireMermaidModal } from './mermaid-modal'
 import { computeDocHash, formatLoadedStatus } from '../core/embed'
@@ -325,6 +326,7 @@ if (!import.meta.vitest) {
   wireHelpModal()
   wireMermaidModal()
   configureCommentsNavigation(navigateToComment)
+  configureCommentEdit(openEditCommentModal)
   // page scroll-spy が activePageIndex を更新した直後の TOC active 表示更新。
   // renderPageNavigation は state を再読込して描き直すだけなので、scroll 中の頻発でも軽い。
   setOnPageActivated((): void => renderPageNavigation())

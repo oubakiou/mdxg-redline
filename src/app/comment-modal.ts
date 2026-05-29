@@ -12,11 +12,34 @@ import { state } from './app-state'
 
 /**
  * コメント入力モーダルの状態。
- * pendingSelection に「どこに対するコメントか」の情報（blockId, offsets, quote）を保持し、
- * Save 時にこれを基準にコメントを生成する。Cancel/Esc で必ず null へ戻すこと（誤コミット防止）。
+ * 新規作成時は pendingSelection に「どこに対するコメントか」の情報（blockId, offsets, quote）を保持し、
+ * Save 時にこれを基準にコメントを生成する。
+ * 既存コメント編集時は editingCommentId に対象 id を保持し、Save 時に本文のみ差し替える。
+ * 両者は排他で、Cancel/Esc / モーダルを開く度に必ず null へ戻すこと（誤コミット防止）。
  */
-const modalState: { pendingSelection: PendingSelection | null } = {
+const modalState: { pendingSelection: PendingSelection | null; editingCommentId: string | null } = {
+  editingCommentId: null,
   pendingSelection: null,
+}
+
+const setModalChrome = (mode: 'add' | 'edit'): void => {
+  if (mode === 'edit') {
+    qs('#modal-input-label').textContent = 'Edit review comment'
+    qs('#modal-save').textContent = 'Save'
+    return
+  }
+  qs('#modal-input-label').textContent = 'Add a review comment'
+  qs('#modal-save').textContent = 'Comment'
+}
+
+const showModalWithBody = (quote: string, body: string): void => {
+  if (isSearchOpen()) {
+    closeSearch()
+  }
+  qs('#modal-quote').textContent = `“${quote}”`
+  qsInput('#modal-input').value = body
+  qs('#modal').classList.add('open')
+  setTimeout((): void => qsInput('#modal-input').focus(), 50)
 }
 
 /**
@@ -28,20 +51,25 @@ const modalState: { pendingSelection: PendingSelection | null } = {
  * 構造的に避けるための予防的クリア。
  */
 const openModal = (sel: PendingSelection): void => {
-  if (isSearchOpen()) {
-    closeSearch()
-  }
+  modalState.editingCommentId = null
   modalState.pendingSelection = sel
-  qs('#modal-quote').textContent = `“${sel.quote}”`
-  qsInput('#modal-input').value = ''
-  qs('#modal').classList.add('open')
-  setTimeout((): void => qsInput('#modal-input').focus(), 50)
+  setModalChrome('add')
+  showModalWithBody(sel.quote, '')
 }
 
-/** モーダルを閉じ、pendingSelection をクリアして次回開閉時の漏洩を防ぐ */
+/** 既存コメントを編集対象にしてモーダルを開く。本文だけを差し替え、アンカー情報は保持する。 */
+export const openEditCommentModal = (comment: Comment): void => {
+  modalState.pendingSelection = null
+  modalState.editingCommentId = comment.id
+  setModalChrome('edit')
+  showModalWithBody(comment.quote, comment.comment)
+}
+
+/** モーダルを閉じ、保留状態をクリアして次回開閉時の漏洩を防ぐ */
 export const closeCommentModal = (): void => {
   qs('#modal').classList.remove('open')
   modalState.pendingSelection = null
+  modalState.editingCommentId = null
 }
 
 interface CommentContext {
@@ -99,12 +127,26 @@ const resolveSelectionPageSourceLineStart = (pageIndex: number): number => {
   return page.sourceLineStart
 }
 
-const saveModalComment = async (): Promise<void> => {
-  const body = qsInput('#modal-input').value.trim()
-  const selection = modalState.pendingSelection
-  if (!body || !selection) {
+/** 該当 id の本文だけを差し替え、アンカー情報は保持する。見つからなければ false (state 不変)。 */
+const applyEditedBody = (comments: Comment[], commentId: string, body: string): boolean => {
+  const target = comments.find((other): boolean => other.id === commentId)
+  if (!target) {
+    return false
+  }
+  target.comment = body
+  return true
+}
+
+const saveEditedComment = (commentId: string, body: string): void => {
+  if (!applyEditedBody(state.comments, commentId, body)) {
     return
   }
+  renderComments()
+  closeCommentModal()
+  toast('Comment updated')
+}
+
+const saveNewComment = (selection: PendingSelection, body: string): void => {
   const newComment = commentFromSelection(selection, body, {
     blockAnchors: state.blockAnchors,
     fallbackSourceLine: resolveSelectionPageSourceLineStart(selection.pageIndex),
@@ -114,6 +156,20 @@ const saveModalComment = async (): Promise<void> => {
   renderComments()
   closeCommentModal()
   toast('Comment added')
+}
+
+const saveModalComment = async (): Promise<void> => {
+  const body = qsInput('#modal-input').value.trim()
+  if (!body) {
+    return
+  }
+  if (modalState.editingCommentId) {
+    saveEditedComment(modalState.editingCommentId, body)
+    return
+  }
+  if (modalState.pendingSelection) {
+    saveNewComment(modalState.pendingSelection, body)
+  }
 }
 
 export const wireCommentModal = (): void => {
@@ -154,6 +210,19 @@ const dummySelection = (overrides: Partial<PendingSelection> = {}): PendingSelec
   endOffset: 1,
   pageIndex: 0,
   quote: 'q',
+  startOffset: 0,
+  ...overrides,
+})
+
+const dummyComment = (overrides: Partial<Comment> = {}): Comment => ({
+  blockId: 'b001',
+  comment: 'original',
+  created: '2026-05-17T00:00:00.000Z',
+  endOffset: 4,
+  id: 'c1',
+  pageIndex: 0,
+  quote: 'anchor',
+  sourceLine: 1,
   startOffset: 0,
   ...overrides,
 })
@@ -215,6 +284,35 @@ if (import.meta.vitest) {
       const result = commentFromSelection(sel, 'x', dummyContext())
       expect(result.sourceLine).toBe(1)
       expect(result.sourceLine).toBeGreaterThanOrEqual(1)
+    })
+  })
+
+  describe('applyEditedBody', () => {
+    it('該当 id の本文だけを差し替え、アンカー情報は保持する', () => {
+      const target = dummyComment({ comment: 'before', id: 'c1' })
+      const changed = applyEditedBody([target], 'c1', 'after')
+      expect(changed).toBe(true)
+      expect(target.comment).toBe('after')
+      expect(target.blockId).toBe('b001')
+      expect(target.startOffset).toBe(0)
+      expect(target.endOffset).toBe(4)
+      expect(target.quote).toBe('anchor')
+      expect(target.created).toBe('2026-05-17T00:00:00.000Z')
+    })
+
+    it('存在しない id では false を返し state を変更しない', () => {
+      const target = dummyComment({ comment: 'before', id: 'c1' })
+      const changed = applyEditedBody([target], 'missing', 'after')
+      expect(changed).toBe(false)
+      expect(target.comment).toBe('before')
+    })
+
+    it('複数コメントのうち対象 id だけを編集する', () => {
+      const first = dummyComment({ comment: 'a', id: 'c1' })
+      const second = dummyComment({ comment: 'b', id: 'c2' })
+      applyEditedBody([first, second], 'c2', 'edited')
+      expect(first.comment).toBe('a')
+      expect(second.comment).toBe('edited')
     })
   })
 }

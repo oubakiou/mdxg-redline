@@ -15,6 +15,17 @@ export const configureCommentsNavigation = (handler: ((comment: Comment) => void
   onNavigateToCommentPage = handler
 }
 
+/**
+ * Edit ボタン押下時に呼ぶ編集モーダル起動ハンドラ。
+ * comment-modal.ts は renderComments を import しているため、comments.ts → comment-modal の
+ * 逆向き import を張ると循環参照になる。navigate と同じく review.ts 側から注入して回避する。
+ */
+let onEditComment: ((comment: Comment) => void) | null = null
+
+export const configureCommentEdit = (handler: ((comment: Comment) => void) | null): void => {
+  onEditComment = handler
+}
+
 /** mark とカード両方の active 状態を一括解除（ハイライト切り替え時の前処理） */
 const clearActiveComments = (): void => {
   for (const el of document.querySelectorAll('mark.cmt.active, .cmt-card.active')) {
@@ -102,7 +113,10 @@ const commentCardHTML = (comment: Comment): string => `
   <div class="cmt-body">${escapeHtml(comment.comment)}</div>
   <div class="cmt-meta">
     <span>${pageBadgeHTML(comment)}${comment.blockId} · ${new Date(comment.created).toLocaleString()}</span>
-    <button class="cmt-del" data-del="${comment.id}" aria-label="Delete comment">Delete</button>
+    <span class="cmt-actions">
+      <button class="cmt-edit" data-edit="${comment.id}" aria-label="Edit comment">Edit</button>
+      <button class="cmt-del" data-del="${comment.id}" aria-label="Delete comment">Delete</button>
+    </span>
   </div>`
 
 /** コメントを 1 件削除して即座に再描画 */
@@ -115,11 +129,17 @@ const deleteComment = (comment: Comment): void => {
  * カードのクリック動作を配線する。
  * 削除ボタン押下は stopPropagation でカードクリック（フォーカス遷移）と切り分ける必要があり、これがバグの温床になりやすいため明示的にハンドラを分けている。
  */
+const requestEditComment = (comment: Comment): void => {
+  if (onEditComment !== null) {
+    onEditComment(comment)
+  }
+}
+
 const wireCommentCard = (card: HTMLElement, comment: Comment, onDeleted: () => void): void => {
   card.tabIndex = 0
   card.addEventListener('click', (event): void => {
     const { target } = event
-    if (target instanceof HTMLElement && target.dataset.del) {
+    if (target instanceof HTMLElement && (target.dataset.del || target.dataset.edit)) {
       return
     }
     focusCommentCard(card, comment)
@@ -138,6 +158,13 @@ const wireCommentCard = (card: HTMLElement, comment: Comment, onDeleted: () => v
     event.preventDefault()
     focusCommentCard(card, comment)
   })
+  const editButton = card.querySelector('[data-edit]')
+  if (editButton) {
+    editButton.addEventListener('click', (event): void => {
+      event.stopPropagation()
+      requestEditComment(comment)
+    })
+  }
   const delButton = card.querySelector('[data-del]')
   if (delButton) {
     delButton.addEventListener('click', (event): void => {

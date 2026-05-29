@@ -1194,6 +1194,11 @@ mark.search-hl.search-hl-current {
   color: var(--ink-soft);
   font-size: 10px;
 }
+.cmt-actions {
+  display: inline-flex;
+  gap: 10px;
+}
+.cmt-edit,
 .cmt-del {
   color: var(--ink-faint);
   cursor: pointer;
@@ -1203,6 +1208,9 @@ mark.search-hl.search-hl-current {
   font-size: 11px;
   letter-spacing: 0;
   padding: 0;
+}
+.cmt-edit:hover {
+  color: var(--accent);
 }
 .cmt-del:hover {
   color: var(--danger);
