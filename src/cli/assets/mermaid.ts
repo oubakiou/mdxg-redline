@@ -75,10 +75,11 @@ if (import.meta.vitest) {
     })
 
     it('未指定 (undefined) は auto と同じ挙動', () => {
-      // eslint-disable-next-line no-undefined
+      // 引数未指定 (undefined) 時の既定挙動を検証するテストのため no-undefined を無効化する。
+      /* eslint-disable no-undefined */
       expect(shouldInjectMermaid(undefined, mdWithMermaid)).toBe(true)
-      // eslint-disable-next-line no-undefined
       expect(shouldInjectMermaid(undefined, mdNoMermaid)).toBe(false)
+      /* eslint-enable no-undefined */
     })
 
     it('on は markdown 内容に関係なく true', () => {

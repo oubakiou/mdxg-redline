@@ -174,6 +174,7 @@ const readMermaidRuntimeIfPresent = async (distDir: string): Promise<string | nu
     return await readFile(resolve(distDir, 'mermaid.mjs'), 'utf8')
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      // ビルド時の skip 警告を stderr に出すのが目的のため no-console を無効化する。
       // eslint-disable-next-line no-console
       console.warn(
         '[mdxg-split-outputs] dist/mermaid.mjs が見つからないため standalone.html への Mermaid inline を skip しました。`vp build --config vite.mermaid.config.ts` を先に実行してください。'
@@ -205,6 +206,7 @@ const readKatexAssetsIfPresent = async (distDir: string): Promise<KatexAssets | 
     return { fontsExtraCss, js, minimalCss }
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      // ビルド時の skip 警告を stderr に出すのが目的のため no-console を無効化する。
       // eslint-disable-next-line no-console
       console.warn(
         '[mdxg-split-outputs] dist/katex/* が見つからないため standalone.html への KaTeX inline を skip しました。`vp build --config vite.katex.config.ts && node scripts/build-katex-css.mjs` を先に実行してください。'

@@ -158,16 +158,17 @@ const distributeBlocks = async (blocks, stats) => {
 }
 
 const reportStats = (stats, minimalCss, extraCss) => {
-  // eslint-disable-next-line no-console
+  // ビルド統計を stdout に出すのが目的の reporter のため no-console を無効化する。
+  /* eslint-disable no-console */
   console.log(
     `[build-katex-css] minimal=${stats.minimal} families, extra=${stats.extra} families, ` +
       `${stats.inlined} woff2 inlined, ${stats.dropped} ttf/woff dropped`
   )
-  // eslint-disable-next-line no-console
   console.log(
     `[build-katex-css] dist/katex/katex.css ${minimalCss.length} bytes, ` +
       `dist/katex/katex-fonts-extra.css ${extraCss.length} bytes`
   )
+  /* eslint-enable no-console */
 }
 
 const build = async () => {

@@ -396,6 +396,7 @@ if (import.meta.vitest) {
       expect(html).toContain('insecure')
     })
 
+    // allowlist が javascript: を弾くことを確認するテストデータのため局所的に無効化する。
     /* eslint-disable no-script-url */
     it('相対 URL や javascript: の画像は <img> を出さず alt テキストだけ描画する', () => {
       const html = renderMarkdown('![diagram](./local.png)\n\n![bad](javascript:alert(1))')
@@ -561,6 +562,7 @@ if (import.meta.vitest) {
       expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;')
     })
 
+    // allowlist が javascript: を弾くことを確認するテストデータのため局所的に無効化する。
     /* eslint-disable no-script-url */
     it('javascript: リンクは <a> を出さず text だけ残る (renderer.link allowlist)', () => {
       const html = renderInlineSafely('[click](javascript:alert(1))')

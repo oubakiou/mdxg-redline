@@ -16,6 +16,7 @@
 import katex from 'katex'
 
 declare global {
+  // declare global で global 変数を宣言する TS 構文上 var が必須のため両ルールを無効化する。
   // eslint-disable-next-line vars-on-top, no-var
   var __mdxgKatex: typeof katex | undefined
 }

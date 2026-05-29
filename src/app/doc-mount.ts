@@ -70,6 +70,7 @@ const annotateBlocksWithSourceLine = (
   positions: AnchorPositionsResult
 ): void => {
   if (blocks.length !== positions.documentary.length) {
+    // 前提崩れの silent regress を観測可能にするための意図的な警告のため no-console を無効化する。
     /* eslint-disable-next-line no-console */
     console.warn(
       `[doc-mount] documentary anchor count mismatch: blocks=${blocks.length} positions=${positions.documentary.length}. Page distribution may be off.`
