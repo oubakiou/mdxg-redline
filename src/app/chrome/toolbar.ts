@@ -144,7 +144,7 @@ const renderThemeButton = (button: HTMLElement, stored: StoredTheme): void => {
  * click ハンドラ・OS テーマ変更購読・button 表示の同期だけを担う。
  */
 // theme トグル / OS テーマ変更後に Mermaid SVG を再描画する。Mermaid は CSS variables を直接
-// 読まず initialize 時の themeVariables を SVG に焼き込むため、CSS だけでは追従できない
+// 読まず initialize 時のテーマ色を SVG に焼き込むため、CSS だけでは追従できない
 // (docs/mdxg-diagram-rendering.md §5.g)。doc 要素が無い起動初期 (Empty state) は no-op で返す。
 const refreshMermaidAfterTheme = (): void => {
   const doc = document.querySelector<HTMLElement>('#doc')

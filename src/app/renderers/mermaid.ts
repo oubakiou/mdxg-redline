@@ -85,46 +85,15 @@ const waitForMermaidRuntime = async (): Promise<MermaidLike | null> => {
   })
 }
 
-// docs/mdxg-diagram-rendering.md §5.g: DESIGN.md §1 Theming の CSS variables を
-// Mermaid themeVariables 形式に写像する。Mermaid は CSS variables を直接読まず、
-// initialize 時の値を SVG に焼き込むため、theme トグル時は全 SVG 再描画が必要。
-//
-// GitHub 風の中性配色に揃える意図で、ノード塗りは淡グレー (--paper-edge)、枠線は --rule、
-// 文字は --ink に固定する。secondary / tertiary を primary と同系で明示するのは、未指定だと
-// Mermaid base theme が primaryColor から色相回転で派手な色を自動生成してしまうため。
-const THEME_VARIABLE_MAP: readonly { cssVar: string; mermaidKey: string }[] = [
-  { cssVar: '--paper', mermaidKey: 'background' },
-  { cssVar: '--paper-edge', mermaidKey: 'primaryColor' },
-  { cssVar: '--rule', mermaidKey: 'primaryBorderColor' },
-  { cssVar: '--ink', mermaidKey: 'primaryTextColor' },
-  { cssVar: '--paper-edge', mermaidKey: 'secondaryColor' },
-  { cssVar: '--rule', mermaidKey: 'secondaryBorderColor' },
-  { cssVar: '--ink', mermaidKey: 'secondaryTextColor' },
-  { cssVar: '--paper-edge', mermaidKey: 'tertiaryColor' },
-  { cssVar: '--rule', mermaidKey: 'tertiaryBorderColor' },
-  { cssVar: '--ink', mermaidKey: 'tertiaryTextColor' },
-  { cssVar: '--ink-soft', mermaidKey: 'lineColor' },
-  { cssVar: '--ink', mermaidKey: 'textColor' },
-  { cssVar: '--highlight-soft', mermaidKey: 'noteBkgColor' },
-  { cssVar: '--ink', mermaidKey: 'noteTextColor' },
-  { cssVar: '--rule', mermaidKey: 'noteBorderColor' },
-  // GitHub は Mermaid に本文と同じ system font を渡す。既定の "trebuchet ms" のままだと
-  // GitHub レンダリングと最も目立つ差が出るため fontFamily を明示する。
-  { cssVar: '--font-system', mermaidKey: 'fontFamily' },
-  // エッジラベルの下敷きを紙色に揃え、線が透けて見えないようにする (GitHub 同様)。
-  { cssVar: '--paper', mermaidKey: 'edgeLabelBackground' },
-]
-
-export const resolveThemeVariables = (): Record<string, string> => {
-  const styles = getComputedStyle(document.documentElement)
-  const out: Record<string, string> = {}
-  for (const { cssVar, mermaidKey } of THEME_VARIABLE_MAP) {
-    const value = styles.getPropertyValue(cssVar).trim()
-    if (value !== '') {
-      out[mermaidKey] = value
-    }
+// Mermaid 組込みテーマ (library default) を app の light/dark に対応付けて使う。light は
+// 'default' (ノード塗り #ECECFF / subgraph 背景 #ffffde 等の標準配色)、dark は組込み 'dark'。
+// Mermaid はテーマ色を SVG に焼き込むため CSS variables では追従できず、theme トグル時は
+// mermaidInitialized をリセットして全 SVG を再生成する (docs/mdxg-diagram-rendering.md §5.g)。
+const resolveMermaidThemeName = (): 'dark' | 'default' => {
+  if (document.documentElement.classList.contains('dark')) {
+    return 'dark'
   }
-  return out
+  return 'default'
 }
 
 let mermaidInitialized = false
@@ -136,15 +105,13 @@ const initializeMermaidOnce = (mermaid: MermaidLike): void => {
   if (mermaidInitialized) {
     return
   }
-  const themeVariables = resolveThemeVariables()
   const config: Record<string, unknown> = {
     securityLevel: 'strict',
     startOnLoad: false,
-    theme: 'base',
-    themeVariables,
+    theme: resolveMermaidThemeName(),
   }
-  // themeVariables.fontFamily だけだと base theme が描画時に既定の "trebuchet ms" で
-  // 上書きする可能性があるため、top-level config 経由でも明示して確実に伝える。
+  // 組込みテーマの既定フォント ("trebuchet ms") を本文と揃えるため top-level config で上書きする
+  // (GitHub も Mermaid に system font を渡す)。
   const fontFamily = resolveFontFamily()
   if (fontFamily !== '') {
     config.fontFamily = fontFamily
@@ -406,10 +373,10 @@ const resetMermaidPre = (pre: HTMLElement): void => {
 /**
  * Theme トグル時に呼ぶ。`<pre[data-mermaid-applied]>` から sibling SVG を全 remove し、
  * `data-mermaid-applied` / `data-mermaid-failed` フラグを外した上で `mermaidInitialized` を
- * リセットして再 schedule する。次の `upgradeMermaidFences` で新しい themeVariables を持つ
- * mermaid.initialize() が走り、SVG が再生成される (docs/mdxg-diagram-rendering.md §5.g)。
+ * リセットして再 schedule する。次の `upgradeMermaidFences` で新しい theme (light=default /
+ * dark=dark) を持つ mermaid.initialize() が走り、SVG が再生成される (docs/mdxg-diagram-rendering.md §5.g)。
  *
- * Shiki の CSS variables 経路と異なり、Mermaid は CSS variables を SVG に焼き込むため CSS
+ * Shiki の CSS variables 経路と異なり、Mermaid はテーマ色を SVG に焼き込むため CSS
  * だけでは追従できない。`subscribeSystemTheme` の callback と toggle click の双方から呼ばれる。
  * runtime 未注入時は upgrade 経路自体が no-op になるため安全に呼べる。
  */
