@@ -1,5 +1,5 @@
 import type { Comment, PendingSelection } from '../core/types'
-import { MERMAID_ATTR, MERMAID_ATTR_VALUE } from '../core/mermaid-attrs'
+import { SKIP_TEXT_SEGMENT_SELECTOR, shouldSkipForTextSegments } from './text-segment-skip-rules'
 
 /** 選択範囲解析結果。フローター位置決め用の rect 込み */
 export interface SelectionInfo extends PendingSelection {
@@ -49,68 +49,7 @@ export interface BuiltDomRange {
  * レビュー対象 markdown 由来でなく、その text node を含めると wrap の有無 (再描画前後 /
  * ネストブロック vs トップレベル) で textContent が変動しオフセットがズレるため。
  */
-// `sr-only` は marked-footnote 1.4.0 が <section.footnotes> 冒頭に強制挿入する
-// `<h2 id="footnote-label" class="sr-only">Footnotes</h2>` を textSegments から外すための
-// クラス指定 (docs/mdxg-footnotes.md §3.1 / §4.3)。a11y 用 visible-hidden な合成見出しを
-// コメント / 検索の対象に含めない。命名規約として `sr-only` は本実装内で footnote section
-// 専用の用途しか持たないため、generic class として skip しても他経路への副作用は無い。
-const SKIP_TEXT_SEGMENT_CLASSES = ['code-copy-btn', 'code-lang-label', 'sr-only']
-
-// upgrade 済み mermaid ブロックは「ダイアグラム全体を検索 / コメント対象外にする」案 A
-// (docs/mdxg-diagram-rendering.md §4 Step 6) のため、<pre[data-mermaid-applied]> と
-// 兄弟の <svg[data-mermaid-svg]> 両方を skip 対象に含める。<pre> の textContent は
-// 元コードをそのまま保持するが、SVG レンダリング後はその出現位置でコメントを付ける UX 価値が
-// 薄く、SVG 内 textContent (Mermaid 生成のノード / arrow ラベル) も検索結果として scrollIntoView
-// しづらいため一括で除外する。未 upgrade (data-mermaid="1" のみ) の <pre> は通常どおり拾われ、
-// Shiki ハイライト fallback 時の検索 / コメント対象として残る。
-//
-// 数式 (`[data-math]`) も同じく skip 対象にする (docs/mdxg-math-rendering.archive.md §6 / Step 6)。
-// 理由:
-//   - upgrade 前は `<span data-math="inline">$x$</span>` の textContent が `$x$` (3 文字)
-//   - upgrade 後は KaTeX 出力 (MathML + HTML span) で textContent が大きく変化
-//   この変化を抱えたままだと §6 アンカリングのオフセット計算が upgrade 前後で食い違い、
-//   embedded-feedback の cmt mark が貼り直し時に飛ぶ。要素ごと skip すれば textSegments の
-//   出力は upgrade 前後で完全に同じになる (要素は無視され、周辺 text node の連続性も保たれる)。
-// トレードオフ:
-//   - 数式要素そのものに対するコメント付与は不可 (§1 の対応スコープ宣言で「数式へのコメント
-//     付与は対応外」と明文化済み)
-//   - §10 Search の「LaTeX ソース検索」(設計書 Step 6 §10) は将来拡張に回す
-const SKIP_TEXT_SEGMENT_ATTRS: readonly { attr: string; value: string }[] = [
-  { attr: MERMAID_ATTR.applied, value: MERMAID_ATTR_VALUE },
-  { attr: MERMAID_ATTR.svg, value: MERMAID_ATTR_VALUE },
-]
-
-// 属性の有無だけで skip 判定する (値は問わない) 系統。`data-math` は 'inline' / 'display' の
-// 2 値を取るが、いずれも skip 対象なので値マッチではなく hasAttribute で十分。
-//
-// `data-footnote-ref` / `data-footnote-backref` は marked-footnote 1.4.0 が脚注の参照 / backref
-// `<a>` に付与する属性 (docs/mdxg-footnotes.md §3.1 / §5.e / §6 / Step 6)。
-// - ref: `<sup><a id="footnote-ref-<id>" data-footnote-ref ...>N</a></sup>` の `<a>` を skip する
-//   ことで `<sup>` 配下の合成 `N` 文字を textSegments から外す。DOM textContent (1 文字) と
-//   source markdown (`[^<id>]` 4+ 文字) の長さ差で offset がズレる現象を構造的に防ぐ
-//   (Math `[data-math]` skip と同じパターン)。raw `[^<id>]` への変換経路は将来の拡張で対応
-// - backref: 合成 UI 要素 (`↩` の単一文字、source markdown には存在しない) を walk skip して
-//   コメント / 検索の対象から外す
-const SKIP_TEXT_SEGMENT_ATTR_NAMES: readonly string[] = [
-  'data-math',
-  'data-footnote-ref',
-  'data-footnote-backref',
-]
-
-const shouldSkipForTextSegments = (node: Node): boolean => {
-  if (!(node instanceof Element)) {
-    return false
-  }
-  if (SKIP_TEXT_SEGMENT_CLASSES.some((cls): boolean => node.classList.contains(cls))) {
-    return true
-  }
-  if (SKIP_TEXT_SEGMENT_ATTR_NAMES.some((attr): boolean => node.hasAttribute(attr))) {
-    return true
-  }
-  return SKIP_TEXT_SEGMENT_ATTRS.some(
-    ({ attr, value }): boolean => node.getAttribute(attr) === value
-  )
-}
+// skip 対象セレクタ / 判定は app/text-segment-skip-rules.ts に集約済み。
 
 export const textSegments = (blockEl: Element): TextSegment[] => {
   const segments: TextSegment[] = []
@@ -212,21 +151,7 @@ const textOffsetForTextNode = (
   return segment.start + offset
 }
 
-// textSegments が要素ごと skip する全カテゴリを 1 つのセレクタに集約する。
-// `shouldSkipForTextSegments` の判定 (SKIP_TEXT_SEGMENT_CLASSES / SKIP_TEXT_SEGMENT_ATTR_NAMES /
-// SKIP_TEXT_SEGMENT_ATTRS) と 1:1 対応させ、要素境界経路の `range.toString().length` 補正から
-// 漏れがないようにする (review feedback Medium 指摘: Step 6 で footnote skip を追加したが
-// 補正側が math 専用のままで `<sup>1</sup>` / `<a>↩</a>` 分の長さがズレる現象への対応)。
-const SKIP_TEXT_SEGMENT_SELECTOR = [
-  '[data-math]',
-  '[data-footnote-ref]',
-  '[data-footnote-backref]',
-  '.code-copy-btn',
-  '.code-lang-label',
-  '.sr-only',
-  `[${MERMAID_ATTR.applied}="${MERMAID_ATTR_VALUE}"]`,
-  `[${MERMAID_ATTR.svg}="${MERMAID_ATTR_VALUE}"]`,
-].join(', ')
+// SKIP_TEXT_SEGMENT_SELECTOR は app/text-segment-skip-rules.ts に集約済み。
 
 // blockEl 内の textSegments-skip 対象子孫のうち、`range` の中に完全に含まれるものの
 // textContent 長を合算する。textSegments は要素ごと skip して segment を発行しないため、
@@ -507,41 +432,9 @@ if (import.meta.vitest) {
     })
   })
 
-  // docs/mdxg-math-rendering.archive.md §6 / Step 6: [data-math] 要素は upgrade 前後で textContent が
-  // 大きく変化する (raw `$x$` → KaTeX 出力の MathML+HTML)。`shouldSkipForTextSegments` が
-  // `SKIP_TEXT_SEGMENT_ATTR_NAMES` 経由で `data-math` を hasAttribute で skip 対象に含めることで、
-  // textSegments の出力が upgrade 前後で完全に一致し、§6 アンカリングの cmt mark 貼付経路が
-  // 壊れない。DOM ベースの統合テストは現在のテスト環境 (node、DOM 未提供) では書けないため
-  // (DESIGN.md §12「DOM 依存ロジックのテスト環境追加」が将来拡張として残る論点)、ここでは
-  // skip 経路の存在自体は SKIP_TEXT_SEGMENT_ATTR_NAMES 配列の constant に対する identity check で
-  // 担保する (production の attribute 名が `data-math` から逸脱したら本テストが落ちる)。
-  describe('SKIP_TEXT_SEGMENT_ATTR_NAMES (data-math 連動契約)', () => {
-    it("'data-math' を skip 対象として含む", () => {
-      expect(SKIP_TEXT_SEGMENT_ATTR_NAMES).toContain('data-math')
-    })
-  })
-
-  // docs/mdxg-footnotes.md §3.1 / §5.e / §6 / Step 6: marked-footnote 1.4.0 が出力する
-  // `<a data-footnote-ref>` / `<a data-footnote-backref>` を `<sup>` 配下から skip することで、
-  // source markdown (`[^<id>]` 4+ 文字) と DOM textContent (`1` 1 文字) の食い違いで offset が
-  // ズレるのを防ぐ。backref の `↩` も合成 UI 要素として走査対象から外す。
-  describe('SKIP_TEXT_SEGMENT_ATTR_NAMES (data-footnote-* 連動契約)', () => {
-    it("'data-footnote-ref' を skip 対象として含む", () => {
-      expect(SKIP_TEXT_SEGMENT_ATTR_NAMES).toContain('data-footnote-ref')
-    })
-
-    it("'data-footnote-backref' を skip 対象として含む", () => {
-      expect(SKIP_TEXT_SEGMENT_ATTR_NAMES).toContain('data-footnote-backref')
-    })
-  })
-
-  // marked-footnote 1.4.0 が `<section[data-footnotes]>` 冒頭に強制挿入する
-  // `<h2 id="footnote-label" class="sr-only">Footnotes</h2>` を skip するための class 契約。
-  describe('SKIP_TEXT_SEGMENT_CLASSES (sr-only 連動契約)', () => {
-    it("'sr-only' を skip 対象として含む", () => {
-      expect(SKIP_TEXT_SEGMENT_CLASSES).toContain('sr-only')
-    })
-  })
+  // SKIP_TEXT_SEGMENT_ATTR_NAMES / SKIP_TEXT_SEGMENT_CLASSES の identity contract は
+  // text-segment-skip-rules.ts の in-source test 群に移動済み。本ファイルは textSegments の
+  // walk 経路を中心に検証する。
 
   describe('textSegments (DOM)', () => {
     it('plain text を 1 segment として返す (start=0, end=text.length)', () => {
