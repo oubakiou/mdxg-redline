@@ -1291,12 +1291,13 @@ mark.search-hl.search-hl-current {
   min-height: 0;
 }
 .mermaid-modal-body svg {
-  max-width: 100%;
-  max-height: 100%;
-  width: auto;
-  height: auto;
-  /* upgrade 時に元 SVG に付けた inline `cursor: zoom-in` がクローンに残るが、
-     拡大モーダル内ではこれ以上ズーム先が無いため通常カーソルに戻す。 */
+  /* モーダル body いっぱいに広げ、SVG viewBox の既定 preserveAspectRatio="xMidYMid meet" で
+     縦横比を保って最大表示する。これにより図全体（文字含む）が比例拡大される。inline の
+     `max-width: <自然幅>px` は fillModalBody が JS で剥がす（残ると拡大が頭打ちになる）。 */
+  width: 100%;
+  height: 100%;
+  /* 拡大モーダル内はこれ以上ズーム先が無いため通常カーソルに戻す（複製に残る inline
+     `cursor: zoom-in` も fillModalBody が剥がす）。 */
   cursor: default;
 }
 .modal-header {

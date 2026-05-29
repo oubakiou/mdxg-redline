@@ -43,12 +43,15 @@ const fillModalBody = (svg: SVGSVGElement): void => {
     return
   }
   body.innerHTML = svg.outerHTML
-  // upgrade 時に元 SVG へ inline で付けた `cursor: zoom-in` 等が outerHTML 経由で複製に
-  // 残るため、モーダル内ではそれ以上ズーム先が無いことを示すため inline cursor を消す。
-  // CSS class より inline style が優先されるため JS 側で剥がす必要がある。
+  // outerHTML 経由で複製に残る 2 つの inline style を剥がす。CSS class より inline style が
+  // 優先されるため JS 側で消す必要がある:
+  //   - cursor: upgrade 時に付けた `zoom-in`。モーダル内はズーム先が無いので通常カーソルに戻す。
+  //   - max-width: Mermaid が描画時に焼き込む `<自然幅>px`。残すと stylesheet の拡大指定
+  //     (width/height 100%) を上書きして図が自然サイズ止まりになり、モーダルでも文字が拡大しない。
   const cloned = body.querySelector('svg')
   if (cloned instanceof SVGElement) {
     cloned.style.removeProperty('cursor')
+    cloned.style.removeProperty('max-width')
   }
 }
 
