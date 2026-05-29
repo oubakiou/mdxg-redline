@@ -1,7 +1,7 @@
 // 左サイドバー (page-nav) 幅の薄い wrapper。pure logic と localStorage / DOM 副作用は
 // src/app/sidebar-width.ts の共通 factory に集約されており、本ファイルは page-nav 固有の
 // 値域 / storage key / DOM ヒント名を config に流し込み、個別の named export を提供する。
-// 設計判断・優先順位 P1 は DESIGN.md §7c / mdxg-virtual-pages.archive.md §13.1 (a)。
+// 設計判断・優先順位 P1 は DESIGN.md §7c / docs/archive/mdxg-virtual-pages.archive.md §13.1 (a)。
 
 import {
   type SidebarHint,

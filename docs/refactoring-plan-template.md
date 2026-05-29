@@ -64,5 +64,6 @@
 - 同時実施を推奨している組は同一 PR で OK
 - 「ファイル分割のみ」と「責務再配置を含む構造変更」を含む候補は 2 PR に分け、前半は挙動不変であることを diff で確認できる形にする
 - in-source test は実装と同じ移動先に追従させる
+- 実装が終わったら **サブエージェントで独立レビューする**。特に「挙動不変」を狙う候補では、等価性・テストカバレッジの欠落・写し間違い・依存方向（循環参照）を重点的に確認させ、指摘を反映してから PR を出す
 - DESIGN.md と乖離する変更は **DESIGN.md 更新を同 PR に含める**
 - ビルド成果物（`dist/`）への影響は smoke check（`npm run build` 後の `dist/standalone.html` / `dist/embed-template.html` の `<script id="embedded-md">` / `<script id="embedded-shiki-langs">` 存在確認、DESIGN.md §13「CI スモークテスト指針」参照）で確認する

@@ -1,5 +1,5 @@
 // KaTeX runtime 注入: --math モード判定 → js / css / フォント asset 読み込み → embed-template.html への inline + stderr 報告。
-// Mermaid と完全に対称な配布契約 (docs/mdxg-math-rendering.archive.md §3.2)。
+// Mermaid と完全に対称な配布契約 (docs/archive/mdxg-math-rendering.archive.md §3.2)。
 
 import type { MathFontsMode, MathMode, RunArgs } from '../parse-args'
 import type { EmbedContext } from '../embed-context'
@@ -11,7 +11,7 @@ import { rewriteEmbeddedKatex } from '../../core/embed'
 
 /**
  * `--math` mode と markdown 内容から KaTeX runtime を注入すべきか判定する pure 関数
- * (Mermaid と完全に対称、docs/mdxg-math-rendering.archive.md §3.2 / §5.e)。
+ * (Mermaid と完全に対称、docs/archive/mdxg-math-rendering.archive.md §3.2 / §5.e)。
  * - mode 未指定 / `auto`: countMath で inline + display > 0 のときのみ true
  * - `on`: 常に true
  * - `off`: 常に false
@@ -49,7 +49,7 @@ interface KatexAssetsPayload {
 }
 
 // minimal / all で stderr 報告のサイズ概算を切り替えるためのプレースホルダ
-// (docs/mdxg-math-rendering.archive.md §3.3 実測値ベース)。
+// (docs/archive/mdxg-math-rendering.archive.md §3.3 実測値ベース)。
 const MATH_SIZE_HINT: Readonly<Record<MathFontsMode, string>> = {
   all: '+~340 KB',
   minimal: '+~250 KB',

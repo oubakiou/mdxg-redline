@@ -123,7 +123,7 @@ export const parseMermaidValue = (value: string): MermaidMode | null => {
 }
 
 /**
- * `--math <mode>` のパース結果 (docs/mdxg-math-rendering.archive.md §3.2 / §4 Step 4)。
+ * `--math <mode>` のパース結果 (docs/archive/mdxg-math-rendering.archive.md §3.2 / §4 Step 4)。
  * MermaidMode と意味論を完全に揃えるため同じ 'auto' | 'on' | 'off' を再利用する。
  */
 export type MathMode = MermaidMode
@@ -135,7 +135,7 @@ export type MathMode = MermaidMode
 export const parseMathValue = (value: string): MathMode | null => parseMermaidValue(value)
 
 /**
- * `--math-fonts <mode>` のパース結果 (docs/mdxg-math-rendering.archive.md §5.g / §5.l)。
+ * `--math-fonts <mode>` のパース結果 (docs/archive/mdxg-math-rendering.archive.md §5.g / §5.l)。
  * - `minimal` (既定): Main / AMS / Math / Size1-4 の 9 family のみ inline
  * - `all`: 全 20 family を inline
  */

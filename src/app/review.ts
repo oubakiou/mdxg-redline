@@ -188,7 +188,7 @@ const initStateFromMarkdown = async (name: string, text: string): Promise<LoadRe
  * 永続化レイヤは workspace-handle のみ（詳細は DESIGN.md §7）。
  *
  * MDXG Virtual Pages 用に markdown 読み込み時点で `state.pages` を確定し、`activePageIndex` は
- * `location.hash` を参照して解決する (docs/mdxg-virtual-pages.archive.md §10 起動シーケンス step 1c–1d)。
+ * `location.hash` を参照して解決する (docs/archive/mdxg-virtual-pages.archive.md §10 起動シーケンス step 1c–1d)。
  * 初期ロード時の deep link は render 後に `scrollToTargetAfterRender` で page section または
  * heading 位置まで反映する。`auto` (instant) を渡すことで page-scroll-spy の初回 callback と
  * 競合せず、URL hash と activePageIndex が一致したまま起動する。

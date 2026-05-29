@@ -17,7 +17,7 @@ import { MERMAID_ATTR, MERMAID_ATTR_VALUE } from '../../core/mermaid-attrs'
 export const SKIP_TEXT_SEGMENT_CLASSES = ['code-copy-btn', 'code-lang-label', 'sr-only']
 
 // upgrade 済み mermaid (<pre[data-mermaid-applied]> + 兄弟 <svg[data-mermaid-svg]>) は
-// 「ダイアグラム全体を検索 / コメント対象外にする」案 A (docs/mdxg-diagram-rendering.archive.md
+// 「ダイアグラム全体を検索 / コメント対象外にする」案 A (docs/archive/mdxg-diagram-rendering.archive.md
 // §4 Step 6)。未 upgrade (data-mermaid="1") は Shiki ハイライト fallback の検索 / コメント対象。
 export const SKIP_TEXT_SEGMENT_ATTRS: readonly { attr: string; value: string }[] = [
   { attr: MERMAID_ATTR.applied, value: MERMAID_ATTR_VALUE },
@@ -70,7 +70,7 @@ export const SKIP_TEXT_SEGMENT_SELECTOR = [
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
 
-  // docs/mdxg-math-rendering.archive.md §6 / Step 6: [data-math] 要素は upgrade 前後で textContent が
+  // docs/archive/mdxg-math-rendering.archive.md §6 / Step 6: [data-math] 要素は upgrade 前後で textContent が
   // 大きく変化する (raw `$x$` → KaTeX 出力の MathML+HTML)。`shouldSkipForTextSegments` が
   // `SKIP_TEXT_SEGMENT_ATTR_NAMES` 経由で `data-math` を hasAttribute で skip 対象に含めることで、
   // textSegments の出力が upgrade 前後で完全に一致し、§6 アンカリングの cmt mark 貼付経路が

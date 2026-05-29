@@ -3,12 +3,12 @@
 // 本モジュールは state.activePageIndex の mutation と hash <-> slug の解決のみを行う。
 //
 // 設計判断:
-// - History API は使わず `location.hash` への代入だけで履歴を管理する (mdxg-virtual-pages.archive.md §7.4)
-// - hash が空 / 不正なら先頭ページ (index 0) にフォールバックする (mdxg-virtual-pages.archive.md §7.4:
+// - History API は使わず `location.hash` への代入だけで履歴を管理する (docs/archive/mdxg-virtual-pages.archive.md §7.4)
+// - hash が空 / 不正なら先頭ページ (index 0) にフォールバックする (docs/archive/mdxg-virtual-pages.archive.md §7.4:
 //   「hash が空 / 不正な場合は activePageIndex = 0」)。これにより初期ロードとブラウザ戻る /
 //   進むで観測される挙動が一致する (URL = 表示状態の正準)。
 // - hash の slug が `state.pages` のどれにも一致しない場合は同じく 0 にフォールバックする。
-//   docHash が変わると以前の slug が失効する想定 (mdxg-virtual-pages.archive.md §13.2) で、
+//   docHash が変わると以前の slug が失効する想定 (docs/archive/mdxg-virtual-pages.archive.md §13.2) で、
 //   失効リンクは「先頭ページに戻る」のが最も穏当な挙動
 
 import type { Page } from '../../core/page-split'
@@ -89,7 +89,7 @@ export const buildPageHashFragment = (
 export const isPageHash = (hash: string): boolean => hash.startsWith(`#${PAGE_HASH_PREFIX}`)
 
 /**
- * URL fragment の `<page-slug>__<heading-slug>` (mdxg-virtual-pages.archive.md §6.4) を分解する。
+ * URL fragment の `<page-slug>__<heading-slug>` (docs/archive/mdxg-virtual-pages.archive.md §6.4) を分解する。
  * - `#page` → `{ pageSlug: 'page', headingSlug: null }`
  * - `#page__heading` → `{ pageSlug: 'page', headingSlug: 'heading' }`
  * - 空 / `#` のみ → `{ pageSlug: null, headingSlug: null }`
@@ -126,7 +126,7 @@ export const parseHashSlug = (hash: string): ParsedHash => {
 /**
  * 起動時 / loadFromMarkdown 後、`location.hash` を参照して activePageIndex を解決する。
  * hash が空 / 不正 / 不一致なら先頭ページ (index 0) を返す
- * (mdxg-virtual-pages.archive.md §7.4: hash が空 / 不正なら activePageIndex = 0)。
+ * (docs/archive/mdxg-virtual-pages.archive.md §7.4: hash が空 / 不正なら activePageIndex = 0)。
  * composite hash (`page__heading`) を渡しても page 部分だけで解決する。
  */
 export const resolveInitialActivePageIndex = (hash: string): number => {

@@ -59,7 +59,7 @@ const wrapTbody = (body: string): string => {
 /**
  * marked 出力の H3–H6 に `id` を注入するためのヒント。
  * `headingSlugs` は H3–H6 の出現順 (文書順) に並んだ slug 列で、page-outline の
- * `extractPageHeadings` 出力をそのまま渡せる契約 (mdxg-virtual-pages.archive.md §6.4)。
+ * `extractPageHeadings` 出力をそのまま渡せる契約 (docs/archive/mdxg-virtual-pages.archive.md §6.4)。
  * H1 / H2 はページ境界として scanHeadings が拾うが、本実装では active page を 1 枚ずつ
  * render する設計のためページ内に H1 / H2 はそのページ自身の見出し 1 つだけになる。
  * その見出しには id を付けない (URL fragment は `<page-slug>` で済むため別途用意しない)。
@@ -104,7 +104,7 @@ const createHeadingRenderer = (
 
 // `$...$` / `$$...$$` 数式を escape 済みインラインテキスト中から検出し、
 // `<span data-math="inline">` / `<div data-math="display">` で包んで返す
-// (docs/mdxg-math-rendering.archive.md §5.a / Step 5a)。
+// (docs/archive/mdxg-math-rendering.archive.md §5.a / Step 5a)。
 //
 // 重要:
 // - marked v12 の `renderer.text` は inline parser が escape 済みの text を渡してくる。

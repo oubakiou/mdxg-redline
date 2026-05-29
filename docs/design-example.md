@@ -1,6 +1,6 @@
 # {タスク名} 設計・実装計画
 
-> **このファイルは設計ドキュメントのテンプレートです**。新しい設計プランを起こす際は本ファイルをコピーし、`{プレースホルダ}` を埋める / 引用ブロック内のガイドを削除する形で使う。完了したプランは `docs/<topic>.archive.md` にリネームしてアーカイブする（例: `docs/mdxg-rendering-code-block.archive.md`）。
+> **このファイルは設計ドキュメントのテンプレートです**。新しい設計プランを起こす際は本ファイルをコピーし、`{プレースホルダ}` を埋める / 引用ブロック内のガイドを削除する形で使う。完了したプランは `docs/<topic>.archive.md` にリネームしてアーカイブする（例: `docs/archive/mdxg-rendering-code-block.archive.md`）。
 
 > **書き方の原則**：
 >
@@ -9,7 +9,7 @@
 > - **粒度**：Step は 1 PR / 1 セッションで完了する程度を 1 単位にする。順序依存があれば §4 の構造で明示
 > - **コメントは WHY のみ**：プラン本文に「現在のタスク・修正経緯」を書かない（コメントポリシーは `AGENTS.md`）
 
-DESIGN.md {§X.Y} の {対応項目名} に対応するための設計判断と実装手順をまとめる。完了時点で本ドキュメントは DESIGN.md {§X} 表の「{対象機能} = 準拠 / 実装済み」に置換され、本ファイルはアーカイブされる想定（`docs/<topic>.archive.md`）。
+DESIGN.md {§X.Y} の {対応項目名} に対応するための設計判断と実装手順をまとめる。完了時点で本ドキュメントは DESIGN.md {§X} 表の「{対象機能} = 準拠 / 実装済み」に置換され、本ファイルはアーカイブされる想定（`docs/archive/<topic>.archive.md`）。
 
 ## 1. 対応スコープ
 
@@ -155,7 +155,7 @@ export function {pureFn}(input: {InputType}): {OutputType}
 
 - DESIGN.md §{X} 表の対象行を「準拠 / 実装済み」に書き換え
 - DESIGN.md §{Y} の {関連節} に追記
-- 本ドキュメントは `docs/{topic}.archive.md` にリネーム
+- 本ドキュメントは `docs/archive/{topic}.archive.md` にリネーム
 
 成果物：DESIGN.md 更新 + 本ドキュメントの archive
 
@@ -293,4 +293,4 @@ export function {pureFn}(input: {InputType}): {OutputType}
 - [{ライブラリドキュメント}]({リンク}) — {採用 API}
 - [DESIGN.md §{X} {章タイトル}](./DESIGN.md#{anchor})
 - [DESIGN.md §{Y} {既存不変条件の根拠}](./DESIGN.md#{anchor})
-- [docs/{完了済みプラン}.archive.md](./{完了済みプラン}.archive.md) — {同等パターンのプラン参考}
+- [docs/archive/{完了済みプラン}.archive.md](./archive/{完了済みプラン}.archive.md) — {同等パターンのプラン参考}

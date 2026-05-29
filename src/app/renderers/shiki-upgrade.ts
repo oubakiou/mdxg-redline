@@ -1,7 +1,7 @@
 // paint 後に各 `<pre>` を Shiki ハイライト出力で upgrade する idle 経路。
 // 元 `<pre>` を残して innerHTML だけ差し替えることで `data-block-id` / 親 `.code-block-wrap` /
 // Copy button を触らず、§6 アンカリングと §5.c wrap 構造を不変に保つ
-// (docs/mdxg-rendering-code-block.archive.md §5.b C 案)。
+// (docs/archive/mdxg-rendering-code-block.archive.md §5.b C 案)。
 
 import { getOrCreateHighlighter, highlightFenceWithShiki } from './shiki'
 import type { HighlighterCore } from 'shiki/core'

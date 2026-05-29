@@ -1,7 +1,7 @@
 // Page Outline のスクロールスパイ (MDXG §8 [SHOULD] 「現在可視の見出しは示される」)。
 // `IntersectionObserver` で #doc 配下の `h3[id]`–`h6[id]` を観測し、
 // ビューポート上部に最も近い見出しに対応する outline link に `aria-current="location"` を付ける
-// (リファレンス実装 vercel-labs/mdxg と同じ手法、mdxg-virtual-pages.archive.md §8.3 参照)。
+// (リファレンス実装 vercel-labs/mdxg と同じ手法、docs/archive/mdxg-virtual-pages.archive.md §8.3 参照)。
 //
 // 設計判断:
 // - `rootMargin: '0px 0px -75% 0px'` でビューポート上 25% に入った見出しだけを「現在位置」扱い

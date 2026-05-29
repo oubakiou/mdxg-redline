@@ -1,4 +1,4 @@
-// ブラウザ側 KaTeX upgrade。docs/mdxg-math-rendering.archive.md §5.b C 案 に従い、
+// ブラウザ側 KaTeX upgrade。docs/archive/mdxg-math-rendering.archive.md §5.b C 案 に従い、
 // 初期 render は plain `<span data-math="inline">` / `<div data-math="display">` で paint させ、
 // requestIdleCallback で paint 後に各要素を KaTeX HTML に upgrade する (Mermaid と完全に対称、
 // `src/app/mermaid.ts` 参照)。
@@ -20,7 +20,7 @@ import { state } from '../state/app-state'
 import { toast } from '../dom/dom-utils'
 
 // dist/katex/katex.mjs 側で `globalThis.__mdxgKatex = katex` がセットされる契約
-// (docs/mdxg-math-rendering.archive.md §3.2 / §5.h)。実 katex 型を import すると bundle に重複が出る
+// (docs/archive/mdxg-math-rendering.archive.md §3.2 / §5.h)。実 katex 型を import すると bundle に重複が出る
 // ため、必要最小限の subset を local interface に切り出してランタイム形状チェック (isKatexLike)
 // で吸収する (Mermaid と同じパターン)。
 interface KatexRenderOptions {
@@ -97,7 +97,7 @@ const waitForKatexRuntime = async (): Promise<KatexLike | null> => {
   })
 }
 
-// docs/mdxg-math-rendering.archive.md §5.f: 信頼境界の必須化。
+// docs/archive/mdxg-math-rendering.archive.md §5.f: 信頼境界の必須化。
 //   trust: false       — \href / \url 等の外部リソース系コマンドを <mtext> として escape
 //   strict: 'warn'     — \newcommand 等の制限付き命令は warning として続行
 //   throwOnError: false — 構文エラーは katex-error span を返して例外を投げない
@@ -123,7 +123,7 @@ const shouldSkipUpgrade = (el: HTMLElement): boolean => {
   return typeof el.dataset.mathSource !== 'string'
 }
 
-// docs/mdxg-math-rendering.archive.md §5.b: 文法エラーのときだけ KaTeX は `katex-error` class を
+// docs/archive/mdxg-math-rendering.archive.md §5.b: 文法エラーのときだけ KaTeX は `katex-error` class を
 // 含む span を返す (Step 1 PoC で確定)。未知マクロ (\href / \unknown_command 等) は
 // best-effort `<mtext>` 描画になり class は付かない。後者は信頼境界として OK (`<a href>` を
 // 出力しない、§5.f) かつ「サポートされているが入力が壊れている」ケースではないため

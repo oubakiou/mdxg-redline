@@ -1,6 +1,6 @@
 // markdown を MDXG §6 仮想ページに分割する pure module。
 // H1 / H2 境界を検出して chunk 化し、見出し前コンテンツの Introduction 正規化 (§6.2) と
-// 見出しが一切無い文書を単一ページに正規化する規約 (mdxg-virtual-pages.archive.md §7.5) を担う。
+// 見出しが一切無い文書を単一ページに正規化する規約 (docs/archive/mdxg-virtual-pages.archive.md §7.5) を担う。
 //
 // 行スキャン本体は page-outline.ts の scanHeadings に集約しており、本 module はその結果から
 // depth ≤ 2 のものをページ境界として取り出して markdown 範囲を切り出す部分に専念する。
@@ -22,7 +22,7 @@ import { countFootnoteDefinitions } from './footnotes'
  * H1 ページ / Introduction では空配列、H2 ページでは直近の祖先 H1 を 1 要素含む。
  * doc-renderer.ts が page スコープで build した blockAnchors の headingPath にこれを
  * prepend することで、ページ境界の H1 / H2 を含む完全な祖先 path を export feedback.json に
- * 反映する (mdxg-virtual-pages.archive.md §9.3)。
+ * 反映する (docs/archive/mdxg-virtual-pages.archive.md §9.3)。
  */
 export interface Page {
   ancestorHeadingPath: readonly string[]
@@ -47,7 +47,7 @@ interface RawPage {
   /**
    * §6.2 で導入される暗黙の "Introduction" ページかどうか。
    * 暗黙 Intro は markdown ソースに対応する見出しトークンを持たないので、
-   * 後続 H2 ページの祖先 (ancestorHeadingPath) としては数えない (mdxg-virtual-pages.archive.md §9.3)。
+   * 後続 H2 ページの祖先 (ancestorHeadingPath) としては数えない (docs/archive/mdxg-virtual-pages.archive.md §9.3)。
    * ユーザーが実 H1 で "Introduction" と書いた場合はこのフラグは false で、通常の祖先扱いになる。
    */
   isIntroduction: boolean
@@ -231,7 +231,7 @@ const finalizePage = (raw: RawPage, context: FinalizeContext): Page => {
  * - 暗黙の Introduction ページ (`isIntroduction === true`) は markdown ソースに対応する見出し
  *   トークンを持たないため、後続 H2 の祖先には数えない
  * - 実際のユーザー H1 ページが title="Introduction" の場合は通常通り祖先となる
- *   (mdxg-virtual-pages.archive.md §9.3 / §7.6)
+ *   (docs/archive/mdxg-virtual-pages.archive.md §9.3 / §7.6)
  * - ATX 表記 (`# Title`) で再構築する。setext H1 ("Title\n===") との混在を避けるための正規化で、
  *   `block-anchors.ts` の `token.raw` 由来 headingPath と表記が一部分岐するが、後段 LLM が
  *   読みやすい統一表記として ATX に揃える方針
@@ -275,13 +275,13 @@ const computeAncestorHeadingPaths = (
 /**
  * 元 markdown 全体の sourceLine (1-origin) から所属 page index を逆引きする。
  * embedded-feedback / Open file 経由で読み込んだコメントに `pageIndex` を埋める用途
- * (mdxg-virtual-pages.archive.md §9.1)。
+ * (docs/archive/mdxg-virtual-pages.archive.md §9.1)。
  *
  * - sourceLine < 1 → null (§6.6 invariant: sourceLine は 1 以上の正整数)
  * - pages が空 → null
  * - `sourceLineStart <= sourceLine <= sourceLineEnd` を満たす page の index を返す
  * - どの page にも収まらない (sourceLine が doc 全体の範囲を超える / 別文書由来) → null
- *   末尾ページへの吸着はせず破棄を選ぶ (mdxg-virtual-pages.archive.md §6.6 / §9.1)
+ *   末尾ページへの吸着はせず破棄を選ぶ (docs/archive/mdxg-virtual-pages.archive.md §6.6 / §9.1)
  */
 export const findPageIndexBySourceLine = (
   pages: readonly Page[],

@@ -5,7 +5,7 @@
 //
 // 初期 render は marked のみで plain `<pre><code class="language-…">` を出して即 paint させ、
 // rAF × 2 で paint 確実後に Shiki を初期化して各 `<pre>` の innerHTML を upgrade する 2 段階構成
-// (docs/mdxg-rendering-code-block.archive.md §5.b C 案)。
+// (docs/archive/mdxg-rendering-code-block.archive.md §5.b C 案)。
 
 import { mountRenderedDoc, showEmptyDocument } from './doc-mount'
 import { qs } from '../dom/dom-utils'
