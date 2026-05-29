@@ -5,7 +5,7 @@
 // CLI / build plugin 側は bundle 出力を `</script>` escape して挿入するだけで済む
 // (Mermaid と完全に対称、`src/mermaid-entry.ts` 参照)。
 //
-// ブラウザ側ロジック (`src/app/katex.ts`、Step 5b で追加) は paint 後 lazy に
+// ブラウザ側ロジック (`src/app/renderers/katex.ts`、Step 5b で追加) は paint 後 lazy に
 // `globalThis.__mdxgKatex` を参照する。未定義時は `mdxg:katex-ready` イベントを待つ。
 //
 // no-underscore-dangle は global bridge 名の `__` prefix が他コードとの衝突回避のため必須

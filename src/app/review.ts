@@ -12,7 +12,7 @@ import {
   resolveTargetFromHash,
   setActivePageIndex,
   syncHashFromActivePage,
-} from './pages'
+} from './document/pages'
 import {
   activateCommentsMark,
   configureCommentEdit,
@@ -20,19 +20,19 @@ import {
   focusCommentMarkAfterNavigate,
   renderComments,
   wireCommentsKeyboardNav,
-} from './comments'
+} from './comments/comments'
 import { appendFootnotesPage, splitIntoPages } from '../core/page-split'
 import {
   buildReviewExportPayload,
   commentCountLabel as formatCommentCount,
 } from '../core/review-export'
-import { changeOutputFolder, writeFeedback } from './workspace'
-import { closeCommentModal, openEditCommentModal, wireCommentModal } from './comment-modal'
-import { closeHelpModal, openHelpModal, toggleHelpModal, wireHelpModal } from './help-modal'
-import { closeMermaidModal, wireMermaidModal } from './mermaid-modal'
+import { changeOutputFolder, writeFeedback } from './workspace/workspace'
+import { closeCommentModal, openEditCommentModal, wireCommentModal } from './comments/comment-modal'
+import { closeHelpModal, openHelpModal, toggleHelpModal, wireHelpModal } from './chrome/help-modal'
+import { closeMermaidModal, wireMermaidModal } from './renderers/mermaid-modal'
 import { computeDocHash, formatLoadedStatus } from '../core/embed'
-import { markFeedbackUnsaved, state } from './app-state'
-import { qs, toast } from './dom-utils'
+import { markFeedbackUnsaved, state } from './state/app-state'
+import { qs, toast } from './dom/dom-utils'
 import {
   activateFocusedItem,
   hasNoModifier,
@@ -41,7 +41,7 @@ import {
   moveFocusRight,
   moveFocusUp,
   shouldSkipAffordanceKey,
-} from './keyboard-shortcuts'
+} from './navigation/keyboard-shortcuts'
 import {
   closeSearch,
   configureSearchNavigation,
@@ -50,18 +50,22 @@ import {
   reapplySearchHighlights,
   toggleSearch,
   wireSearchBar,
-} from './search'
-import { focusNavigatedLink, renderPageNavigation, wirePageNavigation } from './page-navigation'
-import { scrollToHeading, setActiveHeadingImmediately, setupScrollSpy } from './scroll-spy'
-import { setOnPageActivated, setupPageScrollSpy } from './page-scroll-spy'
+} from './search/search'
+import {
+  focusNavigatedLink,
+  renderPageNavigation,
+  wirePageNavigation,
+} from './navigation/page-navigation'
+import { scrollToHeading, setActiveHeadingImmediately, setupScrollSpy } from './document/scroll-spy'
+import { setOnPageActivated, setupPageScrollSpy } from './navigation/page-scroll-spy'
 import { boot } from './boot'
-import { createDropdownMenu } from './menu'
-import { initCommentsResize } from './comments-resize'
-import { initPageNavResize } from './page-nav-resize'
-import { renderDoc } from './doc-renderer'
-import { setOnMarksReapplied } from './mark-engine'
-import { wireFloater } from './floater'
-import { wireToolbar } from './toolbar'
+import { createDropdownMenu } from './dom/menu'
+import { initCommentsResize } from './comments/comments-resize'
+import { initPageNavResize } from './navigation/page-nav-resize'
+import { renderDoc } from './document/doc-renderer'
+import { setOnMarksReapplied } from './comments/mark-engine'
+import { wireFloater } from './comments/floater'
+import { wireToolbar } from './chrome/toolbar'
 
 /**
  * loadFromMarkdown / navigateToTarget 双方で使う「現状の state を全 view に流す」共通処理。

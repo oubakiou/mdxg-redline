@@ -5,11 +5,11 @@ import {
   embeddedCommentsFromUnknown,
   resolveImportedComments,
 } from '../core/feedback'
-import { markFeedbackWritten, state } from './app-state'
+import { markFeedbackWritten, state } from './state/app-state'
 import { findPageIndexBySourceLine } from '../core/page-split'
-import { reapplyAllMarks } from './mark-engine'
-import { renderComments } from './comments'
-import { restoreWorkspaceHandle } from './workspace'
+import { reapplyAllMarks } from './comments/mark-engine'
+import { renderComments } from './comments/comments'
+import { restoreWorkspaceHandle } from './workspace/workspace'
 
 interface BootRuntime {
   loadFromMarkdown: (name: string, text: string) => Promise<void>

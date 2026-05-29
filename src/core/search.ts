@@ -1,5 +1,5 @@
 // §10 Search の pure ロジック。DOM 依存を持たず、case-insensitive substring match と
-// current match のループ選択 / 件数表示文字列を提供する。app/search.ts が DOM 反映を担う。
+// current match のループ選択 / 件数表示文字列を提供する。app/search/search.ts が DOM 反映を担う。
 //
 // 設計判断:
 // - `text.toLowerCase()` ベースの substring match を採用。ASCII / かな / カタカナ / 漢字 /

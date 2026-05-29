@@ -10,7 +10,7 @@ import { escapeHtml } from './escape'
  * フェンス付きコードブロックをハイライト済み HTML に変換する抽象。
  * `null` を返した場合は marked デフォルトの `<pre><code class="language-...">…</code></pre>`
  * にフォールバックする。core/markdown.ts は pure module を保つため Shiki に直接依存せず、
- * 呼び出し側 (app/shiki.ts) が adapter を作って渡す。
+ * 呼び出し側 (app/renderers/shiki.ts) が adapter を作って渡す。
  */
 export interface CodeHighlighter {
   highlight(code: string, rawLang: string): string | null
