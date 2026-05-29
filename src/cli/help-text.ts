@@ -95,9 +95,10 @@ Options:
                          other arguments and flags when present.
 
 Cleanup mode:
-  --clean <dir>          Remove all *-<docHash>-review.html and
+  --clean [dir]          Remove all *-<docHash>-review.html and
                          *-<docHash>-feedback.json files in <dir> (top level
-                         only). By default runs in dry-run mode and only
+                         only). <dir> defaults to the current directory when
+                         omitted. By default runs in dry-run mode and only
                          prints the candidates; pass --yes to actually delete.
   --yes                  With --clean, perform deletion (no prompt). Without
                          --yes, --clean is dry-run.
@@ -110,6 +111,7 @@ Examples:
   mdxg-redline --no-open spec.md
   mdxg-redline --theme dark spec.md
   cat spec.md | mdxg-redline - --document-name spec.md
+  mdxg-redline --clean
   mdxg-redline --clean ./reviews
   mdxg-redline --clean ./reviews --yes
   mdxg-redline --clean ./reviews --keep a1b2c3d4e5f6a7b8 --yes

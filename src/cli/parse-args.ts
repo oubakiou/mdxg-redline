@@ -94,6 +94,7 @@ export type ParsedArgs =
   | ({ mode: 'clean' } & CleanArgsParsed)
 
 interface CleanPartitionState {
+  cleanSeen: boolean
   dir: string | null
   keep: Set<string>
   pendingDir: boolean
@@ -103,6 +104,7 @@ interface CleanPartitionState {
 }
 
 const INITIAL_CLEAN_STATE: CleanPartitionState = {
+  cleanSeen: false,
   dir: null,
   keep: new Set(),
   pendingDir: false,
@@ -111,12 +113,10 @@ const INITIAL_CLEAN_STATE: CleanPartitionState = {
   yes: false,
 }
 
-const consumeCleanDirValue = (acc: CleanPartitionState, token: string): CleanPartitionState => {
-  if (token.startsWith('--')) {
-    return { ...acc, valid: false }
-  }
-  return { ...acc, dir: token, pendingDir: false }
-}
+const consumeCleanDirValue = (acc: CleanPartitionState, token: string): CleanPartitionState =>
+  // token が `--` 始まりのケースは stepCleanArg 側で「dir 省略」として先に分岐するため、
+  // ここに来る token は常に位置引数 (= ディレクトリ値) となる。
+  ({ ...acc, dir: token, pendingDir: false })
 
 const consumeCleanKeepValue = (acc: CleanPartitionState, token: string): CleanPartitionState => {
   if (!HEX_16_PATTERN.test(token)) {
@@ -131,10 +131,10 @@ const consumeCleanKeepValue = (acc: CleanPartitionState, token: string): CleanPa
 // 削除しかける事故が起きやすいため、構造的に弾く)。--yes は冪等なので重複でも valid のまま。
 // --keep は仕様上繰り返し指定で hash を蓄積するため、ここでは重複チェックしない。
 const markCleanFlag = (acc: CleanPartitionState): CleanPartitionState => {
-  if (acc.dir !== null || acc.pendingDir) {
+  if (acc.cleanSeen) {
     return { ...acc, valid: false }
   }
-  return { ...acc, pendingDir: true }
+  return { ...acc, cleanSeen: true, pendingDir: true }
 }
 
 const CLEAN_FLAG_TABLE: readonly {
@@ -146,16 +146,7 @@ const CLEAN_FLAG_TABLE: readonly {
   { flag: YES_FLAG, mark: (acc): CleanPartitionState => ({ ...acc, yes: true }) },
 ]
 
-const stepCleanArg = (acc: CleanPartitionState, token: string): CleanPartitionState => {
-  if (!acc.valid) {
-    return acc
-  }
-  if (acc.pendingDir) {
-    return consumeCleanDirValue(acc, token)
-  }
-  if (acc.pendingKeep) {
-    return consumeCleanKeepValue(acc, token)
-  }
+const consumeCleanFlag = (acc: CleanPartitionState, token: string): CleanPartitionState => {
   const entry = CLEAN_FLAG_TABLE.find((row): boolean => row.flag === token)
   if (!entry) {
     return { ...acc, valid: false }
@@ -163,12 +154,31 @@ const stepCleanArg = (acc: CleanPartitionState, token: string): CleanPartitionSt
   return entry.mark(acc)
 }
 
+const stepCleanArg = (acc: CleanPartitionState, token: string): CleanPartitionState => {
+  if (!acc.valid) {
+    return acc
+  }
+  if (acc.pendingDir) {
+    // dir 値の位置に別フラグ (--yes / --keep) が来た場合は dir 省略と解釈し、
+    // pendingDir を降ろしてその token をフラグとして処理し直す (dir は finalize で `.` に既定化)。
+    if (token.startsWith('--')) {
+      return stepCleanArg({ ...acc, pendingDir: false }, token)
+    }
+    return consumeCleanDirValue(acc, token)
+  }
+  if (acc.pendingKeep) {
+    return consumeCleanKeepValue(acc, token)
+  }
+  return consumeCleanFlag(acc, token)
+}
+
 const parseCleanArgs = (argv: readonly string[]): ParsedArgs => {
   const state = argv.reduce<CleanPartitionState>(stepCleanArg, INITIAL_CLEAN_STATE)
-  if (!state.valid || state.pendingDir || state.pendingKeep || state.dir === null) {
+  if (!state.valid || state.pendingKeep) {
     return { mode: 'invalid' }
   }
-  return { dir: state.dir, keep: state.keep, mode: 'clean', yes: state.yes }
+  // dir 省略時 (`--clean` 単独 / `--clean --yes` 等) はカレントディレクトリを対象とする。
+  return { dir: state.dir ?? '.', keep: state.keep, mode: 'clean', yes: state.yes }
 }
 
 interface PartitionedArgs {
@@ -821,12 +831,32 @@ if (import.meta.vitest) {
       }
     })
 
-    it('--clean の値欠落は invalid', () => {
-      expect(parseArgs(['--clean'])).toEqual({ mode: 'invalid' })
+    it('--clean 単独 (dir 省略) はカレントディレクトリ `.` を対象とする', () => {
+      const parsed = parseArgs(['--clean'])
+      expect(parsed.mode).toBe('clean')
+      if (parsed.mode === 'clean') {
+        expect(parsed.dir).toBe('.')
+        expect(parsed.yes).toBe(false)
+        expect([...parsed.keep]).toEqual([])
+      }
     })
 
-    it('--clean の値位置に別フラグが来た場合は invalid', () => {
-      expect(parseArgs(['--clean', '--yes'])).toEqual({ mode: 'invalid' })
+    it('--clean --yes (dir 省略) はカレントディレクトリを実削除対象とする', () => {
+      const parsed = parseArgs(['--clean', '--yes'])
+      expect(parsed.mode).toBe('clean')
+      if (parsed.mode === 'clean') {
+        expect(parsed.dir).toBe('.')
+        expect(parsed.yes).toBe(true)
+      }
+    })
+
+    it('--clean --keep <hash> (dir 省略) もカレントディレクトリを対象に keep を蓄積する', () => {
+      const parsed = parseArgs(['--clean', '--keep', 'a1b2c3d4e5f6a7b8'])
+      expect(parsed.mode).toBe('clean')
+      if (parsed.mode === 'clean') {
+        expect(parsed.dir).toBe('.')
+        expect([...parsed.keep]).toEqual(['a1b2c3d4e5f6a7b8'])
+      }
     })
 
     it('--keep の値が 16 桁 hex でない場合は invalid', () => {

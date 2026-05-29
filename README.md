@@ -118,15 +118,16 @@ When the output directory (the CLI's `output-dir` or the folder chosen via `Writ
 Bulk-remove the review / feedback pairs that accumulate in a distribution folder with the `--clean` subcommand.
 
 ```bash
+npx mdxg-redline --clean               # target the current directory (dry-run)
 npx mdxg-redline --clean <dir>         # list deletion candidates (dry-run)
 npx mdxg-redline --clean <dir> --yes   # actually delete
 ```
 
-| Option             | Description                                                                           | Default |
-| ------------------ | ------------------------------------------------------------------------------------- | ------- |
-| `--clean <dir>`    | Target `*-<docHash>-review.html` / `*-<docHash>-feedback.json` directly under `<dir>` | —       |
-| `--yes`            | Perform the deletion (without it, runs as a dry-run that only lists candidates)       | dry-run |
-| `--keep <docHash>` | Preserve the pair for the given 16-hex docHash (may be repeated)                      | —       |
+| Option             | Description                                                                                             | Default |
+| ------------------ | ------------------------------------------------------------------------------------------------------- | ------- |
+| `--clean [dir]`    | Target `*-<docHash>-review.html` / `*-<docHash>-feedback.json` directly under `<dir>` (defaults to cwd) | —       |
+| `--yes`            | Perform the deletion (without it, runs as a dry-run that only lists candidates)                         | dry-run |
+| `--keep <docHash>` | Preserve the pair for the given 16-hex docHash (may be repeated)                                        | —       |
 
 ### Keyboard shortcuts
 

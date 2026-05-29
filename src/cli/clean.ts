@@ -1,4 +1,4 @@
-// `--clean <dir>` サブコマンドのロジック。
+// `--clean [dir]` サブコマンドのロジック (dir 省略時はカレントディレクトリを対象)。
 // 同一ディレクトリ直下の `*-<docHash>-review.html` / `*-<docHash>-feedback.json` を
 // docs/DESIGN.md §8 ファイル命名規約に従って機械的に一括削除する。
 // pure 部分 (`classifyEntries`) は in-source test で網羅し、I/O 部分 (`runClean`)
