@@ -19,6 +19,8 @@ import {
   type MermaidMode,
   NO_OPEN_FLAG,
   PAGE_NAV_WIDTH_FLAG,
+  RECURSIVE_FLAG,
+  RECURSIVE_SHORT_FLAG,
   SHIKI_LANGS_FLAG,
   SHOW_OPEN_FILE_FLAG,
   type ShikiLangsMode,
@@ -84,6 +86,7 @@ export interface RunArgs {
 export interface CleanArgsParsed {
   dir: string
   keep: ReadonlySet<string>
+  recursive: boolean
   yes: boolean
 }
 
@@ -99,6 +102,7 @@ interface CleanPartitionState {
   keep: Set<string>
   pendingDir: boolean
   pendingKeep: boolean
+  recursive: boolean
   valid: boolean
   yes: boolean
 }
@@ -109,6 +113,7 @@ const INITIAL_CLEAN_STATE: CleanPartitionState = {
   keep: new Set(),
   pendingDir: false,
   pendingKeep: false,
+  recursive: false,
   valid: true,
   yes: false,
 }
@@ -144,7 +149,12 @@ const CLEAN_FLAG_TABLE: readonly {
   { flag: CLEAN_FLAG, mark: markCleanFlag },
   { flag: KEEP_FLAG, mark: (acc): CleanPartitionState => ({ ...acc, pendingKeep: true }) },
   { flag: YES_FLAG, mark: (acc): CleanPartitionState => ({ ...acc, yes: true }) },
+  { flag: RECURSIVE_FLAG, mark: (acc): CleanPartitionState => ({ ...acc, recursive: true }) },
+  { flag: RECURSIVE_SHORT_FLAG, mark: (acc): CleanPartitionState => ({ ...acc, recursive: true }) },
 ]
+
+const isCleanFlagToken = (token: string): boolean =>
+  CLEAN_FLAG_TABLE.some((row): boolean => row.flag === token)
 
 const consumeCleanFlag = (acc: CleanPartitionState, token: string): CleanPartitionState => {
   const entry = CLEAN_FLAG_TABLE.find((row): boolean => row.flag === token)
@@ -159,9 +169,10 @@ const stepCleanArg = (acc: CleanPartitionState, token: string): CleanPartitionSt
     return acc
   }
   if (acc.pendingDir) {
-    // dir 値の位置に別フラグ (--yes / --keep) が来た場合は dir 省略と解釈し、
+    // dir 値の位置に別フラグ (--yes / --keep / --recursive / -r) が来た場合は dir 省略と解釈し、
     // pendingDir を降ろしてその token をフラグとして処理し直す (dir は finalize で `.` に既定化)。
-    if (token.startsWith('--')) {
+    // `--` 始まりも一律フラグ扱い (未知フラグは consumeCleanFlag で invalid になる)。
+    if (token.startsWith('--') || isCleanFlagToken(token)) {
       return stepCleanArg({ ...acc, pendingDir: false }, token)
     }
     return consumeCleanDirValue(acc, token)
@@ -178,7 +189,13 @@ const parseCleanArgs = (argv: readonly string[]): ParsedArgs => {
     return { mode: 'invalid' }
   }
   // dir 省略時 (`--clean` 単独 / `--clean --yes` 等) はカレントディレクトリを対象とする。
-  return { dir: state.dir ?? '.', keep: state.keep, mode: 'clean', yes: state.yes }
+  return {
+    dir: state.dir ?? '.',
+    keep: state.keep,
+    mode: 'clean',
+    recursive: state.recursive,
+    yes: state.yes,
+  }
 }
 
 interface PartitionedArgs {
@@ -880,6 +897,37 @@ if (import.meta.vitest) {
       expect(parseArgs(['--clean', '/tmp/a', '--clean', '/tmp/b', '--yes'])).toEqual({
         mode: 'invalid',
       })
+    })
+  })
+
+  describe('parseArgs: --clean --recursive', () => {
+    it('--recursive 未指定時は recursive=false', () => {
+      const parsed = parseArgs(['--clean', '/tmp/x'])
+      expect(parsed.mode).toBe('clean')
+      if (parsed.mode === 'clean') {
+        expect(parsed.recursive).toBe(false)
+      }
+    })
+
+    it('--recursive / -r で recursive=true になる', () => {
+      for (const flag of ['--recursive', '-r']) {
+        const parsed = parseArgs(['--clean', '/tmp/x', flag])
+        expect(parsed.mode).toBe('clean')
+        if (parsed.mode === 'clean') {
+          expect(parsed.recursive, `flag=${flag}`).toBe(true)
+          expect(parsed.dir).toBe('/tmp/x')
+        }
+      }
+    })
+
+    it('dir 省略 + -r でもカレントディレクトリを再帰対象にする', () => {
+      const parsed = parseArgs(['--clean', '-r', '--yes'])
+      expect(parsed.mode).toBe('clean')
+      if (parsed.mode === 'clean') {
+        expect(parsed.dir).toBe('.')
+        expect(parsed.recursive).toBe(true)
+        expect(parsed.yes).toBe(true)
+      }
     })
   })
 

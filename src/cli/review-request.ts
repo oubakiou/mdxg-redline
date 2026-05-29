@@ -51,7 +51,10 @@ const main = async (): Promise<void> => {
     return
   }
   if (args.mode === 'clean') {
-    const code = await runClean({ dir: args.dir, keep: args.keep, yes: args.yes }, defaultCleanIo)
+    const code = await runClean(
+      { dir: args.dir, keep: args.keep, recursive: args.recursive, yes: args.yes },
+      defaultCleanIo
+    )
     process.exit(code)
   }
   if (args.mode === 'run') {
@@ -105,6 +108,7 @@ if (import.meta.vitest) {
         dir: './reviews',
         keep: new Set<string>(),
         mode: 'clean',
+        recursive: false,
         yes: false,
       })
       expect(handled).toBe(false)

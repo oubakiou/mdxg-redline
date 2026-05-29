@@ -104,6 +104,8 @@ Cleanup mode:
                          --yes, --clean is dry-run.
   --keep <docHash>       With --clean, preserve files whose 16-hex docHash
                          matches. May be repeated.
+  -r, --recursive        With --clean, also descend into subdirectories
+                         (default: top level only).
 
 Examples:
   mdxg-redline spec.md
@@ -115,4 +117,5 @@ Examples:
   mdxg-redline --clean ./reviews
   mdxg-redline --clean ./reviews --yes
   mdxg-redline --clean ./reviews --keep a1b2c3d4e5f6a7b8 --yes
+  mdxg-redline --clean ./reviews --recursive --yes
 `

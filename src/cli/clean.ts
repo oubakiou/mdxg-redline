@@ -1,6 +1,7 @@
 // `--clean [dir]` サブコマンドのロジック (dir 省略時はカレントディレクトリを対象)。
-// 同一ディレクトリ直下の `*-<docHash>-review.html` / `*-<docHash>-feedback.json` を
+// `<dir>` 直下の `*-<docHash>-review.html` / `*-<docHash>-feedback.json` を
 // docs/DESIGN.md §8 ファイル命名規約に従って機械的に一括削除する。
+// `--recursive` (`-r`) 指定時は readdir({ recursive: true }) でサブディレクトリ配下も対象にする。
 // pure 部分 (`classifyEntries`) は in-source test で網羅し、I/O 部分 (`runClean`)
 // は readdir / unlink を引数として受け取れる形にして DI 可能にしてある。
 
@@ -67,11 +68,12 @@ export const classifyEntries = (
 export interface CleanArgs {
   dir: string
   keep: ReadonlySet<string>
+  recursive: boolean
   yes: boolean
 }
 
 export interface CleanIo {
-  readdir: (path: string) => Promise<string[]>
+  readdir: (path: string, opts?: { recursive?: boolean }) => Promise<string[]>
   stderr: (text: string) => void
   stdout: (text: string) => void
   unlink: (path: string) => Promise<void>
@@ -128,7 +130,7 @@ const deleteEntries = async (
  */
 export const runClean = async (args: CleanArgs, io: CleanIo): Promise<number> => {
   const dirAbs = resolve(args.dir)
-  const filenames = await io.readdir(dirAbs)
+  const filenames = await io.readdir(dirAbs, { recursive: args.recursive })
   const result = classifyEntries(filenames, args.keep)
   if (!args.yes) {
     io.stdout(formatDryRun(dirAbs, result))
@@ -140,7 +142,8 @@ export const runClean = async (args: CleanArgs, io: CleanIo): Promise<number> =>
 }
 
 export const defaultCleanIo: CleanIo = {
-  readdir: async (path: string): Promise<string[]> => readdir(path),
+  readdir: async (path: string, opts: { recursive?: boolean } = {}): Promise<string[]> =>
+    readdir(path, { recursive: opts.recursive === true }),
   stderr: (text: string): void => {
     process.stderr.write(text)
   },
@@ -152,6 +155,8 @@ export const defaultCleanIo: CleanIo = {
 
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
+  const { mkdir, mkdtemp, rm, writeFile } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
 
   describe('REVIEW_ARTIFACT_PATTERN', () => {
     it('review.html と feedback.json にマッチする', () => {
@@ -280,7 +285,10 @@ if (import.meta.vitest) {
         'spec-a1b2c3d4e5f6a7b8-feedback.json',
         'DESIGN.md',
       ])
-      const code = await runClean({ dir: '/tmp/x', keep: new Set(), yes: false }, io)
+      const code = await runClean(
+        { dir: '/tmp/x', keep: new Set(), recursive: false, yes: false },
+        io
+      )
       expect(code).toBe(0)
       expect(output.join('')).toMatch(/Would delete 2 file\(s\)/)
       expect(output.join('')).toMatch(/spec-a1b2c3d4e5f6a7b8-review\.html/)
@@ -289,7 +297,10 @@ if (import.meta.vitest) {
 
     it('マッチが 0 件のときは "No review/feedback artifacts found" を表示する', async () => {
       const { io, output } = setup(['DESIGN.md', 'README.md'])
-      const code = await runClean({ dir: '/tmp/x', keep: new Set(), yes: false }, io)
+      const code = await runClean(
+        { dir: '/tmp/x', keep: new Set(), recursive: false, yes: false },
+        io
+      )
       expect(code).toBe(0)
       expect(output.join('')).toMatch(/No review\/feedback artifacts found/)
     })
@@ -315,7 +326,10 @@ if (import.meta.vitest) {
           unlinked.push(path)
         },
       }
-      const code = await runClean({ dir: '/tmp/x', keep: new Set(), yes: true }, io)
+      const code = await runClean(
+        { dir: '/tmp/x', keep: new Set(), recursive: false, yes: true },
+        io
+      )
       expect(code).toBe(0)
       expect(unlinked.toSorted()).toEqual([
         '/tmp/x/spec-a1b2c3d4e5f6a7b8-feedback.json',
@@ -341,8 +355,69 @@ if (import.meta.vitest) {
           unlinked.push(path)
         },
       }
-      await runClean({ dir: '/tmp/x', keep: new Set(['1111111111111111']), yes: true }, io)
+      await runClean(
+        { dir: '/tmp/x', keep: new Set(['1111111111111111']), recursive: false, yes: true },
+        io
+      )
       expect(unlinked).toEqual(['/tmp/x/b-2222222222222222-review.html'])
+    })
+
+    it('recursive=true ではサブディレクトリ配下の成果物も unlink 対象になる', async () => {
+      const unlinked: string[] = []
+      const readdirOpts: ({ recursive?: boolean } | undefined)[] = []
+      const io: CleanIo = {
+        readdir: async (_path: string, opts?: { recursive?: boolean }): Promise<string[]> => {
+          readdirOpts.push(opts)
+          return [
+            'spec-a1b2c3d4e5f6a7b8-review.html',
+            'sub',
+            'sub/nested-1111111111111111-feedback.json',
+          ]
+        },
+        stderr: (): void => {
+          // unused
+        },
+        stdout: (): void => {
+          // unused
+        },
+        unlink: async (path: string): Promise<void> => {
+          unlinked.push(path)
+        },
+      }
+      await runClean({ dir: '/tmp/x', keep: new Set(), recursive: true, yes: true }, io)
+      expect(readdirOpts).toEqual([{ recursive: true }])
+      expect(unlinked.toSorted()).toEqual([
+        '/tmp/x/spec-a1b2c3d4e5f6a7b8-review.html',
+        '/tmp/x/sub/nested-1111111111111111-feedback.json',
+      ])
+    })
+  })
+
+  // defaultCleanIo は readdir の recursive オプションを実 fs まで伝搬する必要がある
+  // (ここで取りこぼすと CLI 実行時だけ -r が無視される。モック io 経由のテストでは検出できない)。
+  describe('defaultCleanIo (実 fs 統合)', () => {
+    const setupTree = async (): Promise<string> => {
+      const base = await mkdtemp(resolve(tmpdir(), 'mdxg-clean-'))
+      await writeFile(resolve(base, 'top-a1b2c3d4e5f6a7b8-review.html'), '')
+      await mkdir(resolve(base, 'sub'))
+      await writeFile(resolve(base, 'sub', 'nested-1111111111111111-feedback.json'), '')
+      return base
+    }
+
+    it('recursive=false ではサブディレクトリ配下を実際に削除しない', async () => {
+      const base = await setupTree()
+      await runClean({ dir: base, keep: new Set(), recursive: false, yes: true }, defaultCleanIo)
+      const remaining = await readdir(base, { recursive: true })
+      expect(remaining.toSorted()).toEqual(['sub', 'sub/nested-1111111111111111-feedback.json'])
+      await rm(base, { recursive: true })
+    })
+
+    it('recursive=true ではサブディレクトリ配下の成果物まで実際に削除する', async () => {
+      const base = await setupTree()
+      await runClean({ dir: base, keep: new Set(), recursive: true, yes: true }, defaultCleanIo)
+      const remaining = await readdir(base, { recursive: true })
+      expect(remaining).toEqual(['sub'])
+      await rm(base, { recursive: true })
     })
   })
 }

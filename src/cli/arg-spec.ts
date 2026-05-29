@@ -22,6 +22,8 @@ export const MARKDOWN_CSS_FLAG = '--markdown-css'
 export const CLEAN_FLAG = '--clean'
 export const YES_FLAG = '--yes'
 export const KEEP_FLAG = '--keep'
+export const RECURSIVE_FLAG = '--recursive'
+export const RECURSIVE_SHORT_FLAG = '-r'
 export const HEX_16_PATTERN = /^[0-9a-f]{16}$/i
 
 export type ThemeHint = 'system' | 'light' | 'dark'
