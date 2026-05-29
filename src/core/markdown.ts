@@ -1,13 +1,18 @@
 import { Marked, Renderer } from 'marked'
+// sort-imports は alphabetical 順 (C < M) で markdown-code-renderer を先頭に置けと言うが、
+// 'marked' の Multiple import block を先に固めたいので 1 行限定で無効化する。
+// eslint-disable-next-line sort-imports
+import { type CodeHighlighter, createCodeRenderer } from './markdown-code-renderer'
 import footnote from 'marked-footnote'
 
 // sort-imports は multiple specifier を single specifier より前に並べる一方、
 // alphabetical 順では `escape` (e) が `mermaid-attrs` (m) より先になり両立しない。
 /* eslint-disable sort-imports */
-import { MERMAID_ATTR, MERMAID_ATTR_VALUE } from './mermaid-attrs'
 import { type MathSegment, scanMath } from './math'
 import { escapeHtml } from './escape'
 /* eslint-enable sort-imports */
+
+export type { CodeHighlighter }
 
 // 本モジュール専用の Marked instance に marked-footnote を載せる。global `marked`
 // (block-anchors / scan-fenced-langs / scan-mermaid / math が共有) には use しない:
@@ -40,16 +45,6 @@ export const isAllowedImageHref = (href: string): boolean => {
   return scheme !== null && ALLOWED_IMAGE_SCHEMES.has(scheme)
 }
 
-/**
- * フェンス付きコードブロックを ハイライト済み HTML に変換する抽象。
- * `null` を返した場合は marked デフォルトの `<pre><code class="language-...">…</code></pre>`
- * にフォールバックする。core/markdown.ts は pure module を保つため Shiki に直接依存せず、
- * 呼び出し側 (app/shiki.ts) が adapter を作って渡す。
- */
-export interface CodeHighlighter {
-  highlight(code: string, rawLang: string): string | null
-}
-
 const titleAttr = (title: string | null): string => {
   if (!title) {
     return ''
@@ -67,9 +62,6 @@ const wrapTbody = (body: string): string => {
   }
   return ''
 }
-
-// renderer.code (marked デフォルト) のフォールバック用。highlighter が null を返したときに使う。
-const defaultRenderer = new Renderer()
 
 /**
  * marked 出力の H3–H6 に `id` を注入するためのヒント。
@@ -115,62 +107,7 @@ const createHeadingRenderer = (
   }
 }
 
-// `<pre>` 開始タグに data-mermaid="1" 属性を注入する。
-// 既に data-lang 等が付いていても、先頭 `<pre` の直後に挿入することで他属性を壊さない。
-// ` ```mermaid ` ブロック以外では何もせず元 HTML を返す。
-const injectMermaidAttr = (html: string, isMermaid: boolean): string => {
-  if (!isMermaid) {
-    return html
-  }
-  return html.replace(/^<pre\b/u, `<pre ${MERMAID_ATTR.code}="${MERMAID_ATTR_VALUE}"`)
-}
-
-interface CodeRenderRequest {
-  code: string
-  escaped: boolean
-  isMermaid: boolean
-  lang: string
-}
-
-const tryHighlight = (highlighter: CodeHighlighter, req: CodeRenderRequest): string | null => {
-  const highlighted = highlighter.highlight(req.code, req.lang)
-  if (highlighted === null) {
-    return null
-  }
-  const withLang = highlighted.replace(/^<pre(\s|>)/u, `<pre data-lang="${escapeHtml(req.lang)}"$1`)
-  return injectMermaidAttr(withLang, req.isMermaid)
-}
-
-const renderFallbackCode = (req: CodeRenderRequest): string => {
-  const fallback = defaultRenderer.code(req.code, req.lang, req.escaped)
-  if (!req.lang) {
-    return fallback
-  }
-  const withLang = fallback.replace(/^<pre>/u, `<pre data-lang="${escapeHtml(req.lang)}">`)
-  return injectMermaidAttr(withLang, req.isMermaid)
-}
-
-// renderer.code 単体だと max-statements を超えるため pure helper として外に出す。
-const createCodeRenderer =
-  (
-    highlighter: CodeHighlighter | null | undefined
-  ): ((code: string, infostring: string | undefined, escaped: boolean) => string) =>
-  (code: string, infostring: string | undefined, escaped: boolean): string => {
-    const lang = (infostring ?? '').trim()
-    const req: CodeRenderRequest = {
-      code,
-      escaped,
-      isMermaid: lang.toLowerCase() === 'mermaid',
-      lang,
-    }
-    if (highlighter && lang) {
-      const highlighted = tryHighlight(highlighter, req)
-      if (highlighted !== null) {
-        return highlighted
-      }
-    }
-    return renderFallbackCode(req)
-  }
+// code renderer / mermaid 属性注入は core/markdown-code-renderer.ts に分離。
 
 // `$...$` / `$$...$$` 数式を escape 済みインラインテキスト中から検出し、
 // `<span data-math="inline">` / `<div data-math="display">` で包んで返す
