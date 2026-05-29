@@ -88,12 +88,31 @@ const waitForMermaidRuntime = async (): Promise<MermaidLike | null> => {
 // docs/mdxg-diagram-rendering.md §5.g: DESIGN.md §1 Theming の CSS variables を
 // Mermaid themeVariables 形式に写像する。Mermaid は CSS variables を直接読まず、
 // initialize 時の値を SVG に焼き込むため、theme トグル時は全 SVG 再描画が必要。
+//
+// GitHub 風の中性配色に揃える意図で、ノード塗りは淡グレー (--paper-edge)、枠線は --rule、
+// 文字は --ink に固定する。secondary / tertiary を primary と同系で明示するのは、未指定だと
+// Mermaid base theme が primaryColor から色相回転で派手な色を自動生成してしまうため。
 const THEME_VARIABLE_MAP: readonly { cssVar: string; mermaidKey: string }[] = [
   { cssVar: '--paper', mermaidKey: 'background' },
-  { cssVar: '--accent', mermaidKey: 'primaryColor' },
+  { cssVar: '--paper-edge', mermaidKey: 'primaryColor' },
+  { cssVar: '--rule', mermaidKey: 'primaryBorderColor' },
   { cssVar: '--ink', mermaidKey: 'primaryTextColor' },
-  { cssVar: '--rule', mermaidKey: 'lineColor' },
-  { cssVar: '--doc-code-bg', mermaidKey: 'tertiaryColor' },
+  { cssVar: '--paper-edge', mermaidKey: 'secondaryColor' },
+  { cssVar: '--rule', mermaidKey: 'secondaryBorderColor' },
+  { cssVar: '--ink', mermaidKey: 'secondaryTextColor' },
+  { cssVar: '--paper-edge', mermaidKey: 'tertiaryColor' },
+  { cssVar: '--rule', mermaidKey: 'tertiaryBorderColor' },
+  { cssVar: '--ink', mermaidKey: 'tertiaryTextColor' },
+  { cssVar: '--ink-soft', mermaidKey: 'lineColor' },
+  { cssVar: '--ink', mermaidKey: 'textColor' },
+  { cssVar: '--highlight-soft', mermaidKey: 'noteBkgColor' },
+  { cssVar: '--ink', mermaidKey: 'noteTextColor' },
+  { cssVar: '--rule', mermaidKey: 'noteBorderColor' },
+  // GitHub は Mermaid に本文と同じ system font を渡す。既定の "trebuchet ms" のままだと
+  // GitHub レンダリングと最も目立つ差が出るため fontFamily を明示する。
+  { cssVar: '--font-system', mermaidKey: 'fontFamily' },
+  // エッジラベルの下敷きを紙色に揃え、線が透けて見えないようにする (GitHub 同様)。
+  { cssVar: '--paper', mermaidKey: 'edgeLabelBackground' },
 ]
 
 export const resolveThemeVariables = (): Record<string, string> => {
@@ -110,16 +129,27 @@ export const resolveThemeVariables = (): Record<string, string> => {
 
 let mermaidInitialized = false
 
+const resolveFontFamily = (): string =>
+  getComputedStyle(document.documentElement).getPropertyValue('--font-system').trim()
+
 const initializeMermaidOnce = (mermaid: MermaidLike): void => {
   if (mermaidInitialized) {
     return
   }
-  mermaid.initialize({
+  const themeVariables = resolveThemeVariables()
+  const config: Record<string, unknown> = {
     securityLevel: 'strict',
     startOnLoad: false,
     theme: 'base',
-    themeVariables: resolveThemeVariables(),
-  })
+    themeVariables,
+  }
+  // themeVariables.fontFamily だけだと base theme が描画時に既定の "trebuchet ms" で
+  // 上書きする可能性があるため、top-level config 経由でも明示して確実に伝える。
+  const fontFamily = resolveFontFamily()
+  if (fontFamily !== '') {
+    config.fontFamily = fontFamily
+  }
+  mermaid.initialize(config)
   mermaidInitialized = true
 }
 
