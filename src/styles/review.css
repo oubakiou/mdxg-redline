@@ -350,10 +350,12 @@ body.page-nav-resizing * {
 .page-nav-link:focus-visible::before {
   content: '';
   position: absolute;
-  left: 2px;
+  /* active 時に li (.page-nav-item) へ付く 2px accent border (link content から見て -2〜0) と
+     重なる位置に置き、cmt-card と同じく「現在地 ring に focus バーを重ねる」表現に揃える。 */
+  left: -2px;
   top: 6px;
   bottom: 6px;
-  width: 3px;
+  width: 4px;
   border-radius: 2px;
   background: var(--accent);
 }
@@ -386,6 +388,7 @@ body.page-nav-resizing * {
   color: var(--ink-soft);
   text-decoration: none;
   word-break: break-word;
+  position: relative;
   transition:
     background 0.1s ease,
     color 0.1s ease;
@@ -395,6 +398,18 @@ body.page-nav-resizing * {
   background: var(--paper);
   color: var(--ink);
   outline: none;
+}
+/* page-nav-link と同じ左辺 accent バーで keyboard focus 候補を示す。active 時の li 2px border と
+   重なるよう left: -2px に置く (page-nav-link と同じ基準)。 */
+.page-outline-link:focus-visible::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 3px;
+  bottom: 3px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--accent);
 }
 /* current 表示は accent color + font-weight: 500 (medium)。page active の 4 辺 accent border が
    主役で、サブ見出しは枠内の階層下位なのでハイライトを抑えて competing しないようにする。
@@ -456,6 +471,7 @@ body.page-nav-resizing * {
   color: var(--ink);
   text-decoration: none;
   background: var(--paper);
+  position: relative;
   transition:
     background 0.1s ease,
     border-color 0.1s ease;
@@ -463,8 +479,19 @@ body.page-nav-resizing * {
 .page-nav-sequential-link:hover,
 .page-nav-sequential-link:focus-visible {
   background: var(--paper-edge);
-  border-color: var(--accent);
   outline: none;
+}
+/* 他の TOC link と同じ左辺 accent バーで hover / keyboard focus 候補を示す。 */
+.page-nav-sequential-link:hover::before,
+.page-nav-sequential-link:focus-visible::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 6px;
+  bottom: 6px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--accent);
 }
 .page-nav-sequential-next {
   text-align: right;
@@ -1131,25 +1158,24 @@ mark.search-hl.search-hl-current {
     border-color 0.15s ease,
     box-shadow 0.15s ease;
 }
-.cmt-card:hover,
 .cmt-card.active {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
 }
-/* keyboard focus 候補は page-nav-link と同じ「左辺 accent バー」で示す (全周 accent = 現在地 /
-   左バー accent = 次候補、形状で区別)。active かつ focus 中のカードでは全周ring と inset 左バー
-   を重ねて「現在地に focus がある」を表現する。 */
+/* hover / keyboard focus 候補は「左辺 accent バー」、active (現在地) は「全周 accent ring」と
+   形状で区別する (色は同じ accent)。active かつ focus/hover 中は ring に左バーが重なる。 */
 .cmt-card:focus {
   outline: none;
 }
 .cmt-card:focus-visible {
   outline: none;
 }
+.cmt-card:hover::before,
 .cmt-card:focus-visible::before {
   content: '';
   position: absolute;
   /* active 時の左辺ライン (box-shadow 1px outer + border 1px = x:-1 〜 x:+1) と重なる位置に置く。
-     focus バーは少し太く (4px) して active と重なった時も focus 表示が見えるようにする。 */
+     バーは少し太く (4px) して active と重なった時も表示が見えるようにする。 */
   left: -1px;
   top: 8px;
   bottom: 8px;

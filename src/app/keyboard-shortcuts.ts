@@ -9,6 +9,7 @@
 // 内部 helper (isEditableTarget / detectCurrentPane / focusXxxPane / dispatchArrow* / scrollDocPane)
 // は外部から見える必要がないため non-export のままにする。
 
+import type { Page } from '../core/page-split'
 import { focusActiveOrFirstCommentCard } from './comments'
 import { focusNavigatedLink } from './page-navigation'
 import { state } from './app-state'
@@ -53,7 +54,11 @@ const detectCurrentPane = (): PaneId | null => {
   return null
 }
 
-const focusTocPane = (): void => {
+// active page 内で scroll-spy が現在地と判定したサブ見出し (aria-current="location")。
+const queryActiveOutlineLink = (): HTMLElement | null =>
+  document.querySelector<HTMLElement>('#page-nav-list a.page-outline-link[aria-current="location"]')
+
+const focusActivePageOrFirstLink = (): void => {
   const activePage = state.pages[state.activePageIndex]
   if (activePage) {
     focusNavigatedLink(activePage.slug, null)
@@ -63,6 +68,16 @@ const focusTocPane = (): void => {
   if (firstLink) {
     firstLink.focus()
   }
+}
+
+const focusTocPane = (): void => {
+  // 現在地サブ見出しがあれば、大見出しより粒度の細かいそこへ focus を戻す (読書位置に近い候補を優先)。
+  const activeOutlineLink = queryActiveOutlineLink()
+  if (activeOutlineLink) {
+    activeOutlineLink.focus()
+    return
+  }
+  focusActivePageOrFirstLink()
 }
 
 const focusDocPane = (): void => {
@@ -157,4 +172,61 @@ export const activateFocusedItem = (): void => {
     return
   }
   target.click()
+}
+
+const dummyPage = (overrides: Partial<Page> = {}): Page => ({
+  ancestorHeadingPath: [],
+  depth: 1,
+  headings: [],
+  index: 0,
+  markdown: '',
+  slug: 'p0',
+  sourceLineEnd: 1,
+  sourceLineStart: 1,
+  title: 'P0',
+  ...overrides,
+})
+
+const PAGE_NAV_LINK_HTML =
+  '<a class="page-nav-link" href="#p:p0" data-slug="p:p0" aria-current="page">P0</a>'
+const OUTLINE_LINK_HTML =
+  '<ul class="page-outline-list"><li><a class="page-outline-link" href="#p:p0__h" data-slug="p:p0__h" aria-current="location">Sub</a></li></ul>'
+
+const buildNavFixture = (outline: string): void => {
+  document.body.innerHTML = `<aside class="page-nav" id="page-nav"><div id="page-nav-list"><ul><li class="page-nav-item page-nav-item-active">${PAGE_NAV_LINK_HTML}${outline}</li></ul></div></aside>`
+}
+
+const activeElementHasClass = (className: string): boolean => {
+  const active = document.activeElement
+  return active instanceof HTMLElement && active.classList.contains(className)
+}
+
+if (import.meta.vitest) {
+  const { beforeEach, describe, expect, it } = import.meta.vitest
+
+  describe('focusTocPane', () => {
+    beforeEach(() => {
+      state.pages = [dummyPage()]
+      state.activePageIndex = 0
+    })
+
+    it('現在地サブ見出し (aria-current="location") があればそこへ focus する', () => {
+      buildNavFixture(OUTLINE_LINK_HTML)
+      focusTocPane()
+      expect(activeElementHasClass('page-outline-link')).toBe(true)
+    })
+
+    it('現在地サブ見出しが無ければ active page の大見出し (page-nav-link) へ focus する', () => {
+      buildNavFixture('')
+      focusTocPane()
+      expect(activeElementHasClass('page-nav-link')).toBe(true)
+    })
+
+    it('active page が無い場合は先頭リンクへ focus する', () => {
+      state.pages = []
+      buildNavFixture('')
+      focusTocPane()
+      expect(activeElementHasClass('page-nav-link')).toBe(true)
+    })
+  })
 }
