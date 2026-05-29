@@ -1,326 +1,53 @@
-// review-request CLI の引数パースと、出力ファイル名 prefix のサニタイズ。
-// help テキストも CLI 表示用の単一定数としてここに集約する。
+// review-request CLI の引数パース entry point。
+// flag 定数 / value parser / 各 mode の型定義は cli/arg-spec.ts に分離してあり、
+// 本ファイルは partition / dispatch の state machine と parseArgs orchestrator を担う。
+// HELP_TEXT は cli/help-text.ts に集約。
 
-import type { SupportedLang } from '../core/shiki-aliases.generated'
-import { normalizeLangIdentifier } from '../core/scan-fenced-langs'
+import {
+  CLEAN_FLAG,
+  COMMENTS_WIDTH_FLAG,
+  DOCUMENT_NAME_FLAG,
+  HELP_FLAGS,
+  HEX_16_PATTERN,
+  KEEP_FLAG,
+  MARKDOWN_CSS_FLAG,
+  MATH_FLAG,
+  MATH_FONTS_FLAG,
+  MERMAID_FLAG,
+  type MathFontsMode,
+  type MathMode,
+  type MermaidMode,
+  NO_OPEN_FLAG,
+  PAGE_NAV_WIDTH_FLAG,
+  SHIKI_LANGS_FLAG,
+  SHOW_OPEN_FILE_FLAG,
+  type ShikiLangsMode,
+  THEME_FLAG,
+  type ThemeHint,
+  YES_FLAG,
+  isThemeHint,
+  parseCommentsWidthValue,
+  parseMathFontsValue,
+  parseMathValue,
+  parseMermaidValue,
+  parsePageNavWidthValue,
+  parseShikiLangsValue,
+} from './arg-spec'
 
-const NO_OPEN_FLAG = '--no-open'
-const HELP_FLAGS = new Set(['--help', '-h'])
-const DOCUMENT_NAME_FLAG = '--document-name'
-const THEME_FLAG = '--theme'
-const SHIKI_LANGS_FLAG = '--shiki-langs'
-const COMMENTS_WIDTH_FLAG = '--comments-width'
-const PAGE_NAV_WIDTH_FLAG = '--page-nav-width'
-const SHOW_OPEN_FILE_FLAG = '--show-open-file'
-const MERMAID_FLAG = '--mermaid'
-const MATH_FLAG = '--math'
-const MATH_FONTS_FLAG = '--math-fonts'
-const MARKDOWN_CSS_FLAG = '--markdown-css'
-const CLEAN_FLAG = '--clean'
-const YES_FLAG = '--yes'
-const KEEP_FLAG = '--keep'
-const HEX_16_PATTERN = /^[0-9a-f]{16}$/i
-
-export type ThemeHint = 'system' | 'light' | 'dark'
-const THEME_VALUES = ['system', 'light', 'dark'] as const
-
-const isThemeHint = (value: string): value is ThemeHint =>
-  (THEME_VALUES as readonly string[]).includes(value)
-
-// --comments-width に渡せる範囲は comments-width.ts と揃える。
-// 0  → 起動時 closed (画面右端タブのみ表示)
-// 280–640 → open 状態でその幅
-// 範囲外 (1–279 / 641+) は invalid。
-const COMMENTS_WIDTH_MIN = 280
-const COMMENTS_WIDTH_MAX = 640
-
-// --page-nav-width に渡せる範囲は page-nav-width.ts と揃える。
-// 0  → 起動時 closed (画面左端タブのみ表示)
-// 180–480 → open 状態でその幅
-const PAGE_NAV_WIDTH_MIN = 180
-const PAGE_NAV_WIDTH_MAX = 480
-
-const isValidCommentsWidthHint = (value: number): boolean => {
-  if (!Number.isFinite(value) || !Number.isInteger(value)) {
-    return false
-  }
-  if (value === 0) {
-    return true
-  }
-  return value >= COMMENTS_WIDTH_MIN && value <= COMMENTS_WIDTH_MAX
+export { HELP_TEXT } from './help-text'
+export {
+  type MathFontsMode,
+  type MathMode,
+  type MermaidMode,
+  type ShikiLangsMode,
+  type ThemeHint,
+  parseCommentsWidthValue,
+  parseMathFontsValue,
+  parseMathValue,
+  parseMermaidValue,
+  parsePageNavWidthValue,
+  parseShikiLangsValue,
 }
-
-const isValidPageNavWidthHint = (value: number): boolean => {
-  if (!Number.isFinite(value) || !Number.isInteger(value)) {
-    return false
-  }
-  if (value === 0) {
-    return true
-  }
-  return value >= PAGE_NAV_WIDTH_MIN && value <= PAGE_NAV_WIDTH_MAX
-}
-
-/**
- * `--comments-width` の値を整数 (0 or 280–640) にパースする。
- * 範囲外・非数値・小数は null (CLI 側で invalid 扱い)。
- */
-export const parseCommentsWidthValue = (raw: string): number | null => {
-  const trimmed = raw.trim()
-  if (trimmed === '') {
-    return null
-  }
-  const num = Number(trimmed)
-  if (!isValidCommentsWidthHint(num)) {
-    return null
-  }
-  return num
-}
-
-/**
- * `--page-nav-width` の値を整数 (0 or 180–480) にパースする。
- * 範囲外・非数値・小数は null (CLI 側で invalid 扱い)。
- */
-export const parsePageNavWidthValue = (raw: string): number | null => {
-  const trimmed = raw.trim()
-  if (trimmed === '') {
-    return null
-  }
-  const num = Number(trimmed)
-  if (!isValidPageNavWidthHint(num)) {
-    return null
-  }
-  return num
-}
-
-/**
- * `--mermaid <mode>` のパース結果 (docs/mdxg-diagram-rendering.md §3.2 / §4 Step 4)。
- * - `auto` (既定): markdown を scanMermaidFences で走査し、mermaid ブロックがあるときだけ Mermaid runtime を注入
- * - `on`: 件数に関係なく必ず注入
- * - `off`: 注入しない (mermaid ブロックは Shiki ハイライト fallback で表示)
- */
-export type MermaidMode = 'auto' | 'off' | 'on'
-const MERMAID_VALUES = ['auto', 'on', 'off'] as const
-
-const isMermaidMode = (value: string): value is MermaidMode =>
-  (MERMAID_VALUES as readonly string[]).includes(value)
-
-/**
- * `--mermaid` の値を MermaidMode にパースする。pure な関数で、CLI 引数パースと
- * 単体テストの両方から再利用する。未知の値・空文字は null を返し、CLI 側で invalid 扱い。
- */
-export const parseMermaidValue = (value: string): MermaidMode | null => {
-  const trimmed = value.trim()
-  if (isMermaidMode(trimmed)) {
-    return trimmed
-  }
-  return null
-}
-
-/**
- * `--math <mode>` のパース結果 (docs/mdxg-math-rendering.archive.md §3.2 / §4 Step 4)。
- * - `auto` (既定): markdown を countMath で走査し、$...$ / $$...$$ があるときだけ KaTeX runtime を注入
- * - `on`: 件数に関係なく必ず注入
- * - `off`: 注入しない ($...$ / $$...$$ は raw な markdown 文法のまま plain text 表示)
- *
- * MermaidMode と意味論を完全に揃えるため同じ '`auto' | 'on' | 'off'` を再利用する。
- */
-export type MathMode = MermaidMode
-
-/**
- * `--math` の値を MathMode にパースする。MermaidMode と同じ literal を共有しているので
- * 受け付ける値も同じ。CLI 側の dispatch だけが分かれる。
- */
-export const parseMathValue = (value: string): MathMode | null => parseMermaidValue(value)
-
-/**
- * `--math-fonts <mode>` のパース結果 (docs/mdxg-math-rendering.archive.md §5.g / §5.l)。
- * - `minimal` (既定): Main / AMS / Math / Size1-4 の 9 family のみ inline。\mathcal / \mathfrak /
- *   \mathscr / SansSerif / Typewriter は OS フォントへ fallback
- * - `all`: 全 20 family を inline。珍しい数式記号も完全な字形で描画
- */
-export type MathFontsMode = 'all' | 'minimal'
-const MATH_FONTS_VALUES = ['minimal', 'all'] as const
-
-const isMathFontsMode = (value: string): value is MathFontsMode =>
-  (MATH_FONTS_VALUES as readonly string[]).includes(value)
-
-/**
- * `--math-fonts` の値を MathFontsMode にパースする。pure な関数で、CLI 引数パースと
- * 単体テストの両方から再利用する。未知の値・空文字は null を返し、CLI 側で invalid 扱い。
- */
-export const parseMathFontsValue = (value: string): MathFontsMode | null => {
-  const trimmed = value.trim()
-  if (isMathFontsMode(trimmed)) {
-    return trimmed
-  }
-  return null
-}
-
-/**
- * `--shiki-langs <mode>` のパース結果。
- * - `auto`: markdown をスキャンして必要 grammar だけを注入 (CLI 既定)
- * - `all`: Shiki bundled 全言語を注入
- * - `none`: 注入しない (全コードブロックを plain text fallback)
- * - `list`: CSV で明示指定された正規名集合だけを注入 (エイリアスは正規化済み)
- *
- * 既定が `auto` なのは、配布者が何も指定しなくても配布物サイズが最小化される
- * (仕様書系で +0 KB / コード混在レビューで +100〜300 KB) よう倒すため。
- * `all` は +1〜1.5 MB gzip で重く、`none` は MDXG §2 [MUST] (シンタックス
- * ハイライト) を満たさない。
- */
-export type ShikiLangsMode =
-  | { kind: 'all' }
-  | { kind: 'auto' }
-  | { kind: 'list'; langs: ReadonlySet<SupportedLang> }
-  | { kind: 'none' }
-
-const parseShikiLangsKeyword = (trimmed: string): ShikiLangsMode | null => {
-  if (trimmed === 'auto') {
-    return { kind: 'auto' }
-  }
-  if (trimmed === 'all') {
-    return { kind: 'all' }
-  }
-  if (trimmed === 'none') {
-    return { kind: 'none' }
-  }
-  return null
-}
-
-const parseShikiLangsList = (trimmed: string): ShikiLangsMode => {
-  const tokens = trimmed
-    .split(',')
-    .map((token: string): string => token.trim())
-    .filter((token: string): boolean => token.length > 0)
-  const langs = new Set<SupportedLang>()
-  for (const token of tokens) {
-    const canonical = normalizeLangIdentifier(token)
-    if (canonical !== null) {
-      langs.add(canonical)
-    }
-  }
-  return { kind: 'list', langs }
-}
-
-/**
- * `--shiki-langs` の値を ShikiLangsMode にパースする。pure な関数で、CLI 引数パースと
- * 単体テストの両方から再利用する。空白だけ / 未サポートのみは空 list (= none と等価) を返す。
- */
-export const parseShikiLangsValue = (value: string): ShikiLangsMode =>
-  parseShikiLangsKeyword(value.trim()) ?? parseShikiLangsList(value.trim())
-
-export const HELP_TEXT = `Usage: mdxg-redline [options] <input.md|-> [output-dir]
-
-Generate a review-request HTML with the markdown embedded and open it in
-your default browser.
-
-Arguments:
-  <input.md>             Path to a markdown file. Pass \`-\` to read from stdin.
-  [output-dir]           Output directory. Defaults to the input file's
-                         directory; for stdin input, defaults to the current
-                         working directory. Output filename is auto-derived
-                         as <mdFileName>-<docHash>-review.html.
-
-Options:
-  --document-name <name> Override the document name used for the data-name
-                         attribute and the output filename prefix. Useful
-                         with stdin input.
-  --theme <value>        Set the initial theme hint for the generated HTML.
-                         One of: system | light | dark. Written as a
-                         <html data-theme> attribute and used only when the
-                         viewer has no localStorage preference yet (the user's
-                         UI toggle history always wins). Omit to leave the
-                         attribute off entirely.
-  --shiki-langs <value>  Select which Shiki grammars to embed in the HTML
-                         for syntax highlighting. One of:
-                           auto  Scan the input markdown and embed only the
-                                 grammars used by fenced blocks (default).
-                           all   Embed all Shiki-bundled grammars (heaviest,
-                                 ~235 languages, ~5.5 MB gzipped).
-                           none  Embed no grammars (all code blocks render as
-                                 plain text).
-                           <csv> Comma-separated list of language identifiers
-                                 (e.g. ts,js,py). Aliases are normalized to
-                                 canonical names; unsupported entries are
-                                 silently ignored.
-  --comments-width <px>   Set the initial comments-panel width hint for the
-                         generated HTML. One of:
-                           0         Start with the comments panel closed (only the
-                                     edge tab is visible until the user opens
-                                     it).
-                           280–640   Start open with the given width in pixels.
-                         Written as a <html data-comments-width> attribute and
-                         used only when the viewer has no localStorage
-                         preference yet (the user's UI history always wins).
-                         Omit to leave the attribute off entirely.
-  --page-nav-width <px>  Set the initial document-pages panel (left TOC) width
-                         hint. One of:
-                           0         Start with the panel closed (only the left
-                                     edge tab is visible).
-                           180–480   Start open with the given width in pixels.
-                         Written as a <html data-page-nav-width> attribute and
-                         follows the same precedence rules as --comments-width.
-  --mermaid <value>      Control Mermaid runtime injection for \`\`\`mermaid blocks.
-                         One of:
-                           auto  Inject Mermaid only if the markdown contains at
-                                 least one \`\`\`mermaid block (default). Keeps
-                                 distribution size minimal when not used.
-                           on    Always inject. Adds ~700 KB gzipped to the
-                                 distribution HTML.
-                           off   Never inject. \`\`\`mermaid blocks fall back to
-                                 Shiki-highlighted code blocks (MDXG §15 [MUST]).
-  --math <value>         Control KaTeX runtime injection for $...$ / $$...$$
-                         math expressions (MDXG §14). One of:
-                           auto  Inject KaTeX only if the markdown contains at
-                                 least one math expression (default).
-                           on    Always inject. Adds ~250 / ~350 KB gzipped
-                                 depending on --math-fonts.
-                           off   Never inject. $...$ / $$...$$ render as raw
-                                 markdown text (MDXG §14 [MUST]).
-  --math-fonts <value>   Choose the KaTeX woff2 font set embedded as data URI
-                         (only meaningful when KaTeX is injected). One of:
-                           minimal  Main / AMS / Math / Size1-4 only, +~110 KB
-                                    gzipped (default). \\mathcal / \\mathfrak /
-                                    \\mathscr / SansSerif / Typewriter fall back
-                                    to the host's system font.
-                           all      Embed all 20 woff2 families, +~220 KB gzipped.
-                                    Use when the document relies on rare math
-                                    glyphs (\\mathcal{X}, \\mathfrak{X}, ...).
-  --markdown-css <path>  Replace the bundled markdown preview stylesheet with the
-                         CSS file at <path>. Targets only the markdown preview
-                         (#doc scope). Layout / chrome (review.css) is not
-                         affected. Useful for distributing review HTML with a
-                         custom typographic theme.
-  --no-open              Generate the HTML but do not launch a browser.
-  --show-open-file       Keep the "Open file" button visible in the generated
-                         HTML's header. By default (without this flag), CLI
-                         output hides the button to prevent accidentally
-                         loading a different markdown (which would discard the
-                         current comments). The standalone HTML — opened
-                         directly without the CLI — always shows the button.
-  -h, --help             Print this help and exit. Takes precedence over all
-                         other arguments and flags when present.
-
-Cleanup mode:
-  --clean <dir>          Remove all *-<docHash>-review.html and
-                         *-<docHash>-feedback.json files in <dir> (top level
-                         only). By default runs in dry-run mode and only
-                         prints the candidates; pass --yes to actually delete.
-  --yes                  With --clean, perform deletion (no prompt). Without
-                         --yes, --clean is dry-run.
-  --keep <docHash>       With --clean, preserve files whose 16-hex docHash
-                         matches. May be repeated.
-
-Examples:
-  mdxg-redline spec.md
-  mdxg-redline spec.md ./reviews
-  mdxg-redline --no-open spec.md
-  mdxg-redline --theme dark spec.md
-  cat spec.md | mdxg-redline - --document-name spec.md
-  mdxg-redline --clean ./reviews
-  mdxg-redline --clean ./reviews --yes
-  mdxg-redline --clean ./reviews --keep a1b2c3d4e5f6a7b8 --yes
-`
 
 export interface RunArgs {
   documentName?: string
