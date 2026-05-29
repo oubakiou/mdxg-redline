@@ -3,10 +3,6 @@
 // CLI が事前注入した grammar JSON を JSON.parse → createHighlighterCoreSync で同期初期化する。
 // grammar が無い / 解析失敗時は null を返し、呼び出し側で plain text fallback に倒す。
 
-// fmt が `type` 修飾子付き specifier を先頭に並べ替える挙動と lint の sort-imports
-// (identifier 文字列順) がこのファイルでは衝突するため、ファイル全体で無効化する。
-/* eslint-disable sort-imports */
-
 import { SHIKI_SUPPORTED_LANGS } from '../core/shiki-aliases.generated'
 import { type HighlighterCore, createHighlighterCoreSync } from 'shiki/core'
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'

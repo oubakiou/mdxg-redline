@@ -1,16 +1,9 @@
 import { Marked, Renderer } from 'marked'
-// sort-imports は alphabetical 順 (C < M) で markdown-code-renderer を先頭に置けと言うが、
-// 'marked' の Multiple import block を先に固めたいので 1 行限定で無効化する。
-// eslint-disable-next-line sort-imports
 import { type CodeHighlighter, createCodeRenderer } from './markdown-code-renderer'
 import footnote from 'marked-footnote'
 
-// sort-imports は multiple specifier を single specifier より前に並べる一方、
-// alphabetical 順では `escape` (e) が `mermaid-attrs` (m) より先になり両立しない。
-/* eslint-disable sort-imports */
 import { type MathSegment, scanMath } from './math'
 import { escapeHtml } from './escape'
-/* eslint-enable sort-imports */
 
 export type { CodeHighlighter }
 

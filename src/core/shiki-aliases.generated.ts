@@ -6,9 +6,6 @@
 // 併せて吐き出した結果。CLI (--shiki-langs=<csv>) と browser 側 Shiki 初期化、scanFencedLangs
 // が同じマップを参照する。
 
-// 言語 ID として "c" のような 1 文字識別子を含む必要があるため id-length を無効化。
-/* eslint-disable id-length */
-
 export const SHIKI_SUPPORTED_LANGS = [
   'abap',
   'actionscript-3',

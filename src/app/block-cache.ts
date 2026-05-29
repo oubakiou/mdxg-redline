@@ -3,8 +3,6 @@
 // reapplyAllMarks の巻き戻しが依存する「動的装飾を含まない素のレンダリング結果」のキャッシュ規約も
 // ここで定義する (DESIGN.md §6 アンカリング / §12 §2 Code Block Rendering)。
 
-/* eslint-disable sort-imports */
-
 import {
   type AnchorPositionsResult,
   type BlockAnchor,

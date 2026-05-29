@@ -7,9 +7,6 @@ import {
 import { dirname, resolve } from 'node:path'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { inlineMarkdownCssIntoHtml } from './src/build/inline-markdown-css.ts'
-// fmt が `type Plugin` を先頭に並べ替える一方 lint の sort-imports は
-// identifier 文字列順 (defineConfig が先) を求める。両者の合意点が無いため当該行のみ無効化する。
-// eslint-disable-next-line sort-imports
 import { type Plugin, defineConfig } from 'vite-plus'
 import { fileURLToPath } from 'node:url'
 import { viteSingleFile } from 'vite-plugin-singlefile'
@@ -336,6 +333,13 @@ export default defineConfig({
     // ビルド成果物はチェック対象外。`vp build` で都度上書きされるため。
     ignorePatterns: ['dist/'],
     options: { typeAware: true, typeCheck: true },
+    overrides: [
+      {
+        // 言語 ID として "c" 等の 1 文字識別子を含む必要がある生成物。
+        files: ['**/*.generated.ts'],
+        rules: { 'id-length': 'off' },
+      },
+    ],
     rules: {
       'capitalized-comments': 'off',
       'no-array-reduce': 'off',
@@ -343,6 +347,9 @@ export default defineConfig({
       'number-literal-case': 'off',
       'oxc/no-async-await': 'off',
       'oxc/no-rest-spread-properties': 'off',
+      // import の並びは fmt (oxfmt sortImports) が所有する。lint の sort-imports は
+      // member 構文順 (none→all→multiple→single) という別アルゴリズムで衝突するため off。
+      'sort-imports': 'off',
       'unicorn/no-null': 'off',
     },
   },

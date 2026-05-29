@@ -16,10 +16,8 @@
 import { Marked } from 'marked'
 import footnote from 'marked-footnote'
 
-/* eslint-disable sort-imports */
 import { escapeHtml } from './escape'
 import { renderInlineSafely } from './markdown'
-/* eslint-enable sort-imports */
 
 const createMarkedWithFootnote = (): Marked => {
   const instance = new Marked()

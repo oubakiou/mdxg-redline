@@ -3,8 +3,6 @@
 // footnotes synthetic section は最後に orphan 救済を通してから synthetic page にハードコード配置する
 // (docs/mdxg-footnotes.md §4 / §5.i)。
 
-/* eslint-disable sort-imports */
-
 import { type AnchorPositionsResult, computeAnchorPositions } from '../core/block-anchors'
 import { type Page, findPageIndexBySourceLine, isSyntheticPage } from '../core/page-split'
 import { cacheBlocksAndBuildAnchors } from './block-cache'

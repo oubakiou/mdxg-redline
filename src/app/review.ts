@@ -33,11 +33,6 @@ import { closeMermaidModal, wireMermaidModal } from './mermaid-modal'
 import { computeDocHash, formatLoadedStatus } from '../core/embed'
 import { markFeedbackUnsaved, state } from './app-state'
 import { qs, toast } from './dom-utils'
-// sort-imports は Multiple specifier (`./keyboard-shortcuts`) を Single specifier
-// (`./dom-utils` の `qs`) より前に置けと言うが、既存の import block 全体は元々その制約に
-// 従っていない (上の `./pages` / `./comments` / `../core/page-split` 等が同様の並びで通っている)。
-// この 1 行のためだけに block を並べ直すと diff が広がるため、当該行のみ無効化する。
-// eslint-disable-next-line sort-imports
 import {
   activateFocusedItem,
   hasNoModifier,
