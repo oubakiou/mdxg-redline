@@ -201,4 +201,36 @@ if (import.meta.vitest) {
       expect([...scanFencedLangs(md)]).toEqual(['markdown'])
     })
   })
+
+  // shiki-aliases.generated.ts は build (vite closeBundle) が毎回再生成する commit 対象の
+  // 生成物。shiki bump / SPEC_LANGS 変更後に再生成・commit を忘れると消費側が古い alias 表で
+  // 動くため、build を挟まず再生成内容と commit 済みファイルの一致を検証する。
+  describe('shiki-aliases.generated.ts freshness (生成物鮮度)', () => {
+    it('インストール済み shiki / SPEC_LANGS から再生成した内容が commit 済みファイルと一致', async () => {
+      const [fs, meta, url, path] = await Promise.all([
+        import('node:fs'),
+        import('../../scripts/lib/shiki-meta.mjs'),
+        import('node:url'),
+        import('node:path'),
+      ])
+      const here = path.dirname(url.fileURLToPath(import.meta.url))
+      const pkgText = fs.readFileSync(
+        path.resolve(here, '..', '..', 'node_modules', 'shiki', 'package.json'),
+        'utf8'
+      )
+      const versionMatch = /"version"\s*:\s*"([^"]+)"/.exec(pkgText)
+      const canonicals = meta.canonicalizeSpec()
+      const regenerated = meta.formatAliasesTs({
+        aliasMap: meta.buildAliasMap(canonicals),
+        canonicals,
+        shikiVersion: (versionMatch ?? ['', ''])[1],
+      })
+      const committed = fs.readFileSync(path.resolve(here, 'shiki-aliases.generated.ts'), 'utf8')
+      expect(versionMatch).not.toBeNull()
+      expect(
+        regenerated,
+        'shiki-aliases.generated.ts が古い。vp build / npm run build で再生成して commit すること'
+      ).toBe(committed)
+    })
+  })
 }
