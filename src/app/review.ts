@@ -16,7 +16,6 @@ import {
 import {
   activateCommentsMark,
   configureCommentsNavigation,
-  focusActiveOrFirstCommentCard,
   focusCommentMarkAfterNavigate,
   renderComments,
   wireCommentsKeyboardNav,
@@ -33,10 +32,20 @@ import { closeMermaidModal, wireMermaidModal } from './mermaid-modal'
 import { computeDocHash, formatLoadedStatus } from '../core/embed'
 import { markFeedbackUnsaved, state } from './app-state'
 import { qs, toast } from './dom-utils'
-// sort-imports は declaration を first specifier (`focusNavigatedLink` = f) で比較するため
-// `qs` (q) より前に置けと言うが、既存の import block 全体は元々その制約に従っていない。
+// sort-imports は Multiple specifier (`./keyboard-shortcuts`) を Single specifier
+// (`./dom-utils` の `qs`) より前に置けと言うが、既存の import block 全体は元々その制約に
+// 従っていない (上の `./pages` / `./comments` / `../core/page-split` 等が同様の並びで通っている)。
 // この 1 行のためだけに block を並べ直すと diff が広がるため、当該行のみ無効化する。
 // eslint-disable-next-line sort-imports
+import {
+  activateFocusedItem,
+  hasNoModifier,
+  moveFocusDown,
+  moveFocusLeft,
+  moveFocusRight,
+  moveFocusUp,
+  shouldSkipAffordanceKey,
+} from './keyboard-shortcuts'
 import {
   closeSearch,
   configureSearchNavigation,
@@ -57,161 +66,6 @@ import { renderDoc } from './doc-renderer'
 import { setOnMarksReapplied } from './mark-engine'
 import { wireFloater } from './floater'
 import { wireToolbar } from './toolbar'
-
-// `?` キー (Shift+/) や `f` / `g` などのグローバルショートカットは、textarea / input / contentEditable
-// 配下にフォーカスがある間はそちらの文字入力を妨げないようスキップしたい。判定を一箇所にまとめる。
-const isEditableTarget = (target: EventTarget | null): boolean => {
-  if (!(target instanceof HTMLElement)) {
-    return false
-  }
-  if (target.isContentEditable) {
-    return true
-  }
-  return target.tagName === 'TEXTAREA' || target.tagName === 'INPUT'
-}
-
-const hasNoModifier = (event: KeyboardEvent): boolean =>
-  !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
-
-// affordance ショートカット (`f` / `g` / `?`) を無視すべきケースをまとめた共通ガード。
-//   - event.repeat: 押しっぱなしによる連続発火 (modal の点滅対策)
-//   - isEditableTarget: textarea / input / contenteditable 中の文字入力を妨げない
-const shouldSkipAffordanceKey = (event: KeyboardEvent): boolean =>
-  event.repeat || isEditableTarget(event.target)
-
-// 左手のみで完結する WASD ベースのキーマップ (§13)。
-//   a/d = 隣接 pane へ focus 移動 (TOC ↔ doc-pane ↔ comments)
-//   w/s = pane 内アイテム間で focus 上下 (synthetic ArrowUp/Down で既存 handler に委譲)
-//         doc-pane では scrollBy ±40px で arrow key と同等の line scroll
-//   r   = focus 中のアイテムを activate (.click() 発火)
-//   f / h = search / help 起動
-// すべて単独キーで、ブラウザ native shortcut (Cmd+F 等) は触らない。
-// 何も focus してない (body) 状態で a / d を押すと TOC に着地する (初動の左手 fallback)。
-
-type PaneId = 'comments' | 'doc' | 'toc'
-
-const detectCurrentPane = (): PaneId | null => {
-  const active = document.activeElement
-  if (!(active instanceof Element)) {
-    return null
-  }
-  if (active.closest('.page-nav')) {
-    return 'toc'
-  }
-  if (active.closest('aside.comments')) {
-    return 'comments'
-  }
-  if (active.closest('.doc-pane')) {
-    return 'doc'
-  }
-  return null
-}
-
-const focusTocPane = (): void => {
-  const activePage = state.pages[state.activePageIndex]
-  if (activePage) {
-    focusNavigatedLink(activePage.slug, null)
-    return
-  }
-  const firstLink = document.querySelector<HTMLElement>(`#page-nav-list a`)
-  if (firstLink) {
-    firstLink.focus()
-  }
-}
-
-const focusDocPane = (): void => {
-  const pane = document.querySelector<HTMLElement>('.doc-pane')
-  if (pane) {
-    pane.focus()
-  }
-}
-
-const focusCommentsPane = (): void => {
-  focusActiveOrFirstCommentCard()
-}
-
-// 3 pane を環状 (TOC → doc → comments → TOC → ...) と見立て、a/d で端から反対端へ wrap する。
-// 両端 no-op だと「TOC で a を押しても何も起きない」反応の無さがあるため、左手だけでパネルを
-// 一周できる回遊性を優先する。null (どこも focus してない初期状態) は左手 fallback として TOC へ。
-const PANE_FOCUS_LEFT: Record<PaneId, () => void> = {
-  comments: focusDocPane,
-  doc: focusTocPane,
-  toc: focusCommentsPane,
-}
-const PANE_FOCUS_RIGHT: Record<PaneId, () => void> = {
-  comments: focusTocPane,
-  doc: focusCommentsPane,
-  toc: focusDocPane,
-}
-
-const resolvePaneFocusHandler = (
-  current: PaneId | null,
-  table: Record<PaneId, () => void>
-): (() => void) => {
-  if (current === null) {
-    return focusTocPane
-  }
-  return table[current]
-}
-
-const moveFocusLeft = (): void => {
-  resolvePaneFocusHandler(detectCurrentPane(), PANE_FOCUS_LEFT)()
-}
-
-const moveFocusRight = (): void => {
-  resolvePaneFocusHandler(detectCurrentPane(), PANE_FOCUS_RIGHT)()
-}
-
-const DOC_LINE_SCROLL_PX = 40
-
-const dispatchArrowOnActiveElement = (key: 'ArrowDown' | 'ArrowUp'): void => {
-  const target = document.activeElement
-  if (!(target instanceof Element)) {
-    return
-  }
-  target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key }))
-}
-
-const scrollDocPane = (delta: number): void => {
-  const pane = document.querySelector<HTMLElement>('.doc-pane')
-  if (pane) {
-    pane.scrollBy({ top: delta })
-  }
-}
-
-const moveFocusUp = (): void => {
-  const current = detectCurrentPane()
-  if (current === 'doc') {
-    scrollDocPane(-DOC_LINE_SCROLL_PX)
-    return
-  }
-  if (current === 'toc' || current === 'comments') {
-    dispatchArrowOnActiveElement('ArrowUp')
-  }
-}
-
-const moveFocusDown = (): void => {
-  const current = detectCurrentPane()
-  if (current === 'doc') {
-    scrollDocPane(DOC_LINE_SCROLL_PX)
-    return
-  }
-  if (current === 'toc' || current === 'comments') {
-    dispatchArrowOnActiveElement('ArrowDown')
-  }
-}
-
-const activateFocusedItem = (): void => {
-  const target = document.activeElement
-  if (!(target instanceof HTMLElement)) {
-    return
-  }
-  // doc-pane 自身には activate 対象が無いので no-op
-  if (target.matches('.doc-pane')) {
-    return
-  }
-  target.click()
-}
 
 /**
  * loadFromMarkdown / navigateToTarget 双方で使う「現状の state を全 view に流す」共通処理。
