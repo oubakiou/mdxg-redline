@@ -1,9 +1,16 @@
 #!/bin/bash
-# pre-commit hook: lint / format / type / test を走らせ、いずれか失敗したら commit を block する。
+# pre-commit hook: build / lint / format / type / test を走らせ、いずれか失敗したら commit を block する。
 # set -e なしだと vp check --fix が非 0 で抜けても後続コマンドに進んでしまい、最後の vp test が
 # pass すると hook 全体が exit 0 になって commit が通ってしまう (sort-imports などの --fix 対象外
 # ルールが見落とされる経路)。set -e で最初の失敗で止める。
 set -e
+
+# 全 commit で dist / 生成物を最新ソースから再ビルドして同期する運用。
+# build は dist だけでなく src/core/shiki-aliases.generated.ts (lint / test 対象のソース) も
+# 再生成するため、後続の vp check --fix / vp test がその最新状態を検証できるよう最初に走らせる。
+# 依存バージョンが drift すると dist も動くため、dist 差分の再現性は lockfile (npm ci) /
+# version range 管理側で担保する前提。
+npm run build
 
 vp check --fix
 
@@ -11,5 +18,8 @@ vp check --fix
 git diff --name-only --diff-filter=M | while IFS= read -r file; do
   git add "$file"
 done
+
+# build 成果物 (dist 配下 / 生成ソース) を commit に含める。新規ファイルも拾うため明示 add する。
+git add dist src/core/shiki-aliases.generated.ts
 
 vp test

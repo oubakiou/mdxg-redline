@@ -220,13 +220,20 @@ const readKatexAssetsIfPresent = async (distDir: string): Promise<KatexAssets | 
 
 const loadShikiGrammars = async (distDir: string): Promise<Record<string, unknown>> => {
   const canonicals = canonicalizeSpec()
-  const grammars: Record<string, unknown> = {}
-  await Promise.all(
-    canonicals.map(async (lang: string): Promise<void> => {
+  // Promise.all は入力配列順に結果を返すため、entries を canonicals 順に組み直してから
+  // オブジェクトへ挿入する。直接 grammars[lang] = ... を Promise.all 内で行うと readFile の
+  // 解決順 (= I/O タイミング依存) でキー順が変わり、JSON.stringify 出力がビルドごとに揺れて
+  // standalone.html が非決定的になる。
+  const entries = await Promise.all(
+    canonicals.map(async (lang: string): Promise<readonly [string, unknown]> => {
       const grammarJson = await readFile(resolve(distDir, 'shiki-langs', `${lang}.json`), 'utf8')
-      grammars[lang] = JSON.parse(grammarJson) as unknown
+      return [lang, JSON.parse(grammarJson) as unknown]
     })
   )
+  const grammars: Record<string, unknown> = {}
+  for (const [lang, grammar] of entries) {
+    grammars[lang] = grammar
+  }
   return grammars
 }
 
