@@ -197,7 +197,9 @@
 
 ## 4. 優先度: 低
 
-### L1. `page-split.ts` 内 synthetic page 生成の切り出し
+### L1. (完了済み) `page-split.ts` 内 synthetic page 生成の切り出し
+
+**状態**: **完了済み** — commit `e124ddd` で merge。
 
 **対象**: `src/core/page-split.ts` (722, code 357 / test 365)
 
@@ -244,7 +246,7 @@
 6. **M5** — `html-rewrite.ts` の属性置換ヘルパー集約（pure split、低リスク）— **完了** (`e8bd1d3`)
 7. **M3** — mermaid / katex renderer 共通化（過去 M1 (f406601) の継続）— **完了** (`f8b75d7`)
 8. **M4** — `comments.ts` の DOM wiring と pure logic 分離 — **完了** (`740e93b`)
-9. **L1** — `page-split.ts` の synthetic page 切り出し
+9. **L1** — `page-split.ts` の synthetic page 切り出し — **完了** (`e124ddd`)
 10. **L3** — `markdown.ts` の renderer concern 分割（セキュリティ境界のため最後）
 
 ## 6. 共通の進め方
