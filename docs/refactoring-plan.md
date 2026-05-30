@@ -127,7 +127,7 @@
 
 **リスク**: 低（import パス書き換えのみ。LSP は自動書き換えしないため手動で書き換え、`getDiagnostics` / `vp check` で検証）
 
-### L3. グローバル mutable state の操作 API 化 (部分着手)
+### L3. グローバル mutable state の操作 API 化 (主要関数完了)
 
 **対象**: `src/app/state/app-state.ts:18`
 
@@ -137,12 +137,20 @@
 
 - まず `loadDocumentState` / `setActivePage` / `replaceComments` のような **狭い操作関数を増やす**ところから始め、直接 mutate を段階的に置換。全面 setter 化はしない。
 
-**着手済み**:
+**完了内容**:
 
 - `loadDocumentState(payload)` を `src/app/state/app-state.ts` に追加し、新規 markdown 取り込み時の state 一括書き込み (docName / markdown / docHash / pages / activePageIndex / comments=[] のリセット) を 1 箇所に閉じ込めた。`src/app/review.ts` の `initStateFromMarkdown` から直 mutate を排除し本関数を呼ぶ形に置換
 - `replaceComments(next)` を `src/app/state/app-state.ts` に追加し、comments 集合全体を差し替える経路を 1 箇所に集約 (caller 側配列を defensive copy)。`src/app/boot.ts` (applyEmbeddedComments) / `src/app/chrome/toolbar.ts` (clearAllComments) / `src/app/comments/comments.ts` (deleteComment) の 3 つの production 直 mutate を本関数経由に置換
-- `setActivePage` は既存 `setActivePageIndex` として `document/pages.ts` に存在のため新規導入なし
-- 残り (keyboard-shortcuts.ts での activePageIndex=0 リセット、doc-mount.ts / block-cache.ts での blockAnchors / blockOriginalHTML 直 mutate など) は後続 PR で段階導入する
+- `setActivePage` は既存 `setActivePageIndex` として `document/pages.ts` に存在
+- `markFeedbackWritten` / `markFeedbackUnsaved` は既存で `state.lastWrittenSignature` の write を 1 箇所に閉じ込め済み
+
+**残り (意図的に narrow op 化していない)**:
+
+- `state.blockAnchors = cacheBlocksAndBuildAnchors(doc)` (`doc-mount.ts:192`、1 site のみ): 単発の文書ロード経路でのみ実行され、grep 容易性のメリットが薄いため narrow op 化していない
+- `state.blockOriginalHTML.set()` / `.clear()` (`block-cache.ts` / `mermaid.ts` / `katex.ts`): Map 自体のメソッド呼び出しによる incremental update で、フィールド reassignment ではない。renderer upgrade 経路の inline mutation として残置
+- in-source test 内の state mutation: テスト fixture の snapshot/restore は単一ファイル内で完結しており、grep 対象外
+
+「全面 setter 化はしない」という当初方針通り、高頻度経路 (docName / markdown / docHash / pages / comments / activePageIndex / lastWrittenSignature) のみ narrow op 化した時点で本タスクをクローズする。
 
 **効果**: 将来の回帰点を絞り、state 変更箇所を grep 可能にする。
 
@@ -158,7 +166,7 @@
 4. **M3**（doc-mount pure 分離、完了）— 配賦ロジックを純粋関数化してテスト容易性を上げる
 5. **M2**（review.ts wiring 分離、完了）— 起動順序に依存するため、上記でコードに慣れてから
 6. **L1**（consume\*Value 統合、完了）— H1 完了後に `parse-run-args.ts` 内の構造変更として別 PR で
-7. **L3**（state 操作 API 化、部分着手 — loadDocumentState のみ導入済み）— 最も影響範囲が広いので最後。1 操作関数ずつ段階導入
+7. **L3**（state 操作 API 化、主要関数完了 — loadDocumentState / replaceComments を導入。残りは意図的に narrow op 化していない）— 最も影響範囲が広いので最後。1 操作関数ずつ段階導入
 
 ## 6. 共通の進め方
 
