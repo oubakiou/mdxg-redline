@@ -111,6 +111,8 @@
 
 ### M1. page-navigation.ts の render / event / focus 分割
 
+**状態 (M1a)**: **完了済み** — page-navigation.ts (557 行) を `page-navigation-render.ts` (render + ViewModel + in-source test、約 360 行) と `page-navigation-keyboard.ts` (keyboard focus + `focusNavigatedLink`、約 135 行) に抽出。元 `page-navigation.ts` は facade として click delegate + `wirePageNavigation` + `findClickedSlug` のみ残し、外部 API (`renderPageNavigation` / `focusNavigatedLink` / `wirePageNavigation`) は re-export で維持。挙動は完全不変。M1b (facade 再配線・export 整理) は後続 PR で扱う。
+
 **対象**: `src/app/navigation/page-navigation.ts` (631 行) — 28 行目以降の render 群と 206 行目以降の event handler 群
 
 **現状**: 1 ファイル内に「TOC / outline / sequential HTML render」「click delegate」「keyboard focus management」の 3 責務が同居し、変更時の認知負荷が高い。挙動・テスト自体は安定している。
