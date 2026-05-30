@@ -13,6 +13,7 @@ import type { Heading } from '../../core/page-outline'
 import type { Page } from '../../core/page-split'
 import { buildPageHashFragment } from '../document/pages'
 import { escapeHtml } from '../../core/escape'
+import { resolveNextFocusIndex } from '../dom/focus-list'
 import { state } from '../state/app-state'
 
 interface SequentialControlsViewModel {
@@ -231,46 +232,6 @@ const queryFocusableLinks = (root: HTMLElement): HTMLAnchorElement[] => [
   ...root.querySelectorAll<HTMLAnchorElement>(FOCUSABLE_LINK_SELECTOR),
 ]
 
-const resolveDownIndex = (count: number, currentIndex: number): number => {
-  if (currentIndex < 0) {
-    return 0
-  }
-  return Math.min(currentIndex + 1, count - 1)
-}
-
-const resolveUpIndex = (count: number, currentIndex: number): number => {
-  if (currentIndex < 0) {
-    return count - 1
-  }
-  return Math.max(currentIndex - 1, 0)
-}
-
-/**
- * `links` の中で `current` がいる位置の前後 index を計算する pure helper。
- * `current` が見つからない場合 (currentIndex < 0) は方向に応じて先頭 / 末尾を返す (TOC 内に
- * focus が無い状態で ↑/↓ を押された時のフォールバック)。両端では index を clamp してそれ以上
- * 動かさない。
- */
-export const resolveNextFocusIndex = (
-  count: number,
-  currentIndex: number,
-  direction: 'down' | 'up' | 'home' | 'end'
-): number => {
-  if (count === 0) {
-    return -1
-  }
-  if (direction === 'home') {
-    return 0
-  }
-  if (direction === 'end') {
-    return count - 1
-  }
-  if (direction === 'down') {
-    return resolveDownIndex(count, currentIndex)
-  }
-  return resolveUpIndex(count, currentIndex)
-}
-
 const directionFromKey = (key: string): 'down' | 'up' | 'home' | 'end' | null => {
   if (key === 'ArrowDown') {
     return 'down'
@@ -471,41 +432,6 @@ if (import.meta.vitest) {
       const vm = toPageItemViewModel(basePage, 1)
       expect(vm.ariaCurrentAttr).toBe('')
       expect(vm.itemClass).toBe('page-nav-item')
-    })
-  })
-
-  describe('resolveNextFocusIndex (§13 [MUST] 矢印キーのフォーカス移動)', () => {
-    it('count=0 では -1 を返す (focusable 0 件)', () => {
-      expect(resolveNextFocusIndex(0, -1, 'down')).toBe(-1)
-      expect(resolveNextFocusIndex(0, 0, 'home')).toBe(-1)
-    })
-
-    it("'home' は currentIndex に関わらず 0", () => {
-      expect(resolveNextFocusIndex(5, 3, 'home')).toBe(0)
-      expect(resolveNextFocusIndex(5, -1, 'home')).toBe(0)
-    })
-
-    it("'end' は currentIndex に関わらず末尾", () => {
-      expect(resolveNextFocusIndex(5, 0, 'end')).toBe(4)
-      expect(resolveNextFocusIndex(5, -1, 'end')).toBe(4)
-    })
-
-    it("'down' は +1 し末尾で clamp", () => {
-      expect(resolveNextFocusIndex(5, 2, 'down')).toBe(3)
-      expect(resolveNextFocusIndex(5, 4, 'down')).toBe(4)
-    })
-
-    it("'down' で currentIndex < 0 (TOC 外から ↓) は先頭にフォールバック", () => {
-      expect(resolveNextFocusIndex(5, -1, 'down')).toBe(0)
-    })
-
-    it("'up' は -1 し先頭で clamp", () => {
-      expect(resolveNextFocusIndex(5, 2, 'up')).toBe(1)
-      expect(resolveNextFocusIndex(5, 0, 'up')).toBe(0)
-    })
-
-    it("'up' で currentIndex < 0 (TOC 外から ↑) は末尾にフォールバック", () => {
-      expect(resolveNextFocusIndex(5, -1, 'up')).toBe(4)
     })
   })
 

@@ -5,6 +5,7 @@ import { commentCardHTML } from './comment-rendering'
 import { instantScrollToCenter } from '../document/scroll'
 import { orderedComments } from './comment-orderer'
 import { reapplyAllMarks } from './mark-engine'
+import { resolveNextFocusIndex } from '../dom/focus-list'
 
 /**
  * 別ページのコメントカードをクリックされた際に呼ばれる navigate ハンドラ。
@@ -192,27 +193,6 @@ const navDirectionFromKey = (key: string): NavDirection | null => {
   return null
 }
 
-const resolveNextCardIndex = (
-  total: number,
-  currentIndex: number,
-  direction: NavDirection
-): number => {
-  if (total === 0) {
-    return -1
-  }
-  if (direction === 'home') {
-    return 0
-  }
-  if (direction === 'end') {
-    return total - 1
-  }
-  let delta = -1
-  if (direction === 'down') {
-    delta = 1
-  }
-  return Math.max(0, Math.min(total - 1, currentIndex + delta))
-}
-
 const queryCommentCards = (root: HTMLElement): readonly HTMLElement[] => [
   ...root.querySelectorAll<HTMLElement>(COMMENT_CARD_SELECTOR),
 ]
@@ -254,7 +234,7 @@ const onCommentsKeyDown = (root: HTMLElement, event: KeyboardEvent): void => {
   }
   event.preventDefault()
   const cards = queryCommentCards(root)
-  const next = resolveNextCardIndex(cards.length, cards.indexOf(ctx.current), ctx.direction)
+  const next = resolveNextFocusIndex(cards.length, cards.indexOf(ctx.current), ctx.direction)
   const targetCard = cards[next]
   if (targetCard) {
     targetCard.focus()
@@ -391,6 +371,11 @@ if (import.meta.vitest) {
       expect(document.querySelector('.cmt-card.active')).toBeNull()
     })
   })
+
+  // §13 [MUST] 矢印キーによる focus 移動のインデックス計算は H1 で共通化された
+  // focus-list helper (`src/app/dom/focus-list.ts`) の in-source test に集約済み。
+  // `up from no-focus` のフォールバックは過去の comments 側 `resolveNextCardIndex` では
+  // 先頭だったが、TOC 仕様に揃えて末尾になった。
 
   describe('focusCommentMarkAfterNavigate (id 経由の active 同期)', () => {
     it('id から mark + card 両方に .active を付与する', () => {

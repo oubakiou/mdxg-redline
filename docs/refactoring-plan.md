@@ -32,7 +32,9 @@
 
 ## 2. 優先度: 高
 
-### H1. 矢印キー巡回ロジックの共通化（focus-list helper 抽出）
+### H1. (完了済み) 矢印キー巡回ロジックの共通化（focus-list helper 抽出）
+
+**状態**: **完了済み** — `src/app/dom/focus-list.ts` に `resolveNextFocusIndex` を昇格し、`page-navigation.ts` / `comments.ts` 両方から import で利用。comments 側の独自 `resolveNextCardIndex` を撤去し、`up from no-focus` のフォールバック先を「先頭 → 末尾」に統一 (TOC 仕様に合わせる挙動変更を含む)。pure helper の in-source test は `focus-list.ts` 側に集約済み。
 
 **対象**:
 
