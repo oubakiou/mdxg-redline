@@ -99,40 +99,19 @@ const applyMarksForBlock = ({
  * search ハイライトが上書き再構築される。Shiki / Mermaid / KaTeX upgrade / renderAll /
  * コメント追加 / 削除のいずれの reapply 経路でも search が維持される。
  *
- * 1 callback 制約だった旧 API `setOnMarksReapplied` も互換のため残してあるが、
- * 新規 hook は `registerPostMarksReapplied` (複数 callback 可) を使うこと。
- * 複数登録できる方が、将来 phase 別 (Shiki upgrade 後 / Mermaid 描画後 / KaTeX 描画後) の
- * 後処理を追加する際の入り口が分散しない。
+ * 複数 callback を許すことで、将来 phase 別 (Shiki upgrade 後 / Mermaid 描画後 / KaTeX 描画後)
+ * の後処理を追加する際の入り口が分散しない。
  */
 const postMarksReappliedHooks = new Set<() => void>()
 
 /**
  * `reapplyAllMarks` 末尾の callback を register する。返り値の unsubscribe 関数を呼ぶと
  * 当該 callback だけが解除される。同じ callback を複数回 register すると Set の性質で 1 回として扱う。
- *
- * ⚠️ 同一 callback を `setOnMarksReapplied` と `registerPostMarksReapplied` の両方で登録しないこと。
- * 内部で同じ Set を共有するため、片方で unsubscribe するともう片方の意図に反して解除される。
- * 新規 hook は本関数のみを使い、`setOnMarksReapplied` は既存 1 callback (search 用) の互換経路として
- * 残してあるだけ。
  */
 export const registerPostMarksReapplied = (callback: () => void): (() => void) => {
   postMarksReappliedHooks.add(callback)
   return (): void => {
     postMarksReappliedHooks.delete(callback)
-  }
-}
-
-// 既存呼び出しサイト互換用。1 callback だけを管理する旧 API。null で登録解除する。
-// 新規 hook は registerPostMarksReapplied を使う方が将来の hook 追加に強い。
-// 詳細な invariant は registerPostMarksReapplied の JSDoc を参照。
-let legacyOnMarksReapplied: (() => void) | null = null
-export const setOnMarksReapplied = (callback: (() => void) | null): void => {
-  if (legacyOnMarksReapplied !== null) {
-    postMarksReappliedHooks.delete(legacyOnMarksReapplied)
-  }
-  legacyOnMarksReapplied = callback
-  if (callback !== null) {
-    postMarksReappliedHooks.add(callback)
   }
 }
 
@@ -299,12 +278,10 @@ if (import.meta.vitest) {
   })
 
   // post-marks-reapplied hook API の契約テスト。reapplyAllMarks 自体は DOM 依存が大きいので
-  // 直接呼ばずに、Set に対する add/delete の振る舞いと、setOnMarksReapplied による互換経路の
-  // invariant のみを検査する。
-  describe('registerPostMarksReapplied / setOnMarksReapplied', () => {
+  // 直接呼ばずに、Set に対する add/delete の振る舞いの invariant のみを検査する。
+  describe('registerPostMarksReapplied', () => {
     afterEach(() => {
-      // 各テスト間で hook Set / legacy slot を確実にクリアする
-      setOnMarksReapplied(null)
+      postMarksReappliedHooks.clear()
     })
 
     it('register/unsubscribe の基本契約: 戻り値を呼ぶと当該 callback だけが解除される', () => {
@@ -339,34 +316,6 @@ if (import.meta.vitest) {
         hook()
       }
       expect(count).toBe(1)
-    })
-
-    it('setOnMarksReapplied(cb) → setOnMarksReapplied(null) で前 callback が unregister される', () => {
-      let count = 0
-      setOnMarksReapplied((): void => {
-        count += 1
-      })
-      setOnMarksReapplied(null)
-      const snapshot = [...postMarksReappliedHooks]
-      for (const hook of snapshot) {
-        hook()
-      }
-      expect(count).toBe(0)
-    })
-
-    it('setOnMarksReapplied で別 callback に差し替えると古い方は外れる', () => {
-      const calls: string[] = []
-      setOnMarksReapplied((): void => {
-        calls.push('old')
-      })
-      setOnMarksReapplied((): void => {
-        calls.push('new')
-      })
-      const snapshot = [...postMarksReappliedHooks]
-      for (const hook of snapshot) {
-        hook()
-      }
-      expect(calls).toEqual(['new'])
     })
   })
 }

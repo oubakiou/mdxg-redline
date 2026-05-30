@@ -197,7 +197,7 @@ export const configureSearchNavigation = (navigateToPage: (pageIndex: number) =>
   navigateToPageHook = navigateToPage
 }
 
-/** mark-engine の `setOnMarksReapplied` で register する callback */
+/** mark-engine の `registerPostMarksReapplied` で register する callback */
 export const reapplySearchHighlights = (): void => {
   applySearchHighlights()
 }

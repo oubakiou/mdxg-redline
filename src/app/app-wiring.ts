@@ -36,7 +36,7 @@ import { boot } from './boot'
 import { createDropdownMenu } from './dom/menu'
 import { initCommentsResize } from './comments/comments-resize'
 import { initPageNavResize } from './navigation/page-nav-resize'
-import { setOnMarksReapplied } from './comments/mark-engine'
+import { registerPostMarksReapplied } from './comments/mark-engine'
 import { setOnPageActivated } from './navigation/page-scroll-spy'
 import { setupHashNavigation } from './navigation/hash-navigation'
 import { state } from './state/app-state'
@@ -105,7 +105,8 @@ const setupDropdownsAndKeyboard = (deps: BootstrapDeps): DropdownLike => {
 // 再貼付経路 (Shiki upgrade / renderAll / コメント追加 / 削除) を通っても search 状態が維持される。
 // navigate コールバックは「current match の page に hash 更新無しで navigate」を渡す。
 const setupSearchWiring = (): void => {
-  setOnMarksReapplied(reapplySearchHighlights)
+  // unsubscribe handle は破棄。setupSearchWiring は起動時 1 回しか呼ばれず teardown 経路が無いため。
+  registerPostMarksReapplied(reapplySearchHighlights)
   configureSearchNavigation((pageIndex: number): void => {
     navigateToTarget({ headingSlug: null, pageIndex }, false)
   })

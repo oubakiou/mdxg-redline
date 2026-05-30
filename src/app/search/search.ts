@@ -4,7 +4,7 @@
 // - Stacked View で全 page が DOM 上に並ぶため、ハイライトは全 page の全ブロックに対して
 //   `<mark class="search-hl">` を text node に挿入する一括方式 (リファレンス実装 vercel-labs/mdxg
 //   の `highlightTextNodes` と相当)。current mark には `search-hl-current` クラスを追加
-// - cmt mark との共存: `mark-engine.setOnMarksReapplied` で register した callback 経由で
+// - cmt mark との共存: `mark-engine.registerPostMarksReapplied` で register した callback 経由で
 //   reapplyAllMarks 後に search ハイライトを再貼付する。reapply 経路 (Shiki upgrade /
 //   renderAll / コメント追加 / 削除) のどれを通っても search 状態が維持される
 // - DOM 操作はブロック単位で `selection.ts` の `textRangeFromOffsets` / `textSegments` を再利用。

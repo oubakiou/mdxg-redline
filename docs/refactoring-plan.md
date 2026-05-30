@@ -233,6 +233,8 @@
 
 ### M8. module mutable hook の API 統一
 
+**状態 (第 1 段)**: **完了済み** — `setOnMarksReapplied` legacy 経路を撤去。`app-wiring.ts:108` を `registerPostMarksReapplied(reapplySearchHighlights)` に置換 (unsubscribe handle は teardown 経路が無いため破棄)。`mark-engine.ts` から `legacyOnMarksReapplied` slot と `setOnMarksReapplied` export を削除し、JSDoc から legacy 互換 invariant 警告を撤去。in-source test は新 API 用に書き直し (旧 slot 固有 invariant の 2 ケース削除、describe 名と afterEach を整理)。`search-controller.ts` / `search.ts` のコメント、`DESIGN.md §10` の API 名も追従更新。第 2 段 (`configureXxx` の register 化) は別 PR。
+
 **対象**:
 
 - `src/app/comments/mark-engine.ts:118` 付近（`setOnMarksReapplied` legacy 経路、`registerPostMarksReapplied` は既存）
