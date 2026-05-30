@@ -1,11 +1,15 @@
 import { Marked, Renderer } from 'marked'
+import {
+  type MarkdownRenderOptions,
+  createHeadingRenderer,
+} from './markdown-renderer/heading-id-injector'
 import { type CodeHighlighter, createCodeRenderer } from './markdown-code-renderer'
-import footnote from 'marked-footnote'
-
-import { type MathSegment, scanMath } from './math'
+import { isAllowedImageHref, isAllowedLinkHref } from './markdown-renderer/link-policy'
 import { escapeHtml } from './escape'
+import footnote from 'marked-footnote'
+import { renderMathInTextRun } from './markdown-renderer/math-inline'
 
-export type { CodeHighlighter }
+export type { CodeHighlighter, MarkdownRenderOptions }
 
 // 本モジュール専用の Marked instance に marked-footnote を載せる。global `marked`
 // (block-anchors / scan-fenced-langs / scan-mermaid / math が共有) には use しない:
@@ -15,28 +19,7 @@ export type { CodeHighlighter }
 const markedInstance = new Marked()
 markedInstance.use(footnote())
 
-const ALLOWED_LINK_SCHEMES = new Set(['http:', 'https:'])
-// http: は CSP の img-src と揃えて意図的に除外している。平文通信と外部追跡経路を構造的に塞ぐ。
-const ALLOWED_IMAGE_SCHEMES = new Set(['https:', 'data:'])
-
-/** href の scheme を取り出す。new URL は base 無しだと相対 URL でエラーになるため、それを「絶対 URL でない」シグナルとして使う */
-const parseScheme = (href: string): string | null => {
-  try {
-    return new URL(href).protocol
-  } catch {
-    return null
-  }
-}
-
-export const isAllowedLinkHref = (href: string): boolean => {
-  const scheme = parseScheme(href)
-  return scheme !== null && ALLOWED_LINK_SCHEMES.has(scheme)
-}
-
-export const isAllowedImageHref = (href: string): boolean => {
-  const scheme = parseScheme(href)
-  return scheme !== null && ALLOWED_IMAGE_SCHEMES.has(scheme)
-}
+export { isAllowedImageHref, isAllowedLinkHref }
 
 const titleAttr = (title: string | null): string => {
   if (!title) {
@@ -56,108 +39,11 @@ const wrapTbody = (body: string): string => {
   return ''
 }
 
-/**
- * marked 出力の H3–H6 に `id` を注入するためのヒント。
- * `headingSlugs` は H3–H6 の出現順 (文書順) に並んだ slug 列で、page-outline の
- * `extractPageHeadings` 出力をそのまま渡せる契約 (DESIGN.md §12 §6 Virtual Pages)。
- * H1 / H2 はページ境界として scanHeadings が拾うが、本実装では active page を 1 枚ずつ
- * render する設計のためページ内に H1 / H2 はそのページ自身の見出し 1 つだけになる。
- * その見出しには id を付けない (URL fragment は `<page-slug>` で済むため別途用意しない)。
- */
-export interface MarkdownRenderOptions {
-  headingSlugs?: readonly string[]
-}
-
-const headingHtmlWithId = (text: string, level: number, slug: string | null): string => {
-  if (slug === null) {
-    return `<h${level}>${text}</h${level}>\n`
-  }
-  return `<h${level} id="${escapeHtml(slug)}">${text}</h${level}>\n`
-}
-
-const resolveHeadingSlugs = (options: MarkdownRenderOptions | undefined): readonly string[] => {
-  if (!options) {
-    return []
-  }
-  if (!options.headingSlugs) {
-    return []
-  }
-  return options.headingSlugs
-}
-
-const createHeadingRenderer = (
-  options: MarkdownRenderOptions | undefined
-): ((text: string, level: number, raw: string) => string) => {
-  const slugs = resolveHeadingSlugs(options)
-  let outlineIndex = 0
-  return (text: string, level: number): string => {
-    if (level >= 3 && level <= 6) {
-      const slug = slugs[outlineIndex] ?? null
-      outlineIndex += 1
-      return headingHtmlWithId(text, level, slug)
-    }
-    return `<h${level}>${text}</h${level}>\n`
-  }
-}
-
-// code renderer / mermaid 属性注入は core/markdown-code-renderer.ts に分離。
-
-// `$...$` / `$$...$$` 数式を escape 済みインラインテキスト中から検出し、
-// `<span data-math="inline">` / `<div data-math="display">` で包んで返す
-// (docs/archive/mdxg-math-rendering.archive.md §5.a / Step 5a)。
-//
-// 重要:
-// - marked v12 の `renderer.text` は inline parser が escape 済みの text を渡してくる。
-//   `<` などの記号は `&lt;` に変換されており、`$` だけは escape されないため scanMath が
-//   そのまま動く。`MathSegment.source` も escape 済み text の slice なので、属性値・
-//   textContent ともに HTML 安全な状態で書き出せる
-// - `data-math-source` 属性値には `$` 区切りを除去済みの clean LaTeX (`MathSegment.source`)
-//   が入る。Step 5b の upgrade は `getAttribute('data-math-source')` で値を取得して
-//   `katex.renderToString` に渡す経路を取り、textContent (raw `$...$`) は §14 [MUST] の
-//   plain text fallback として残す
-// - 装飾 (em / strong) と数式が同一テキスト内に並ぶケースは marked の inline parser が
-//   別 token に分離するため、ここではただ scanMath を呼ぶだけで OK (装飾内の `$...$` は
-//   装飾 token 内の text として独立に処理される)
-// `data-math-source` 属性値用の最小 escape。marked が inline parser 段階で `<` / `>` / `&` /
-// `"` を実体参照化済みなので、ここで `escapeHtml` を再適用すると二重 escape され、後段の
-// `getAttribute('data-math-source')` が clean な LaTeX を返さなくなる。属性値として安全に
-// 書けるのに足りる「literal `"` を `&quot;` に潰す」だけに絞る (`&quot;` は再変換されない)。
-const escapeMathSourceAttr = (source: string): string => source.replace(/"/g, '&quot;')
-
-// `<span>` で出力する理由: `renderer.text` は marked が paragraph / heading / list_item の
-// inline 文脈で呼ぶため、ここで block element (`<div>`) を返すと HTML5 parser が `<p>` を
-// 強制 close して構造が壊れる (`<p>text <div>...</div> more</p>` → `<p>text </p><div>...</div>
-// <p> more</p>`)。display 数式の見た目 (中央寄せ + 余白) は CSS の `display: block; margin;
-// text-align: center` で再現する (`src/styles/markdown.css` の `#doc [data-math="display"]`)。
-// KaTeX upgrade 後は `.katex-display` クラスも同じ block 化を行うため CSS 上書きと整合する。
-const formatMathSegment = (segment: MathSegment, rawContent: string): string => {
-  const sourceAttr = escapeMathSourceAttr(segment.source)
-  return `<span data-math="${segment.type}" data-math-source="${sourceAttr}">${rawContent}</span>`
-}
-
-const collectMathParts = (text: string, segments: readonly MathSegment[]): string[] => {
-  const parts: string[] = []
-  let cursor = 0
-  for (const segment of segments) {
-    if (segment.start > cursor) {
-      parts.push(text.slice(cursor, segment.start))
-    }
-    parts.push(formatMathSegment(segment, text.slice(segment.start, segment.end)))
-    cursor = segment.end
-  }
-  if (cursor < text.length) {
-    parts.push(text.slice(cursor))
-  }
-  return parts
-}
-
-const renderMathInTextRun = (text: string): string => {
-  const segments = scanMath(text)
-  if (segments.length === 0) {
-    return text
-  }
-  return collectMathParts(text, segments).join('')
-}
+// See:
+//   - core/markdown-renderer/link-policy.ts        — URL scheme allowlist
+//   - core/markdown-renderer/math-inline.ts        — $...$ / $$...$$ の data-math span 化
+//   - core/markdown-renderer/heading-id-injector.ts — H3–H6 への id 属性注入
+//   - core/markdown-code-renderer.ts                — fenced code / mermaid 属性注入
 
 const createRenderer = (
   highlighter: CodeHighlighter | null | undefined,
