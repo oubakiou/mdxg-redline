@@ -861,130 +861,6 @@ var INITIAL_PARTITION_STATE = {
 	themeHint: null,
 	valid: true
 };
-var consumeDocNameValue = (acc, token) => {
-	if (token.startsWith("--")) return {
-		...acc,
-		valid: false
-	};
-	return {
-		...acc,
-		documentName: token,
-		pendingDocName: false
-	};
-};
-var consumeThemeValue = (acc, token) => {
-	if (token.startsWith("--") || !isThemeHint(token)) return {
-		...acc,
-		valid: false
-	};
-	return {
-		...acc,
-		pendingTheme: false,
-		themeHint: token
-	};
-};
-var consumeShikiLangsValue = (acc, token) => {
-	if (token.startsWith("--")) return {
-		...acc,
-		valid: false
-	};
-	return {
-		...acc,
-		pendingShikiLangs: false,
-		shikiLangs: parseShikiLangsValue(token)
-	};
-};
-var consumeCommentsWidthValue = (acc, token) => {
-	if (token.startsWith("--")) return {
-		...acc,
-		valid: false
-	};
-	const parsed = parseCommentsWidthValue(token);
-	if (parsed === null) return {
-		...acc,
-		valid: false
-	};
-	return {
-		...acc,
-		commentsWidth: parsed,
-		pendingCommentsWidth: false
-	};
-};
-var consumeMermaidValue = (acc, token) => {
-	if (token.startsWith("--")) return {
-		...acc,
-		valid: false
-	};
-	const parsed = parseMermaidValue(token);
-	if (parsed === null) return {
-		...acc,
-		valid: false
-	};
-	return {
-		...acc,
-		mermaid: parsed,
-		pendingMermaid: false
-	};
-};
-var consumeMathValue = (acc, token) => {
-	if (token.startsWith("--")) return {
-		...acc,
-		valid: false
-	};
-	const parsed = parseMathValue(token);
-	if (parsed === null) return {
-		...acc,
-		valid: false
-	};
-	return {
-		...acc,
-		math: parsed,
-		pendingMath: false
-	};
-};
-var consumeMathFontsValue = (acc, token) => {
-	if (token.startsWith("--")) return {
-		...acc,
-		valid: false
-	};
-	const parsed = parseMathFontsValue(token);
-	if (parsed === null) return {
-		...acc,
-		valid: false
-	};
-	return {
-		...acc,
-		mathFonts: parsed,
-		pendingMathFonts: false
-	};
-};
-var consumeMarkdownCssValue = (acc, token) => {
-	if (token.startsWith("--") || token === "-") return {
-		...acc,
-		valid: false
-	};
-	return {
-		...acc,
-		markdownCssPath: token,
-		pendingMarkdownCss: false
-	};
-};
-var consumePageNavWidthValue = (acc, token) => {
-	if (token.startsWith("--")) return {
-		...acc,
-		valid: false
-	};
-	const parsed = parsePageNavWidthValue(token);
-	if (parsed === null) return {
-		...acc,
-		valid: false
-	};
-	return {
-		...acc,
-		pageNavWidth: parsed,
-		pendingPageNavWidth: false
-	};
-};
 var consumeStandaloneFlag = (acc, token) => {
 	if (token === "--no-open") return {
 		...acc,
@@ -1076,48 +952,113 @@ var consumeFlag = (acc, token) => {
 		valid: false
 	};
 };
-var PENDING_VALUE_TABLE = [
-	{
-		consume: consumeDocNameValue,
-		key: "pendingDocName"
-	},
-	{
-		consume: consumeThemeValue,
-		key: "pendingTheme"
-	},
-	{
-		consume: consumeShikiLangsValue,
-		key: "pendingShikiLangs"
-	},
-	{
-		consume: consumeCommentsWidthValue,
-		key: "pendingCommentsWidth"
-	},
-	{
-		consume: consumePageNavWidthValue,
-		key: "pendingPageNavWidth"
-	},
-	{
-		consume: consumeMermaidValue,
-		key: "pendingMermaid"
-	},
-	{
-		consume: consumeMathValue,
-		key: "pendingMath"
-	},
-	{
-		consume: consumeMathFontsValue,
-		key: "pendingMathFonts"
-	},
-	{
-		consume: consumeMarkdownCssValue,
-		key: "pendingMarkdownCss"
-	}
+var erasePendingValueSpec = (spec) => {
+	return spec;
+};
+var parseThemeHintValue = (token) => {
+	if (!isThemeHint(token)) return null;
+	return token;
+};
+var parseMarkdownCssPathValue = (token) => {
+	if (token === "-") return null;
+	return token;
+};
+var PENDING_VALUE_SPECS = [
+	erasePendingValueSpec({
+		apply: (acc, value) => ({
+			...acc,
+			documentName: value,
+			pendingDocName: false
+		}),
+		parser: (token) => token,
+		pendingKey: "pendingDocName"
+	}),
+	erasePendingValueSpec({
+		apply: (acc, value) => ({
+			...acc,
+			pendingTheme: false,
+			themeHint: value
+		}),
+		parser: parseThemeHintValue,
+		pendingKey: "pendingTheme"
+	}),
+	erasePendingValueSpec({
+		apply: (acc, value) => ({
+			...acc,
+			pendingShikiLangs: false,
+			shikiLangs: value
+		}),
+		parser: (token) => parseShikiLangsValue(token),
+		pendingKey: "pendingShikiLangs"
+	}),
+	erasePendingValueSpec({
+		apply: (acc, value) => ({
+			...acc,
+			commentsWidth: value,
+			pendingCommentsWidth: false
+		}),
+		parser: parseCommentsWidthValue,
+		pendingKey: "pendingCommentsWidth"
+	}),
+	erasePendingValueSpec({
+		apply: (acc, value) => ({
+			...acc,
+			pageNavWidth: value,
+			pendingPageNavWidth: false
+		}),
+		parser: parsePageNavWidthValue,
+		pendingKey: "pendingPageNavWidth"
+	}),
+	erasePendingValueSpec({
+		apply: (acc, value) => ({
+			...acc,
+			mermaid: value,
+			pendingMermaid: false
+		}),
+		parser: parseMermaidValue,
+		pendingKey: "pendingMermaid"
+	}),
+	erasePendingValueSpec({
+		apply: (acc, value) => ({
+			...acc,
+			math: value,
+			pendingMath: false
+		}),
+		parser: parseMathValue,
+		pendingKey: "pendingMath"
+	}),
+	erasePendingValueSpec({
+		apply: (acc, value) => ({
+			...acc,
+			mathFonts: value,
+			pendingMathFonts: false
+		}),
+		parser: parseMathFontsValue,
+		pendingKey: "pendingMathFonts"
+	}),
+	erasePendingValueSpec({
+		apply: (acc, value) => ({
+			...acc,
+			markdownCssPath: value,
+			pendingMarkdownCss: false
+		}),
+		parser: parseMarkdownCssPathValue,
+		pendingKey: "pendingMarkdownCss"
+	})
 ];
 var consumePendingValue = (acc, token) => {
-	const entry = PENDING_VALUE_TABLE.find((row) => acc[row.key]);
-	if (!entry) return null;
-	return entry.consume(acc, token);
+	const spec = PENDING_VALUE_SPECS.find((row) => acc[row.pendingKey]);
+	if (!spec) return null;
+	if (token.startsWith("--")) return {
+		...acc,
+		valid: false
+	};
+	const value = spec.parser(token);
+	if (value === null) return {
+		...acc,
+		valid: false
+	};
+	return spec.apply(acc, value);
 };
 var stepArg = (acc, token) => {
 	if (!acc.valid) return acc;

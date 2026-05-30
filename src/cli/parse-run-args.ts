@@ -96,103 +96,6 @@ const INITIAL_PARTITION_STATE: PartitionState = {
   valid: true,
 }
 
-// --document-name の値位置で受け取った token を処理する。次に来た token が別フラグなら
-// 値欠落として invalid 扱い、それ以外は文字列値として保存する。
-const consumeDocNameValue = (acc: PartitionState, token: string): PartitionState => {
-  if (token.startsWith('--')) {
-    return { ...acc, valid: false }
-  }
-  return { ...acc, documentName: token, pendingDocName: false }
-}
-
-// --theme の値位置。許容値 (system|light|dark) 以外は invalid。`-` 始まりも値欠落扱い。
-const consumeThemeValue = (acc: PartitionState, token: string): PartitionState => {
-  if (token.startsWith('--') || !isThemeHint(token)) {
-    return { ...acc, valid: false }
-  }
-  return { ...acc, pendingTheme: false, themeHint: token }
-}
-
-// --shiki-langs の値位置。auto / all / none / CSV を受け付ける。`-` 始まりは値欠落扱い。
-// CSV のうち未サポート識別子は parseShikiLangsValue 内で silently drop されるため、
-// `--shiki-langs mylang,xxx-fake` のような全滅入力でも invalid にはせず空 list (= none と同等) を返す。
-const consumeShikiLangsValue = (acc: PartitionState, token: string): PartitionState => {
-  if (token.startsWith('--')) {
-    return { ...acc, valid: false }
-  }
-  return { ...acc, pendingShikiLangs: false, shikiLangs: parseShikiLangsValue(token) }
-}
-
-// --comments-width の値位置。0 or 280–640 の整数のみ valid。`-` 始まりや範囲外は invalid。
-const consumeCommentsWidthValue = (acc: PartitionState, token: string): PartitionState => {
-  if (token.startsWith('--')) {
-    return { ...acc, valid: false }
-  }
-  const parsed = parseCommentsWidthValue(token)
-  if (parsed === null) {
-    return { ...acc, valid: false }
-  }
-  return { ...acc, commentsWidth: parsed, pendingCommentsWidth: false }
-}
-
-// --mermaid の値位置。auto / on / off のみ valid。`-` 始まりは値欠落扱い。
-const consumeMermaidValue = (acc: PartitionState, token: string): PartitionState => {
-  if (token.startsWith('--')) {
-    return { ...acc, valid: false }
-  }
-  const parsed = parseMermaidValue(token)
-  if (parsed === null) {
-    return { ...acc, valid: false }
-  }
-  return { ...acc, mermaid: parsed, pendingMermaid: false }
-}
-
-// --math の値位置。auto / on / off のみ valid。--mermaid と完全に対称。
-const consumeMathValue = (acc: PartitionState, token: string): PartitionState => {
-  if (token.startsWith('--')) {
-    return { ...acc, valid: false }
-  }
-  const parsed = parseMathValue(token)
-  if (parsed === null) {
-    return { ...acc, valid: false }
-  }
-  return { ...acc, math: parsed, pendingMath: false }
-}
-
-// --math-fonts の値位置。minimal / all のみ valid。`-` 始まりは値欠落扱い。
-const consumeMathFontsValue = (acc: PartitionState, token: string): PartitionState => {
-  if (token.startsWith('--')) {
-    return { ...acc, valid: false }
-  }
-  const parsed = parseMathFontsValue(token)
-  if (parsed === null) {
-    return { ...acc, valid: false }
-  }
-  return { ...acc, mathFonts: parsed, pendingMathFonts: false }
-}
-
-// --markdown-css の値位置。任意のパス文字列を受け入れ、ファイル存在チェックは CLI 側で行う。
-// `-` 始まりは値欠落扱い。stdin (`-`) は別系統 (input markdown) でしか使わないため、CSS で
-// `-` を許す必要はない。
-const consumeMarkdownCssValue = (acc: PartitionState, token: string): PartitionState => {
-  if (token.startsWith('--') || token === '-') {
-    return { ...acc, valid: false }
-  }
-  return { ...acc, markdownCssPath: token, pendingMarkdownCss: false }
-}
-
-// --page-nav-width の値位置。0 or 180–480 の整数のみ valid。
-const consumePageNavWidthValue = (acc: PartitionState, token: string): PartitionState => {
-  if (token.startsWith('--')) {
-    return { ...acc, valid: false }
-  }
-  const parsed = parsePageNavWidthValue(token)
-  if (parsed === null) {
-    return { ...acc, valid: false }
-  }
-  return { ...acc, pageNavWidth: parsed, pendingPageNavWidth: false }
-}
-
 // 値を取らないフラグの dispatcher。
 const consumeStandaloneFlag = (acc: PartitionState, token: string): PartitionState | null => {
   if (token === NO_OPEN_FLAG) {
@@ -252,8 +155,6 @@ const consumeFlag = (acc: PartitionState, token: string): PartitionState => {
   return { ...acc, valid: false }
 }
 
-// 値待ちフラグがあるならその consumer に委譲し、無ければ null を返す。max-statements を
-// 抑えるためテーブル駆動で書く。
 type PendingFlagKey =
   | 'pendingDocName'
   | 'pendingMarkdownCss'
@@ -265,27 +166,144 @@ type PendingFlagKey =
   | 'pendingCommentsWidth'
   | 'pendingTheme'
 
-const PENDING_VALUE_TABLE: readonly {
-  consume: (acc: PartitionState, token: string) => PartitionState
-  key: PendingFlagKey
-}[] = [
-  { consume: consumeDocNameValue, key: 'pendingDocName' },
-  { consume: consumeThemeValue, key: 'pendingTheme' },
-  { consume: consumeShikiLangsValue, key: 'pendingShikiLangs' },
-  { consume: consumeCommentsWidthValue, key: 'pendingCommentsWidth' },
-  { consume: consumePageNavWidthValue, key: 'pendingPageNavWidth' },
-  { consume: consumeMermaidValue, key: 'pendingMermaid' },
-  { consume: consumeMathValue, key: 'pendingMath' },
-  { consume: consumeMathFontsValue, key: 'pendingMathFonts' },
-  { consume: consumeMarkdownCssValue, key: 'pendingMarkdownCss' },
+// 値待ちフラグの 1 entry: 「pendingKey が立っていたら parser(token) で値検証し、apply(acc, value)
+// で field と pending* を一括更新する」を表す。各 entry は独自の Value 型を持つが、テーブル格納時は
+// `erasePendingValueSpec` で Value を unknown に揃えて配列化する (existential エミュレート)。
+//
+// 共通の前置チェック (consumePendingValue 内で実施):
+//   - `--` 始まり = 値欠落 (parser を呼ぶ前に invalid)
+//   - parser が null = 検証失敗 (invalid)
+// markdown-css のみ `-` 単独 (stdin sentinel と衝突するパス) を parser 内で null 返しして弾く。
+interface PendingValueSpec<Value> {
+  apply: (acc: PartitionState, value: Value) => PartitionState
+  parser: (token: string) => Value | null
+  pendingKey: PendingFlagKey
+}
+
+// existential 型のエミュレート: parser / apply の Value を unknown に潰して配列格納する。
+// consumePendingValue 内で parser → apply が同じ entry 内で完結するため Value は entry に閉じる。
+// 消費側で unknown を再具体化しないので、unknown 化 cast は型安全性を損なわない
+// (eslint の no-unsafe-type-assertion は generic 制約より narrow と判定するが、本ファクトリは
+// 型情報を捨てる方向の cast なので false positive。AGENTS.md: 無効化の理由を明記)。
+const erasePendingValueSpec = <Value>(spec: PendingValueSpec<Value>): PendingValueSpec<unknown> => {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const erased = spec as unknown as PendingValueSpec<unknown>
+  return erased
+}
+
+// parser: ThemeHint validation。`(token) => isThemeHint(token) ? token : null` を no-ternary 回避で展開。
+const parseThemeHintValue = (token: string): ThemeHint | null => {
+  if (!isThemeHint(token)) {
+    return null
+  }
+  return token
+}
+
+// parser: markdown-css path validation。stdin sentinel (`-`) を弾く。
+const parseMarkdownCssPathValue = (token: string): string | null => {
+  if (token === '-') {
+    return null
+  }
+  return token
+}
+
+const PENDING_VALUE_SPECS: readonly PendingValueSpec<unknown>[] = [
+  erasePendingValueSpec<string>({
+    apply: (acc, value): PartitionState => ({
+      ...acc,
+      documentName: value,
+      pendingDocName: false,
+    }),
+    parser: (token): string => token,
+    pendingKey: 'pendingDocName',
+  }),
+  erasePendingValueSpec<ThemeHint>({
+    apply: (acc, value): PartitionState => ({
+      ...acc,
+      pendingTheme: false,
+      themeHint: value,
+    }),
+    parser: parseThemeHintValue,
+    pendingKey: 'pendingTheme',
+  }),
+  // CSV のうち未サポート識別子は parseShikiLangsValue 内で silently drop されるため、
+  // `--shiki-langs mylang,xxx-fake` のような全滅入力でも invalid にはせず空 list (= none と同等) を返す。
+  erasePendingValueSpec<ShikiLangsMode>({
+    apply: (acc, value): PartitionState => ({
+      ...acc,
+      pendingShikiLangs: false,
+      shikiLangs: value,
+    }),
+    parser: (token): ShikiLangsMode => parseShikiLangsValue(token),
+    pendingKey: 'pendingShikiLangs',
+  }),
+  erasePendingValueSpec<number>({
+    apply: (acc, value): PartitionState => ({
+      ...acc,
+      commentsWidth: value,
+      pendingCommentsWidth: false,
+    }),
+    parser: parseCommentsWidthValue,
+    pendingKey: 'pendingCommentsWidth',
+  }),
+  erasePendingValueSpec<number>({
+    apply: (acc, value): PartitionState => ({
+      ...acc,
+      pageNavWidth: value,
+      pendingPageNavWidth: false,
+    }),
+    parser: parsePageNavWidthValue,
+    pendingKey: 'pendingPageNavWidth',
+  }),
+  erasePendingValueSpec<MermaidMode>({
+    apply: (acc, value): PartitionState => ({
+      ...acc,
+      mermaid: value,
+      pendingMermaid: false,
+    }),
+    parser: parseMermaidValue,
+    pendingKey: 'pendingMermaid',
+  }),
+  erasePendingValueSpec<MathMode>({
+    apply: (acc, value): PartitionState => ({ ...acc, math: value, pendingMath: false }),
+    parser: parseMathValue,
+    pendingKey: 'pendingMath',
+  }),
+  erasePendingValueSpec<MathFontsMode>({
+    apply: (acc, value): PartitionState => ({
+      ...acc,
+      mathFonts: value,
+      pendingMathFonts: false,
+    }),
+    parser: parseMathFontsValue,
+    pendingKey: 'pendingMathFonts',
+  }),
+  // stdin (`-`) は input markdown 専用 sentinel のため、CSS path として受け入れると衝突する。
+  // parser で `-` を null 返しすることで「値欠落」と同じ invalid 経路に流す。
+  erasePendingValueSpec<string>({
+    apply: (acc, value): PartitionState => ({
+      ...acc,
+      markdownCssPath: value,
+      pendingMarkdownCss: false,
+    }),
+    parser: parseMarkdownCssPathValue,
+    pendingKey: 'pendingMarkdownCss',
+  }),
 ]
 
 const consumePendingValue = (acc: PartitionState, token: string): PartitionState | null => {
-  const entry = PENDING_VALUE_TABLE.find((row): boolean => acc[row.key])
-  if (!entry) {
+  const spec = PENDING_VALUE_SPECS.find((row): boolean => acc[row.pendingKey])
+  if (!spec) {
     return null
   }
-  return entry.consume(acc, token)
+  if (token.startsWith('--')) {
+    return { ...acc, valid: false }
+  }
+  const value = spec.parser(token)
+  if (value === null) {
+    return { ...acc, valid: false }
+  }
+  return spec.apply(acc, value)
 }
 
 // reduce で 1 トークンずつ状態を進める。pure な関数として書くことで、ESLint の
@@ -908,11 +926,11 @@ if (import.meta.vitest) {
     })
   })
 
-  // VALUE_FLAG_TABLE と PENDING_VALUE_TABLE の対応漏れは型では検出できない (mark が
-  // 立てる pending* キーと PENDING_VALUE_TABLE の key が runtime でのみ結びつく)。
+  // VALUE_FLAG_TABLE と PENDING_VALUE_SPECS の対応漏れは型では検出できない (mark が
+  // 立てる pending* キーと PENDING_VALUE_SPECS の key が runtime でのみ結びつく)。
   // 片方だけ追加 / 削除した場合に「値が消費されない」「未定義の pending を見に行く」
   // 等の silent な不具合になるため、両テーブルの整合性を機械的に検証する。
-  describe('VALUE_FLAG_TABLE / PENDING_VALUE_TABLE 整合性', () => {
+  describe('VALUE_FLAG_TABLE / PENDING_VALUE_SPECS 整合性', () => {
     const collectPendingKeys = (state: PartitionState): readonly PendingFlagKey[] => {
       const keys: PendingFlagKey[] = [
         'pendingDocName',
@@ -935,8 +953,8 @@ if (import.meta.vitest) {
       }
     })
 
-    it('VALUE_FLAG_TABLE が立てる全ての pending キーは PENDING_VALUE_TABLE に entry を持つ', () => {
-      const handledKeys = new Set(PENDING_VALUE_TABLE.map((row): PendingFlagKey => row.key))
+    it('VALUE_FLAG_TABLE が立てる全ての pending キーは PENDING_VALUE_SPECS に entry を持つ', () => {
+      const handledKeys = new Set(PENDING_VALUE_SPECS.map((row): PendingFlagKey => row.pendingKey))
       for (const entry of VALUE_FLAG_TABLE) {
         const [pendingKey] = collectPendingKeys(entry.mark(INITIAL_PARTITION_STATE))
         expect(pendingKey, `flag=${entry.flag}`).toBeDefined()
@@ -944,20 +962,20 @@ if (import.meta.vitest) {
       }
     })
 
-    it('PENDING_VALUE_TABLE の全 key は VALUE_FLAG_TABLE のいずれかで立てられる (dead entry が無い)', () => {
+    it('PENDING_VALUE_SPECS の全 key は VALUE_FLAG_TABLE のいずれかで立てられる (dead entry が無い)', () => {
       const reachable = new Set<PendingFlagKey>()
       for (const entry of VALUE_FLAG_TABLE) {
         for (const key of collectPendingKeys(entry.mark(INITIAL_PARTITION_STATE))) {
           reachable.add(key)
         }
       }
-      for (const row of PENDING_VALUE_TABLE) {
-        expect(reachable.has(row.key), `key=${row.key}`).toBe(true)
+      for (const row of PENDING_VALUE_SPECS) {
+        expect(reachable.has(row.pendingKey), `key=${row.pendingKey}`).toBe(true)
       }
     })
 
-    it('PENDING_VALUE_TABLE の key は重複しない', () => {
-      const keys = PENDING_VALUE_TABLE.map((row): PendingFlagKey => row.key)
+    it('PENDING_VALUE_SPECS の key は重複しない', () => {
+      const keys = PENDING_VALUE_SPECS.map((row): PendingFlagKey => row.pendingKey)
       expect(new Set(keys).size).toBe(keys.length)
     })
 

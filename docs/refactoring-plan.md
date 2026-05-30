@@ -99,7 +99,7 @@
 
 ## 4. 優先度: 低
 
-### L1. consume\*Value 群のテーブル駆動統合
+### L1. consume\*Value 群のテーブル駆動統合 (完了)
 
 **対象**: `src/cli/parse-args.ts:269-362`（H1 後は `parse-run-args.ts`）
 
@@ -150,7 +150,7 @@
 3. **M1**（mermaid/katex upgrade-utils 抽出、完了）— 対称重複の解消。render 本体は触らず状態集計・defer・toast のみ
 4. **M3**（doc-mount pure 分離、完了）— 配賦ロジックを純粋関数化してテスト容易性を上げる
 5. **M2**（review.ts wiring 分離、完了）— 起動順序に依存するため、上記でコードに慣れてから
-6. **L1**（consume\*Value 統合）— H1 完了後に `parse-run-args.ts` 内の構造変更として別 PR で
+6. **L1**（consume\*Value 統合、完了）— H1 完了後に `parse-run-args.ts` 内の構造変更として別 PR で
 7. **L3**（state 操作 API 化）— 最も影響範囲が広いので最後。1 操作関数ずつ段階導入
 
 ## 6. 共通の進め方
