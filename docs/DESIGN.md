@@ -1053,7 +1053,7 @@ review-request CLI は `dist/embed-template.html` の `<script id="embedded-md" 
   - `document/` — `doc-mount` / `doc-renderer` / `block-cache` / `code-copy-wrap` / `pages` / `scroll` / `scroll-spy`
   - `comments/` — `comments` / `comment-modal` / `comments-resize` / `comments-width` / `mark-engine` / `selection` / `text-segment-skip-rules` / `floater`
   - `navigation/` — `page-navigation` / `page-scroll-spy` / `page-nav-resize` / `page-nav-width` / `keyboard-shortcuts`
-  - `renderers/` — `shiki` / `shiki-upgrade` / `mermaid` / `mermaid-modal` / `katex`
+  - `renderers/` — `shiki` / `shiki-upgrade` / `mermaid` / `mermaid-modal` / `katex` / `upgrade-utils`
   - `chrome/` — `toolbar` / `theme` / `sidebar-resize` / `help-modal`
   - `layout/` — `sidebar-width`
   - `workspace/` — `workspace` / `workspace-fs` / `storage`

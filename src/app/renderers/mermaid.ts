@@ -14,6 +14,15 @@ import { openMermaidModal } from './mermaid-modal'
 import { reapplyAllMarks } from '../comments/mark-engine'
 import { state } from '../state/app-state'
 import { toast } from '../dom/dom-utils'
+import {
+  type UpgradeResult,
+  type UpgradeStatus,
+  accumulateUpgradeResult,
+  hasActiveSelection,
+  onSelectionEnd,
+  reportRenderFailures,
+  scheduleIdle,
+} from './upgrade-utils'
 
 // dist/mermaid.mjs 側で `globalThis.__mdxgMermaid = mermaid` がセットされる契約 (§3.2 / §5.k)。
 // 実 mermaid 型を import すると bundle に重複が出るため、必要最小限の subset を local interface に
@@ -28,7 +37,6 @@ interface MermaidLike {
 const BRIDGE_KEY = '__mdxgMermaid' as const
 const MERMAID_READY_EVENT = 'mdxg:mermaid-ready'
 const MERMAID_READY_TIMEOUT_MS = 2000
-const IDLE_TIMEOUT_MS = 2000
 
 const readBridge = (): unknown => Reflect.get(globalThis, BRIDGE_KEY)
 
@@ -180,13 +188,6 @@ const insertSvgAfterPre = (pre: HTMLElement, svg: SVGSVGElement): void => {
   pre.after(svg)
 }
 
-interface UpgradeResult {
-  changedAny: boolean
-  failedCount: number
-}
-
-type UpgradeStatus = 'failed' | 'ok' | 'skip'
-
 const shouldSkipUpgrade = (pre: HTMLElement): boolean => {
   if (pre.dataset.mermaidApplied === '1' || pre.dataset.mermaidFailed === '1') {
     return true
@@ -231,16 +232,6 @@ const collectMermaidPres = (docEl: HTMLElement): HTMLElement[] => {
   return [...nodes]
 }
 
-const accumulateUpgradeResult = (acc: UpgradeResult, status: UpgradeStatus): UpgradeResult => {
-  if (status === 'ok') {
-    return { changedAny: true, failedCount: acc.failedCount }
-  }
-  if (status === 'failed') {
-    return { changedAny: acc.changedAny, failedCount: acc.failedCount + 1 }
-  }
-  return acc
-}
-
 const upgradeAllMermaidPres = async (
   docEl: HTMLElement,
   mermaid: MermaidLike
@@ -254,34 +245,6 @@ const upgradeAllMermaidPres = async (
     result = accumulateUpgradeResult(result, status)
   }
   return result
-}
-
-const hasActiveSelection = (): boolean => {
-  const sel = document.getSelection()
-  return sel !== null && sel.toString().length > 0
-}
-
-const onSelectionEnd = (callback: () => void): void => {
-  const onChange = (): void => {
-    if (!hasActiveSelection()) {
-      document.removeEventListener('selectionchange', onChange)
-      requestAnimationFrame(callback)
-    }
-  }
-  document.addEventListener('selectionchange', onChange)
-}
-
-interface IdleScheduler {
-  requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number
-}
-
-const scheduleIdle = (callback: () => void): void => {
-  const ric = (globalThis as IdleScheduler).requestIdleCallback
-  if (typeof ric === 'function') {
-    ric((): void => callback(), { timeout: IDLE_TIMEOUT_MS })
-    return
-  }
-  setTimeout(callback, 0)
 }
 
 const cacheParentBlockHtml = (pre: HTMLElement): void => {
@@ -306,15 +269,13 @@ const refreshMermaidBlockOriginalHTML = (docEl: HTMLElement): void => {
   }
 }
 
+const MERMAID_FAILURE_LABELS = {
+  plural: (count: number): string => `Diagram render failed for ${count} blocks`,
+  singular: 'Diagram render failed for 1 block',
+} as const
+
 const reportFailures = (failedCount: number): void => {
-  if (failedCount === 0) {
-    return
-  }
-  if (failedCount === 1) {
-    toast('Diagram render failed for 1 block')
-    return
-  }
-  toast(`Diagram render failed for ${failedCount} blocks`)
+  reportRenderFailures(failedCount, MERMAID_FAILURE_LABELS)
 }
 
 /**
@@ -447,23 +408,6 @@ if (import.meta.vitest) {
       const secondId = uniqueMermaidId()
       expect(firstId).not.toBe(secondId)
       expect(firstId).toMatch(/^mdxg-mermaid-\d+$/)
-    })
-  })
-
-  describe('accumulateUpgradeResult', () => {
-    it('ok は changedAny を true に上げる', () => {
-      const result = accumulateUpgradeResult({ changedAny: false, failedCount: 0 }, 'ok')
-      expect(result).toEqual({ changedAny: true, failedCount: 0 })
-    })
-
-    it('failed は failedCount をインクリメント', () => {
-      const result = accumulateUpgradeResult({ changedAny: false, failedCount: 1 }, 'failed')
-      expect(result).toEqual({ changedAny: false, failedCount: 2 })
-    })
-
-    it('skip は変化なし', () => {
-      const before = { changedAny: true, failedCount: 3 }
-      expect(accumulateUpgradeResult(before, 'skip')).toEqual(before)
     })
   })
 
