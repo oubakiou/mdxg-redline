@@ -45,6 +45,14 @@ if [ ! -x "$VP_BIN" ]; then
 fi
 sudo ln -sf "$VP_BIN" /usr/local/bin/vp
 
+# typescript-lsp plugin から typescript-language-server を参照できるようにする
+TS_LSP_BIN="$(cd "$(dirname "$0")" && pwd)/node_modules/.bin/typescript-language-server"
+if [ ! -x "$TS_LSP_BIN" ]; then
+  echo "typescript-language-server が見つかりません: $TS_LSP_BIN"
+  exit 1
+fi
+sudo ln -sf "$TS_LSP_BIN" /usr/local/bin/typescript-language-server
+
 # git 設定
 git config --local core.hooksPath .githooks
 # Oh My Zsh が LESS=-R を設定し F フラグが欠落するため、git の pager を明示的に指定
