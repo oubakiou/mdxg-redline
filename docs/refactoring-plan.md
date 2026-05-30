@@ -86,7 +86,9 @@
 
 **リスク**: 中 — paint タイミングを変えると視覚的 regression（コードハイライト前後でのちらつき）が起きうるため、smoke check で確認する。
 
-### H3. 静的 modal の共通 primitive 化
+### H3. (完了済み) 静的 modal の共通 primitive 化
+
+**状態**: **完了済み** — `src/app/dom/static-modal.ts` に `createStaticModalController({ backdropId, closeButtonId, onAfterOpen?, onAfterClose? })` を新設。help-modal.ts は toolbar button aria-pressed sync を `onAfterOpen` / `onAfterClose` に逃がし、mermaid-modal.ts は drag state reset + body clear を `onAfterClose` に逃がして controller 経由に統一。findBackdrop / lastTrigger capture & restore / open class toggle / close button focus / backdrop click が 1 箇所に集約された。挙動は完全不変。
 
 **対象**:
 

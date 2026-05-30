@@ -2,41 +2,10 @@
 // `?` キーで toggle、Esc / Close ボタン / バックドロップクリックで閉じる。modal HTML 自体は
 // src/review.html に静的に置いてあり、本モジュールは open/close のクラス操作と wiring のみ
 // 担当する (動的生成の dialog.ts とは別経路: コメント入力モーダルと同じ既存パターン)。
+// open/close / focus 復元 / backdrop click の共通骨格は static-modal.ts に集約済みで、
+// 本ファイルは toolbar Help button の aria-pressed sync という固有挙動だけ持つ。
 
-const HELP_MODAL_BACKDROP_ID = 'help-modal-backdrop'
-const HELP_MODAL_CLOSE_ID = 'help-modal-close'
-
-// open 直前にフォーカスを持っていた要素を保存し、close 時にそこへ戻す
-// (WAI-ARIA Authoring Practices のモーダルパターン)。`?` で開いた場合は直前の link 等、
-// toolbar の Help ボタン経由なら `#btn-help` が target になる。modal 内部に既にフォーカスが
-// いる時 (open のループ) は上書きしないことで、最初に modal を開いた発火元を保持する。
-let lastTrigger: HTMLElement | null = null
-
-const findBackdrop = (): HTMLElement | null => {
-  const element = document.getElementById(HELP_MODAL_BACKDROP_ID)
-  if (!(element instanceof HTMLElement)) {
-    return null
-  }
-  return element
-}
-
-export const isHelpModalOpen = (): boolean => {
-  const backdrop = findBackdrop()
-  if (backdrop === null) {
-    return false
-  }
-  return backdrop.classList.contains('open')
-}
-
-const captureTrigger = (backdrop: HTMLElement): void => {
-  if (isHelpModalOpen()) {
-    return
-  }
-  const active = document.activeElement
-  if (active instanceof HTMLElement && !backdrop.contains(active)) {
-    lastTrigger = active
-  }
-}
+import { createStaticModalController } from '../dom/static-modal'
 
 const HELP_TOGGLE_BUTTON_ID = 'btn-help'
 
@@ -49,60 +18,35 @@ const syncHelpToggleButton = (open: boolean): void => {
   btn.setAttribute('aria-pressed', String(open))
 }
 
-export const openHelpModal = (): void => {
-  const backdrop = findBackdrop()
-  if (backdrop === null) {
-    return
-  }
-  captureTrigger(backdrop)
-  backdrop.classList.add('open')
-  syncHelpToggleButton(true)
-  const closeBtn = document.getElementById(HELP_MODAL_CLOSE_ID)
-  if (closeBtn instanceof HTMLElement) {
-    closeBtn.focus()
-  }
-}
+const controller = createStaticModalController({
+  backdropId: 'help-modal-backdrop',
+  closeButtonId: 'help-modal-close',
+  onAfterClose: (): void => {
+    syncHelpToggleButton(false)
+  },
+  onAfterOpen: (): void => {
+    syncHelpToggleButton(true)
+  },
+})
 
+export const isHelpModalOpen = (): boolean => controller.isOpen()
+export const openHelpModal = (): void => {
+  controller.open()
+}
 export const closeHelpModal = (): void => {
-  const backdrop = findBackdrop()
-  if (backdrop === null) {
-    return
-  }
-  backdrop.classList.remove('open')
-  syncHelpToggleButton(false)
-  if (lastTrigger !== null) {
-    lastTrigger.focus()
-    lastTrigger = null
-  }
+  controller.close()
 }
 
 export const toggleHelpModal = (): void => {
-  if (isHelpModalOpen()) {
-    closeHelpModal()
+  if (controller.isOpen()) {
+    controller.close()
     return
   }
-  openHelpModal()
+  controller.open()
 }
 
-/**
- * Close ボタンとバックドロップクリックで modal を閉じる listener を attach する。
- * Esc キーは review.ts の global keydown handler 側で扱う (他 modal / menu と同じ場所で
- * Esc の責務を一箇所にまとめるため)。
- */
 export const wireHelpModal = (): void => {
-  const backdrop = findBackdrop()
-  if (backdrop === null) {
-    return
-  }
-  const closeBtn = document.getElementById(HELP_MODAL_CLOSE_ID)
-  if (closeBtn instanceof HTMLElement) {
-    closeBtn.addEventListener('click', closeHelpModal)
-  }
-  backdrop.addEventListener('click', (event): void => {
-    if (event.target === backdrop) {
-      closeHelpModal()
-    }
-  })
+  controller.wire()
 }
 
 // help-shortcuts <dl> matcher の戻り値を string に正規化する純粋ヘルパ (in-source test 専用)。
