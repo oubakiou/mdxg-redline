@@ -65,7 +65,7 @@
 
 **リスク**: 中（Mermaid は async sequential、KaTeX は sync という非対称が残る。**render 本体まで無理に共通化せず**、状態集計・defer・toast のみ抽出する。過抽象化は避ける）
 
-### M2. review.ts の wiring 分離
+### M2. review.ts の wiring 分離 (完了)
 
 **対象**: `src/app/review.ts:320`（`init()` に集中）
 
@@ -149,7 +149,7 @@
 2. **L2**（sidebar-width 移動、完了）— import パス書き換えのみの低リスク移動。H1 と独立に進められる
 3. **M1**（mermaid/katex upgrade-utils 抽出、完了）— 対称重複の解消。render 本体は触らず状態集計・defer・toast のみ
 4. **M3**（doc-mount pure 分離、完了）— 配賦ロジックを純粋関数化してテスト容易性を上げる
-5. **M2**（review.ts wiring 分離）— 起動順序に依存するため、上記でコードに慣れてから
+5. **M2**（review.ts wiring 分離、完了）— 起動順序に依存するため、上記でコードに慣れてから
 6. **L1**（consume\*Value 統合）— H1 完了後に `parse-run-args.ts` 内の構造変更として別 PR で
 7. **L3**（state 操作 API 化）— 最も影響範囲が広いので最後。1 操作関数ずつ段階導入
 

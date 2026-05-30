@@ -280,65 +280,17 @@ const handleFootnoteHash = (hash: string): boolean => {
   return true
 }
 
-export const buildExportPayload = (): ExportPayload => buildReviewExportPayload(state)
-
-export const commentCountLabel = (): string => formatCommentCount(state.comments.length)
-
-/**
- * TOC / outline / Sequential Nav いずれのクリックでも、anchor の `data-slug` は
- * `<page-slug>` か `<page-slug>__<heading-slug>` の composite 形式。
- * composite slug を `resolveTargetFromHash` に流すことで page index + heading slug を一度に解決し、
- * navigateToTarget に渡す。
- *
- * `keyboardActivated` は wirePageNavigation の click delegate が `MouseEvent.detail === 0` で識別した
- * 「キーボード Enter で `<a>` がブラウザに dispatch させた synthetic click」を指し、navigate 後に
- * TOC の対象 link へフォーカスを戻すかの判断に使う (§13 [SHOULD])。マウスクリックでは false の
- * ままでフォーカスを動かさず、本文側に居るユーザーの邪魔をしない。
- */
-const onCompositeSlugClick = (compositeSlug: string, keyboardActivated: boolean): void => {
-  navigateToTarget(resolveTargetFromHash(`#${compositeSlug}`), true, keyboardActivated)
+interface DropdownLike {
+  close: () => void
 }
 
 /**
- * サイドバーに表示された別ページのコメントカードがクリックされた時の遷移 orchestrator。
- * navigateToTarget で activePageIndex を切り替えると renderAll が走り、mark-engine が
- * 新ページの comments を mark 化する。同じ tick で focusCommentMarkAfterNavigate を呼べば
- * 描画済みの mark を見つけてハイライト + smoothScroll できる。
+ * グローバル keydown を 1 経路に集約する。Escape (modal/menu 閉じ) → Cmd/Ctrl+Enter
+ * (modal save) → WASD affordance の 3 段で dispatch する。
+ * commentsMenu / sendMenu は createDropdownMenu の戻り値で、Escape 時に同時に閉じる必要があるため
+ * 引数として渡す (DOM ID 経由で再取得しても良いが、close handle を直接持つ方が破綻に強い)。
  */
-const navigateToComment = (comment: Comment): void => {
-  navigateToTarget({ headingSlug: null, pageIndex: comment.pageIndex }, true)
-  focusCommentMarkAfterNavigate(comment.id)
-  // navigateToTarget → renderAll で #cmt-list が再構築され、Enter/click 時に focus を持っていた
-  // 旧カードは破棄される。新カードを comment id で引き直して focus を戻すことで、TOC 側の
-  // focusNavigatedLink (§13 [SHOULD]) と同等の「navigate 後にフォーカスが残る」挙動を実現する。
-  const newCard = document.querySelector<HTMLElement>(`.cmt-card[data-id="${comment.id}"]`)
-  if (newCard) {
-    newCard.focus()
-  }
-}
-
-if (!import.meta.vitest) {
-  initCommentsResize()
-  initPageNavResize()
-  wireFloater()
-  wireCommentModal()
-  wireHelpModal()
-  wireMermaidModal()
-  configureCommentsNavigation(navigateToComment)
-  configureCommentEdit(openEditCommentModal)
-  // page scroll-spy が activePageIndex を更新した直後の TOC active 表示更新。
-  // renderPageNavigation は state を再読込して描き直すだけなので、scroll 中の頻発でも軽い。
-  setOnPageActivated((): void => renderPageNavigation())
-
-  const commentsMenu = createDropdownMenu({
-    buttonId: '#btn-comments-menu',
-    menuId: '#menu-comments',
-  })
-  const sendMenu = createDropdownMenu({
-    buttonId: '#btn-send-menu',
-    menuId: '#menu-send',
-  })
-
+const setupKeyboardHandlers = (commentsMenu: DropdownLike, sendMenu: DropdownLike): void => {
   const handleEscapeKey = (): void => {
     closeCommentModal()
     closeHelpModal()
@@ -414,6 +366,104 @@ if (!import.meta.vitest) {
     }
     handleAffordanceKeys(event)
   })
+}
+
+/**
+ * ブラウザの戻る / 進む or 直接 URL 編集経由の hash 変更を navigate に流す。
+ * `#p:` で名前空間化された page hash と footnote hash の 2 経路に分岐し、いずれにも該当しない
+ * 本文内 anchor (`[x](#some-heading)`) はブラウザのデフォルト anchor scroll に任せる。
+ * 同一 hash での footnote 再クリックは hashchange が発火しないため、click delegate でも
+ * 同経路に流す (docs/mdxg-footnotes.md §3.3)。
+ */
+const setupHashNavigation = (): void => {
+  globalThis.addEventListener('hashchange', (): void => {
+    const { hash } = globalThis.location
+    if (handleFootnoteHash(hash)) {
+      return
+    }
+    if (!isPageHash(hash)) {
+      return
+    }
+    navigateToTarget(resolveTargetFromHash(hash), false)
+  })
+
+  document.addEventListener('click', (event): void => {
+    if (!(event.target instanceof Element)) {
+      return
+    }
+    const link = event.target.closest<HTMLAnchorElement>(
+      'a[data-footnote-ref], a[data-footnote-backref]'
+    )
+    if (link === null) {
+      return
+    }
+    const href = link.getAttribute('href')
+    if (href !== null) {
+      handleFootnoteHash(href)
+    }
+  })
+}
+
+export const buildExportPayload = (): ExportPayload => buildReviewExportPayload(state)
+
+export const commentCountLabel = (): string => formatCommentCount(state.comments.length)
+
+/**
+ * TOC / outline / Sequential Nav いずれのクリックでも、anchor の `data-slug` は
+ * `<page-slug>` か `<page-slug>__<heading-slug>` の composite 形式。
+ * composite slug を `resolveTargetFromHash` に流すことで page index + heading slug を一度に解決し、
+ * navigateToTarget に渡す。
+ *
+ * `keyboardActivated` は wirePageNavigation の click delegate が `MouseEvent.detail === 0` で識別した
+ * 「キーボード Enter で `<a>` がブラウザに dispatch させた synthetic click」を指し、navigate 後に
+ * TOC の対象 link へフォーカスを戻すかの判断に使う (§13 [SHOULD])。マウスクリックでは false の
+ * ままでフォーカスを動かさず、本文側に居るユーザーの邪魔をしない。
+ */
+const onCompositeSlugClick = (compositeSlug: string, keyboardActivated: boolean): void => {
+  navigateToTarget(resolveTargetFromHash(`#${compositeSlug}`), true, keyboardActivated)
+}
+
+/**
+ * サイドバーに表示された別ページのコメントカードがクリックされた時の遷移 orchestrator。
+ * navigateToTarget で activePageIndex を切り替えると renderAll が走り、mark-engine が
+ * 新ページの comments を mark 化する。同じ tick で focusCommentMarkAfterNavigate を呼べば
+ * 描画済みの mark を見つけてハイライト + smoothScroll できる。
+ */
+const navigateToComment = (comment: Comment): void => {
+  navigateToTarget({ headingSlug: null, pageIndex: comment.pageIndex }, true)
+  focusCommentMarkAfterNavigate(comment.id)
+  // navigateToTarget → renderAll で #cmt-list が再構築され、Enter/click 時に focus を持っていた
+  // 旧カードは破棄される。新カードを comment id で引き直して focus を戻すことで、TOC 側の
+  // focusNavigatedLink (§13 [SHOULD]) と同等の「navigate 後にフォーカスが残る」挙動を実現する。
+  const newCard = document.querySelector<HTMLElement>(`.cmt-card[data-id="${comment.id}"]`)
+  if (newCard) {
+    newCard.focus()
+  }
+}
+
+if (!import.meta.vitest) {
+  initCommentsResize()
+  initPageNavResize()
+  wireFloater()
+  wireCommentModal()
+  wireHelpModal()
+  wireMermaidModal()
+  configureCommentsNavigation(navigateToComment)
+  configureCommentEdit(openEditCommentModal)
+  // page scroll-spy が activePageIndex を更新した直後の TOC active 表示更新。
+  // renderPageNavigation は state を再読込して描き直すだけなので、scroll 中の頻発でも軽い。
+  setOnPageActivated((): void => renderPageNavigation())
+
+  const commentsMenu = createDropdownMenu({
+    buttonId: '#btn-comments-menu',
+    menuId: '#menu-comments',
+  })
+  const sendMenu = createDropdownMenu({
+    buttonId: '#btn-send-menu',
+    menuId: '#menu-send',
+  })
+
+  setupKeyboardHandlers(commentsMenu, sendMenu)
 
   // mark クリック → サイドバーカードをアクティブ化
   document.addEventListener('click', (event): void => {
@@ -468,45 +518,7 @@ if (!import.meta.vitest) {
   wirePageNavigation({ onSlugClick: onCompositeSlugClick })
   wireCommentsKeyboardNav()
 
-  // ブラウザの戻る / 進む or 直接 URL 編集経由の hash 変更を反映する。
-  // pushHash=false にすることで navigateToTarget 側で hash を再度書き戻さない (無限ループ防止)。
-  //
-  // `#p:` で名前空間化された page hash の場合のみ navigate する。本文内 markdown anchor
-  // (`[x](#some-heading)`) のクリックや手動 hash 編集で発火する prefix なし hash は無視し、
-  // ブラウザのデフォルト anchor scroll に任せる (navigate に流すと pageIndex: 0 フォールバックで
-  // 意図せず先頭ページに飛ぶ UX 回帰になる)。
-  //
-  // composite hash (`#p:page__heading`) の場合は heading scroll も同時に解決される
-  // (resolveTargetFromHash が page index + heading slug を取り出す)。
-  globalThis.addEventListener('hashchange', (): void => {
-    const { hash } = globalThis.location
-    if (handleFootnoteHash(hash)) {
-      return
-    }
-    if (!isPageHash(hash)) {
-      return
-    }
-    navigateToTarget(resolveTargetFromHash(hash), false)
-  })
-
-  // 同一 hash の footnote 再クリックでは hashchange が発火しないので、click delegate でも
-  // 同経路に流す。footnote-ref / footnote-backref のみ対象を絞り、本文中の `[link](#x)` などは
-  // ブラウザのデフォルト挙動に委ねる (docs/mdxg-footnotes.md §3.3)。
-  document.addEventListener('click', (event): void => {
-    if (!(event.target instanceof Element)) {
-      return
-    }
-    const link = event.target.closest<HTMLAnchorElement>(
-      'a[data-footnote-ref], a[data-footnote-backref]'
-    )
-    if (link === null) {
-      return
-    }
-    const href = link.getAttribute('href')
-    if (href !== null) {
-      handleFootnoteHash(href)
-    }
-  })
+  setupHashNavigation()
 
   boot({
     loadFromMarkdown,
