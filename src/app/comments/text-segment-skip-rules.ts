@@ -70,7 +70,7 @@ export const SKIP_TEXT_SEGMENT_SELECTOR = [
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
 
-  // docs/archive/mdxg-math-rendering.archive.md §6 / Step 6: [data-math] 要素は upgrade 前後で textContent が
+  // DESIGN.md §6 アンカリング (upgrade される DOM 拡張の textSegments 取り扱い): [data-math] 要素は upgrade 前後で textContent が
   // 大きく変化する (raw `$x$` → KaTeX 出力の MathML+HTML)。`shouldSkipForTextSegments` が
   // `SKIP_TEXT_SEGMENT_ATTR_NAMES` 経由で `data-math` を hasAttribute で skip 対象に含めることで、
   // textSegments の出力が upgrade 前後で完全に一致し、§6 アンカリングの cmt mark 貼付経路が

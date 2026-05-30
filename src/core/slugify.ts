@@ -1,5 +1,5 @@
 // Page / heading の slug 生成プリミティブ。
-// MDXG §6.4 の URL セーフ slug + 重複時の曖昧性解消を、ASCII 限定方針 (docs/archive/mdxg-virtual-pages.archive.md §7.3)
+// MDXG §6.4 の URL セーフ slug + 重複時の曖昧性解消を、ASCII 限定方針 (DESIGN.md §12 §6 Virtual Pages)
 // に従って実装する。
 // - 非 ASCII (日本語等) は ASCII 化結果が空になるため呼び出し側 fallback (例: page-3) に倒す
 // - 重複時は `-2`, `-3`, ... のサフィックスを文書順に付与する

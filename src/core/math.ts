@@ -1,6 +1,6 @@
 // markdown 内の `$...$` (inline) / `$$...$$` (display) 数式を検出する pure module。
 // CLI の `--math auto` 判定と、`core/markdown.ts` の renderer が `<span data-math>` /
-// `<div data-math>` を出力する範囲を決めるために使う (docs/archive/mdxg-math-rendering.archive.md §1 / §5.i)。
+// `<div data-math>` を出力する範囲を決めるために使う (DESIGN.md §12 §14 Math Rendering)。
 //
 // scanMath は plain text に対するスキャナで、与えられた文字列中の数式範囲を返す。
 // countMath は marked.lexer で markdown 全体を走査し、`code` / `codespan` トークンを

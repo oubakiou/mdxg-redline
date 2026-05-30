@@ -1,6 +1,6 @@
 // markdown を MDXG §6 仮想ページに分割する pure module。
 // H1 / H2 境界を検出して chunk 化し、見出し前コンテンツの Introduction 正規化 (§6.2) と
-// 見出しが一切無い文書を単一ページに正規化する規約 (docs/archive/mdxg-virtual-pages.archive.md §7.5) を担う。
+// 見出しが一切無い文書を単一ページに正規化する規約 (DESIGN.md §12 §6 Virtual Pages) を担う。
 //
 // 行スキャン本体は page-outline.ts の scanHeadings に集約しており、本 module はその結果から
 // depth ≤ 2 のものをページ境界として取り出して markdown 範囲を切り出す部分に専念する。
@@ -22,7 +22,7 @@ import { countFootnoteDefinitions } from './footnotes'
  * H1 ページ / Introduction では空配列、H2 ページでは直近の祖先 H1 を 1 要素含む。
  * doc-renderer.ts が page スコープで build した blockAnchors の headingPath にこれを
  * prepend することで、ページ境界の H1 / H2 を含む完全な祖先 path を export feedback.json に
- * 反映する (docs/archive/mdxg-virtual-pages.archive.md §9.3)。
+ * 反映する (DESIGN.md §12 §6 Virtual Pages)。
  */
 export interface Page {
   ancestorHeadingPath: readonly string[]
