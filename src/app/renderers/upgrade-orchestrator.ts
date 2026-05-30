@@ -5,7 +5,7 @@
 // 状態集計 / 選択中 defer / 失敗 toast 低レベル primitive は upgrade-utils.ts、
 // runtime 取得は runtime-bridge.ts に分離されている。
 
-import { hasActiveSelection, onSelectionEnd, scheduleIdle } from './upgrade-utils'
+import { scheduleIdle, scheduleWithSelectionGuard } from './upgrade-utils'
 import { state } from '../state/app-state'
 import { toast } from '../dom/dom-utils'
 
@@ -58,14 +58,7 @@ export const runUpgradeIgnoringErrors = (
  * 空に戻ったら再試行する (Shiki / cmt mark との競合回避、§5.b C 案)。
  */
 export const scheduleUpgradeOnIdle = (run: () => void): void => {
-  const runWithSelectionGuard = (): void => {
-    if (hasActiveSelection()) {
-      onSelectionEnd(runWithSelectionGuard)
-      return
-    }
-    run()
-  }
-  scheduleIdle(runWithSelectionGuard)
+  scheduleWithSelectionGuard(scheduleIdle, run)
 }
 
 const rejectingUpgradeForTest = async (): Promise<void> => {

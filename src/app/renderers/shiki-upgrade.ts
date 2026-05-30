@@ -7,6 +7,7 @@ import { getOrCreateHighlighter, highlightFenceWithShiki } from './shiki'
 import type { HighlighterCore } from 'shiki/core'
 import { reapplyAllMarks } from '../comments/mark-engine'
 import { refreshBlockOriginalHTML } from '../document/block-cache'
+import { scheduleAfterPaint, scheduleWithSelectionGuard } from './upgrade-utils'
 
 const extractLangFromCode = (code: HTMLElement): string | null => {
   const langClass = [...code.classList].find((cls): boolean => cls.startsWith('language-'))
@@ -101,11 +102,6 @@ const upgradeFencesWithShiki = (doc: HTMLElement, highlighter: HighlighterCore):
   return changed
 }
 
-const hasActiveSelection = (): boolean => {
-  const sel = document.getSelection()
-  return sel !== null && sel.toString().length > 0
-}
-
 /** Shiki 初期化 → upgrade → blockOriginalHTML 焼き直し → mark 再貼付の本体 */
 const performShikiUpgrade = (doc: HTMLElement): void => {
   const highlighter = getOrCreateHighlighter()
@@ -119,32 +115,14 @@ const performShikiUpgrade = (doc: HTMLElement): void => {
   reapplyAllMarks()
 }
 
-/** 選択範囲が解除された次の rAF で `callback` を 1 度だけ呼ぶ */
-const onSelectionEnd = (callback: () => void): void => {
-  const onChange = (): void => {
-    if (!hasActiveSelection()) {
-      document.removeEventListener('selectionchange', onChange)
-      requestAnimationFrame(callback)
-    }
-  }
-  document.addEventListener('selectionchange', onChange)
-}
-
 /**
  * paint 後に Shiki ハイライトを各 `<pre>` に乗せる。
  *
- * rAF × 2 で初回 paint を確実に挟んでから走らせる (1 回目で layout、2 回目で paint 完了が保証される)。
- * 選択中は upgrade を後送りし、`selectionchange` で空に戻ったら次の rAF で再試行する。
+ * paint timing は `scheduleAfterPaint` (rAF × 2) で確保し、選択中 defer は
+ * `scheduleWithSelectionGuard` 経由で Mermaid / KaTeX と共通化している。
  */
 export const scheduleShikiUpgrade = (doc: HTMLElement): void => {
-  const run = (): void => {
-    if (hasActiveSelection()) {
-      onSelectionEnd(run)
-      return
-    }
+  scheduleWithSelectionGuard(scheduleAfterPaint, (): void => {
     performShikiUpgrade(doc)
-  }
-  requestAnimationFrame((): void => {
-    requestAnimationFrame(run)
   })
 }

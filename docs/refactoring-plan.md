@@ -64,7 +64,9 @@
 
 **リスク**: 低〜中 — pure helper 自体は等価だが、comments の挙動が 1 ケースで変わる（`up from no-focus`）。レビュー時に「これは意図的な仕様統一」であることを明示し、リリースノートにも記載する。
 
-### H2. Shiki upgrade を既存 upgrade 共通レイヤーへ寄せる
+### H2. (完了済み) Shiki upgrade を既存 upgrade 共通レイヤーへ寄せる
+
+**状態**: **完了済み** — `upgrade-utils.ts` に `scheduleAfterPaint` (rAF × 2) と高階 combinator `scheduleWithSelectionGuard(scheduler, task)` を追加。`scheduleUpgradeOnIdle` は `scheduleWithSelectionGuard(scheduleIdle, run)` の thin wrapper に再構成。Shiki は独自 `hasActiveSelection` / `onSelectionEnd` を撤去し `scheduleWithSelectionGuard(scheduleAfterPaint, ...)` 経由に統一。Shiki / Mermaid / KaTeX で selection guard ロジックが 1 箇所に集約された。挙動は完全不変。
 
 **対象**:
 
