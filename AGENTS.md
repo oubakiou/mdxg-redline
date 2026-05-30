@@ -4,7 +4,7 @@
 - エージェントが作業中に一時的なファイルやディレクトリを作成する場合は、必ず `.temp/` 配下に作成する
 - linterを無効化する場合は、その前に無効化しない対応を検討し、対応が難しいまたはデメリットがある場合にはコメントで理由を記述する
 - TypeScriptにおいては明確な理由がなければletではなくconstを利用する
-- TypeScript のコード調査・変更検証には LSP を活用する。シンボルの定義 / 参照解決は `LSP`（`goToDefinition` / `findReferences` 等）、変更後の型エラー・未解決 import の確認は `mcp__ide__getDiagnostics`（URI 指定でファイル単位に取得可）を使う。ただし `getDiagnostics` は開いている / 指定したファイル中心で全走査ではないため、横断的な最終確認は `vp check` を併用する。ファイル移動に伴う import パスの自動書き換えはこの LSP では行えない（書き換えは別途行い、`getDiagnostics` / `vp check` で検証する）
-- `LSP` ツールがサポートする operation の一覧と引数は `ToolSearch query="select:LSP"` で schema を取得して確認する（deferred tool のため初期 prompt には載っていない）
+- TypeScript のコード調査・変更検証には、利用中のエージェント環境で提供される LSP 系ツールを活用する。具体的にはシンボルの定義 / 参照解決（`goToDefinition` / `findReferences` 等）と、変更後の型エラー・未解決 import の単一ファイル確認（`getDiagnostics` 相当）を組み合わせる。ただし `getDiagnostics` 系は開いている / 指定したファイル中心で全走査ではないため、横断的な最終確認は `vp check` を併用する。ファイル移動に伴う import パスの自動書き換えは対応していないクライアントも多いので、書き換えは別途行い `getDiagnostics` / `vp check` で検証する
+- LSP 系ツールの利用可否・operation 名・引数 schema はエージェント / クライアントによって異なる。具体的な tool 名や schema の取得手順は各エージェントのドキュメントに従う（例: Claude Code では `LSP` という deferred tool として提供され、`ToolSearch query="select:LSP"` で schema を取得する）
 - コメントは WHY が非自明な場合（隠れた制約、見落としやすい invariant、特定バグの workaround、読み手が驚く挙動）のみ書く。識別子で表現できる WHAT は書かない
 - 現在のタスク・修正経緯・呼び出し元への言及（"X 用に追加"、"Y フローで使う"、"issue #123 対応" 等）はコメントに書かない。これらは PR description / commit message に属し、コードベースが進化するうちに rot する
