@@ -219,7 +219,9 @@
 
 **状態**: **不採用** — in-source test (`if (import.meta.vitest)`) を実装に隣接させる原則は維持する方針のため、選択的分離は行わない。番号は H1-H3 / M1 / M3-M5 / L1 / L3 への参照を壊さないため欠番として残す。
 
-### L3. `markdown.ts` の renderer concern 分割
+### L3. (完了済み) `markdown.ts` の renderer concern 分割
+
+**状態**: **完了済み** — commit `feefbef` で merge。
 
 **対象**: `src/core/markdown.ts:1` 以降
 
@@ -247,7 +249,7 @@
 7. **M3** — mermaid / katex renderer 共通化（過去 M1 (f406601) の継続）— **完了** (`f8b75d7`)
 8. **M4** — `comments.ts` の DOM wiring と pure logic 分離 — **完了** (`740e93b`)
 9. **L1** — `page-split.ts` の synthetic page 切り出し — **完了** (`e124ddd`)
-10. **L3** — `markdown.ts` の renderer concern 分割（セキュリティ境界のため最後）
+10. **L3** — `markdown.ts` の renderer concern 分割（セキュリティ境界のため最後）— **完了** (`feefbef`)
 
 ## 6. 共通の進め方
 
