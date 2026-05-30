@@ -1,15 +1,16 @@
-// markdown を MDXG §6 仮想ページに分割する pure module。
-// H1 / H2 境界を検出して chunk 化し、見出し前コンテンツの Introduction 正規化 (§6.2) と
-// 見出しが一切無い文書を単一ページに正規化する規約 (DESIGN.md §12 §6 Virtual Pages) を担う。
-//
-// 行スキャン本体は page-outline.ts の scanHeadings に集約しており、本 module はその結果から
-// depth ≤ 2 のものをページ境界として取り出して markdown 範囲を切り出す部分に専念する。
-// markdown 範囲の切り出しは行オフセット → 元 markdown.slice で行うため、元 markdown と
-// pages[*].markdown を連結した値は完全に一致する (round-trip 不変条件)。
+// markdown を MDXG §6 仮想ページに分割する orchestrator。
+// 境界検出 + slice 本体は page-boundary.ts、footnotes synthetic page の生成は
+// synthetic-pages/footnotes-synthetic-page.ts に分離されている。本ファイルは RawPage[] を
+// 受け取り、slug / 祖先 path / outline / sourceLineEnd を計算して Page[] を組み立てる
+// finalize 段と、sourceLine → pageIndex 逆引き (findPageIndexBySourceLine) を担う。
 
-import { type Heading, type HeadingHit, extractPageHeadings, scanHeadings } from './page-outline'
+import { type Heading, extractPageHeadings } from './page-outline'
+import { type RawPage, partitionRawPages } from './page-boundary'
+import {
+  appendFootnotesPage as appendFootnotesPageImpl,
+  isSyntheticPage as isSyntheticPageImpl,
+} from './synthetic-pages/footnotes-synthetic-page'
 import { resolveUniqueSlug, slugifyOrFallback } from './slugify'
-import { countFootnoteDefinitions } from './footnotes'
 
 /**
  * 仮想ページ 1 枚分のデータ。
@@ -36,148 +37,11 @@ export interface Page {
   title: string
 }
 
-interface PageBoundaryMarker {
-  depth: 1 | 2
-  lineIndex: number
-  title: string
-}
-
-interface RawPage {
-  depth: 1 | 2
-  /**
-   * §6.2 で導入される暗黙の "Introduction" ページかどうか。
-   * 暗黙 Intro は markdown ソースに対応する見出しトークンを持たないので、
-   * 後続 H2 ページの祖先 (ancestorHeadingPath) としては数えない (docs/archive/mdxg-virtual-pages.archive.md §9.3)。
-   * ユーザーが実 H1 で "Introduction" と書いた場合はこのフラグは false で、通常の祖先扱いになる。
-   */
-  isIntroduction: boolean
-  markdown: string
-  sourceLineStart: number
-  title: string
-}
-
 interface SplitOptions {
   docName?: string | null
 }
 
-interface SliceContext {
-  markdown: string
-  offsets: number[]
-}
-
-interface MarkerSliceArgs {
-  context: SliceContext
-  endLine: number
-  marker: PageBoundaryMarker
-}
-
-const INTRODUCTION_TITLE = 'Introduction'
 const DEFAULT_FALLBACK_TITLE = 'Document'
-
-const isBoundaryDepth = (depth: number): depth is 1 | 2 => depth === 1 || depth === 2
-
-const toBoundaryMarkers = (hits: HeadingHit[]): PageBoundaryMarker[] => {
-  const markers: PageBoundaryMarker[] = []
-  for (const hit of hits) {
-    if (isBoundaryDepth(hit.depth)) {
-      markers.push({ depth: hit.depth, lineIndex: hit.lineIndex, title: hit.title })
-    }
-  }
-  return markers
-}
-
-// 元 markdown 文字列の line index → byte offset の対応表を作る。
-// markdown.slice(offsets[i], offsets[j]) で行 [i, j) の範囲を正確に切り出せる
-// (split('\n').slice(...).join('\n') では末尾改行の境界が落ちて round-trip が壊れる)。
-const computeLineOffsets = (markdown: string): number[] => {
-  const offsets: number[] = [0]
-  let pos = markdown.indexOf('\n')
-  while (pos !== -1) {
-    offsets.push(pos + 1)
-    pos = markdown.indexOf('\n', pos + 1)
-  }
-  return offsets
-}
-
-const sliceByLineRange = (context: SliceContext, startLine: number, endLine: number): string => {
-  const startOffset = context.offsets[startLine] ?? context.markdown.length
-  const endOffset = context.offsets[endLine] ?? context.markdown.length
-  return context.markdown.slice(startOffset, endOffset)
-}
-
-const buildIntroductionPage = (context: SliceContext, firstMarkerLine: number): RawPage | null => {
-  if (firstMarkerLine === 0) {
-    return null
-  }
-  const introMd = sliceByLineRange(context, 0, firstMarkerLine)
-  // §6.2: 空 / 空白のみの pre-heading は Introduction を作らない
-  if (introMd.trim().length === 0) {
-    return null
-  }
-  return {
-    depth: 1,
-    isIntroduction: true,
-    markdown: introMd,
-    sourceLineStart: 1,
-    title: INTRODUCTION_TITLE,
-  }
-}
-
-const buildMarkerPage = (args: MarkerSliceArgs): RawPage => ({
-  depth: args.marker.depth,
-  isIntroduction: false,
-  markdown: sliceByLineRange(args.context, args.marker.lineIndex, args.endLine),
-  sourceLineStart: args.marker.lineIndex + 1,
-  title: args.marker.title,
-})
-
-// 次マーカーの lineIndex か、最終マーカーなら markdown 末尾までを取り出す。
-// no-ternary / no-undefined ルールを満たすため if 文で分岐する。
-const resolveEndLine = (
-  markers: PageBoundaryMarker[],
-  markerIndex: number,
-  totalLines: number
-): number => {
-  if (markerIndex + 1 < markers.length) {
-    return markers[markerIndex + 1].lineIndex
-  }
-  return totalLines
-}
-
-const pushMarkerPages = (
-  pages: RawPage[],
-  markers: PageBoundaryMarker[],
-  context: SliceContext
-): void => {
-  const totalLines = context.offsets.length
-  for (const [markerIndex, marker] of markers.entries()) {
-    const endLine = resolveEndLine(markers, markerIndex, totalLines)
-    pages.push(buildMarkerPage({ context, endLine, marker }))
-  }
-}
-
-const singlePageFallback = (markdown: string, fallbackTitle: string): RawPage[] => [
-  { depth: 1, isIntroduction: false, markdown, sourceLineStart: 1, title: fallbackTitle },
-]
-
-const sliceMarkdownByMarkers = (
-  markdown: string,
-  markers: PageBoundaryMarker[],
-  fallbackTitle: string
-): RawPage[] => {
-  if (markers.length === 0) {
-    // §7.5: H1 / H2 が一切ない markdown は docName を title とした単一ページに正規化
-    return singlePageFallback(markdown, fallbackTitle)
-  }
-  const context: SliceContext = { markdown, offsets: computeLineOffsets(markdown) }
-  const pages: RawPage[] = []
-  const intro = buildIntroductionPage(context, markers[0].lineIndex)
-  if (intro !== null) {
-    pages.push(intro)
-  }
-  pushMarkerPages(pages, markers, context)
-  return pages
-}
 
 interface FinalizeContext {
   ancestorHeadingPath: readonly string[]
@@ -265,14 +129,6 @@ const computeAncestorHeadingPaths = (
 }
 
 /**
- * markdown を仮想ページ (MDXG §6) に分割する。
- * - H1 / H2 (ATX / setext) で境界分割し、コードフェンス内見出しは境界として扱わない (§6.1)
- * - 見出し前の非空 content は "Introduction" ページとして先頭に追加 (§6.2 / §7.6)
- * - H1 / H2 が無い文書は `docName` (未指定なら "Document") を title とした単一ページに正規化 (§7.5)
- * - 各ページに slug (ASCII 限定 + fallback / -N suffix)、H3–H6 outline、
- *   祖先 H1 を含む ancestorHeadingPath (§9.3) を埋め込む
- */
-/**
  * 元 markdown 全体の sourceLine (1-origin) から所属 page index を逆引きする。
  * embedded-feedback / Open file 経由で読み込んだコメントに `pageIndex` を埋める用途
  * (docs/archive/mdxg-virtual-pages.archive.md §9.1)。
@@ -298,10 +154,17 @@ export const findPageIndexBySourceLine = (
   return null
 }
 
+/**
+ * markdown を仮想ページ (MDXG §6) に分割する。
+ * - H1 / H2 (ATX / setext) で境界分割し、コードフェンス内見出しは境界として扱わない (§6.1)
+ * - 見出し前の非空 content は "Introduction" ページとして先頭に追加 (§6.2 / §7.6)
+ * - H1 / H2 が無い文書は `docName` (未指定なら "Document") を title とした単一ページに正規化 (§7.5)
+ * - 各ページに slug (ASCII 限定 + fallback / -N suffix)、H3–H6 outline、
+ *   祖先 H1 を含む ancestorHeadingPath (§9.3) を埋め込む
+ */
 export const splitIntoPages = (markdown: string, options: SplitOptions = {}): Page[] => {
   const fallbackTitle = options.docName ?? DEFAULT_FALLBACK_TITLE
-  const markers = toBoundaryMarkers(scanHeadings(markdown))
-  const rawPages = sliceMarkdownByMarkers(markdown, markers, fallbackTitle)
+  const rawPages = partitionRawPages(markdown, fallbackTitle)
   const ancestors = computeAncestorHeadingPaths(rawPages)
   const usedSlugs = new Set<string>()
   return rawPages.map(
@@ -310,50 +173,8 @@ export const splitIntoPages = (markdown: string, options: SplitOptions = {}): Pa
   )
 }
 
-// footnotes synthetic page (MDXG §16 / docs/mdxg-footnotes.md §3.2 / §5.c) の sentinel。
-// round-trip 不変条件 (文書由来 page の markdown を連結すると元 markdown と一致する) を
-// 持たない synthetic page を区別するため、sourceLineStart / sourceLineEnd に -1 を入れる。
-// findPageIndexBySourceLine は sourceLine < 1 を early return null するため、synthetic page が
-// 文書由来 sourceLine と誤マッチすることは構造的に発生しない。
-const SYNTHETIC_PAGE_SOURCE_LINE = -1
-const FOOTNOTES_PAGE_TITLE = 'Footnotes'
-const FOOTNOTES_PAGE_SLUG_BASE = 'footnotes'
-
-/** footnotes synthetic page 等、文書由来でない page を判定する。round-trip テストの除外に使う。 */
-export const isSyntheticPage = (page: Page): boolean =>
-  page.sourceLineStart === SYNTHETIC_PAGE_SOURCE_LINE
-
-const buildFootnotesSyntheticPage = (pages: readonly Page[]): Page => {
-  const usedSlugs = new Set<string>(pages.map((page): string => page.slug))
-  return {
-    ancestorHeadingPath: [],
-    depth: 1,
-    headings: [],
-    index: pages.length,
-    markdown: '',
-    slug: resolveUniqueSlug(FOOTNOTES_PAGE_SLUG_BASE, usedSlugs),
-    sourceLineEnd: SYNTHETIC_PAGE_SOURCE_LINE,
-    sourceLineStart: SYNTHETIC_PAGE_SOURCE_LINE,
-    title: FOOTNOTES_PAGE_TITLE,
-  }
-}
-
-/**
- * markdown に脚注定義 (`[^id]: text`) が ≥1 個含まれる場合、`pages` 末尾に footnotes
- * synthetic page を append する。脚注定義が 0 個なら pages の浅いコピーを返す。
- *
- * slug は `'footnotes'` を base に文書内既存 slug と衝突しないよう `resolveUniqueSlug` で
- * 解決する (本物の H1 / H2 "Footnotes" が存在する文書では `'footnotes-2'` 等になる)。
- *
- * `appendFootnotesPage(splitIntoPages(markdown, options), markdown)` の形で
- * `state.pages` builder 経路に乗せる (docs/mdxg-footnotes.md §5.h)。
- */
-export const appendFootnotesPage = (pages: readonly Page[], markdown: string): Page[] => {
-  if (countFootnoteDefinitions(markdown) === 0) {
-    return [...pages]
-  }
-  return [...pages, buildFootnotesSyntheticPage(pages)]
-}
+export const isSyntheticPage = isSyntheticPageImpl
+export const appendFootnotesPage = appendFootnotesPageImpl
 
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
