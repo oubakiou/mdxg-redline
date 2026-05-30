@@ -115,30 +115,61 @@ interface MatchStep {
   segment: MathSegment | null
 }
 
-// `$$` 直後位置から display 終端を探し、見つかれば MathSegment と新カーソル位置を返す。
-// 見つからない場合は `$$` 2 文字ぶん進めて plain text として残す。
-const matchDisplay = (text: string, start: number): MatchStep => {
+/**
+ * 1 つの数式記法に対する scanner。`text[start]` 位置で自身の記法 (display `$$`, inline `$` 等) を
+ * 開始し得ると判断したら MatchStep を返す。該当しなければ null を返し、driver は次の scanner を試す。
+ *
+ * 新しい記法を追加する場合は本 protocol に従う scanner を作り、`SCANNERS` 配列に
+ * 優先順位順 (より specific → より general) で並べるだけで `scanMath` / `countMath` 両経路に伝搬する。
+ */
+type Scanner = (text: string, start: number) => MatchStep | null
+
+interface SegmentBuildArgs {
+  text: string
+  start: number
+  openLen: number
+  contentEnd: number
+  closeLen: number
+  type: MathType
+}
+
+// 開始 / 終端の position から MathSegment を組み立てる共通 helper。slice 範囲と
+// closeEnd 計算が display / inline で同型なので 1 箇所に集約してドリフトを防ぐ。
+const buildSegment = (args: SegmentBuildArgs): MatchStep => {
+  const { text, start, openLen, contentEnd, closeLen, type } = args
+  const closeEnd = contentEnd + closeLen
+  return {
+    next: closeEnd,
+    segment: {
+      end: closeEnd,
+      raw: text.slice(start, closeEnd),
+      source: text.slice(start + openLen, contentEnd),
+      start,
+      type,
+    },
+  }
+}
+
+// `$$` で始まる位置から display 終端を探す。見つからなければ `$$` 2 文字ぶん進めて plain text 扱い。
+const displayScanner: Scanner = (text, start) => {
+  if (text[start] !== '$' || text[start + 1] !== '$') {
+    return null
+  }
   const endPos = findDisplayEnd(text, start + 2)
   if (endPos === -1) {
     return { next: start + 2, segment: null }
   }
-  const closeEnd = endPos + 2
-  const segment: MathSegment = {
-    end: closeEnd,
-    raw: text.slice(start, closeEnd),
-    source: text.slice(start + 2, endPos),
-    start,
-    type: 'display',
-  }
-  return { next: closeEnd, segment }
+  return buildSegment({ closeLen: 2, contentEnd: endPos, openLen: 2, start, text, type: 'display' })
 }
 
-// `$` 直後位置から inline 終端を探し、見つかれば MathSegment と新カーソル位置を返す。
-// 見つからない場合は `$` 1 文字ぶん進めて plain text として残す。
+// `$` で始まる位置から inline 終端を探す。見つからなければ `$` 1 文字ぶん進めて plain text 扱い。
 // 開始境界の Pandoc 風判定 (opening 直後の空白を除外、数字は除外しない) も担う。
 // `$100 and $200` のような通貨表記は **closing 候補の直前空白チェック (`findInlineEnd`)** で
 // 弾かれる構造に倒し、`$2$` / `$2024$` のような数字始まり数式の正当検出を保つ (§5.i / Step 9)。
-const matchInline = (text: string, start: number): MatchStep => {
+const inlineScanner: Scanner = (text, start) => {
+  if (text[start] !== '$') {
+    return null
+  }
   if (isInvalidInlineOpening(text, start + 1)) {
     return { next: start + 1, segment: null }
   }
@@ -146,26 +177,25 @@ const matchInline = (text: string, start: number): MatchStep => {
   if (endPos === -1) {
     return { next: start + 1, segment: null }
   }
-  const closeEnd = endPos + 1
-  const segment: MathSegment = {
-    end: closeEnd,
-    raw: text.slice(start, closeEnd),
-    source: text.slice(start + 1, endPos),
-    start,
-    type: 'inline',
-  }
-  return { next: closeEnd, segment }
+  return buildSegment({ closeLen: 1, contentEnd: endPos, openLen: 1, start, text, type: 'inline' })
 }
+
+// 優先順位: display を inline より先に判定して `$$...$$` を `$...$` 2 個と誤解釈しない。
+// 末尾 scanner が null を返すケースは「`$` から始まるが他のどの記法にも該当しない」となるため
+// 起こり得ないが、null 安全側に倒して driver で fallback (+1) を返す。
+const SCANNERS: readonly Scanner[] = [displayScanner, inlineScanner]
 
 const stepAt = (text: string, cursor: number): MatchStep => {
   if (text[cursor] !== '$' || isEscapedDollar(text, cursor)) {
     return { next: cursor + 1, segment: null }
   }
-  // display $$...$$ を inline より先に判定
-  if (text[cursor + 1] === '$') {
-    return matchDisplay(text, cursor)
+  for (const scanner of SCANNERS) {
+    const step = scanner(text, cursor)
+    if (step !== null) {
+      return step
+    }
   }
-  return matchInline(text, cursor)
+  return { next: cursor + 1, segment: null }
 }
 
 /**

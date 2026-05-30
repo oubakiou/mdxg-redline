@@ -146,7 +146,9 @@
 
 **リスク**: 低 — internal helper のみ、外部 API 不変。M1 完了後に着手すると影響範囲が局所化する。
 
-### M3. math scanner の protocol 化
+### M3. (完了済み) math scanner の protocol 化
+
+**状態**: **完了済み** — `Scanner` 型 (`(text, start) => MatchStep | null`) と `buildSegment(args)` (slice + closeEnd + MathSegment ラップ集約) を導入し、旧 `matchDisplay` / `matchInline` を `displayScanner` / `inlineScanner` として Scanner protocol に揃える。`SCANNERS: readonly Scanner[] = [displayScanner, inlineScanner]` を順 iterate する driver で `stepAt` を書き直し、優先順位 (display → inline) は配列順序で表現。境界条件・失敗時 cursor 前進量・slice 範囲はすべて旧実装と論理一致。挙動完全不変。新記法を追加する際は Scanner を 1 つ書き SCANNERS に並べるだけで scanMath / countMath 両経路に伝搬する下地が整った。
 
 **対象**: `src/core/math.ts` (491 行) — `scanMath` / `countMath` / `findInlineEnd` / `findDisplayEnd`
 
