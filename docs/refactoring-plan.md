@@ -258,7 +258,9 @@
 
 **リスク**: 中 — 第 1 段では `app-wiring.ts` 以外に `setOnMarksReapplied` 呼び出し箇所が無いか `grep` で事前確認する。第 2 段では `configureXxx` を register 化する際に「複数 register を許すか」の意味論変更が含まれるため、各 hook の callee 数を事前確認する。
 
-### M9. CLI clean.ts の formatter / IO 分割
+### M9. (完了済み) CLI clean.ts の formatter / IO 分割
+
+**状態**: **完了済み** — `clean.ts` (423 行) を `clean-format.ts` (pure formatter: `formatDryRun` / `formatDeleted`) と `clean-io.ts` (実 fs 統合: `defaultCleanIo` + 実 fs テスト 2 ケース) に抽出。`clean.ts` は facade として `classifyEntries` + `runClean` + 型定義を保持し、`defaultCleanIo` を re-export して外部 API (CLI 仕様) 不変。挙動完全不変。
 
 **対象**: `src/cli/clean.ts` (423 行) — `classifyEntries` / `runClean` / formatter 群 / `defaultCleanIo` (実 fs 統合) と in-source test (4 つの describe ブロック) が同居
 

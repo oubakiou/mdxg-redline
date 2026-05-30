@@ -1,13 +1,14 @@
-// `--clean [dir]` サブコマンドのロジック (dir 省略時はカレントディレクトリを対象)。
+// `--clean [dir]` サブコマンドの facade (dir 省略時はカレントディレクトリを対象)。
 // `<dir>` 直下の `*-<docHash>-review.html` / `*-<docHash>-feedback.json` を
 // docs/DESIGN.md §8 ファイル命名規約に従って機械的に一括削除する。
 // `--recursive` (`-r`) 指定時は readdir({ recursive: true }) でサブディレクトリ配下も対象にする。
-// pure 部分 (`classifyEntries`) は in-source test で網羅し、I/O 部分 (`runClean`)
-// は readdir / unlink を引数として受け取れる形にして DI 可能にしてある。
-
-import { readdir, unlink } from 'node:fs/promises'
+//
+// 責務分割: pure 分類 (本ファイル `classifyEntries`) / stdout フォーマッタ (`clean-format.ts`)
+// / 実 fs 統合 (`clean-io.ts` の `defaultCleanIo`) / orchestrator (本ファイル `runClean`)。
 
 import { resolve } from 'node:path'
+
+import { formatDeleted, formatDryRun } from './clean-format'
 
 /**
  * `<mdFileName>-<16桁hex>-(review.html|feedback.json)` 形式のファイル名を識別する正規表現。
@@ -79,39 +80,6 @@ export interface CleanIo {
   unlink: (path: string) => Promise<void>
 }
 
-const formatEntryLines = (header: string, entries: readonly ClassifiedEntry[]): string[] => {
-  if (entries.length === 0) {
-    return []
-  }
-  return [header, ...entries.map((entry: ClassifiedEntry): string => `  ${entry.filename}`)]
-}
-
-const formatDryRun = (dir: string, result: ClassifyResult): string => {
-  if (result.toDelete.length === 0 && result.kept.length === 0) {
-    return `No review/feedback artifacts found in ${dir}.\n`
-  }
-  const deleteLines = formatEntryLines(
-    `[dry-run] Would delete ${result.toDelete.length} file(s) in ${dir}:`,
-    result.toDelete
-  )
-  const keepLines = formatEntryLines(
-    `Kept ${result.kept.length} file(s) matching --keep:`,
-    result.kept
-  )
-  return `${[...deleteLines, ...keepLines, `Run with --yes to delete.`].join('\n')}\n`
-}
-
-const formatDeleted = (dir: string, deleted: number, kept: number): string => {
-  if (deleted === 0 && kept === 0) {
-    return `No review/feedback artifacts found in ${dir}.\n`
-  }
-  const head = `Deleted ${deleted} file(s) in ${dir}.\n`
-  if (kept === 0) {
-    return head
-  }
-  return `${head}Kept ${kept} file(s) matching --keep.\n`
-}
-
 const deleteEntries = async (
   dir: string,
   entries: readonly ClassifiedEntry[],
@@ -141,22 +109,12 @@ export const runClean = async (args: CleanArgs, io: CleanIo): Promise<number> =>
   return 0
 }
 
-export const defaultCleanIo: CleanIo = {
-  readdir: async (path: string, opts: { recursive?: boolean } = {}): Promise<string[]> =>
-    readdir(path, { recursive: opts.recursive === true }),
-  stderr: (text: string): void => {
-    process.stderr.write(text)
-  },
-  stdout: (text: string): void => {
-    process.stdout.write(text)
-  },
-  unlink: async (path: string): Promise<void> => unlink(path),
-}
+// defaultCleanIo は実 fs / stdio 結合経路として `./clean-io.ts` に集約。
+// CLI 既存 import は本ファイルからも参照できるよう re-export しておく。
+export { defaultCleanIo } from './clean-io'
 
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
-  const { mkdir, mkdtemp, rm, writeFile } = await import('node:fs/promises')
-  const { tmpdir } = await import('node:os')
 
   describe('REVIEW_ARTIFACT_PATTERN', () => {
     it('review.html と feedback.json にマッチする', () => {
@@ -393,31 +351,5 @@ if (import.meta.vitest) {
     })
   })
 
-  // defaultCleanIo は readdir の recursive オプションを実 fs まで伝搬する必要がある
-  // (ここで取りこぼすと CLI 実行時だけ -r が無視される。モック io 経由のテストでは検出できない)。
-  describe('defaultCleanIo (実 fs 統合)', () => {
-    const setupTree = async (): Promise<string> => {
-      const base = await mkdtemp(resolve(tmpdir(), 'mdxg-clean-'))
-      await writeFile(resolve(base, 'top-a1b2c3d4e5f6a7b8-review.html'), '')
-      await mkdir(resolve(base, 'sub'))
-      await writeFile(resolve(base, 'sub', 'nested-1111111111111111-feedback.json'), '')
-      return base
-    }
-
-    it('recursive=false ではサブディレクトリ配下を実際に削除しない', async () => {
-      const base = await setupTree()
-      await runClean({ dir: base, keep: new Set(), recursive: false, yes: true }, defaultCleanIo)
-      const remaining = await readdir(base, { recursive: true })
-      expect(remaining.toSorted()).toEqual(['sub', 'sub/nested-1111111111111111-feedback.json'])
-      await rm(base, { recursive: true })
-    })
-
-    it('recursive=true ではサブディレクトリ配下の成果物まで実際に削除する', async () => {
-      const base = await setupTree()
-      await runClean({ dir: base, keep: new Set(), recursive: true, yes: true }, defaultCleanIo)
-      const remaining = await readdir(base, { recursive: true })
-      expect(remaining).toEqual(['sub'])
-      await rm(base, { recursive: true })
-    })
-  })
+  // defaultCleanIo の実 fs 統合テストは `./clean-io.ts` に分離済み。
 }
