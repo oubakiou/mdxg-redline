@@ -4,6 +4,7 @@
 
 import { encodeEmbeddedMarkdown, encodeEmbeddedShikiLangs } from './script-encoding'
 import { escapeHtml } from '../escape'
+import { setOrInsertAttribute, upsertHtmlDataAttribute } from './html-attribute-rewriter'
 import { inlineMarkdownCssIntoHtml } from '../../build/inline-markdown-css'
 
 // 属性順や空白の揺らぎを許容するため、id="embedded-md" と type="text/markdown" の両方を
@@ -62,45 +63,7 @@ export const upsertEmbeddedMdMeta = (reviewHtml: string): string => {
   return cleaned.slice(0, insertPos) + meta + cleaned.slice(insertPos)
 }
 
-const DATA_NAME_RE = /\bdata-name="[^"]*"/
-const HTML_TAG_RE = /<html\b[^>]*>/i
-const DATA_THEME_RE = /\bdata-theme="[^"]*"/
-const DATA_COMMENTS_WIDTH_RE = /\bdata-comments-width="[^"]*"/
-const DATA_PAGE_NAV_WIDTH_RE = /\bdata-page-nav-width="[^"]*"/
-const DATA_TOOLBAR_OPEN_FILE_RE = /\bdata-toolbar-open-file="[^"]*"/
 const TITLE_RE = /(<title\b[^>]*>)([\s\S]*?)(<\/title>)/i
-
-// data-name が無い既存テンプレートでも安全に補えるように、置換と挿入を関数として分離する。
-// 関数化により rewriteReviewHtml 側を no-ternary / prefer-ternary 双方に抵触せず保てる。
-const replaceDataName = (openingTag: string, escapedName: string): string => {
-  if (DATA_NAME_RE.test(openingTag)) {
-    return openingTag.replace(DATA_NAME_RE, `data-name="${escapedName}"`)
-  }
-  return openingTag.replace(/>$/, ` data-name="${escapedName}">`)
-}
-
-// <html> 開きタグに data-theme 属性を挿入 / 上書きする。CLI バリデーション済み値が前提だが、
-// 念のため escapeHtml を通して属性 escape 経路を data-name と揃える。
-const replaceDataTheme = (openingTag: string, escapedTheme: string): string => {
-  if (DATA_THEME_RE.test(openingTag)) {
-    return openingTag.replace(DATA_THEME_RE, `data-theme="${escapedTheme}"`)
-  }
-  return openingTag.replace(/>$/, ` data-theme="${escapedTheme}">`)
-}
-
-const replaceDataCommentsWidth = (openingTag: string, escapedValue: string): string => {
-  if (DATA_COMMENTS_WIDTH_RE.test(openingTag)) {
-    return openingTag.replace(DATA_COMMENTS_WIDTH_RE, `data-comments-width="${escapedValue}"`)
-  }
-  return openingTag.replace(/>$/, ` data-comments-width="${escapedValue}">`)
-}
-
-const replaceDataPageNavWidth = (openingTag: string, escapedValue: string): string => {
-  if (DATA_PAGE_NAV_WIDTH_RE.test(openingTag)) {
-    return openingTag.replace(DATA_PAGE_NAV_WIDTH_RE, `data-page-nav-width="${escapedValue}"`)
-  }
-  return openingTag.replace(/>$/, ` data-page-nav-width="${escapedValue}">`)
-}
 
 /**
  * `<html>` 開きタグに `data-theme="<themeHint>"` を挿入する。属性が既にあれば上書き。
@@ -108,15 +71,8 @@ const replaceDataPageNavWidth = (openingTag: string, escapedValue: string): stri
  * 未指定時は属性を付けないため、呼び出し側で themeHint の有無を判断してから呼ぶ
  * (CLI 既定では --theme 未指定時はこの関数を呼ばない方針)。
  */
-export const upsertHtmlDataTheme = (reviewHtml: string, themeHint: string): string => {
-  const match = HTML_TAG_RE.exec(reviewHtml)
-  if (!match) {
-    throw new Error('template HTML に <html> タグが見つかりません')
-  }
-  const [tag] = match
-  const newTag = replaceDataTheme(tag, escapeHtml(themeHint))
-  return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length)
-}
+export const upsertHtmlDataTheme = (reviewHtml: string, themeHint: string): string =>
+  upsertHtmlDataAttribute(reviewHtml, 'data-theme', themeHint)
 
 /**
  * `<html>` 開きタグに `data-comments-width="<value>"` を挿入する。属性が既にあれば上書き。
@@ -124,36 +80,15 @@ export const upsertHtmlDataTheme = (reviewHtml: string, themeHint: string): stri
  * 値の正当性 (0 or 240–640) は CLI 側でバリデーション済み前提だが、属性 escape 経路は
  * data-theme と揃える。
  */
-export const upsertHtmlDataCommentsWidth = (reviewHtml: string, value: number): string => {
-  const match = HTML_TAG_RE.exec(reviewHtml)
-  if (!match) {
-    throw new Error('template HTML に <html> タグが見つかりません')
-  }
-  const [tag] = match
-  const newTag = replaceDataCommentsWidth(tag, escapeHtml(String(value)))
-  return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length)
-}
+export const upsertHtmlDataCommentsWidth = (reviewHtml: string, value: number): string =>
+  upsertHtmlDataAttribute(reviewHtml, 'data-comments-width', String(value))
 
 /**
  * `<html>` 開きタグに `data-page-nav-width="<value>"` を挿入する。属性が既にあれば上書き。
  * 値の正当性 (0 or 180–480) は CLI 側でバリデーション済み前提。data-comments-width と対称。
  */
-export const upsertHtmlDataPageNavWidth = (reviewHtml: string, value: number): string => {
-  const match = HTML_TAG_RE.exec(reviewHtml)
-  if (!match) {
-    throw new Error('template HTML に <html> タグが見つかりません')
-  }
-  const [tag] = match
-  const newTag = replaceDataPageNavWidth(tag, escapeHtml(String(value)))
-  return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length)
-}
-
-const replaceDataToolbarOpenFile = (openingTag: string, value: string): string => {
-  if (DATA_TOOLBAR_OPEN_FILE_RE.test(openingTag)) {
-    return openingTag.replace(DATA_TOOLBAR_OPEN_FILE_RE, `data-toolbar-open-file="${value}"`)
-  }
-  return openingTag.replace(/>$/, ` data-toolbar-open-file="${value}">`)
-}
+export const upsertHtmlDataPageNavWidth = (reviewHtml: string, value: number): string =>
+  upsertHtmlDataAttribute(reviewHtml, 'data-page-nav-width', String(value))
 
 /**
  * `<html>` 開きタグに `data-toolbar-open-file="off"` を挿入する (idempotent)。
@@ -161,15 +96,8 @@ const replaceDataToolbarOpenFile = (openingTag: string, value: string): string =
  * Open file ボタンと隠し input を起動時に DOM から削除する (DESIGN.md §3 入力 1 のフットガン
  * を CLI 経路で構造的に塞ぐ意図)。値は `'off'` のみで運用するため型でも literal に絞る。
  */
-export const upsertHtmlDataToolbarOpenFile = (reviewHtml: string, value: 'off'): string => {
-  const match = HTML_TAG_RE.exec(reviewHtml)
-  if (!match) {
-    throw new Error('template HTML に <html> タグが見つかりません')
-  }
-  const [tag] = match
-  const newTag = replaceDataToolbarOpenFile(tag, escapeHtml(value))
-  return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length)
-}
+export const upsertHtmlDataToolbarOpenFile = (reviewHtml: string, value: 'off'): string =>
+  upsertHtmlDataAttribute(reviewHtml, 'data-toolbar-open-file', value)
 
 /**
  * `<title>` の中身を書き換える (idempotent)。ブラウザタブ・ファイル共有先で配布物を識別できるよう、
@@ -240,7 +168,7 @@ export const rewriteReviewHtml = (
   }
 
   const [fullMatch, openingTag, , closingTag] = match
-  const newOpeningTag = replaceDataName(openingTag, escapeHtml(docName))
+  const newOpeningTag = setOrInsertAttribute(openingTag, 'data-name', escapeHtml(docName))
   const replaced = `${newOpeningTag}${encodeEmbeddedMarkdown(markdown)}${closingTag}`
   return (
     reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length)
