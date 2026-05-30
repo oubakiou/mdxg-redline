@@ -7,43 +7,22 @@ import { buildDomRange } from './selection'
 import { injectCopyButtons } from '../document/code-copy-wrap'
 import { qs } from '../dom/dom-utils'
 import { state } from '../state/app-state'
+import { wrapRange } from '../dom/text-range'
 
-interface MarkableRange {
-  endNode: Text
-  range: Range
-  startNode: Text
-}
-
-/**
- * 指定 Range を `<mark class="cmt">` で囲む。
- * 単一テキストノード内なら surroundContents、ノードまたぎなら extractContents+insertNode で対応する。
- * surroundContents は要素境界をまたぐと例外を投げるため try/catch でフォールバック扱いにする（その mark のみスキップ）。
- */
-const wrapRangeWithMark = (domRange: MarkableRange, commentId: string): void => {
-  const { endNode, range, startNode } = domRange
+const createCmtMarkElement = (commentId: string): HTMLElement => {
   const mark = document.createElement('mark')
   mark.className = 'cmt'
   mark.dataset.commentId = commentId
-  try {
-    if (startNode === endNode) {
-      range.surroundContents(mark)
-    } else {
-      const contents = range.extractContents()
-      mark.appendChild(contents)
-      range.insertNode(mark)
-    }
-  } catch {
-    // Fallback: skip this mark if range crosses element boundaries awkwardly
-  }
+  return mark
 }
 
 /** 1 件のコメントに対応する mark を該当ブロック上に貼る。Range 構築失敗時は何もしない（fail-soft） */
 const applyMark = (blockEl: Element, comment: Comment): void => {
-  const built = buildDomRange(blockEl, comment)
-  if (!built) {
+  const range = buildDomRange(blockEl, comment)
+  if (!range) {
     return
   }
-  wrapRangeWithMark(built, comment.id)
+  wrapRange(range, createCmtMarkElement(comment.id))
 }
 
 const pushIntoBucket = (byBlock: Map<string, Comment[]>, comment: Comment): void => {

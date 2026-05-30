@@ -4,7 +4,12 @@
 // 方向の関数を提供する。
 
 import { type MatchRange, findMatchesInText, formatMatchCount } from '../../core/search'
-import { textRangeFromOffsets, textSegments } from '../comments/selection'
+import {
+  rangeFromEndpoints,
+  textRangeFromOffsets,
+  textSegments,
+  wrapRange,
+} from '../dom/text-range'
 import { type SearchMatch, searchState } from './search-state'
 import { qs } from '../dom/dom-utils'
 
@@ -110,46 +115,11 @@ export const collectSearchMatches = (query: string): SearchMatch[] => {
   return matches
 }
 
-/** endpoints から `Range` を組み立てる。setStart/End が失敗 (境界違反等) すれば null で握りつぶす */
-const rangeFromEndpoints = (endpoints: {
-  endNode: Text
-  endOff: number
-  startNode: Text
-  startOff: number
-}): Range | null => {
-  const range = document.createRange()
-  try {
-    range.setStart(endpoints.startNode, endpoints.startOff)
-    range.setEnd(endpoints.endNode, endpoints.endOff)
-  } catch {
-    return null
-  }
-  return range
-}
-
 const createSearchMarkElement = (matchIndex: number): HTMLElement => {
   const mark = document.createElement('mark')
   mark.className = SEARCH_HL_CLASS
   mark.dataset.searchIndex = String(matchIndex)
   return mark
-}
-
-/**
- * `range` を `mark` で wrap する。単一テキストノード内なら surroundContents、ノードをまたぐ場合は
- * extractContents + insertNode フォールバック。cmt mark 境界をまたぐ等で失敗するケースは skip。
- */
-const surroundRangeWithMark = (range: Range, mark: HTMLElement, sameNode: boolean): void => {
-  try {
-    if (sameNode) {
-      range.surroundContents(mark)
-      return
-    }
-    const contents = range.extractContents()
-    mark.appendChild(contents)
-    range.insertNode(mark)
-  } catch {
-    // cmt mark 境界を跨ぐ等で surroundContents / extractContents が失敗するケースは skip
-  }
 }
 
 /** 1 マッチ分の Range を組み立てて `<mark class="search-hl">` で包む */
@@ -162,8 +132,7 @@ const wrapMatchInBlock = (blockEl: Element, match: SearchMatch): void => {
   if (!range) {
     return
   }
-  const mark = createSearchMarkElement(match.matchIndex)
-  surroundRangeWithMark(range, mark, endpoints.startNode === endpoints.endNode)
+  wrapRange(range, createSearchMarkElement(match.matchIndex))
 }
 
 /** 同一ブロック内の match を start 降順で並べ、後ろから wrap してオフセットずれを防ぐ */

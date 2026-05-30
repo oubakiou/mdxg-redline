@@ -1,5 +1,11 @@
 import type { Comment, PendingSelection } from '../../core/types'
-import { SKIP_TEXT_SEGMENT_SELECTOR, shouldSkipForTextSegments } from './text-segment-skip-rules'
+import { SKIP_TEXT_SEGMENT_SELECTOR } from '../dom/text-segment-skip-rules'
+import {
+  type TextSegment,
+  rangeFromEndpoints,
+  textRangeFromOffsets,
+  textSegments,
+} from '../dom/text-range'
 
 /** 選択範囲解析結果。フローター位置決め用の rect 込み */
 export interface SelectionInfo extends PendingSelection {
@@ -12,128 +18,13 @@ interface SelectionState {
   sel: Selection
 }
 
-/** ブロック内テキストノードを平坦化した 1 区間 */
-export interface TextSegment {
-  start: number
-  end: number
-  node: Text
-}
-
-/** 保存値オフセットから解決した DOM 上の両端ノード＋オフセット */
-export interface TextRangeEndpoints {
-  startNode: Text
-  startOff: number
-  endNode: Text
-  endOff: number
-}
-
-interface SegmentOffsets {
-  endIndex: number
-  endOff: number
-  startIndex: number
-  startOff: number
-}
-
-/** Range と両端ノードを束ねた wrap 対象 */
-export interface BuiltDomRange {
-  startNode: Text
-  endNode: Text
-  range: Range
-}
-
-/**
- * ブロック要素内のテキストノードを位置 (start, end) 付きで深さ優先で平坦化する。
- * コメントは「ブロック内テキストの先頭からのオフセット」で保存されるため、保存値と DOM ノードの突き合わせにこの一覧を使う。
- *
- * `.code-copy-btn` / `.code-lang-label` 配下は skip する: どちらも描画時の動的注入で
- * レビュー対象 markdown 由来でなく、その text node を含めると wrap の有無 (再描画前後 /
- * ネストブロック vs トップレベル) で textContent が変動しオフセットがズレるため。
- */
-// skip 対象セレクタ / 判定は app/text-segment-skip-rules.ts に集約済み。
-
-export const textSegments = (blockEl: Element): TextSegment[] => {
-  const segments: TextSegment[] = []
-  const visit = (node: Node): void => {
-    if (shouldSkipForTextSegments(node)) {
-      return
-    }
-    if (node instanceof Text) {
-      const previous = segments.at(-1)
-      const start = (previous && previous.end) || 0
-      segments.push({
-        end: start + (node.textContent || '').length,
-        node,
-        start,
-      })
-      return
-    }
-    for (const child of node.childNodes) {
-      visit(child)
-    }
-  }
-  visit(blockEl)
-  return segments
-}
-
-const resolveSegmentOffsets = (
-  segments: Pick<TextSegment, 'end' | 'start'>[],
-  startOffset: number,
-  endOffset: number
-): SegmentOffsets | null => {
-  const startIndex = segments.findIndex((segment): boolean => segment.end > startOffset)
-  const endIndex = segments.findIndex((segment): boolean => segment.end >= endOffset)
-  if (startIndex === -1 || endIndex === -1) {
-    return null
-  }
-  return {
-    endIndex,
-    endOff: endOffset - segments[endIndex].start,
-    startIndex,
-    startOff: startOffset - segments[startIndex].start,
-  }
-}
-
-/**
- * 保存値 (startOffset, endOffset) を DOM 上の (startNode, startOff)/(endNode, endOff) に解決する。
- * テキスト構造が変わって解決できない場合は null を返し、呼び出し側は該当 mark をスキップする（fail-soft）。
- *
- * `app/search.ts` から match の `[start, end)` を Range に直す経路でも再利用する。
- */
-export const textRangeFromOffsets = (
-  blockEl: Element,
-  startOffset: number,
-  endOffset: number
-): TextRangeEndpoints | null => {
-  const segments = textSegments(blockEl)
-  const resolved = resolveSegmentOffsets(segments, startOffset, endOffset)
-  if (!resolved) {
-    return null
-  }
-  const start = segments[resolved.startIndex]
-  const end = segments[resolved.endIndex]
-  return {
-    endNode: end.node,
-    endOff: resolved.endOff,
-    startNode: start.node,
-    startOff: resolved.startOff,
-  }
-}
-
 /** 解決済みオフセットから DOM `Range` を組み立てる。setStart/End が失敗（境界違反等）した場合は null で握りつぶす */
-export const buildDomRange = (blockEl: Element, comment: Comment): BuiltDomRange | null => {
+export const buildDomRange = (blockEl: Element, comment: Comment): Range | null => {
   const textRange = textRangeFromOffsets(blockEl, comment.startOffset, comment.endOffset)
   if (!textRange) {
     return null
   }
-  const { endNode, endOff, startNode, startOff } = textRange
-  const range = document.createRange()
-  try {
-    range.setStart(startNode, startOff)
-    range.setEnd(endNode, endOff)
-  } catch {
-    return null
-  }
-  return { endNode, range, startNode }
+  return rangeFromEndpoints(textRange)
 }
 
 // segments.find は `node === container` の参照同一性しか見ないため、両側を unknown で受ける。
@@ -364,46 +255,8 @@ export const getSelectionInfo = (): SelectionInfo | null => {
   return buildSelectionInfo({ ...resolved, offsets, selection })
 }
 
-const buildBlockForTest = (html: string): HTMLElement => {
-  const block = document.createElement('div')
-  block.innerHTML = html
-  return block
-}
-
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
-
-  describe('resolveSegmentOffsets', () => {
-    it('複数セグメントをまたぐ保存 offset をノード内 offset に変換する', () => {
-      const segments = [
-        { end: 2, start: 0 },
-        { end: 5, start: 2 },
-      ]
-      expect(resolveSegmentOffsets(segments, 1, 4)).toEqual({
-        endIndex: 1,
-        endOff: 2,
-        startIndex: 0,
-        startOff: 1,
-      })
-    })
-
-    it('終端 offset はセグメント末尾と等しい位置を有効にする', () => {
-      const segments = [
-        { end: 2, start: 0 },
-        { end: 5, start: 2 },
-      ]
-      expect(resolveSegmentOffsets(segments, 0, 2)).toEqual({
-        endIndex: 0,
-        endOff: 2,
-        startIndex: 0,
-        startOff: 0,
-      })
-    })
-
-    it('範囲外 offset は null', () => {
-      expect(resolveSegmentOffsets([{ end: 2, start: 0 }], 5, 6)).toBeNull()
-    })
-  })
 
   describe('textOffsetForTextNode', () => {
     // segments.find は `node === container` の参照同一性しか見ないため、テストでは
@@ -432,94 +285,6 @@ if (import.meta.vitest) {
     })
   })
 
-  // SKIP_TEXT_SEGMENT_ATTR_NAMES / SKIP_TEXT_SEGMENT_CLASSES の identity contract は
-  // text-segment-skip-rules.ts の in-source test 群に移動済み。本ファイルは textSegments の
-  // walk 経路を中心に検証する。
-
-  describe('textSegments (DOM)', () => {
-    it('plain text を 1 segment として返す (start=0, end=text.length)', () => {
-      const block = buildBlockForTest('Hello world')
-      const segments = textSegments(block)
-      expect(segments).toHaveLength(1)
-      expect(segments[0].start).toBe(0)
-      expect(segments[0].end).toBe(11)
-      expect(segments[0].node.textContent).toBe('Hello world')
-    })
-
-    it('inline 装飾をまたぐと複数 segment に分かれ、start/end が累積する', () => {
-      // `abc<strong>def</strong>ghi` → "abc" / "def" / "ghi" の 3 segment
-      const block = buildBlockForTest('abc<strong>def</strong>ghi')
-      const segments = textSegments(block)
-      expect(segments).toHaveLength(3)
-      expect(segments.map((seg): [number, number] => [seg.start, seg.end])).toEqual([
-        [0, 3],
-        [3, 6],
-        [6, 9],
-      ])
-    })
-
-    it('skip class (sr-only) 配下のテキストは segment に含めない', () => {
-      // marked-footnote 1.4.0 が挿入する <h2 class="sr-only">Footnotes</h2> 相当
-      const block = buildBlockForTest('<h2 class="sr-only">Footnotes</h2><p>body</p>')
-      const segments = textSegments(block)
-      expect(segments.map((seg): string | null => seg.node.textContent)).toEqual(['body'])
-    })
-
-    it('skip class (code-copy-btn / code-lang-label) 配下を除外する', () => {
-      const block = buildBlockForTest(
-        '<span class="code-lang-label">typescript</span>' +
-          '<pre>const x = 1</pre>' +
-          '<button class="code-copy-btn"><span>Copy</span></button>'
-      )
-      const segments = textSegments(block)
-      expect(segments.map((seg): string | null => seg.node.textContent)).toEqual(['const x = 1'])
-    })
-
-    it('skip 属性 [data-math] 配下を除外する (upgrade 前後で textContent 不変条件)', () => {
-      const block = buildBlockForTest(
-        'before <span data-math="inline" data-math-source="x">$x$</span> after'
-      )
-      const segments = textSegments(block)
-      // "$x$" 部分が消える。" before " と " after " で 2 segment (前後の空白込み)
-      expect(segments.map((seg): string | null => seg.node.textContent)).toEqual([
-        'before ',
-        ' after',
-      ])
-    })
-
-    it('skip 属性 [data-footnote-ref] 配下の <sup>N</sup> 文字を除外する', () => {
-      // marked-footnote 出力: <sup><a id="footnote-ref-1" data-footnote-ref href="#footnote-1">1</a></sup>
-      const block = buildBlockForTest(
-        'See<sup><a data-footnote-ref href="#footnote-1">1</a></sup>.'
-      )
-      const segments = textSegments(block)
-      // <a data-footnote-ref> 配下の "1" が消える。"See" と "." だけが残る
-      expect(segments.map((seg): string | null => seg.node.textContent)).toEqual(['See', '.'])
-    })
-
-    it('skip 属性 [data-footnote-backref] 配下の ↩ を除外する', () => {
-      const block = buildBlockForTest('body <a data-footnote-backref href="#footnote-ref-1">↩</a>')
-      const segments = textSegments(block)
-      expect(segments.map((seg): string | null => seg.node.textContent)).toEqual(['body '])
-    })
-
-    it('Mermaid upgrade 済み <pre[data-mermaid-applied]> 配下を除外する', () => {
-      const block = buildBlockForTest(
-        'before <pre data-mermaid="1" data-mermaid-applied="1" hidden><code>graph TD</code></pre> after'
-      )
-      const segments = textSegments(block)
-      expect(segments.map((seg): string | null => seg.node.textContent)).toEqual([
-        'before ',
-        ' after',
-      ])
-    })
-
-    it('未 upgrade (data-mermaid="1" のみ) の <pre> は通常どおり拾う (Shiki ハイライト fallback の検索対象)', () => {
-      const block = buildBlockForTest(
-        'before <pre data-mermaid="1"><code>graph TD</code></pre> after'
-      )
-      const segments = textSegments(block)
-      expect(segments.map((seg): string | null => seg.node.textContent)).toContain('graph TD')
-    })
-  })
+  // textSegments / resolveSegmentOffsets / SKIP_TEXT_SEGMENT_* の identity contract は
+  // dom/text-range.ts と dom/text-segment-skip-rules.ts の in-source test 群に集約済み。
 }
