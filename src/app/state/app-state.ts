@@ -57,6 +57,29 @@ export const markFeedbackUnsaved = (): void => {
   state.lastWrittenSignature = null
 }
 
+export interface LoadDocumentStatePayload {
+  activePageIndex: number
+  docHash: string
+  docName: string
+  markdown: string
+  pages: Page[]
+}
+
+/**
+ * 新規 markdown 取り込み時の state 一括書き込み。docName / markdown / docHash / pages /
+ * activePageIndex を payload から流し込み、comments は必ず空配列にリセットする。
+ * 新しい本文に旧コメントを残すと §6 アンカリングが滑るため、空配列での再構築が正しい契約。
+ * state 直 mutate を 1 箇所に閉じ込めるための narrow operation API (DESIGN.md §5)。
+ */
+export const loadDocumentState = (payload: LoadDocumentStatePayload): void => {
+  state.activePageIndex = payload.activePageIndex
+  state.comments = []
+  state.docHash = payload.docHash
+  state.docName = payload.docName
+  state.markdown = payload.markdown
+  state.pages = payload.pages
+}
+
 if (import.meta.vitest) {
   const { afterEach, beforeEach, describe, expect, it } = import.meta.vitest
 
@@ -100,6 +123,104 @@ if (import.meta.vitest) {
       state.lastWrittenSignature = 'something'
       markFeedbackUnsaved()
       expect(state.lastWrittenSignature).toBeNull()
+    })
+  })
+
+  describe('loadDocumentState', () => {
+    // 各テスト後に state の文書系フィールドを初期値に戻す。app-state は module shared mutable で
+    // 他テストへ漏れるため、loadDocumentState 経由の書き込みを構造的に巻き戻す。
+    const SNAPSHOT: {
+      activePageIndex: number
+      blockAnchors: Map<string, BlockAnchor>
+      blockOriginalHTML: Map<string, string>
+      comments: Comment[]
+      docHash: string | null
+      docName: string | null
+      markdown: string
+      pages: Page[]
+    } = {
+      activePageIndex: 0,
+      blockAnchors: new Map(),
+      blockOriginalHTML: new Map(),
+      comments: [],
+      docHash: null,
+      docName: null,
+      markdown: '',
+      pages: [],
+    }
+    let savedDoc: typeof SNAPSHOT = SNAPSHOT
+    beforeEach(() => {
+      savedDoc = {
+        activePageIndex: state.activePageIndex,
+        blockAnchors: state.blockAnchors,
+        blockOriginalHTML: state.blockOriginalHTML,
+        comments: state.comments,
+        docHash: state.docHash,
+        docName: state.docName,
+        markdown: state.markdown,
+        pages: state.pages,
+      }
+    })
+    afterEach(() => {
+      state.activePageIndex = savedDoc.activePageIndex
+      state.blockAnchors = savedDoc.blockAnchors
+      state.blockOriginalHTML = savedDoc.blockOriginalHTML
+      state.comments = savedDoc.comments
+      state.docHash = savedDoc.docHash
+      state.docName = savedDoc.docName
+      state.markdown = savedDoc.markdown
+      state.pages = savedDoc.pages
+    })
+
+    const dummyComment: Comment = {
+      blockId: 'b001',
+      comment: 'old',
+      created: '2026-01-01T00:00:00.000Z',
+      endOffset: 5,
+      id: 'cmt-old',
+      pageIndex: 0,
+      quote: 'hello',
+      sourceLine: 1,
+      startOffset: 0,
+    }
+
+    const samplePayload = {
+      activePageIndex: 1,
+      docHash: 'abcd1234ef567890',
+      docName: 'spec.md',
+      markdown: '# Hello\n',
+      pages: [] as Page[],
+    }
+
+    it('payload の docName / markdown / docHash / pages / activePageIndex を state に流し込む', () => {
+      loadDocumentState(samplePayload)
+      expect(state.activePageIndex).toBe(1)
+      expect(state.docHash).toBe('abcd1234ef567890')
+      expect(state.docName).toBe('spec.md')
+      expect(state.markdown).toBe('# Hello\n')
+      expect(state.pages).toBe(samplePayload.pages)
+    })
+
+    it('comments は payload に含まれず常に空配列にリセットされる (§6 アンカリング不整合防止の契約)', () => {
+      state.comments = [dummyComment]
+      loadDocumentState(samplePayload)
+      expect(state.comments).toEqual([])
+    })
+
+    it('lastWrittenSignature には触らない (dirty 判定の責務は markFeedback* 系に分離)', () => {
+      state.lastWrittenSignature = 'untouched'
+      loadDocumentState(samplePayload)
+      expect(state.lastWrittenSignature).toBe('untouched')
+    })
+
+    it('blockAnchors / blockOriginalHTML には触らない (doc-mount 側の責務)', () => {
+      const anchors = new Map([['b001', { headingPath: [], sourceLine: 1 }]])
+      const original = new Map([['b001', '<p>x</p>']])
+      state.blockAnchors = anchors
+      state.blockOriginalHTML = original
+      loadDocumentState(samplePayload)
+      expect(state.blockAnchors).toBe(anchors)
+      expect(state.blockOriginalHTML).toBe(original)
     })
   })
 }

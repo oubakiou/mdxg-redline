@@ -31,7 +31,7 @@ import { closeCommentModal, openEditCommentModal, wireCommentModal } from './com
 import { closeHelpModal, openHelpModal, toggleHelpModal, wireHelpModal } from './chrome/help-modal'
 import { closeMermaidModal, wireMermaidModal } from './renderers/mermaid-modal'
 import { computeDocHash, formatLoadedStatus } from '../core/embed'
-import { markFeedbackUnsaved, state } from './state/app-state'
+import { loadDocumentState, markFeedbackUnsaved, state } from './state/app-state'
 import { qs, toast } from './dom/dom-utils'
 import {
   activateFocusedItem,
@@ -172,14 +172,16 @@ interface LoadResult {
 // docHash は state.docHash に書き込んだ後 caller でも `formatLoadedStatus` に渡したい一方、
 // state.docHash の型が `string | null` のため TypeScript narrow を維持するには戻り値経由が手早い。
 const initStateFromMarkdown = async (name: string, text: string): Promise<LoadResult> => {
-  state.docName = name
-  state.markdown = text
   const docHash = await computeDocHash(text)
-  state.docHash = docHash
-  state.comments = []
-  state.pages = appendFootnotesPage(splitIntoPages(text, { docName: name }), text)
+  const pages = appendFootnotesPage(splitIntoPages(text, { docName: name }), text)
   const target = resolveTargetFromHash(globalThis.location.hash)
-  state.activePageIndex = target.pageIndex
+  loadDocumentState({
+    activePageIndex: target.pageIndex,
+    docHash,
+    docName: name,
+    markdown: text,
+    pages,
+  })
   return { docHash, target }
 }
 

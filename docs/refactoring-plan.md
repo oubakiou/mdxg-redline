@@ -127,7 +127,7 @@
 
 **リスク**: 低（import パス書き換えのみ。LSP は自動書き換えしないため手動で書き換え、`getDiagnostics` / `vp check` で検証）
 
-### L3. グローバル mutable state の操作 API 化
+### L3. グローバル mutable state の操作 API 化 (部分着手)
 
 **対象**: `src/app/state/app-state.ts:18`
 
@@ -136,6 +136,10 @@
 **分割案**:
 
 - まず `loadDocumentState` / `setActivePage` / `replaceComments` のような **狭い操作関数を増やす**ところから始め、直接 mutate を段階的に置換。全面 setter 化はしない。
+
+**着手済み**:
+
+- `loadDocumentState(payload)` を `src/app/state/app-state.ts` に追加し、新規 markdown 取り込み時の state 一括書き込み (docName / markdown / docHash / pages / activePageIndex / comments=[] のリセット) を 1 箇所に閉じ込めた。`src/app/review.ts` の `initStateFromMarkdown` から直 mutate を排除し本関数を呼ぶ形に置換。残りの `setActivePage` (既に `setActivePageIndex` として `document/pages.ts` に存在) / `replaceComments` (boot で embedded-feedback を流し込む経路、未着手) は後続 PR で段階導入する。
 
 **効果**: 将来の回帰点を絞り、state 変更箇所を grep 可能にする。
 
@@ -151,7 +155,7 @@
 4. **M3**（doc-mount pure 分離、完了）— 配賦ロジックを純粋関数化してテスト容易性を上げる
 5. **M2**（review.ts wiring 分離、完了）— 起動順序に依存するため、上記でコードに慣れてから
 6. **L1**（consume\*Value 統合、完了）— H1 完了後に `parse-run-args.ts` 内の構造変更として別 PR で
-7. **L3**（state 操作 API 化）— 最も影響範囲が広いので最後。1 操作関数ずつ段階導入
+7. **L3**（state 操作 API 化、部分着手 — loadDocumentState のみ導入済み）— 最も影響範囲が広いので最後。1 操作関数ずつ段階導入
 
 ## 6. 共通の進め方
 
