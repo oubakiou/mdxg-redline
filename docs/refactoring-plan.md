@@ -40,7 +40,9 @@
 
 ## 2. 優先度: 高
 
-### H1. `parse-run-args.ts` の pending state を単一 FlagDef table に統合
+### H1. (完了済み) `parse-run-args.ts` の pending state を単一 FlagDef table に統合
+
+**状態**: **完了済み** — H1a は commit `bf774c9` (機械的抽出)、H1b は commit `67c0fc3` (FlagDef 統合) で merge。
 
 「挙動不変なファイル移動 → 構造変更」原則に沿うため、H1 は **H1a（機械的抽出）と H1b（FlagDef 統合）の 2 PR に分割** する。H1a は 過去 H1 (f621d6c) / L1 (1bf3187) の直接の延長で純粋なファイル分割、H1b はその上で型整合の構造変更を行う。
 
@@ -76,7 +78,9 @@
 
 **リスク**: 中（型設計の複雑化。ただし H1a で挙動不変の土台があり、test カバレッジが厚いため等価性は担保しやすい）
 
-### H2. `review.ts` から navigation / global-keyboard / wiring を分離
+### H2. (完了済み) `review.ts` から navigation / global-keyboard / wiring を分離
+
+**状態**: **完了済み** — commit `b0106ff` で merge。
 
 **対象**: `src/app/review.ts:8`（import 25 個）、`src/app/review.ts:74` / `:222` / `:295` / `:380` 付近
 
@@ -97,7 +101,9 @@
 
 **リスク**: 中（起動順の不変条件を §9 起動シーケンスに沿って維持する必要がある）
 
-### H3. `search.ts` を state / DOM highlight / UI wiring に分割
+### H3. (完了済み) `search.ts` を state / DOM highlight / UI wiring に分割
+
+**状態**: **完了済み** — commit `820fe95` で merge。
 
 **対象**: `src/app/search/search.ts:31`、match 収集 `:91`、highlight 適用 `:202`、状態更新 `:323`
 
@@ -115,7 +121,9 @@
 
 ## 3. 優先度: 中
 
-### M1. text-range / text-segment utility を集約
+### M1. (完了済み) text-range / text-segment utility を集約
+
+**状態**: **完了済み** — commit `4ed7fba` で merge。
 
 **対象**: `src/app/comments/selection.ts` の `textSegments` / `textRangeFromOffsets`、`src/app/search/search.ts:160` 付近の Range 生成・wrap、`src/app/comments/mark-engine.ts`
 
@@ -134,7 +142,9 @@
 
 **状態**: **既に実装済み** — `src/app/comments/comments-width.ts` と `src/app/navigation/page-nav-width.ts` はどちらも `src/app/layout/sidebar-width.ts` の `createSidebarWidthModule` を呼ぶ薄い wrapper になっており、`clamp` / stored value / CLI hint 優先順位 / closed タブ判定は集約済み。本項目は計画起票時点で見落としていたため、以降の番号は欠番として扱う（H1-H3 / M1 / M3-M5 / L1-L3 への参照を壊さないため詰めない）。
 
-### M3. mermaid / katex renderer 共通化（過去 M1 (f406601) の継続）
+### M3. (完了済み) mermaid / katex renderer 共通化（過去 M1 (f406601) の継続）
+
+**状態**: **完了済み** — commit `f8b75d7` で merge。
 
 **対象**: `src/app/renderers/mermaid.ts` (497) / `katex.ts` (459)
 
@@ -150,7 +160,9 @@
 
 **リスク**: 低（過去 M1 (f406601) の延長、generics は素直）
 
-### M4. `comments.ts` の DOM wiring と pure logic 分離
+### M4. (完了済み) `comments.ts` の DOM wiring と pure logic 分離
+
+**状態**: **完了済み** — commit `740e93b` で merge。
 
 **対象**: `src/app/comments/comments.ts` (507)
 
@@ -166,7 +178,9 @@
 
 **リスク**: 低
 
-### M5. `html-rewrite.ts` の属性置換ヘルパー集約
+### M5. (完了済み) `html-rewrite.ts` の属性置換ヘルパー集約
+
+**状態**: **完了済み** — commit `e8bd1d3` で merge。
 
 **対象**: `src/core/embed/html-rewrite.ts` (576)、特に `EMBEDDED_MD_RE`（13）/ `EMBEDDED_SHIKI_LANGS_RE`（18）、`replaceData*` ヘルパー 5 個（`replaceDataName`:75 / `replaceDataTheme`:84 / `replaceDataCommentsWidth`:91 / `replaceDataPageNavWidth`:98 / `replaceDataToolbarOpenFile`:151）
 
@@ -222,14 +236,14 @@
 
 挙動不変なファイル移動を先にし、構造変更（hook 設計・抽象化）は後ろに回す原則で並べる。ユーザー優先候補（H1 / H2 / H3）を先頭に置きつつ、各候補内では「機械的抽出 → 構造変更」の順を維持する（H1a → H1b など）。M2 は本計画起票時点で既に完了済みのため順序から除外する。
 
-1. **H1a** — `flag-parser.ts` への機械的抽出（挙動不変、低リスク）
-2. **H1b** — FlagDef 統合による型整合化（構造変更、中リスク）
-3. **H2** — `review.ts` から hash-navigation / global-keyboard 切り出し（過去 M2 (49b025b) = `setupKeyboardHandlers` / `setupHashNavigation` 抽出の継続）
-4. **H3** — `search.ts` の `search-dom` / `search-state` 切り出し
-5. **M1** — text-range / text-segment utility 集約（H3 完了後の方が衝突が少ない）
-6. **M5** — `html-rewrite.ts` の属性置換ヘルパー集約（pure split、低リスク）
-7. **M3** — mermaid / katex renderer 共通化（過去 M1 (f406601) の継続）
-8. **M4** — `comments.ts` の DOM wiring と pure logic 分離
+1. **H1a** — `flag-parser.ts` への機械的抽出（挙動不変、低リスク）— **完了** (`bf774c9`)
+2. **H1b** — FlagDef 統合による型整合化（構造変更、中リスク）— **完了** (`67c0fc3`)
+3. **H2** — `review.ts` から hash-navigation / global-keyboard 切り出し（過去 M2 (49b025b) = `setupKeyboardHandlers` / `setupHashNavigation` 抽出の継続）— **完了** (`b0106ff`)
+4. **H3** — `search.ts` の `search-dom` / `search-state` 切り出し — **完了** (`820fe95`)
+5. **M1** — text-range / text-segment utility 集約（H3 完了後の方が衝突が少ない）— **完了** (`4ed7fba`)
+6. **M5** — `html-rewrite.ts` の属性置換ヘルパー集約（pure split、低リスク）— **完了** (`e8bd1d3`)
+7. **M3** — mermaid / katex renderer 共通化（過去 M1 (f406601) の継続）— **完了** (`f8b75d7`)
+8. **M4** — `comments.ts` の DOM wiring と pure logic 分離 — **完了** (`740e93b`)
 9. **L1** — `page-split.ts` の synthetic page 切り出し
 10. **L3** — `markdown.ts` の renderer concern 分割（セキュリティ境界のため最後）
 
