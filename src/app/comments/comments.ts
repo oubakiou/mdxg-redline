@@ -1,4 +1,4 @@
-import { isFeedbackDirty, state } from '../state/app-state'
+import { isFeedbackDirty, replaceComments, state } from '../state/app-state'
 import { qs, toast } from '../dom/dom-utils'
 import type { Comment } from '../../core/types'
 import { escapeHtml } from '../../core/escape'
@@ -121,7 +121,7 @@ const commentCardHTML = (comment: Comment): string => `
 
 /** コメントを 1 件削除して即座に再描画 */
 const deleteComment = (comment: Comment): void => {
-  state.comments = state.comments.filter((other): boolean => other.id !== comment.id)
+  replaceComments(state.comments.filter((other): boolean => other.id !== comment.id))
   reapplyAllMarks()
 }
 

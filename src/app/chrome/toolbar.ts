@@ -16,7 +16,7 @@ import { exportBaseName } from '../../core/review-export'
 import { reapplyAllMarks } from '../comments/mark-engine'
 import { redrawMermaidForTheme } from '../renderers/mermaid'
 import { renderComments } from '../comments/comments'
-import { state } from '../state/app-state'
+import { replaceComments, state } from '../state/app-state'
 
 /** loadFromMarkdown のみ循環を避けるため runtime 経由で受け取る */
 export interface ToolbarRuntime {
@@ -103,7 +103,7 @@ const fallbackCopy = (text: string): void => {
 
 /** 確認後に全コメントを破棄。再描画まで一括で行うため UI の不整合は発生しない */
 const clearAllComments = (): void => {
-  state.comments = []
+  replaceComments([])
   reapplyAllMarks()
   renderComments()
   toast('Comments discarded')

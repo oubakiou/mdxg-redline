@@ -80,6 +80,28 @@ export const loadDocumentState = (payload: LoadDocumentStatePayload): void => {
   state.pages = payload.pages
 }
 
+/**
+ * comments 配列を一括置換する narrow operation API。embedded-feedback 取り込み・全削除・
+ * 1 件削除 (filter 結果の再代入) など「コメント集合全体を差し替える」経路を 1 箇所に集約する
+ * (DESIGN.md §5)。caller が渡した配列を defensive copy するため、caller 側の元配列を
+ * 後から mutate しても state には伝播しない。
+ */
+export const replaceComments = (next: readonly Comment[]): void => {
+  state.comments = [...next]
+}
+
+const makeTestComment = (id: string): Comment => ({
+  blockId: 'b001',
+  comment: 'c',
+  created: '2026-01-01T00:00:00.000Z',
+  endOffset: 1,
+  id,
+  pageIndex: 0,
+  quote: 'q',
+  sourceLine: 1,
+  startOffset: 0,
+})
+
 if (import.meta.vitest) {
   const { afterEach, beforeEach, describe, expect, it } = import.meta.vitest
 
@@ -221,6 +243,41 @@ if (import.meta.vitest) {
       loadDocumentState(samplePayload)
       expect(state.blockAnchors).toBe(anchors)
       expect(state.blockOriginalHTML).toBe(original)
+    })
+  })
+
+  describe('replaceComments', () => {
+    let savedComments: Comment[] = []
+    beforeEach(() => {
+      savedComments = state.comments
+    })
+    afterEach(() => {
+      state.comments = savedComments
+    })
+
+    it('next の内容で state.comments を置き換える', () => {
+      state.comments = [makeTestComment('old')]
+      replaceComments([makeTestComment('a'), makeTestComment('b')])
+      expect(state.comments.map((entry): string => entry.id)).toEqual(['a', 'b'])
+    })
+
+    it('空配列で全削除', () => {
+      state.comments = [makeTestComment('x')]
+      replaceComments([])
+      expect(state.comments).toEqual([])
+    })
+
+    it('defensive copy: 渡した配列を後から mutate しても state には伝播しない', () => {
+      const source = [makeTestComment('a')]
+      replaceComments(source)
+      source.push(makeTestComment('b'))
+      expect(state.comments.map((entry): string => entry.id)).toEqual(['a'])
+    })
+
+    it('state.comments と参照同一にならない (caller の mutate 経路で state を触れない)', () => {
+      const source: Comment[] = [makeTestComment('a')]
+      replaceComments(source)
+      expect(state.comments).not.toBe(source)
     })
   })
 }

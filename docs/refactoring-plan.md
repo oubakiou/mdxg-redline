@@ -139,7 +139,10 @@
 
 **着手済み**:
 
-- `loadDocumentState(payload)` を `src/app/state/app-state.ts` に追加し、新規 markdown 取り込み時の state 一括書き込み (docName / markdown / docHash / pages / activePageIndex / comments=[] のリセット) を 1 箇所に閉じ込めた。`src/app/review.ts` の `initStateFromMarkdown` から直 mutate を排除し本関数を呼ぶ形に置換。残りの `setActivePage` (既に `setActivePageIndex` として `document/pages.ts` に存在) / `replaceComments` (boot で embedded-feedback を流し込む経路、未着手) は後続 PR で段階導入する。
+- `loadDocumentState(payload)` を `src/app/state/app-state.ts` に追加し、新規 markdown 取り込み時の state 一括書き込み (docName / markdown / docHash / pages / activePageIndex / comments=[] のリセット) を 1 箇所に閉じ込めた。`src/app/review.ts` の `initStateFromMarkdown` から直 mutate を排除し本関数を呼ぶ形に置換
+- `replaceComments(next)` を `src/app/state/app-state.ts` に追加し、comments 集合全体を差し替える経路を 1 箇所に集約 (caller 側配列を defensive copy)。`src/app/boot.ts` (applyEmbeddedComments) / `src/app/chrome/toolbar.ts` (clearAllComments) / `src/app/comments/comments.ts` (deleteComment) の 3 つの production 直 mutate を本関数経由に置換
+- `setActivePage` は既存 `setActivePageIndex` として `document/pages.ts` に存在のため新規導入なし
+- 残り (keyboard-shortcuts.ts での activePageIndex=0 リセット、doc-mount.ts / block-cache.ts での blockAnchors / blockOriginalHTML 直 mutate など) は後続 PR で段階導入する
 
 **効果**: 将来の回帰点を絞り、state 変更箇所を grep 可能にする。
 

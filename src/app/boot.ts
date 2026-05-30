@@ -5,7 +5,7 @@ import {
   embeddedCommentsFromUnknown,
   resolveImportedComments,
 } from '../core/feedback'
-import { markFeedbackWritten, state } from './state/app-state'
+import { markFeedbackWritten, replaceComments, state } from './state/app-state'
 import { findPageIndexBySourceLine } from '../core/page-split'
 import { reapplyAllMarks } from './comments/mark-engine'
 import { renderComments } from './comments/comments'
@@ -29,8 +29,10 @@ export const elementText = (el: { textContent?: string | null } | null): string 
  * resolveImportedComments 内で破棄される (§6.6 / §9.1)。
  */
 const applyEmbeddedComments = (imported: readonly ImportedComment[]): void => {
-  state.comments = resolveImportedComments(imported, (sourceLine): number | null =>
-    findPageIndexBySourceLine(state.pages, sourceLine)
+  replaceComments(
+    resolveImportedComments(imported, (sourceLine): number | null =>
+      findPageIndexBySourceLine(state.pages, sourceLine)
+    )
   )
   markFeedbackWritten()
   reapplyAllMarks()
