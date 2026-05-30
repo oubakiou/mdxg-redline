@@ -135,49 +135,106 @@ const placeFootnotesSection = (args: PlaceFootnotesArgs): void => {
   }
 }
 
-/**
- * Stacked View: 全 markdown を 1 回だけ parse し、各 top-level block を sourceLine で
- * 所属 virtual-page に配賦する (docs/mdxg-footnotes.md §4 / §5.i)。`footnote-ref-*` /
- * `footnote-*` の id 採番が単一 parse 呼び出し内でのみ一貫する marked-footnote の制約に
- * 対応するため、page 単位 parse 戦略は廃止し、footnotes の有無に関わらず全文 parse + 配賦
- * に統一する。
- *
- * footnotes synthetic section は最後に `renderOrphanFootnoteItems` 経由で orphan 救済 (MDXG
- * §16 [MUST NOT]) を適用したうえで synthetic page にハードコード配置する。
- */
-const mountEmptyPageSections = (doc: HTMLElement): Map<number, HTMLElement> => {
-  const sections = new Map<number, HTMLElement>()
-  for (const page of state.pages) {
-    const section = createEmptyPageSection(page)
-    doc.appendChild(section)
-    sections.set(page.index, section)
-  }
-  return sections
-}
-
-const populatePageSectionsFromMarkdown = (sections: ReadonlyMap<number, HTMLElement>): void => {
-  const positions = computeAnchorPositions(state.markdown)
+const populatePageSectionsFromMarkdown = (
+  markdown: string,
+  pages: readonly Page[],
+  sections: ReadonlyMap<number, HTMLElement>
+): void => {
+  const positions = computeAnchorPositions(markdown)
   const { documentary, footnotesSection } = parseDocFragment(
-    state.markdown,
-    collectAllHeadingSlugs(state.pages)
+    markdown,
+    collectAllHeadingSlugs(pages)
   )
   annotateBlocksWithSourceLine(documentary, positions)
-  distributeDocumentaryBlocks(documentary, state.pages, sections)
+  distributeDocumentaryBlocks(documentary, pages, sections)
   placeFootnotesSection({
-    markdown: state.markdown,
-    pages: state.pages,
+    markdown,
+    pages,
     rawSection: footnotesSection,
     sections,
   })
 }
 
+/**
+ * Stacked View: 全 markdown を 1 回だけ parse し、各 top-level block を sourceLine で
+ * 所属 virtual-page に配賦した `<section.virtual-page>` 配列を構築する
+ * (docs/mdxg-footnotes.md §4 / §5.i)。`footnote-ref-*` / `footnote-*` の id 採番が単一
+ * parse 呼び出し内でのみ一貫する marked-footnote の制約に対応するため、page 単位 parse
+ * 戦略は採らず、footnotes の有無に関わらず全文 parse + 配賦に統一する。
+ *
+ * footnotes synthetic section は最後に `renderOrphanFootnoteItems` 経由で orphan 救済 (MDXG
+ * §16 [MUST NOT]) を適用したうえで synthetic page にハードコード配置する。
+ *
+ * state / DOM tree 非依存の純粋寄り関数として切り出してあり、戻り値の `<section>` 配列を
+ * 呼び元が `doc` に append する。`state.blockAnchors` / `state.blockOriginalHTML` への
+ * 書き込みや `injectCopyButtons` の発火は `mountRenderedDoc` 側で行う。
+ */
+export const buildPageSections = (markdown: string, pages: readonly Page[]): HTMLElement[] => {
+  const sections = new Map<number, HTMLElement>()
+  const ordered: HTMLElement[] = []
+  for (const page of pages) {
+    const section = createEmptyPageSection(page)
+    sections.set(page.index, section)
+    ordered.push(section)
+  }
+  populatePageSectionsFromMarkdown(markdown, pages, sections)
+  return ordered
+}
+
 export const mountRenderedDoc = (doc: HTMLElement, wrap: HTMLElement): void => {
   wrap.style.display = 'none'
   doc.innerHTML = ''
-  const sections = mountEmptyPageSections(doc)
-  populatePageSectionsFromMarkdown(sections)
+  for (const section of buildPageSections(state.markdown, state.pages)) {
+    doc.appendChild(section)
+  }
   // cacheBlocksAndBuildAnchors を injectCopyButtons より先に呼び、トップレベル <pre> の場合に
   // blockId が <pre> 自身に付与されるよう順序を保つ (wrap 後だと block-id は <div> 側に移る)。
   state.blockAnchors = cacheBlocksAndBuildAnchors(doc)
   injectCopyButtons(doc)
+}
+
+const buildTestPage = (
+  index: number,
+  slug: string,
+  sourceLines: readonly [number, number]
+): Page => ({
+  ancestorHeadingPath: [],
+  depth: 1,
+  headings: [],
+  index,
+  markdown: '',
+  slug,
+  sourceLineEnd: sourceLines[1],
+  sourceLineStart: sourceLines[0],
+  title: 'Page',
+})
+
+if (import.meta.vitest) {
+  const { describe, expect, it } = import.meta.vitest
+
+  describe('buildPageSections (pure 配賦契約)', () => {
+    it('pages と同じ index / slug を持つ <section.virtual-page> を順序通り返す', () => {
+      const pages: Page[] = [buildTestPage(0, 'intro', [1, 2]), buildTestPage(1, 'body', [3, 4])]
+      const sections = buildPageSections('# Intro\n\nbody text\n', pages)
+      expect(sections).toHaveLength(2)
+      expect(sections[0].className).toBe('virtual-page')
+      expect(sections[0].dataset.pageIndex).toBe('0')
+      expect(sections[0].dataset.pageSlug).toBe('intro')
+      expect(sections[1].dataset.pageSlug).toBe('body')
+    })
+
+    it('戻り値の section は doc tree に未 mount で返る (caller が append 担当)', () => {
+      const pages: Page[] = [buildTestPage(0, 'intro', [1, 1])]
+      const [section] = buildPageSections('hello', pages)
+      expect(section.isConnected).toBe(false)
+      expect(section.parentNode).toBeNull()
+    })
+
+    it('top-level block が sourceLine に従って配賦される', () => {
+      const pages: Page[] = [buildTestPage(0, 'a', [1, 1]), buildTestPage(1, 'b', [3, 3])]
+      const sections = buildPageSections('# A\n\n# B\n', pages)
+      expect(sections[0].children.length).toBeGreaterThanOrEqual(1)
+      expect(sections[1].children.length).toBeGreaterThanOrEqual(1)
+    })
+  })
 }
