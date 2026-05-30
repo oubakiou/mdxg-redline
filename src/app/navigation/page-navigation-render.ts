@@ -72,7 +72,20 @@ export const buildSequentialControlsHtml = (viewModel: SequentialControlsViewMod
 
 const PAGE_NAV_LIST_ID = 'page-nav-list'
 
-interface PageItemViewModel {
+// pure data 層: presentational に依存しない Page の View 表現。
+// active 判定 (`isActive`) と originate field (`depth` / `slug` / `title`) のみを持つため、
+// テストや別 presentation (例: A11y tree / debug view) の出発点としても再利用しやすい。
+interface PageItemView {
+  isActive: boolean
+  depth: 1 | 2
+  slug: string
+  title: string
+}
+
+// presentational 層: CSS class 文字列・ARIA 属性文字列など、HTML 出力直前の装飾値。
+// pure data 層との分離により「class 命名規約の変更」を 1 関数 (`toPageItemPresentational`)
+// に閉じ込められる。
+interface PageItemPresentational {
   ariaCurrentAttr: string
   depthClass: string
   itemClass: string
@@ -101,17 +114,29 @@ const buildAriaCurrentAttr = (isActive: boolean): string => {
   return ''
 }
 
-/** Page → TOC li 1 行分の view model に正規化する */
-export const toPageItemViewModel = (page: Page, activePageIndex: number): PageItemViewModel => {
-  const isActive = page.index === activePageIndex
-  return {
-    ariaCurrentAttr: buildAriaCurrentAttr(isActive),
-    depthClass: depthToClass(page.depth),
-    itemClass: buildItemClass(isActive),
-    slug: page.slug,
-    title: page.title,
-  }
-}
+/** Page → pure data 層の View に正規化する (CSS 装飾を含まない)。 */
+export const toPageItemView = (page: Page, activePageIndex: number): PageItemView => ({
+  depth: page.depth,
+  isActive: page.index === activePageIndex,
+  slug: page.slug,
+  title: page.title,
+})
+
+/** pure data 層の View → CSS 装飾付き presentational に変換する。 */
+const toPageItemPresentational = (view: PageItemView): PageItemPresentational => ({
+  ariaCurrentAttr: buildAriaCurrentAttr(view.isActive),
+  depthClass: depthToClass(view.depth),
+  itemClass: buildItemClass(view.isActive),
+  slug: view.slug,
+  title: view.title,
+})
+
+/**
+ * Page → TOC li 1 行分の presentational ViewModel に正規化する。
+ * 内部では `toPageItemView` (pure) → `toPageItemPresentational` (CSS 装飾) の 2 段パイプライン。
+ */
+export const toPageItemViewModel = (page: Page, activePageIndex: number): PageItemPresentational =>
+  toPageItemPresentational(toPageItemView(page, activePageIndex))
 
 const renderOutlineHeading = (pageSlug: string, heading: Heading): string => {
   const fragment = escapeHtml(buildPageHashFragment(pageSlug, heading.slug))
@@ -137,7 +162,7 @@ export const renderOutlineList = (page: Page): string => {
   return `<ul class="page-outline-list">${items}</ul>`
 }
 
-const renderPageItem = (vm: PageItemViewModel, outlineHtml: string): string => {
+const renderPageItem = (vm: PageItemPresentational, outlineHtml: string): string => {
   const fragment = escapeHtml(buildPageHashFragment(vm.slug))
   return (
     `<li class="${vm.itemClass} ${vm.depthClass}">` +
@@ -204,6 +229,34 @@ const dummyPage = (overrides: Partial<Page> = {}): Page => ({
 
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
+
+  describe('toPageItemView (pure data 層)', () => {
+    const basePage: Page = {
+      ancestorHeadingPath: [],
+      depth: 1,
+      headings: [],
+      index: 2,
+      markdown: '',
+      slug: 'pure',
+      sourceLineEnd: 1,
+      sourceLineStart: 1,
+      title: 'Pure',
+    }
+
+    it('active 判定 / depth / slug / title を CSS 装飾なしで返す', () => {
+      expect(toPageItemView(basePage, 2)).toEqual({
+        depth: 1,
+        isActive: true,
+        slug: 'pure',
+        title: 'Pure',
+      })
+    })
+
+    it('activePageIndex が違えば isActive=false', () => {
+      const view = toPageItemView(basePage, 5)
+      expect(view.isActive).toBe(false)
+    })
+  })
 
   describe('toPageItemViewModel', () => {
     const basePage: Page = {

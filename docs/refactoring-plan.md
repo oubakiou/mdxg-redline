@@ -128,7 +128,9 @@
 
 **リスク**: 中 — public export を維持しないとビルドが壊れる。M1a の diff を一次 review で確認する。**着手順は H1 完了後**を推奨（共通 focus-list を先に用意した方が分割が自然になる）。
 
-### M2. page-navigation の ViewModel 二段分離
+### M2. (完了済み) page-navigation の ViewModel 二段分離
+
+**状態**: **完了済み** — `toPageItemViewModel` を `toPageItemView` (pure data: `{ isActive, depth, slug, title }`) と `toPageItemPresentational` (CSS 装飾: `{ ariaCurrentAttr, depthClass, itemClass, slug, title }`) の 2 段パイプラインに再構成。`toPageItemView` を export し pure data 層の in-source test を追加。挙動は完全不変。
 
 **対象**: `src/app/navigation/page-navigation.ts` の `toPageItemViewModel` / `toSequentialControlsViewModel`
 
