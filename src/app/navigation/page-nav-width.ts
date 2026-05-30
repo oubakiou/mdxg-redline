@@ -1,5 +1,5 @@
 // 左サイドバー (page-nav) 幅の薄い wrapper。pure logic と localStorage / DOM 副作用は
-// src/app/sidebar-width.ts の共通 factory に集約されており、本ファイルは page-nav 固有の
+// src/app/layout/sidebar-width.ts の共通 factory に集約されており、本ファイルは page-nav 固有の
 // 値域 / storage key / DOM ヒント名を config に流し込み、個別の named export を提供する。
 // 設計判断・優先順位 P1 は DESIGN.md §7c。
 
@@ -8,7 +8,7 @@ import {
   type SidebarOpenState,
   type SidebarState,
   createSidebarWidthModule,
-} from '../chrome/sidebar-width'
+} from '../layout/sidebar-width'
 
 export type PageNavOpenState = SidebarOpenState
 export type PageNavState = SidebarState

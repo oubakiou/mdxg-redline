@@ -5,7 +5,7 @@
 // の SidebarWidthModule で共通化済み。
 // 個別 wrapper (comments-resize.ts / page-nav-resize.ts) は config を流し込んで init を提供する。
 
-import type { SidebarOpenState, SidebarState, SidebarWidthModule } from './sidebar-width'
+import type { SidebarOpenState, SidebarState, SidebarWidthModule } from '../layout/sidebar-width'
 
 const MOBILE_BREAKPOINT_PX = 900
 

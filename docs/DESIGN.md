@@ -1054,7 +1054,8 @@ review-request CLI は `dist/embed-template.html` の `<script id="embedded-md" 
   - `comments/` — `comments` / `comment-modal` / `comments-resize` / `comments-width` / `mark-engine` / `selection` / `text-segment-skip-rules` / `floater`
   - `navigation/` — `page-navigation` / `page-scroll-spy` / `page-nav-resize` / `page-nav-width` / `keyboard-shortcuts`
   - `renderers/` — `shiki` / `shiki-upgrade` / `mermaid` / `mermaid-modal` / `katex`
-  - `chrome/` — `toolbar` / `theme` / `sidebar-resize` / `sidebar-width` / `help-modal`
+  - `chrome/` — `toolbar` / `theme` / `sidebar-resize` / `help-modal`
+  - `layout/` — `sidebar-width`
   - `workspace/` — `workspace` / `workspace-fs` / `storage`
   - `search/` — `search`
 - **`src/cli/`** — Node CLI 専用（review-request エントリ / arg-spec / parse-args（dispatch）/ parse-clean-args / parse-run-args / filename-sanitize / clean / input-source / open-command / serve）

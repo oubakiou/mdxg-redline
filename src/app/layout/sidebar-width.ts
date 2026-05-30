@@ -5,7 +5,7 @@
 // 右パネル (comments) と左パネル (page-nav) は値域・storage key・default 幅が異なるだけで
 // 構造的に対称な実装になっているため、本 factory で 1 か所に統合する
 // (DESIGN.md §7c / §12 §1 Theming 行の優先順位 P1 と同じ規約)。
-// 個別の named export と値域定数は src/app/{comments,page-nav}-width.ts の薄い wrapper で再公開する。
+// 個別の named export と値域定数は src/app/{comments/comments-width,navigation/page-nav-width}.ts の薄い wrapper で再公開する。
 
 export type SidebarOpenState = 'open' | 'closed'
 

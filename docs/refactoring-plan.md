@@ -31,7 +31,7 @@
 
 ## 2. 優先度: 高
 
-### H1. CLI 引数パーサのファイル分割
+### H1. CLI 引数パーサのファイル分割 (完了)
 
 **対象**: `src/cli/parse-args.ts:1`（本体 662 行 + test 819 行で突出）
 
@@ -113,15 +113,15 @@
 
 **リスク**: 低〜中（H1 の後に着手する構造変更。各フラグの境界条件 test が厚いので回帰検知しやすい。H1 とは別 PR にする）
 
-### L2. sidebar-width.ts の配置見直し
+### L2. sidebar-width.ts の配置見直し (完了)
 
-**対象**: `src/app/chrome/sidebar-width.ts`
+**対象**: `src/app/layout/sidebar-width.ts`（旧 `src/app/chrome/sidebar-width.ts`)
 
-**現状**: 汎用 factory（`SidebarWidthModule`）でありながら `chrome/` 配下にあり、`navigation/` `comments/` から逆向きに import されている。ロジック自体は良設計で重複は無い。
+**現状**: 汎用 factory（`SidebarWidthModule`）でありながら `chrome/` 配下にあり、`navigation/` `comments/` から逆向きに import されていた。ロジック自体は良設計で重複は無い。
 
-**分割案**:
+**実施内容**:
 
-- `src/app/layout/sidebar-width.ts`（または `shared/`）へ移動して依存方向を自然化。ロジックは不変。
+- `src/app/chrome/sidebar-width.ts` を `src/app/layout/sidebar-width.ts` へ移動し、依存方向を自然化（ロジックは不変）。import パスを `comments/comments-width.ts` / `navigation/page-nav-width.ts` / `chrome/sidebar-resize.ts` の 3 箇所で書き換え、DESIGN.md §13 のソース構成記述にも `layout/` カテゴリを追加。
 
 **効果**: 依存方向の直感性向上。
 
@@ -145,8 +145,8 @@
 
 挙動不変なファイル移動を先にし、構造変更（抽象化・state 配線）は後ろに回す原則で並べる。
 
-1. **H1**（parse-args 分割）— 最も費用対効果が高い。純粋なファイル移動で、834 テスト + `vp check` で安全に確認できる
-2. **L2**（sidebar-width 移動）— import パス書き換えのみの低リスク移動。H1 と独立に進められる
+1. **H1**（parse-args 分割、完了）— 最も費用対効果が高い。純粋なファイル移動で、834 テスト + `vp check` で安全に確認できる
+2. **L2**（sidebar-width 移動、完了）— import パス書き換えのみの低リスク移動。H1 と独立に進められる
 3. **M1**（mermaid/katex upgrade-utils 抽出）— 対称重複の解消。render 本体は触らず状態集計・defer・toast のみ
 4. **M3**（doc-mount pure 分離）— 配賦ロジックを純粋関数化してテスト容易性を上げる
 5. **M2**（review.ts wiring 分離）— 起動順序に依存するため、上記でコードに慣れてから
