@@ -17,16 +17,18 @@
 
 import { reapplyAllMarks } from '../comments/mark-engine'
 import { state } from '../state/app-state'
-import { toast } from '../dom/dom-utils'
 import {
   type UpgradeResult,
   type UpgradeStatus,
   accumulateUpgradeResult,
-  hasActiveSelection,
-  onSelectionEnd,
   reportRenderFailures,
-  scheduleIdle,
 } from './upgrade-utils'
+import { type RuntimeBridgeConfig, waitForRuntime } from './runtime-bridge'
+import {
+  refreshAppliedBlocksOriginalHTML,
+  runUpgradeIgnoringErrors,
+  scheduleUpgradeOnIdle,
+} from './upgrade-orchestrator'
 
 // dist/katex/katex.mjs 側で `globalThis.__mdxgKatex = katex` がセットされる契約
 // (DESIGN.md §12 §14 Math Rendering)。実 katex 型を import すると bundle に重複が出る
@@ -44,14 +46,6 @@ interface KatexLike {
   renderToString: (src: string, options?: KatexRenderOptions) => string
 }
 
-// global 名の `__` prefix は他コードとの衝突回避のための規約 (§5.h)。
-// eslint-disable-next-line no-underscore-dangle
-const BRIDGE_KEY = '__mdxgKatex' as const
-const KATEX_READY_EVENT = 'mdxg:katex-ready'
-const KATEX_READY_TIMEOUT_MS = 2000
-
-const readBridge = (): unknown => Reflect.get(globalThis, BRIDGE_KEY)
-
 const isKatexLike = (value: unknown): value is KatexLike => {
   if (typeof value !== 'object' || value === null) {
     return false
@@ -60,49 +54,13 @@ const isKatexLike = (value: unknown): value is KatexLike => {
   return typeof obj.renderToString === 'function'
 }
 
-const hasEmbeddedKatexScript = (): boolean => {
-  const el = document.getElementById('embedded-katex')
-  if (!(el instanceof HTMLElement)) {
-    return false
-  }
-  return (el.textContent ?? '').trim().length > 0
-}
-
-const readKatexBridge = (): KatexLike | null => {
-  const candidate = readBridge()
-  if (isKatexLike(candidate)) {
-    return candidate
-  }
-  return null
-}
-
-/**
- * `globalThis.__mdxgKatex` を取得する。未定義なら mdxg:katex-ready イベントを最大
- * KATEX_READY_TIMEOUT_MS ms 待つ。embedded-katex 自体が無い場合は即 null を返す
- * (KaTeX runtime 非注入時のフォールバック経路と一致、Mermaid と同じパターン)。
- */
-const waitForKatexRuntime = async (): Promise<KatexLike | null> => {
-  if (!hasEmbeddedKatexScript()) {
-    return null
-  }
-  const present = readKatexBridge()
-  if (present !== null) {
-    return present
-  }
-  return new Promise<KatexLike | null>((resolve): void => {
-    let timer: ReturnType<typeof setTimeout> | null = null
-    const onReady = (): void => {
-      if (timer !== null) {
-        clearTimeout(timer)
-      }
-      resolve(readKatexBridge())
-    }
-    timer = setTimeout((): void => {
-      document.removeEventListener(KATEX_READY_EVENT, onReady)
-      resolve(null)
-    }, KATEX_READY_TIMEOUT_MS)
-    document.addEventListener(KATEX_READY_EVENT, onReady, { once: true })
-  })
+// global 名の `__` prefix は他コードとの衝突回避のための規約 (§5.h)。
+const KATEX_BRIDGE: RuntimeBridgeConfig<KatexLike> = {
+  // eslint-disable-next-line no-underscore-dangle
+  bridgeKey: '__mdxgKatex',
+  embeddedScriptId: 'embedded-katex',
+  isValid: isKatexLike,
+  readyEvent: 'mdxg:katex-ready',
 }
 
 // DESIGN.md §11 信頼境界 / §12 §14 Math Rendering: 信頼境界の必須化。
@@ -183,34 +141,12 @@ const upgradeAllMathElements = (docEl: HTMLElement, katex: KatexLike): UpgradeRe
   return result
 }
 
-const cacheParentBlockHtml = (el: HTMLElement): void => {
-  const parent = el.closest<HTMLElement>('[data-block-id]')
-  if (parent === null) {
-    return
-  }
-  const { blockId } = parent.dataset
-  if (typeof blockId === 'string' && blockId !== '') {
-    state.blockOriginalHTML.set(blockId, parent.innerHTML)
-  }
-}
-
-// upgrade 後の block 構造変化 ([data-math] 子要素の innerHTML が KaTeX 出力に差し替わる) を
-// blockOriginalHTML に焼き直す。要素自体は残るが innerHTML が変わるため、cmt mark を
-// 後段で reapply する経路は親ブロックの innerHTML 全体を更新する必要がある (Mermaid と同様)。
-const refreshKatexBlockOriginalHTML = (docEl: HTMLElement): void => {
-  for (const el of docEl.querySelectorAll<HTMLElement>('[data-math-applied="1"]')) {
-    cacheParentBlockHtml(el)
-  }
-}
+const KATEX_APPLIED_SELECTOR = '[data-math-applied="1"]'
 
 const KATEX_FAILURE_LABELS = {
   plural: (count: number): string => `Math render failed for ${count} expressions`,
   singular: 'Math render failed for 1 expression',
 } as const
-
-const reportFailures = (failedCount: number): void => {
-  reportRenderFailures(failedCount, KATEX_FAILURE_LABELS)
-}
 
 /**
  * `#doc` 配下の `[data-math]` 要素を順次 KaTeX HTML に upgrade する。
@@ -222,24 +158,16 @@ const reportFailures = (failedCount: number): void => {
  *   (embedded-feedback の cmt mark が upgrade 後の親ブロック内に再貼付される)
  */
 export const upgradeMathElements = async (docEl: HTMLElement): Promise<void> => {
-  const katex = await waitForKatexRuntime()
+  const katex = await waitForRuntime(KATEX_BRIDGE)
   if (katex === null) {
     return
   }
   const { changedAny, failedCount } = upgradeAllMathElements(docEl, katex)
   if (changedAny) {
-    refreshKatexBlockOriginalHTML(docEl)
+    refreshAppliedBlocksOriginalHTML(docEl, KATEX_APPLIED_SELECTOR)
     reapplyAllMarks()
   }
-  reportFailures(failedCount)
-}
-
-const runKatexUpgradeIgnoringErrors = (docEl: HTMLElement): void => {
-  upgradeMathElements(docEl).catch((): void => {
-    // upgrade 内部は個別要素の fail を data-math-failed で吸収する。ここに到達する例外は
-    // 想定外のため silent drop は避けて toast のみ出す (Mermaid と同じ方針)。
-    toast('Math upgrade failed')
-  })
+  reportRenderFailures(failedCount, KATEX_FAILURE_LABELS)
 }
 
 /**
@@ -247,14 +175,12 @@ const runKatexUpgradeIgnoringErrors = (docEl: HTMLElement): void => {
  * Shiki / Mermaid upgrade と並行に呼ばれる (相互に独立した経路、idempotent)。
  */
 export const scheduleKatexUpgrade = (docEl: HTMLElement): void => {
-  const run = (): void => {
-    if (hasActiveSelection()) {
-      onSelectionEnd(run)
-      return
-    }
-    runKatexUpgradeIgnoringErrors(docEl)
-  }
-  scheduleIdle(run)
+  scheduleUpgradeOnIdle((): void => {
+    runUpgradeIgnoringErrors(
+      async (): Promise<void> => upgradeMathElements(docEl),
+      'Math upgrade failed'
+    )
+  })
 }
 
 const buildMathElForTest = (
@@ -373,7 +299,7 @@ if (import.meta.vitest) {
       const block = buildMathBlockForTest('b-math', true)
       const root = wrapInRoot(block)
       state.blockOriginalHTML.delete('b-math')
-      refreshKatexBlockOriginalHTML(root)
+      refreshAppliedBlocksOriginalHTML(root, KATEX_APPLIED_SELECTOR)
       expect(state.blockOriginalHTML.get('b-math')).toBe(block.innerHTML)
     })
 
@@ -381,7 +307,7 @@ if (import.meta.vitest) {
       const block = buildMathBlockForTest('b-math-untouched', false)
       const root = wrapInRoot(block)
       state.blockOriginalHTML.delete('b-math-untouched')
-      refreshKatexBlockOriginalHTML(root)
+      refreshAppliedBlocksOriginalHTML(root, KATEX_APPLIED_SELECTOR)
       expect(state.blockOriginalHTML.has('b-math-untouched')).toBe(false)
     })
   })

@@ -10,19 +10,21 @@
 // 残しておくことで cmt mark / 検索の貼付経路が壊れない (案 A: 検索対象外 skip は selection.ts 側で)。
 
 import { MERMAID_ATTR, MERMAID_ATTR_VALUE } from '../../core/mermaid-attrs'
-import { openMermaidModal } from './mermaid-modal'
-import { reapplyAllMarks } from '../comments/mark-engine'
-import { state } from '../state/app-state'
-import { toast } from '../dom/dom-utils'
 import {
   type UpgradeResult,
   type UpgradeStatus,
   accumulateUpgradeResult,
-  hasActiveSelection,
-  onSelectionEnd,
   reportRenderFailures,
-  scheduleIdle,
 } from './upgrade-utils'
+import { type RuntimeBridgeConfig, waitForRuntime } from './runtime-bridge'
+import {
+  refreshAppliedBlocksOriginalHTML,
+  runUpgradeIgnoringErrors,
+  scheduleUpgradeOnIdle,
+} from './upgrade-orchestrator'
+import { openMermaidModal } from './mermaid-modal'
+import { reapplyAllMarks } from '../comments/mark-engine'
+import { state } from '../state/app-state'
 
 // dist/mermaid.mjs 側で `globalThis.__mdxgMermaid = mermaid` がセットされる契約 (§3.2 / §5.k)。
 // 実 mermaid 型を import すると bundle に重複が出るため、必要最小限の subset を local interface に
@@ -32,14 +34,6 @@ interface MermaidLike {
   render: (id: string, src: string) => Promise<{ svg: string }>
 }
 
-// global 名の `__` prefix は他コードとの衝突回避のための規約 (docs/mdxg-diagram-rendering.md §5.k)。
-// eslint-disable-next-line no-underscore-dangle
-const BRIDGE_KEY = '__mdxgMermaid' as const
-const MERMAID_READY_EVENT = 'mdxg:mermaid-ready'
-const MERMAID_READY_TIMEOUT_MS = 2000
-
-const readBridge = (): unknown => Reflect.get(globalThis, BRIDGE_KEY)
-
 const isMermaidLike = (value: unknown): value is MermaidLike => {
   if (typeof value !== 'object' || value === null) {
     return false
@@ -48,49 +42,13 @@ const isMermaidLike = (value: unknown): value is MermaidLike => {
   return typeof obj.initialize === 'function' && typeof obj.render === 'function'
 }
 
-const hasEmbeddedMermaidScript = (): boolean => {
-  const el = document.getElementById('embedded-mermaid')
-  if (!(el instanceof HTMLElement)) {
-    return false
-  }
-  return (el.textContent ?? '').trim().length > 0
-}
-
-const readMermaidBridge = (): MermaidLike | null => {
-  const candidate = readBridge()
-  if (isMermaidLike(candidate)) {
-    return candidate
-  }
-  return null
-}
-
-/**
- * `globalThis.__mdxgMermaid` を取得する。未定義なら mdxg:mermaid-ready イベントを最大
- * MERMAID_READY_TIMEOUT_MS ms 待つ。embedded-mermaid 自体が無い場合は即 null を返す
- * (Mermaid runtime 非注入時のフォールバック経路と一致)。
- */
-const waitForMermaidRuntime = async (): Promise<MermaidLike | null> => {
-  if (!hasEmbeddedMermaidScript()) {
-    return null
-  }
-  const present = readMermaidBridge()
-  if (present !== null) {
-    return present
-  }
-  return new Promise<MermaidLike | null>((resolve): void => {
-    let timer: ReturnType<typeof setTimeout> | null = null
-    const onReady = (): void => {
-      if (timer !== null) {
-        clearTimeout(timer)
-      }
-      resolve(readMermaidBridge())
-    }
-    timer = setTimeout((): void => {
-      document.removeEventListener(MERMAID_READY_EVENT, onReady)
-      resolve(null)
-    }, MERMAID_READY_TIMEOUT_MS)
-    document.addEventListener(MERMAID_READY_EVENT, onReady, { once: true })
-  })
+// global 名の `__` prefix は他コードとの衝突回避のための規約 (docs/mdxg-diagram-rendering.md §5.k)。
+const MERMAID_BRIDGE: RuntimeBridgeConfig<MermaidLike> = {
+  // eslint-disable-next-line no-underscore-dangle
+  bridgeKey: '__mdxgMermaid',
+  embeddedScriptId: 'embedded-mermaid',
+  isValid: isMermaidLike,
+  readyEvent: 'mdxg:mermaid-ready',
 }
 
 // Mermaid 組込みテーマ (library default) を app の light/dark に対応付けて使う。light は
@@ -247,36 +205,12 @@ const upgradeAllMermaidPres = async (
   return result
 }
 
-const cacheParentBlockHtml = (pre: HTMLElement): void => {
-  const parent = pre.closest<HTMLElement>('[data-block-id]')
-  if (parent === null) {
-    return
-  }
-  const { blockId } = parent.dataset
-  if (typeof blockId === 'string' && blockId !== '') {
-    state.blockOriginalHTML.set(blockId, parent.innerHTML)
-  }
-}
-
-// upgrade 後の block 構造変化 (<pre hidden> + sibling <svg>) を blockOriginalHTML に焼き直す。
-// <pre> 自身の innerHTML は変わらないが、親ブロック側に sibling <svg> が追加されているため
-// 親まで遡って blockOriginalHTML を再構築する。
-const refreshMermaidBlockOriginalHTML = (docEl: HTMLElement): void => {
-  for (const pre of docEl.querySelectorAll<HTMLElement>(
-    `pre[${MERMAID_ATTR.applied}="${MERMAID_ATTR_VALUE}"]`
-  )) {
-    cacheParentBlockHtml(pre)
-  }
-}
+const MERMAID_APPLIED_SELECTOR = `pre[${MERMAID_ATTR.applied}="${MERMAID_ATTR_VALUE}"]`
 
 const MERMAID_FAILURE_LABELS = {
   plural: (count: number): string => `Diagram render failed for ${count} blocks`,
   singular: 'Diagram render failed for 1 block',
 } as const
-
-const reportFailures = (failedCount: number): void => {
-  reportRenderFailures(failedCount, MERMAID_FAILURE_LABELS)
-}
 
 /**
  * `#doc` 配下の `<pre data-mermaid="1">` を順次 SVG に upgrade する。
@@ -288,26 +222,17 @@ const reportFailures = (failedCount: number): void => {
  *   (embedded-feedback の cmt mark が upgrade 後の <pre hidden> 内に再貼付される)
  */
 export const upgradeMermaidFences = async (docEl: HTMLElement): Promise<void> => {
-  const mermaid = await waitForMermaidRuntime()
+  const mermaid = await waitForRuntime(MERMAID_BRIDGE)
   if (mermaid === null) {
     return
   }
   initializeMermaidOnce(mermaid)
   const { changedAny, failedCount } = await upgradeAllMermaidPres(docEl, mermaid)
   if (changedAny) {
-    refreshMermaidBlockOriginalHTML(docEl)
+    refreshAppliedBlocksOriginalHTML(docEl, MERMAID_APPLIED_SELECTOR)
     reapplyAllMarks()
   }
-  reportFailures(failedCount)
-}
-
-const runMermaidUpgradeIgnoringErrors = (docEl: HTMLElement): void => {
-  upgradeMermaidFences(docEl).catch((): void => {
-    // upgrade 内部は個別ブロックの fail を data-mermaid-failed で吸収する。ここに到達する例外は
-    // 想定外のため silent drop は避けたいが、本実装ではグローバルエラーハンドラに委ねず
-    // ローカルで toast のみ出す方針 (検索 / cmt mark との競合で UX が崩れるのを避ける)。
-    toast('Diagram upgrade failed')
-  })
+  reportRenderFailures(failedCount, MERMAID_FAILURE_LABELS)
 }
 
 /**
@@ -315,14 +240,12 @@ const runMermaidUpgradeIgnoringErrors = (docEl: HTMLElement): void => {
  * Shiki upgrade と並行に呼ばれる (双方とも idempotent / 互いに干渉しない)。
  */
 export const scheduleMermaidUpgrade = (docEl: HTMLElement): void => {
-  const run = (): void => {
-    if (hasActiveSelection()) {
-      onSelectionEnd(run)
-      return
-    }
-    runMermaidUpgradeIgnoringErrors(docEl)
-  }
-  scheduleIdle(run)
+  scheduleUpgradeOnIdle((): void => {
+    runUpgradeIgnoringErrors(
+      async (): Promise<void> => upgradeMermaidFences(docEl),
+      'Diagram upgrade failed'
+    )
+  })
 }
 
 const resetMermaidPre = (pre: HTMLElement): void => {
@@ -482,7 +405,7 @@ if (import.meta.vitest) {
       const block = buildMermaidBlockForTest('b-test', true)
       const root = wrapInRoot(block)
       state.blockOriginalHTML.delete('b-test')
-      refreshMermaidBlockOriginalHTML(root)
+      refreshAppliedBlocksOriginalHTML(root, MERMAID_APPLIED_SELECTOR)
       expect(state.blockOriginalHTML.get('b-test')).toBe(block.innerHTML)
     })
 
@@ -490,7 +413,7 @@ if (import.meta.vitest) {
       const block = buildMermaidBlockForTest('b-untouched', false)
       const root = wrapInRoot(block)
       state.blockOriginalHTML.delete('b-untouched')
-      refreshMermaidBlockOriginalHTML(root)
+      refreshAppliedBlocksOriginalHTML(root, MERMAID_APPLIED_SELECTOR)
       expect(state.blockOriginalHTML.has('b-untouched')).toBe(false)
     })
   })
