@@ -1,8 +1,9 @@
 import { isFeedbackDirty, replaceComments, state } from '../state/app-state'
 import { qs, toast } from '../dom/dom-utils'
 import type { Comment } from '../../core/types'
-import { escapeHtml } from '../../core/escape'
+import { commentCardHTML } from './comment-rendering'
 import { instantScrollToCenter } from '../document/scroll'
+import { orderedComments } from './comment-orderer'
 import { reapplyAllMarks } from './mark-engine'
 
 /**
@@ -32,23 +33,6 @@ const clearActiveComments = (): void => {
     el.classList.remove('active')
   }
 }
-
-/**
- * 全コメントを文書順 (pageIndex → sourceLine → startOffset) に並べたコピーを返す。
- * mark の DOM 順に依存しないため、comments panel が全ページのコメントを表示するモードでも
- * 別ページの mark が DOM 上に存在しない (mark-engine が activePageIndex でフィルタする)
- * ことに影響されずに決定論的な順序が得られる。
- */
-const orderedComments = (comments: Comment[]): Comment[] =>
-  [...comments].toSorted((left, right): number => {
-    if (left.pageIndex !== right.pageIndex) {
-      return left.pageIndex - right.pageIndex
-    }
-    if (left.sourceLine !== right.sourceLine) {
-      return left.sourceLine - right.sourceLine
-    }
-    return left.startOffset - right.startOffset
-  })
 
 const requestNavigateToCommentPage = (comment: Comment): void => {
   if (onNavigateToCommentPage !== null) {
@@ -88,36 +72,6 @@ export const focusCommentMarkAfterNavigate = (commentId: string): void => {
   }
   instantScrollToCenter(mark)
 }
-
-/**
- * 複数ページ文書の comments panel が全コメントを混ぜて表示する際、各カードがどのページに属するかを
- * 識別できるよう meta 行先頭にページタイトルバッジを付ける。単一ページ文書では冗長なため省く。
- */
-const pageBadgeHTML = (comment: Comment): string => {
-  if (state.pages.length <= 1) {
-    return ''
-  }
-  const page = state.pages[comment.pageIndex]
-  if (!page) {
-    return ''
-  }
-  return `<span class="cmt-page-badge">${escapeHtml(page.title)}</span> · `
-}
-
-/**
- * カード 1 枚分の HTML を生成。
- * `escapeHtml` で quote / body を必ずエスケープすることが、ユーザー由来テキストを innerHTML に流す際の前提。
- */
-const commentCardHTML = (comment: Comment): string => `
-  <div class="cmt-quote">“${escapeHtml(comment.quote)}”</div>
-  <div class="cmt-body">${escapeHtml(comment.comment)}</div>
-  <div class="cmt-meta">
-    <span>${pageBadgeHTML(comment)}${comment.blockId} · ${new Date(comment.created).toLocaleString()}</span>
-    <span class="cmt-actions">
-      <button class="cmt-edit" data-edit="${comment.id}" aria-label="Edit comment">Edit</button>
-      <button class="cmt-del" data-del="${comment.id}" aria-label="Delete comment">Delete</button>
-    </span>
-  </div>`
 
 /** コメントを 1 件削除して即座に再描画 */
 const deleteComment = (comment: Comment): void => {
@@ -397,60 +351,12 @@ const queryActiveIds = (selector: string): string[] => {
   return results
 }
 
-const commentForTest = (id: string): Comment => ({
-  blockId: 'b001',
-  comment: 'body',
-  created: '2026-05-17T00:00:00.000Z',
-  endOffset: 4,
-  id,
-  pageIndex: 0,
-  quote: 'text',
-  sourceLine: 1,
-  startOffset: 0,
-})
-
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
 
-  describe('commentCardHTML', () => {
-    it('quote と comment を HTML エスケープして描画する', () => {
-      const html = commentCardHTML({
-        ...commentForTest('c1'),
-        comment: '<script>alert(1)</script>',
-        quote: '"quoted" & raw',
-      })
-
-      expect(html).toContain('&quot;quoted&quot; &amp; raw')
-      expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;')
-      expect(html).not.toContain('<script>')
-    })
-  })
-
-  describe('orderedComments', () => {
-    it('pageIndex → sourceLine → startOffset の順で並ぶ (DOM 非依存)', () => {
-      const page0Top = { ...commentForTest('p0-top'), pageIndex: 0, sourceLine: 1, startOffset: 0 }
-      const page0Bottom = {
-        ...commentForTest('p0-bot'),
-        pageIndex: 0,
-        sourceLine: 10,
-        startOffset: 0,
-      }
-      const page1Top = { ...commentForTest('p1-top'), pageIndex: 1, sourceLine: 3, startOffset: 0 }
-      // 入力順を意図的にシャッフルしても出力は文書順に揃う
-      expect(
-        orderedComments([page1Top, page0Bottom, page0Top]).map((comment): string => comment.id)
-      ).toEqual(['p0-top', 'p0-bot', 'p1-top'])
-    })
-
-    it('同じ sourceLine 内では startOffset 順に並ぶ', () => {
-      const left = { ...commentForTest('left'), pageIndex: 0, sourceLine: 5, startOffset: 2 }
-      const right = { ...commentForTest('right'), pageIndex: 0, sourceLine: 5, startOffset: 18 }
-      expect(orderedComments([right, left]).map((comment): string => comment.id)).toEqual([
-        'left',
-        'right',
-      ])
-    })
-  })
+  // commentCardHTML / orderedComments の pure テストは comment-rendering.ts /
+  // comment-orderer.ts の in-source test に集約済み。本ファイルでは DOM 副作用を伴う
+  // active 状態同期のテストだけを保持する。
 
   describe('activateCommentsMark (active 双方向同期)', () => {
     it('mark クリック → 対応 .cmt-card に .active 付与、他カードは active を剥がす', () => {
