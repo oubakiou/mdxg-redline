@@ -18,11 +18,9 @@ import {
   toggleSearch,
   wireSearchBar,
 } from './search/search'
-import {
-  focusNavigatedLink,
-  renderPageNavigation,
-  wirePageNavigation,
-} from './navigation/page-navigation'
+import { wirePageNavigation } from './navigation/page-navigation'
+import { focusNavigatedLink } from './navigation/page-navigation-keyboard'
+import { renderPageNavigation } from './navigation/page-navigation-render'
 import {
   navigateToComment,
   navigateToTarget,

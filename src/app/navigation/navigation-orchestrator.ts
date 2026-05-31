@@ -10,7 +10,8 @@ import {
   syncHashFromActivePage,
 } from '../document/pages'
 import { focusCommentMarkAfterNavigate, renderComments } from '../comments/comments'
-import { focusNavigatedLink, renderPageNavigation } from './page-navigation'
+import { focusNavigatedLink } from './page-navigation-keyboard'
+import { renderPageNavigation } from './page-navigation-render'
 import {
   scrollToHeading,
   setActiveHeadingImmediately,

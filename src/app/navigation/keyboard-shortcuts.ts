@@ -11,7 +11,7 @@
 
 import type { Page } from '../../core/page-split'
 import { focusActiveOrFirstCommentCard } from '../comments/comments'
-import { focusNavigatedLink } from './page-navigation'
+import { focusNavigatedLink } from './page-navigation-keyboard'
 import { state } from '../state/app-state'
 
 // `?` キー (Shift+/) や `f` / `g` などのグローバルショートカットは、textarea / input / contentEditable

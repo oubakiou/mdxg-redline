@@ -1,6 +1,6 @@
-// 左サイドバー TOC (`<aside class="page-nav">`) の facade。
+// 左サイドバー TOC (`<aside class="page-nav">`) の click delegation + wiring entry。
 // render は page-navigation-render.ts、keyboard focus は page-navigation-keyboard.ts に分離し、
-// 本ファイルは click delegation + wiring + 外部公開 API の re-export を担う。
+// 本ファイルは wirePageNavigation のみを公開する。
 //
 // クリック時の navigateTo 動作は review.ts の orchestrator に注入する形にし、本モジュールは
 // 「クリックされた slug を通知する」ところまでで責務を区切る (page-nav.ts ⇔ doc-renderer.ts
@@ -12,9 +12,6 @@ import {
   PAGE_NAV_ROOT_ID,
   onPageNavKeyDown,
 } from './page-navigation-keyboard'
-
-export { focusNavigatedLink } from './page-navigation-keyboard'
-export { renderPageNavigation } from './page-navigation-render'
 
 interface PageNavigationWiring {
   /**
