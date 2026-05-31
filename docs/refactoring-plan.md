@@ -332,7 +332,9 @@
 
 **リスク**: 低 — internal state のみ、外部から見える挙動は不変。
 
-### L2. renderer upgrade の type guard 共通化
+### L2. (完了済み) renderer upgrade の type guard 共通化
+
+**状態**: **完了済み** — `runtime-bridge.ts` に `isRuntimeLike<Runtime>(value, requiredFunctionKeys)` generic helper を追加 (object root の null チェック + 指定 key 群が function 型かを `Reflect.get` 経由で検査、`no-unsafe-type-assertion` lint を回避)。`mermaid.ts` の `isMermaidLike` と `katex.ts` の `isKatexLike` を `isRuntimeLike` の 1 行 specialization (`['initialize', 'render']` / `['renderToString']`) に書き換え、required key の手書き列挙の写し間違いリスクを抑止。既存 type guard テスト (両方持つ / 片方欠落 / null / プリミティブ) は全件保持し挙動完全不変。
 
 **対象**: `src/app/renderers/mermaid.ts` / `katex.ts` の `isMermaidLike` / `isKatexLike` 等
 

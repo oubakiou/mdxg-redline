@@ -20,6 +20,21 @@ export interface RuntimeBridgeConfig<Runtime> {
 
 const DEFAULT_READY_TIMEOUT_MS = 2000
 
+/**
+ * runtime bridge 値が指定 key 群を `function` として持つか検査する generic type guard。
+ * Mermaid / KaTeX 等のブラウザ runtime は object root + 必要 API が関数の形であるため、
+ * `requiredFunctionKeys` を渡すだけで `isMermaidLike` / `isKatexLike` 個別実装の写し間違いを防げる。
+ */
+export const isRuntimeLike = <Runtime>(
+  value: unknown,
+  requiredFunctionKeys: readonly (keyof Runtime)[]
+): value is Runtime => {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+  return requiredFunctionKeys.every((key): boolean => typeof Reflect.get(value, key) === 'function')
+}
+
 const hasEmbeddedScript = (id: string): boolean => {
   const el = document.getElementById(id)
   if (!(el instanceof HTMLElement)) {

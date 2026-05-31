@@ -23,7 +23,7 @@ import {
   accumulateUpgradeResult,
   reportRenderFailures,
 } from './upgrade-utils'
-import { type RuntimeBridgeConfig, waitForRuntime } from './runtime-bridge'
+import { type RuntimeBridgeConfig, isRuntimeLike, waitForRuntime } from './runtime-bridge'
 import {
   refreshAppliedBlocksOriginalHTML,
   runUpgradeIgnoringErrors,
@@ -46,13 +46,8 @@ interface KatexLike {
   renderToString: (src: string, options?: KatexRenderOptions) => string
 }
 
-const isKatexLike = (value: unknown): value is KatexLike => {
-  if (typeof value !== 'object' || value === null) {
-    return false
-  }
-  const obj = value as { renderToString?: unknown }
-  return typeof obj.renderToString === 'function'
-}
+const isKatexLike = (value: unknown): value is KatexLike =>
+  isRuntimeLike<KatexLike>(value, ['renderToString'])
 
 // global 名の `__` prefix は他コードとの衝突回避のための規約 (§5.h)。
 const KATEX_BRIDGE: RuntimeBridgeConfig<KatexLike> = {

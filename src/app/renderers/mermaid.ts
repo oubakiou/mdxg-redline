@@ -16,7 +16,7 @@ import {
   accumulateUpgradeResult,
   reportRenderFailures,
 } from './upgrade-utils'
-import { type RuntimeBridgeConfig, waitForRuntime } from './runtime-bridge'
+import { type RuntimeBridgeConfig, isRuntimeLike, waitForRuntime } from './runtime-bridge'
 import {
   refreshAppliedBlocksOriginalHTML,
   runUpgradeIgnoringErrors,
@@ -34,13 +34,8 @@ interface MermaidLike {
   render: (id: string, src: string) => Promise<{ svg: string }>
 }
 
-const isMermaidLike = (value: unknown): value is MermaidLike => {
-  if (typeof value !== 'object' || value === null) {
-    return false
-  }
-  const obj = value as { initialize?: unknown; render?: unknown }
-  return typeof obj.initialize === 'function' && typeof obj.render === 'function'
-}
+const isMermaidLike = (value: unknown): value is MermaidLike =>
+  isRuntimeLike<MermaidLike>(value, ['initialize', 'render'])
 
 // global 名の `__` prefix は他コードとの衝突回避のための規約 (docs/mdxg-diagram-rendering.md §5.k)。
 const MERMAID_BRIDGE: RuntimeBridgeConfig<MermaidLike> = {
