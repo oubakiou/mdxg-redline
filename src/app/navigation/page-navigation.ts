@@ -5,7 +5,7 @@
 // クリック時の navigateTo 動作は review.ts の orchestrator に注入する形にし、本モジュールは
 // 「クリックされた slug を通知する」ところまでで責務を区切る (page-nav.ts ⇔ doc-renderer.ts
 // 間の循環依存を避ける)。outline link の data-slug は `<page-slug>__<heading-slug>` 形式の
-// composite slug で、orchestrator 側で parseHashSlug → navigateToTarget に渡される。
+// composite slug で、orchestrator 側で parseHash → navigateToTarget に渡される。
 
 import {
   FOCUSABLE_LINK_SELECTOR,

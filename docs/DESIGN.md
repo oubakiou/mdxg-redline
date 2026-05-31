@@ -693,7 +693,7 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 **実装詳細**
 
 - **Stacked View での active page 追従**: page scroll-spy で `state.activePageIndex` が変わると `setOnPageActivated(renderPageNavigation)` 経由で outline 表示も自動切替される。マウスホイールでページ境界を跨ぐと TOC 配下の outline も current page のものに自動更新される
-- **URL fragment 形式**: ページ内見出しへの deep link は `#<page-slug>__<heading-slug>` (区切りは `__` 二連 underscore、本実装独自規約、docs/archive/mdxg-virtual-pages.archive.md §6.4)。`document/pages.ts` の `parseHashSlug` / `resolveTargetFromHash` が page slug + heading slug に分解
+- **URL fragment 形式**: ページ内見出しへの deep link は `#<page-slug>__<heading-slug>` (区切りは `__` 二連 underscore、本実装独自規約、docs/archive/mdxg-virtual-pages.archive.md §6.4)。`document/pages.ts` の `parseHash` (PageHash tagged union を返す) / `resolveTargetFromHash` が page slug + heading slug に分解
 - **deep link スクロール**: 初期ロード / hashchange のいずれでも `scrollToHeadingIfPresent` 1 ヘルパに集約され、即時 `setActiveHeadingImmediately` で outline link をハイライトしてから navigate 経由で instant scroll (navigate orchestrator が `auto` を渡す)
 - **pure な topmost 解決**: `pickTopmostHeading` は DOM 直接依存を排し callback (`resolveOffsetTop`) ベースに、node 環境でテスト可能 (`CSS.escape` を避けて attribute selector `[id="<slug>"]` を使う)
 - **observer lifecycle**: `renderAll` のたびに `setupScrollSpy` / `setupPageScrollSpy` で teardown → 新規 attach (memory リーク防止)

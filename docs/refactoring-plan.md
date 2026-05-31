@@ -166,7 +166,9 @@
 
 **リスク**: 中 — 境界条件の優先順位（display > inline）を間違えると既存テストが破綻するため、in-source test を厚めに先行整備する。
 
-### M4. hash protocol の tagged union 化
+### M4. (完了済み) hash protocol の tagged union 化
+
+**状態**: **完了済み** — `PageHash` tagged union (`{ kind: 'page', pageSlug }` | `{ kind: 'pageHeading', pageSlug, headingSlug }`) を導入し、`parseHash(hash): PageHash | null` / `buildHash(target): string` の対称 API に置換。旧 `parseHashSlug` / `ParsedHash` interface (両 nullable 構造体) は撤去。`resolveInitialActivePageIndex` / `resolveTargetFromHash` は `parseHash` 経由で `null` を invalid case として早期 return し、heading の有無は `kind` 判別で扱う。`syncHashFromActivePage` は `buildHash` 経由に統一 (`buildHashString` を撤去し、ローカル `buildPageHash` helper で PageHash を組み立て)。`buildPageHashFragment` は `href` 用 fragment 形式 (prefix 無し) を要求する render / keyboard caller 向けに維持。in-source test は `parseHash` / `buildHash` 用に書き換え。挙動完全不変。
 
 **対象**: `src/app/document/pages.ts` (431 行) — `buildPageHashFragment` / `parseHashSlug` / `slugFromHash` および `src/app/navigation/hash-navigation.ts`
 

@@ -43,7 +43,7 @@ export const findPageBySlug = (slug: string): Page | null => {
  * - `#foo` (prefix 無し) / `#` 単体 / 空文字 → null
  *
  * 戻り値は composite hash (`page__heading`) 全体で、ページ部分と見出し部分の分離は
- * `parseHashSlug` で行う。
+ * `parseHash` で行う。
  */
 export const slugFromHash = (hash: string): string | null => {
   if (!hash.startsWith('#')) {
@@ -89,38 +89,65 @@ export const buildPageHashFragment = (
 export const isPageHash = (hash: string): boolean => hash.startsWith(`#${PAGE_HASH_PREFIX}`)
 
 /**
- * URL fragment の `<page-slug>__<heading-slug>` (DESIGN.md §12 §7 Page Navigation) を分解する。
- * - `#page` → `{ pageSlug: 'page', headingSlug: null }`
- * - `#page__heading` → `{ pageSlug: 'page', headingSlug: 'heading' }`
- * - 空 / `#` のみ → `{ pageSlug: null, headingSlug: null }`
+ * URL fragment `#p:<page-slug>` / `#p:<page-slug>__<heading-slug>` の tagged union 表現
+ * (DESIGN.md §12 §7 Page Navigation)。
+ *
+ * `parseHash` は page hash として解釈できなければ `null` を返し、解釈できた場合のみ
+ * `kind` で page-only / page+heading を区別する。caller は switch で exhaustive に扱う
+ * (枝の取りこぼしを compile-time に検出する)。
+ */
+export type PageHash =
+  | { kind: 'page'; pageSlug: string }
+  | { kind: 'pageHeading'; headingSlug: string; pageSlug: string }
+
+/**
+ * `#p:<page>` / `#p:<page>__<heading>` を `PageHash` に分解する。
+ * - `#p:page` → `{ kind: 'page', pageSlug: 'page' }`
+ * - `#p:page__heading` → `{ kind: 'pageHeading', pageSlug: 'page', headingSlug: 'heading' }`
+ * - `#p:page__` (空 heading) → `{ kind: 'page', pageSlug: 'page' }`
+ * - prefix 無し / 空 / `#` のみ → `null` (page hash として無効)
+ *
  * `__` は最初に現れる位置で 1 度だけ分割する (slug は ASCII [a-z0-9-]+ なので underscore は
  * 通常含まれないが、念のため最初の `__` のみを区切りとして扱う)。
  */
-export interface ParsedHash {
-  headingSlug: string | null
-  pageSlug: string | null
-}
-
-const nullIfEmpty = (text: string): string | null => {
-  if (text.length === 0) {
-    return null
-  }
-  return text
-}
-
-export const parseHashSlug = (hash: string): ParsedHash => {
-  const raw = slugFromHash(hash)
-  if (raw === null) {
-    return { headingSlug: null, pageSlug: null }
-  }
+const splitPageAndHeading = (raw: string): PageHash => {
   const sepIndex = raw.indexOf('__')
   if (sepIndex === -1) {
-    return { headingSlug: null, pageSlug: raw }
+    return { kind: 'page', pageSlug: raw }
   }
-  return {
-    headingSlug: nullIfEmpty(raw.slice(sepIndex + 2)),
-    pageSlug: raw.slice(0, sepIndex),
+  const pageSlug = raw.slice(0, sepIndex)
+  const headingSlug = raw.slice(sepIndex + 2)
+  if (headingSlug.length === 0) {
+    return { kind: 'page', pageSlug }
   }
+  return { headingSlug, kind: 'pageHeading', pageSlug }
+}
+
+export const parseHash = (hash: string): PageHash | null => {
+  const raw = slugFromHash(hash)
+  if (raw === null) {
+    return null
+  }
+  return splitPageAndHeading(raw)
+}
+
+/**
+ * `PageHash` から `location.hash` 用の文字列 (先頭 `#` 付き) を組み立てる `parseHash` の対称 API。
+ * `href` 用の prefix 無し fragment は `buildPageHashFragment` を使う。
+ */
+export const buildHash = (target: PageHash): string => {
+  const base = `#${PAGE_HASH_PREFIX}${target.pageSlug}`
+  if (target.kind === 'pageHeading') {
+    return `${base}__${target.headingSlug}`
+  }
+  return base
+}
+
+const buildPageHash = (pageSlug: string, headingSlug: string | null): PageHash => {
+  if (headingSlug === null) {
+    return { kind: 'page', pageSlug }
+  }
+  return { headingSlug, kind: 'pageHeading', pageSlug }
 }
 
 /**
@@ -130,11 +157,11 @@ export const parseHashSlug = (hash: string): ParsedHash => {
  * composite hash (`page__heading`) を渡しても page 部分だけで解決する。
  */
 export const resolveInitialActivePageIndex = (hash: string): number => {
-  const { pageSlug } = parseHashSlug(hash)
-  if (pageSlug === null) {
+  const parsed = parseHash(hash)
+  if (parsed === null) {
     return 0
   }
-  const page = findPageBySlug(pageSlug)
+  const page = findPageBySlug(parsed.pageSlug)
   if (page === null) {
     return 0
   }
@@ -152,11 +179,12 @@ export interface NavigateTarget {
 }
 
 export const resolveTargetFromHash = (hash: string): NavigateTarget => {
-  const { headingSlug, pageSlug } = parseHashSlug(hash)
-  if (pageSlug === null) {
-    return { headingSlug, pageIndex: 0 }
+  const parsed = parseHash(hash)
+  if (parsed === null) {
+    return { headingSlug: null, pageIndex: 0 }
   }
-  const page = findPageBySlug(pageSlug)
+  const headingSlug = parsed.kind === 'pageHeading' ? parsed.headingSlug : null // eslint-disable-line no-ternary -- tagged union から discriminated field を抽出する単純な振り分けで、if/else に書き換えると可読性が落ちる
+  const page = findPageBySlug(parsed.pageSlug)
   if (page === null) {
     return { headingSlug, pageIndex: 0 }
   }
@@ -179,9 +207,6 @@ export const setActivePageIndex = (index: number): boolean => {
   return true
 }
 
-const buildHashString = (pageSlug: string, headingSlug: string | null): string =>
-  `#${buildPageHashFragment(pageSlug, headingSlug)}`
-
 /**
  * 現在 activePage の slug を `#<slug>` (heading 指定があれば `#<slug>__<heading-slug>`) で
  * `location.hash` にセットする。
@@ -192,7 +217,7 @@ export const syncHashFromActivePage = (headingSlug: string | null = null): void 
   if (!page) {
     return
   }
-  const desiredHash = buildHashString(page.slug, headingSlug)
+  const desiredHash = buildHash(buildPageHash(page.slug, headingSlug))
   if (globalThis.location.hash === desiredHash) {
     return
   }
@@ -256,42 +281,50 @@ if (import.meta.vitest) {
     })
   })
 
-  describe('parseHashSlug', () => {
-    it('`#p:page` → page だけ取り出して heading は null', () => {
-      expect(parseHashSlug('#p:overview')).toEqual({
-        headingSlug: null,
-        pageSlug: 'overview',
-      })
+  describe('parseHash', () => {
+    it('`#p:page` → kind:page', () => {
+      expect(parseHash('#p:overview')).toEqual({ kind: 'page', pageSlug: 'overview' })
     })
 
-    it('`#p:page__heading` → page と heading に分解する', () => {
-      expect(parseHashSlug('#p:overview__section-a')).toEqual({
+    it('`#p:page__heading` → kind:pageHeading', () => {
+      expect(parseHash('#p:overview__section-a')).toEqual({
         headingSlug: 'section-a',
+        kind: 'pageHeading',
         pageSlug: 'overview',
       })
     })
 
-    it('`#p:page__` (空の heading) は heading=null', () => {
-      expect(parseHashSlug('#p:page__')).toEqual({
-        headingSlug: null,
-        pageSlug: 'page',
-      })
+    it('`#p:page__` (空の heading) は kind:page にフォールバック', () => {
+      expect(parseHash('#p:page__')).toEqual({ kind: 'page', pageSlug: 'page' })
     })
 
-    it('`#overview` (prefix 無し) は両方 null (heading id 衝突回避)', () => {
-      expect(parseHashSlug('#overview')).toEqual({ headingSlug: null, pageSlug: null })
+    it('`#overview` (prefix 無し) は null (heading id 衝突回避)', () => {
+      expect(parseHash('#overview')).toBeNull()
     })
 
-    it('空 / `#` のみは両方 null', () => {
-      expect(parseHashSlug('')).toEqual({ headingSlug: null, pageSlug: null })
-      expect(parseHashSlug('#')).toEqual({ headingSlug: null, pageSlug: null })
+    it('空 / `#` のみは null', () => {
+      expect(parseHash('')).toBeNull()
+      expect(parseHash('#')).toBeNull()
     })
 
     it('最初の `__` だけを区切りに使う (slug は本来 underscore を含まないが念のため)', () => {
-      expect(parseHashSlug('#p:a__b__c')).toEqual({
+      expect(parseHash('#p:a__b__c')).toEqual({
         headingSlug: 'b__c',
+        kind: 'pageHeading',
         pageSlug: 'a',
       })
+    })
+  })
+
+  describe('buildHash', () => {
+    it('kind:page → `#p:<page>` (parseHash の逆変換)', () => {
+      expect(buildHash({ kind: 'page', pageSlug: 'overview' })).toBe('#p:overview')
+    })
+
+    it('kind:pageHeading → `#p:<page>__<heading>`', () => {
+      expect(
+        buildHash({ headingSlug: 'section-a', kind: 'pageHeading', pageSlug: 'overview' })
+      ).toBe('#p:overview__section-a')
     })
   })
 
