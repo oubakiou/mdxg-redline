@@ -185,7 +185,9 @@
 
 **リスク**: 低 — 既存テストの期待値を構造比較に書き換えれば挙動同値を担保できる。`ParsedHash` 既存使用箇所の `switch` 化が主作業。
 
-### M5. parse-run-args の attach 関数 generic 化
+### M5. (完了済み) parse-run-args の attach 関数 generic 化
+
+**状態**: **完了済み** — `attachIfPresent<Target, Key>(result, key, value)` generic helper (null / undefined を `typeof === 'undefined'` で一括弾く) を 1 つ導入し、partition 側 3 関数 (`attachPartitionStringOptionals` / `ExtensionOptionals` / `NumberOptionals`) と run 側 3 関数 (`attachRunStringOptionals` / `NonStringOptionals` / `ExtensionOptionals`) を各 1 つの `attachPartitionOptionals` (9 attach) と `attachRunOptionals` (10 attach、`outputDir` は `parts.positional[1]` 経由) に集約。max-statements を満たし、新規 flag 追加時の boilerplate が 1 行に圧縮された。挙動完全不変。
 
 **対象**: `src/cli/parse-run-args.ts` (628 行) — `attachRunStringOptionals` / `attachRunNonStringOptionals` / `attachRunExtensionOptionals` および `partitionArgs` 内の `attachPartition*` 3 関数
 

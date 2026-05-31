@@ -34,51 +34,29 @@ interface PartitionedArgs {
   valid: boolean
 }
 
-// 結果オブジェクトに optional フィールドを後付けで追加するヘルパ。max-statements を抑えるため
-// 文字列系・拡張モード系・数値系で関数を分割する。
-const attachPartitionStringOptionals = (result: PartitionedArgs, state: PartitionState): void => {
-  if (state.documentName !== null) {
-    result.documentName = state.documentName
-  }
-  if (state.themeHint !== null) {
-    result.themeHint = state.themeHint
-  }
-  if (state.shikiLangs !== null) {
-    result.shikiLangs = state.shikiLangs
-  }
-  if (state.markdownCssPath !== null) {
-    result.markdownCssPath = state.markdownCssPath
-  }
-}
-
-const attachPartitionExtensionOptionals = (
-  result: PartitionedArgs,
-  state: PartitionState
+// optional フィールドを「定義されていれば代入」する generic helper。`null` (partition state 側で
+// 未指定を表す) と `undefined` (run 側 PartitionedArgs で未指定を表す) を一括で弾く。
+const attachIfPresent = <Target, Key extends keyof Target>(
+  result: Target,
+  key: Key,
+  value: Target[Key] | null | undefined
 ): void => {
-  if (state.mermaid !== null) {
-    result.mermaid = state.mermaid
+  if (value === null || typeof value === 'undefined') {
+    return
   }
-  if (state.math !== null) {
-    result.math = state.math
-  }
-  if (state.mathFonts !== null) {
-    result.mathFonts = state.mathFonts
-  }
-}
-
-const attachPartitionNumberOptionals = (result: PartitionedArgs, state: PartitionState): void => {
-  if (state.commentsWidth !== null) {
-    result.commentsWidth = state.commentsWidth
-  }
-  if (state.pageNavWidth !== null) {
-    result.pageNavWidth = state.pageNavWidth
-  }
+  result[key] = value
 }
 
 const attachPartitionOptionals = (result: PartitionedArgs, state: PartitionState): void => {
-  attachPartitionStringOptionals(result, state)
-  attachPartitionExtensionOptionals(result, state)
-  attachPartitionNumberOptionals(result, state)
+  attachIfPresent(result, 'documentName', state.documentName)
+  attachIfPresent(result, 'themeHint', state.themeHint)
+  attachIfPresent(result, 'shikiLangs', state.shikiLangs)
+  attachIfPresent(result, 'markdownCssPath', state.markdownCssPath)
+  attachIfPresent(result, 'mermaid', state.mermaid)
+  attachIfPresent(result, 'math', state.math)
+  attachIfPresent(result, 'mathFonts', state.mathFonts)
+  attachIfPresent(result, 'commentsWidth', state.commentsWidth)
+  attachIfPresent(result, 'pageNavWidth', state.pageNavWidth)
 }
 
 const partitionArgs = (argv: readonly string[]): PartitionedArgs => {
@@ -93,61 +71,17 @@ const partitionArgs = (argv: readonly string[]): PartitionedArgs => {
   return result
 }
 
-// RunArgs に optional フィールドを後付け。partition と同じ理由で関数として切り出し済み。
-// 文字列系と非文字列系で分割して max-statements を満たす。
-const attachRunStringOptionals = (
-  result: { mode: 'run' } & RunArgs,
-  parts: PartitionedArgs
-): void => {
-  const [, outputDir] = parts.positional
-  if (typeof outputDir === 'string') {
-    result.outputDir = outputDir
-  }
-  if (typeof parts.documentName === 'string') {
-    result.documentName = parts.documentName
-  }
-  if (typeof parts.themeHint === 'string') {
-    result.themeHint = parts.themeHint
-  }
-  if (typeof parts.markdownCssPath === 'string') {
-    result.markdownCssPath = parts.markdownCssPath
-  }
-}
-
-const attachRunNonStringOptionals = (
-  result: { mode: 'run' } & RunArgs,
-  parts: PartitionedArgs
-): void => {
-  if (parts.shikiLangs) {
-    result.shikiLangs = parts.shikiLangs
-  }
-  if (typeof parts.commentsWidth === 'number') {
-    result.commentsWidth = parts.commentsWidth
-  }
-  if (typeof parts.pageNavWidth === 'number') {
-    result.pageNavWidth = parts.pageNavWidth
-  }
-}
-
-const attachRunExtensionOptionals = (
-  result: { mode: 'run' } & RunArgs,
-  parts: PartitionedArgs
-): void => {
-  if (parts.mermaid) {
-    result.mermaid = parts.mermaid
-  }
-  if (parts.math) {
-    result.math = parts.math
-  }
-  if (parts.mathFonts) {
-    result.mathFonts = parts.mathFonts
-  }
-}
-
 const attachRunOptionals = (result: { mode: 'run' } & RunArgs, parts: PartitionedArgs): void => {
-  attachRunStringOptionals(result, parts)
-  attachRunNonStringOptionals(result, parts)
-  attachRunExtensionOptionals(result, parts)
+  attachIfPresent(result, 'outputDir', parts.positional[1])
+  attachIfPresent(result, 'documentName', parts.documentName)
+  attachIfPresent(result, 'themeHint', parts.themeHint)
+  attachIfPresent(result, 'markdownCssPath', parts.markdownCssPath)
+  attachIfPresent(result, 'shikiLangs', parts.shikiLangs)
+  attachIfPresent(result, 'commentsWidth', parts.commentsWidth)
+  attachIfPresent(result, 'pageNavWidth', parts.pageNavWidth)
+  attachIfPresent(result, 'mermaid', parts.mermaid)
+  attachIfPresent(result, 'math', parts.math)
+  attachIfPresent(result, 'mathFonts', parts.mathFonts)
 }
 
 const buildRunArgs = (parts: PartitionedArgs): { mode: 'run' } & RunArgs => {
