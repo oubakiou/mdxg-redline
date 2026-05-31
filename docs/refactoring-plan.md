@@ -294,7 +294,9 @@
 
 **リスク**: 低 — public CLI 仕様（`--clean` / `--yes` / `--keep` / `-r`）は不変。in-source test を移動先に追従させる必要がある。
 
-### M10. mermaid SVG interaction の切り出し
+### M10. (完了済み) mermaid SVG interaction の切り出し
+
+**状態**: **完了済み** — `mermaid-svg-interactions.ts` を新設し、`parseSvg` / `SVG_CLICK_TARGET_TAGS` / `handleMermaidSvgClick` (private) / `wireMermaidSvgExpand` を移管。`mermaid.ts` 側は `openMermaidModal` の import を撤去 (mermaid-modal への直接依存は interactions ファイルに集約)、`insertSvgAfterPre` / `renderMermaidSvgInto` などの upgrade pipeline 関連は据え置き。依存は `mermaid.ts → mermaid-svg-interactions.ts → mermaid-modal.ts` の単方向。挙動完全不変、サブエージェントレビュー指摘 (冒頭コメント文言精度) も反映済み。
 
 **対象**: `src/app/renderers/mermaid.ts` (420 行)
 
