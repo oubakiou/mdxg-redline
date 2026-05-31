@@ -349,7 +349,9 @@
 
 **リスク**: 低 — 既存 `RuntimeBridgeConfig` を活用するだけで、新規 type / module は不要。
 
-### L3. text segment skip rules の宣言的化
+### L3. (完了済み) text segment skip rules の宣言的化
+
+**状態**: **完了済み** — 旧 3 つの const (`SKIP_TEXT_SEGMENT_CLASSES` / `SKIP_TEXT_SEGMENT_ATTRS` / `SKIP_TEXT_SEGMENT_ATTR_NAMES`) と手書き `SKIP_TEXT_SEGMENT_SELECTOR` 文字列を撤去し、1 つの `SKIP_RULES: { selector, reason }[]` 宣言テーブルに集約。`shouldSkipForTextSegments` は `Element.matches(rule.selector)` ベース、`SKIP_TEXT_SEGMENT_SELECTOR` は `SKIP_RULES.map(r => r.selector).join(', ')` で導出し、両出力を単一定義から派生させて追加時の漏れを構造的に防ぐ。挙動完全不変 (CSS selector の semantics と classList/hasAttribute/getAttribute 個別呼び出しは等価)。in-source test は selector identity check 基準に書き換え、`core/footnotes.ts` のコメント内 `SKIP_TEXT_SEGMENT_CLASSES` 参照も `SKIP_RULES \`.sr-only\`` に追従更新。
 
 **対象**: `src/app/dom/text-range.ts` (314 行) + `src/app/dom/text-segment-skip-rules.ts`
 

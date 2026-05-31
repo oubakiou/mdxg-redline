@@ -436,7 +436,7 @@ if (import.meta.vitest) {
       )
       expect(result.tagName).toBe('SECTION')
       expect(result.hasAttribute('data-footnotes')).toBe(true)
-      // sr-only な合成見出しが先頭に挿入されている (textSegments の SKIP_TEXT_SEGMENT_CLASSES 連動)
+      // sr-only な合成見出しが先頭に挿入されている (textSegments の SKIP_RULES `.sr-only` 連動)
       const heading = expectElement(result.querySelector('h2'))
       expect(heading.id).toBe('footnote-label')
       expect(heading.classList.contains('sr-only')).toBe(true)
