@@ -203,7 +203,9 @@
 
 **リスク**: 低 — internal のみ、CLI 引数仕様（public）は不変。
 
-### M6. HTML rewrite の generic helper 化
+### M6. (完了済み) HTML rewrite の generic helper 化
+
+**状態**: **完了済み** — `replaceMatchedHtmlRegion(html, regex, buildBody): string | null` private helper を新設し、3 グループ regex (opening / body / closing) を前提とする region 置換ロジックを集約。`rewriteInitialStatus` / `rewriteTitle` / `rewriteEmbeddedShikiLangs` を helper 経由に書き換え (不一致時の throw / no-op は caller 側で `?? reviewHtml` / `if null throw` の形で分岐)。`rewriteReviewHtml` は opening tag 内属性 (`data-name`) も書き換えるため plan 通り据え置き。挙動完全不変、in-source test (Error メッセージ pattern / no-op / 不破壊) すべて維持。
 
 **対象**:
 

@@ -31,20 +31,33 @@ const EMBEDDED_MD_META_RE = /\s*<meta\b[^>]*\bname="mdxg-redline:embedded-md"[^>
 export const formatLoadedStatus = (docName: string, docHash: string): string =>
   `${docName} (${docHash}) · loaded`
 
+// 3 グループ regex (opening / body / closing) を pre-condition とする region 置換。
+// caller は body のみを置き換え、不一致は `null` で受け取り throw / no-op を選択する。
+// rewriteReviewHtml は opening tag 内属性も触るため本 helper の対象外。
+const replaceMatchedHtmlRegion = (
+  html: string,
+  regex: RegExp,
+  buildBody: () => string
+): string | null => {
+  const match = regex.exec(html)
+  if (!match) {
+    return null
+  }
+  const [fullMatch, openingTag, , closingTag] = match
+  const replaced = `${openingTag}${buildBody()}${closingTag}`
+  return html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length)
+}
+
 /**
  * `<span id="status">` の中身を CLI が書き換える。paint 前から最終状態を見せることで、
  * JS の loadFromMarkdown が走るまで「No file」が一瞬見える FOUC を構造的に防ぐ。
  */
 export const rewriteInitialStatus = (reviewHtml: string, statusText: string): string => {
-  const match = STATUS_SPAN_RE.exec(reviewHtml)
-  if (!match) {
+  const result = replaceMatchedHtmlRegion(reviewHtml, STATUS_SPAN_RE, () => escapeHtml(statusText))
+  if (result === null) {
     throw new Error('template HTML に id="status" の <span> タグが見つかりません')
   }
-  const [fullMatch, openingTag, , closingTag] = match
-  const replaced = `${openingTag}${escapeHtml(statusText)}${closingTag}`
-  return (
-    reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length)
-  )
+  return result
 }
 
 /**
@@ -105,17 +118,8 @@ export const upsertHtmlDataToolbarOpenFile = (reviewHtml: string, value: 'off'):
  * <title> タグが見つからない場合は no-op (フェイタルではなく warning 相当)。
  * <title> 中の特殊文字は HTML escape される (信頼境界、DESIGN.md §11)。
  */
-export const rewriteTitle = (reviewHtml: string, newTitle: string): string => {
-  const match = TITLE_RE.exec(reviewHtml)
-  if (!match) {
-    return reviewHtml
-  }
-  const [fullMatch, openingTag, , closingTag] = match
-  const replaced = `${openingTag}${escapeHtml(newTitle)}${closingTag}`
-  return (
-    reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length)
-  )
-}
+export const rewriteTitle = (reviewHtml: string, newTitle: string): string =>
+  replaceMatchedHtmlRegion(reviewHtml, TITLE_RE, () => escapeHtml(newTitle)) ?? reviewHtml
 
 /**
  * `<script id="embedded-shiki-langs">` の中身を grammars の JSON で書き換える。
@@ -128,15 +132,13 @@ export const rewriteEmbeddedShikiLangs = (
   reviewHtml: string,
   grammars: Record<string, unknown>
 ): string => {
-  const match = EMBEDDED_SHIKI_LANGS_RE.exec(reviewHtml)
-  if (!match) {
+  const result = replaceMatchedHtmlRegion(reviewHtml, EMBEDDED_SHIKI_LANGS_RE, () =>
+    encodeEmbeddedShikiLangs(grammars)
+  )
+  if (result === null) {
     throw new Error('template HTML に id="embedded-shiki-langs" の <script> タグが見つかりません')
   }
-  const [fullMatch, openingTag, , closingTag] = match
-  const replaced = `${openingTag}${encodeEmbeddedShikiLangs(grammars)}${closingTag}`
-  return (
-    reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length)
-  )
+  return result
 }
 
 /**
