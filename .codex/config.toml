@@ -1,3 +1,7 @@
 [features]
 hooks = true
 fast_mode = false
+
+[tui]
+status_line = ["model-with-reasoning", "context-used", "weekly-limit"]
+status_line_use_colors = true

@@ -1,0 +1,8 @@
+prefix_rule(pattern=["gh", "pr", "diff"], decision="allow")
+prefix_rule(pattern=["gh", "pr", "view"], decision="allow")
+prefix_rule(pattern=["git", "diff"], decision="allow")
+prefix_rule(pattern=["git", "ls-files"], decision="allow")
+prefix_rule(pattern=["git", "status", "--short"], decision="allow")
+prefix_rule(pattern=["nl"], decision="allow")
+prefix_rule(pattern=["rg"], decision="allow")
+prefix_rule(pattern=["sed"], decision="allow")
