@@ -367,7 +367,15 @@
 
 **リスク**: 低 — selector の評価順序を保てば挙動同値。
 
-### L4. arg-spec の Validator protocol 統一
+### L4. (見送り) arg-spec の Validator protocol 統一
+
+**状態**: **見送り** — 計画書時点では parser 戻り値型・エラー形が個別で揃っていない想定だったが、L4 着手時に再調査したところ:
+
+1. `parseCommentsWidthValue` / `parsePageNavWidthValue` / `parseMermaidValue` / `parseMathValue` / `parseMathFontsValue` / `parseShikiLangsValue` はいずれも既に `(value: string) => T | null` (`parseShikiLangsValue` のみ常に value を返す変種) の共通シグネチャを持ち、`flag-parser.ts:79` の `FlagSpec<Value>.parser` が単一型 `(token: string) => Value | null` で全件吸収済み (過去 H1b の `FlagDef[]` 集約と M5 の attach generic で構造的に統一されている)。
+2. 計画書が想定していた `describe(): string` メタデータの caller (per-flag エラーメッセージ自動生成) は実装側に不在で、CLI のエラー出力は `review-request.ts:41` の generic 1 行 (`invalid arguments. Run \`mdxg-redline --help\` for usage.`) に固定されている。`describe()` を追加しても消費先がないまま dead metadata になる。
+3. 残る差分は parser 内部の `trim → '' チェック → validate` パターンの 3 行重複だが、これは micro-helper で 1 行に圧縮できる程度の余地でしかなく、独立 PR としての価値が薄い。
+
+以上 3 点から、本シリーズでは L4 は見送り。将来 per-flag エラーメッセージを導入する要件が発生した場合 (例: `--theme` を `system|light|dark` のいずれか、と具体的に表示する CLI UX 改善) に、Validator protocol 化を再検討する。
 
 **対象**: `src/cli/arg-spec.ts` + `src/cli/flag-parser.ts`
 
