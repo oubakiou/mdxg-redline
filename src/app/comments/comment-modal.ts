@@ -11,16 +11,20 @@ import { renderComments } from './comments'
 import { state } from '../state/app-state'
 
 /**
- * コメント入力モーダルの状態。
- * 新規作成時は pendingSelection に「どこに対するコメントか」の情報（blockId, offsets, quote）を保持し、
- * Save 時にこれを基準にコメントを生成する。
- * 既存コメント編集時は editingCommentId に対象 id を保持し、Save 時に本文のみ差し替える。
- * 両者は排他で、Cancel/Esc / モーダルを開く度に必ず null へ戻すこと（誤コミット防止）。
+ * コメント入力モーダルの状態を表す tagged union。
+ * - `add`: 新規作成 (pendingSelection に「どこに対するコメントか」の情報を保持し Save 時にコメント生成)
+ * - `edit`: 既存コメント編集 (editingCommentId に対象 id を保持し Save 時に本文のみ差し替え)
+ * - `closed`: 閉状態 (Cancel / Esc 後の正常値)
+ * add と edit は排他で、両者のフィールドを同時に持たないことを型で保証する (誤コミット防止)。
  */
-const modalState: { pendingSelection: PendingSelection | null; editingCommentId: string | null } = {
-  editingCommentId: null,
-  pendingSelection: null,
-}
+type ModalState =
+  | { kind: 'closed' }
+  | { kind: 'add'; pendingSelection: PendingSelection }
+  | { kind: 'edit'; editingCommentId: string }
+
+// container 経由で current を差し替えることで、tagged union への全体置換と const 規約を両立させる
+// (let を使うと prefer-const と衝突するため)。
+const modalState: { current: ModalState } = { current: { kind: 'closed' } }
 
 const setModalChrome = (mode: 'add' | 'edit'): void => {
   if (mode === 'edit') {
@@ -51,16 +55,14 @@ const showModalWithBody = (quote: string, body: string): void => {
  * 構造的に避けるための予防的クリア。
  */
 const openModal = (sel: PendingSelection): void => {
-  modalState.editingCommentId = null
-  modalState.pendingSelection = sel
+  modalState.current = { kind: 'add', pendingSelection: sel }
   setModalChrome('add')
   showModalWithBody(sel.quote, '')
 }
 
 /** 既存コメントを編集対象にしてモーダルを開く。本文だけを差し替え、アンカー情報は保持する。 */
 export const openEditCommentModal = (comment: Comment): void => {
-  modalState.pendingSelection = null
-  modalState.editingCommentId = comment.id
+  modalState.current = { editingCommentId: comment.id, kind: 'edit' }
   setModalChrome('edit')
   showModalWithBody(comment.quote, comment.comment)
 }
@@ -68,8 +70,7 @@ export const openEditCommentModal = (comment: Comment): void => {
 /** モーダルを閉じ、保留状態をクリアして次回開閉時の漏洩を防ぐ */
 export const closeCommentModal = (): void => {
   qs('#modal').classList.remove('open')
-  modalState.pendingSelection = null
-  modalState.editingCommentId = null
+  modalState.current = { kind: 'closed' }
 }
 
 interface CommentContext {
@@ -163,12 +164,13 @@ const saveModalComment = async (): Promise<void> => {
   if (!body) {
     return
   }
-  if (modalState.editingCommentId) {
-    saveEditedComment(modalState.editingCommentId, body)
+  const { current } = modalState
+  if (current.kind === 'edit') {
+    saveEditedComment(current.editingCommentId, body)
     return
   }
-  if (modalState.pendingSelection) {
-    saveNewComment(modalState.pendingSelection, body)
+  if (current.kind === 'add') {
+    saveNewComment(current.pendingSelection, body)
   }
 }
 

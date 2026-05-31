@@ -315,7 +315,9 @@
 
 ## 4. 優先度: 低
 
-### L1. comment-modal state の tagged union 化
+### L1. (完了済み) comment-modal state の tagged union 化
+
+**状態**: **完了済み** — `ModalState = { kind: 'closed' } | { kind: 'add', pendingSelection } | { kind: 'edit', editingCommentId }` tagged union を導入し、旧 `{ pendingSelection: null | ..., editingCommentId: null | ... }` の両 nullable 構造体を撤去。`let` は AGENTS.md prefer-const 規約と衝突するため、`const modalState: { current: ModalState }` の container パターンで全体置換を実現。openModal / openEditCommentModal / closeCommentModal は `modalState.current = { kind: ..., ... }` で transition、saveModalComment は `const { current } = modalState; if (current.kind === ...)` で kind discriminator narrowing 経由。排他不変条件 (`add` と `edit` の同時 non-null) が型レベルで保証された。挙動完全不変。
 
 **対象**: `src/app/comments/comment-modal.ts` (318 行) — `modalState`
 
