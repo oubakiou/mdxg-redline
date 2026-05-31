@@ -225,7 +225,15 @@
 
 **リスク**: 中 — HTML minify 無効を前提とした正規表現に依存している。抽象化対象を `rewriteInitialStatus` / `rewriteEmbeddedShikiLangs` に限定し、`rewriteReviewHtml` は据え置く。
 
-### M7. footnotes の Marked instance キャッシュと token pipeline 統一
+### M7. (見送り) footnotes の Marked instance キャッシュと token pipeline 統一
+
+**状態**: **見送り** — 計画書が前提としていた「Marked instance を module-level singleton 化して使い回す」案は marked-footnote 1.4.0 の制約により不可能と判明 (試行コミットなし、`src/core/footnotes.ts` の invariant コメントに検証結果のみ追記)。
+
+検証内容: `markedWithFootnote = new Marked(); instance.use(footnote())` を module 初期化時に 1 度だけ生成し `collectFootnoteTokens` が共有する形で実装したところ、2 回目以降の `lexer()` 呼び出し時に `marked-footnote/src/references.ts:33` で `state.tokens.filter` の undefined 参照 (`TypeError: Cannot read properties of undefined (reading 'filter')`) が発生し、in-source test 21 件と `core/page-split.ts` の synthetic page 関連テスト 8 件が破綻。当初 PoC は「lexer() 後に parse() を呼ぶ」場合のみ crash すると整理していたが、実際には **`lexer()` 単独の連続呼び出しでも同 crash が再現** することが判明した。
+
+代替案 (B-1: markdown 文字列 identity で tokens を 1-entry cache / B-2: caller 側で tokens を 1 回取って引き回す API 変更) は、いずれも「new instance per call」コストが本ループでは大きくないこと (1 markdown あたり最大 2 呼び出し) と、メモリ計上 / 公開 API 変更のリスクに見合わないため、本シリーズでは採用しない。pipeline 抽象化 (orphan detection を pure 関数化) も orphan 検出は既に `getOrphanFootnoteIds` で pure 化済みのため追加メリットなし。
+
+将来 marked-footnote が cross-call state 累積を解消した版を出した時点で再検討する。
 
 **対象**: `src/core/footnotes.ts` (488 行) — `collectFootnoteTokens` 等
 

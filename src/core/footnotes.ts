@@ -9,7 +9,10 @@
 // instance 分離 (重要):
 //   Step 1 PoC で「同一 Marked instance で lexer() 呼び出し後に parse() を呼ぶと
 //   `Cannot read properties of undefined (reading 'filter')` で crash する」現象を確認済み。
-//   本モジュールでは用途ごとに `new Marked()` を生成して cross-call state を持ち越さない。
+//   さらに **lexer() のみを連続呼び出ししても 2 回目以降で同じ crash が発生する**
+//   (marked-footnote 1.4.0 references.ts:33 で `state.tokens.filter` が undefined 参照になる)。
+//   したがって用途ごとに `new Marked()` を生成して cross-call state を持ち越さない構造が
+//   安全側の必須要件である。
 //   global `marked` singleton にも footnote 拡張は use しない (block-anchors 等が共有しており
 //   top-level token に synthetic placeholder が混入して壊れるため。core/markdown.ts 参照)。
 
