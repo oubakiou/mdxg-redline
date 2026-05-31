@@ -7,13 +7,13 @@
 import type { ExportPayload } from '../core/types'
 import {
   activateCommentsMark,
-  configureCommentEdit,
-  configureCommentsNavigation,
+  setOnCommentEdit,
+  setOnCommentNavigate,
   wireCommentsKeyboardNav,
 } from './comments/comments'
 import { changeOutputFolder, writeFeedback } from './workspace/workspace'
 import {
-  configureSearchNavigation,
+  setOnSearchNavigate,
   reapplySearchHighlights,
   toggleSearch,
   wireSearchBar,
@@ -55,8 +55,8 @@ const setupModalsAndPanels = (): void => {
   wireCommentModal()
   wireHelpModal()
   wireMermaidModal()
-  configureCommentsNavigation(navigateToComment)
-  configureCommentEdit(openEditCommentModal)
+  setOnCommentNavigate(navigateToComment)
+  setOnCommentEdit(openEditCommentModal)
   // page scroll-spy が activePageIndex を更新した直後の TOC active 表示更新。
   // renderPageNavigation は state を再読込して描き直すだけなので、scroll 中の頻発でも軽い。
   setOnPageActivated((): void => renderPageNavigation())
@@ -105,7 +105,7 @@ const setupDropdownsAndKeyboard = (deps: BootstrapDeps): DropdownLike => {
 const setupSearchWiring = (): void => {
   // unsubscribe handle は破棄。setupSearchWiring は起動時 1 回しか呼ばれず teardown 経路が無いため。
   registerPostMarksReapplied(reapplySearchHighlights)
-  configureSearchNavigation((pageIndex: number): void => {
+  setOnSearchNavigate((pageIndex: number): void => {
     navigateToTarget({ headingSlug: null, pageIndex }, false)
   })
   wireSearchBar()

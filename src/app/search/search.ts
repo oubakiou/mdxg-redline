@@ -19,7 +19,7 @@
 export { isSearchOpen } from './search-state'
 export {
   closeSearch,
-  configureSearchNavigation,
+  setOnSearchNavigate,
   nextMatch,
   openSearch,
   prevMatch,
@@ -45,7 +45,7 @@ if (import.meta.vitest) {
       expect(typeof api.prevMatch).toBe('function')
       expect(typeof api.reapplySearchHighlights).toBe('function')
       expect(typeof api.wireSearchBar).toBe('function')
-      expect(typeof api.configureSearchNavigation).toBe('function')
+      expect(typeof api.setOnSearchNavigate).toBe('function')
     })
   })
 }

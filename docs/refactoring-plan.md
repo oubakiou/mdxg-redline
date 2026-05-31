@@ -249,7 +249,7 @@
 
 **リスク**: 中 — Marked singleton 共有による副作用（plugin 重複登録など）が発生しないかテストが必要。
 
-### M8. module mutable hook の API 統一
+### M8. (完了済み) module mutable hook の API 統一
 
 **状態 (第 1 段)**: **完了済み** — `setOnMarksReapplied` legacy 経路を撤去。`app-wiring.ts:108` を `registerPostMarksReapplied(reapplySearchHighlights)` に置換 (unsubscribe handle は teardown 経路が無いため破棄)。`mark-engine.ts` から `legacyOnMarksReapplied` slot と `setOnMarksReapplied` export を削除し、JSDoc から legacy 互換 invariant 警告を撤去。in-source test は新 API 用に書き直し (旧 slot 固有 invariant の 2 ケース削除、describe 名と afterEach を整理)。`search-controller.ts` / `search.ts` のコメント、`DESIGN.md §10` の API 名も追従更新。第 2 段 (`configureXxx` の register 化) は別 PR。
 
@@ -271,6 +271,8 @@
   3. **JSDoc 更新**: `mark-engine.ts:96-106` の `postMarksReappliedHooks` JSDoc から「旧 API `setOnMarksReapplied` も互換のため残してある」記述と「同一 callback を両方で登録しないこと」の invariant 警告を削除（`registerPostMarksReapplied:113-117` も同様）
   4. **契約テスト書き換え**: `mark-engine.ts:304` の `describe('registerPostMarksReapplied / setOnMarksReapplied', ...)` から `setOnMarksReapplied` を使う test を削除し、describe 名を `registerPostMarksReapplied` に。`afterEach` の `setOnMarksReapplied(null)` は `postMarksReappliedHooks.clear()` に書き換え
 - **第 2 段（API 統一、別 PR）**: `page-scroll-spy.ts` / `search-controller.ts` / `comments.ts` の `configureXxx` を `registerXxx(callback): () => void` (unsubscribe 返却) に統一。1 callback 制約が必要なものだけ `setXxx` を残す
+
+**状態 (第 2 段)**: **完了済み** — 対象 3 関数 (`configureCommentsNavigation` / `configureCommentEdit` / `configureSearchNavigation`) の callee 数を確認したところ全て 1 callee で、いずれも単一スロット (handler 上書き、複数 register は navigate 二重実行になり bug) という 1-callback 制約に該当した。第 2 段例外条項に従い register-multi 化は行わず、命名のみ既存 `setOnPageActivated` 形式に統一: `setOnCommentNavigate` / `setOnCommentEdit` / `setOnSearchNavigate`。search.ts barrel テスト・DESIGN.md §10 の言及も追従更新。挙動完全不変。
 
 **効果**: hook 追加時の API 揺らぎを抑え、テストでの teardown が安全になる（unsubscribe で漏れ防止）。`mark-engine.ts` の互換 invariant 記述が消え JSDoc が簡素化する。
 

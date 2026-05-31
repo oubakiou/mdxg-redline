@@ -193,7 +193,7 @@ export const wireSearchBar = (): void => {
 }
 
 /** review.ts から渡される navigate 関数を保持する */
-export const configureSearchNavigation = (navigateToPage: (pageIndex: number) => void): void => {
+export const setOnSearchNavigate = (navigateToPage: (pageIndex: number) => void): void => {
   navigateToPageHook = navigateToPage
 }
 

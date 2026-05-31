@@ -13,7 +13,7 @@ import { resolveNextFocusIndex } from '../dom/focus-list'
  */
 let onNavigateToCommentPage: ((comment: Comment) => void) | null = null
 
-export const configureCommentsNavigation = (handler: ((comment: Comment) => void) | null): void => {
+export const setOnCommentNavigate = (handler: ((comment: Comment) => void) | null): void => {
   onNavigateToCommentPage = handler
 }
 
@@ -24,7 +24,7 @@ export const configureCommentsNavigation = (handler: ((comment: Comment) => void
  */
 let onEditComment: ((comment: Comment) => void) | null = null
 
-export const configureCommentEdit = (handler: ((comment: Comment) => void) | null): void => {
+export const setOnCommentEdit = (handler: ((comment: Comment) => void) | null): void => {
   onEditComment = handler
 }
 
