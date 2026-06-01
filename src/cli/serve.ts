@@ -123,8 +123,17 @@ const listenWithFallback = async (
 // 停止条件は二段構え：
 //  - 初回リクエストを受けたら SERVE_AUTOSTOP_MS の猶予を取って close（リロードに 1 度耐える余裕）
 //  - リクエストが来ないまま SERVE_GIVEUP_MS 経過したら諦めて close（$BROWSER 失敗時の保険）
-// レスポンスには `Connection: close` を付けて keep-alive を無効化し、`server.close()` の
-// コールバックが返らずにハングするのを防ぐ。
+// レスポンスに `Connection: close` を付けて keep-alive を抑制したうえで、停止時には
+// `closeAllConnections()` で残存 socket を強制 destroy してから `close()` を呼ぶ。
+// `Connection: close` だけだと、ホスト側ブラウザや VS Code helper のトンネル経路が
+// socket の FIN を遅延させるケースで `server.close()` の callback が呼ばれず、
+// done Promise が永続的に pending する (CLI のプロンプトが戻らない事象)。
+// `closeIdleConnections()` だけだと、ブラウザが並列に開いた複数 socket のうち
+// 「リクエスト/レスポンス処理中」と Node が認識している socket が残り、停止が遅延する
+// 実環境ケースが観測されたため `closeAllConnections()` を採る。副作用として、停止タイマー
+// 切れの瞬間に進行中のレスポンス配信があれば途中切断され得るが、CLI 経路で配る
+// `*-review.html` は数百 KB 程度 + localhost のため、SERVE_AUTOSTOP_MS=3000ms 経過時点では
+// typical に配信が完了している (実害は限定的)。
 const serveOnceAndAutoStop = async (filePath: string): Promise<ServeHandle> => {
   const server = createServer((_req, res): void => {
     res.writeHead(200, {
@@ -136,14 +145,14 @@ const serveOnceAndAutoStop = async (filePath: string): Promise<ServeHandle> => {
   const preferred = resolvePreferredPort(process.env)
   const listened = await listenWithFallback(server, preferred)
   const done = new Promise<void>((doneResolve): void => {
-    const giveup = setTimeout((): void => {
+    const stop = (): void => {
+      server.closeAllConnections()
       server.close((): void => doneResolve())
-    }, SERVE_GIVEUP_MS)
+    }
+    const giveup = setTimeout(stop, SERVE_GIVEUP_MS)
     server.once('request', (): void => {
       clearTimeout(giveup)
-      setTimeout((): void => {
-        server.close((): void => doneResolve())
-      }, SERVE_AUTOSTOP_MS)
+      setTimeout(stop, SERVE_AUTOSTOP_MS)
     })
   })
   return {

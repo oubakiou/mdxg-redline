@@ -2075,14 +2075,14 @@ var serveOnceAndAutoStop = async (filePath) => {
 	const listened = await listenWithFallback(server, resolvePreferredPort(process$1.env));
 	return {
 		done: new Promise((doneResolve) => {
-			const giveup = setTimeout(() => {
+			const stop = () => {
+				server.closeAllConnections();
 				server.close(() => doneResolve());
-			}, SERVE_GIVEUP_MS);
+			};
+			const giveup = setTimeout(stop, SERVE_GIVEUP_MS);
 			server.once("request", () => {
 				clearTimeout(giveup);
-				setTimeout(() => {
-					server.close(() => doneResolve());
-				}, SERVE_AUTOSTOP_MS);
+				setTimeout(stop, SERVE_AUTOSTOP_MS);
 			});
 		}),
 		url: `http://localhost:${String(listened.port)}/${encodeURIComponent(basename(filePath))}`
