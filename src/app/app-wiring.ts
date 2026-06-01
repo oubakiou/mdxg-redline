@@ -39,6 +39,7 @@ import { setOnPageActivated } from './navigation/page-scroll-spy'
 import { setupHashNavigation } from './navigation/hash-navigation'
 import { state } from './state/app-state'
 import { wireFloater } from './comments/floater'
+import { wireFootnoteTooltip } from './document/footnote-tooltip'
 import { wireMermaidModal } from './renderers/mermaid-modal'
 import { wireToolbar } from './chrome/toolbar'
 
@@ -55,6 +56,7 @@ const setupModalsAndPanels = (): void => {
   wireCommentModal()
   wireHelpModal()
   wireMermaidModal()
+  wireFootnoteTooltip()
   setOnCommentNavigate(navigateToComment)
   setOnCommentEdit(openEditCommentModal)
   // page scroll-spy が activePageIndex を更新した直後の TOC active 表示更新。

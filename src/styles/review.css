@@ -1114,6 +1114,48 @@ mark.search-hl.search-hl-current {
   display: block;
 }
 
+/* Footnote tooltip (Wikipedia 風).
+   脚注参照 [N] のホバー / フォーカスで対応する <li> 本文を浮かせる。
+   `.tooltipped` (data-tooltip) はプレーンテキスト専用なので、
+   コードブロック / 数式 / 内部リンクを含む脚注本文は別途リッチ HTML を流し込む。 */
+.footnote-tooltip {
+  position: absolute;
+  z-index: 60;
+  display: none;
+  max-width: min(420px, calc(100vw - 16px));
+  max-height: 50vh;
+  padding: 10px 14px;
+  overflow-y: auto;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  box-shadow: var(--shadow-large);
+  font-family: var(--font-system);
+  font-size: 13px;
+  line-height: 1.5;
+  pointer-events: auto;
+}
+.footnote-tooltip.is-visible {
+  display: block;
+}
+.footnote-tooltip p {
+  margin: 0;
+}
+.footnote-tooltip p + p {
+  margin-top: 6px;
+}
+.footnote-tooltip code {
+  padding: 1px 4px;
+  background: var(--paper-edge);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.footnote-tooltip a {
+  color: var(--accent);
+}
+
 /* Floating add-comment button (GitHub-style popover) */
 #floater {
   position: fixed;
