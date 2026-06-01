@@ -1,5 +1,7 @@
 # MDXG Redline
 
+[![npm](https://img.shields.io/npm/v/mdxg-redline.svg?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/mdxg-redline)
+
 [![English](https://img.shields.io/badge/Language-English-lightgrey?style=for-the-badge)](./README.md)
 [![日本語](https://img.shields.io/badge/言語-日本語-blue?style=for-the-badge)](./README_ja.md)
 
