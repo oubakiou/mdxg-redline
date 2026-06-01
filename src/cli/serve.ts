@@ -10,8 +10,8 @@ import { createReadStream } from 'node:fs'
 import { createServer } from 'node:http'
 import process from 'node:process'
 
-const SERVE_AUTOSTOP_MS = 10_000
-const SERVE_GIVEUP_MS = 60_000
+const SERVE_AUTOSTOP_MS = 3000
+const SERVE_GIVEUP_MS = 10_000
 const SERVE_HOST = '127.0.0.1'
 // 固定ポートを優先するのは、ブラウザ側の IndexedDB が origin (`http://localhost:<port>`)
 // に紐づくため。ランダムポートだと毎回 origin が変わり workspace-handle のサイレント復元が

@@ -2013,8 +2013,8 @@ var openInBrowser = async (path) => new Promise((done) => {
 });
 //#endregion
 //#region src/cli/serve.ts
-var SERVE_AUTOSTOP_MS = 1e4;
-var SERVE_GIVEUP_MS = 6e4;
+var SERVE_AUTOSTOP_MS = 3e3;
+var SERVE_GIVEUP_MS = 1e4;
 var SERVE_HOST = "127.0.0.1";
 var DEFAULT_PORT = 51729;
 var PORT_ENV_VAR = "MDXG_REDLINE_PORT";
