@@ -29,17 +29,49 @@ MDXG Redline は、LLM エージェントが人間レビュワーから「長文
 
 ### standalone 版
 
-GitHub Releases から `standalone.html` をダウンロードし、ブラウザで開いて利用する（インストール不要）。
+[GitHub Releases](https://github.com/oubakiou/mdxg-redline/releases) から `standalone.html` をダウンロードし、ブラウザで開いて利用する。
 
 ### CLI 版 (推奨)
 
+#### 人間が CLI を直接起動する場合
+
 ```bash
-npx mdxg-redline <input.md>   # input.md と同じディレクトリに書き、ブラウザを起動
+npx mdxg-redline path/to/draft.md            # 同じディレクトリに review.html を生成して開く
+npx mdxg-redline path/to/draft.md ./reviews  # output-dir を分けたい場合
 ```
 
-LLM エージェントから人間にレビューを依頼する場合や、手元の markdown 1 ファイルを単発レビューしたい場合に、同梱 CLI で markdown を埋め込んだ HTML を生成してそのままブラウザで開けます。
+#### LLM が skill 経由で CLI を起動する場合
 
-#### オプション
+```bash
+# gh skill install での例
+gh skill install oubakiou/mdxg-redline md-review --agent claude-code --scope project
+
+# npx skills add での例
+npx skills add oubakiou/mdxg-redline --skill md-review --agent claude-code --yes
+```
+
+LLM エージェント (Claude Code 等) が `md-review` skill から本 CLI を呼び出し、エージェントとレビュワーの間で markdown を往復させるワークフロー。エージェントが review HTML を生成 → レビュワーがコメント → feedback.json を書き出し → エージェントが回収、を 1 ラウンドとして繰り返す。
+
+```mermaid
+sequenceDiagram
+    participant Agent as LLM エージェント
+    participant Folder as 共有フォルダ
+    participant Browser as ブラウザ
+    participant Reviewer as レビュワー
+    loop 各ラウンド
+      Agent->>Folder: npx mdxg-redline で<br/>mdFileName-docHash-review.html を生成
+      Folder->>Browser: CLI が標準ブラウザを自動起動
+      Reviewer->>Browser: 選択 → コメント記入
+      Reviewer->>Browser: Write feedback.json をクリック
+      Browser->>Folder: mdFileName-docHash-feedback.json を書き出し
+      Folder->>Agent: 同一プレフィックスで review/feedback を対応付け
+      Note over Agent: 改訂版 markdown を生成 → 次ラウンドへ
+    end
+```
+
+`Write feedback.json` は File System Access API を使うため Chromium 系（Chrome / Edge / Arc / Brave / Opera）のみ対応。Safari / Firefox では `Comments ▾ → Export as JSON`（ダウンロード）または `Copy as JSON`（クリップボード）で代替する。
+
+#### CLIオプション
 
 | オプション                               | 説明                                                                                                                                                                                                           | 既定値                  |
 | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
@@ -65,56 +97,18 @@ cat spec.md | npx mdxg-redline - --document-name spec.md   # stdin から markdo
 npx mdxg-redline --help                                    # 使い方ヘルプを表示
 ```
 
-#### 出力
-
-- ファイル名は `<入力 MD basename>-<docHash>-review.html` で自動決定（§8 ファイル命名規約）
-- `output-dir` 省略時は入力 MD と同じディレクトリ（stdin 入力時は cwd）
-
-#### ブラウザ起動
+#### ブラウザ自動起動
 
 - 既定で `$BROWSER` → `open` (macOS) → `xdg-open` (Linux) → `cmd.exe /c start` (Windows) の優先順で標準ブラウザを起動
 - VS Code Remote Containers / Codespaces 検知時のみ、`127.0.0.1` の `51729` 番ポートに軽量 HTTP サーバーを立ててホスト側ブラウザに転送する（`MDXG_REDLINE_PORT` で変更可）。`file://` がホストから見えない環境向けの fallback。衝突時はランダムポートへ fallback して stderr に警告を出すが、**ランダムポートは `forwardPorts: "auto"` 設定でないとホスト側ブラウザから到達できない可能性がある**ため、空きが確定しているポートを `MDXG_REDLINE_PORT` で固定するか、`devcontainer.json` の `forwardPorts` に登録するのが推奨
 
-動作要件: Node.js 24+（`package.json` の `engines.node`。ビルドスクリプトを TypeScript のまま `node` で直接実行するため、type stripping が安定して使える現行 LTS の Node 24 以降を要求する）
+#### 生成物
 
-#### LLM エージェントとレビュワーの標準ループ（Chromium 系推奨）
+- review HTML のファイル名は `<入力 MD basename>-<docHash>-review.html` で自動決定（§8 ファイル命名規約）
+- レビュワーが書き出す feedback JSON のファイル名は `<入力 MD basename>-<docHash>-feedback.json`。review.html とプレフィックスを共有するため、対応関係が機械的に決まる
+- `output-dir` 省略時は入力 MD と同じディレクトリ（stdin 入力時は cwd）
 
-エージェントとレビュワーが同一マシンで markdown を複数往復させるワークフロー。エージェントが review HTML を生成 → レビュワーがコメント → feedback.json を書き出し → エージェントが回収、を 1 ラウンドとして繰り返す。
-
-```mermaid
-sequenceDiagram
-    participant Agent as LLM エージェント
-    participant Folder as 共有フォルダ
-    participant Browser as ブラウザ
-    participant Reviewer as レビュワー
-    loop 各ラウンド
-      Agent->>Folder: npx mdxg-redline で<br/>mdFileName-docHash-review.html を生成
-      Folder->>Browser: CLI が標準ブラウザを自動起動
-      Reviewer->>Browser: 選択 → コメント記入
-      Reviewer->>Browser: Write feedback.json をクリック
-      Browser->>Folder: mdFileName-docHash-feedback.json を書き出し
-      Folder->>Agent: 同一プレフィックスで review/feedback を対応付け
-      Note over Agent: 改訂版 markdown を生成 → 次ラウンドへ
-    end
-```
-
-1. エージェントが `npx mdxg-redline <input.md> <folder>` で `<mdFileName>-<docHash>-review.html` を生成（CLI が標準ブラウザを自動起動）
-2. レビュワーがコメントを記入し、`Write feedback.json` をクリック。初回だけ出力先フォルダを選び、2 回目以降は同じフォルダに書き出される
-3. 同じフォルダに `<mdFileName>-<docHash>-feedback.json` が書き出される。review HTML と同じ `<mdFileName>-<docHash>` を共有するため、対応関係が機械的に決まる
-4. エージェントが feedback.json を回収し、改訂版で次ラウンドの HTML を生成 → ループ継続
-
-`Write feedback.json` は File System Access API を使うため Chromium 系（Chrome / Edge / Arc / Brave / Opera）のみ対応。Safari / Firefox では `Comments ▾ → Export as JSON`（ダウンロード）または `Copy as JSON`（クリップボード）で代替する。
-
-### 生成物を git 管理から除外する
-
-生成物の書き出し先（CLI の `output-dir` や `Write feedback.json` で選んだフォルダ）が git 管理下にある場合、`.gitignore` に次のパターンを追加するとレビュー成果物の誤コミットを防げる。
-
-```gitignore
-*-review.html
-*-feedback.json
-```
-
-#### クリーンアップモード
+#### 生成物のクリーンアップ
 
 配布フォルダに溜まった review / feedback ペアは `--clean` サブコマンドでまとめて削除できる。
 
@@ -131,6 +125,15 @@ npx mdxg-redline --clean <dir> -r      # サブディレクトリ配下も再帰
 | `--yes`             | 実削除を行う（未指定時は dry-run で削除候補を表示するだけ）                                                             | dry-run  |
 | `-r`, `--recursive` | `--clean` と併用し、サブディレクトリ配下も再帰的に対象にする                                                            | 直下のみ |
 | `--keep <docHash>`  | 指定した 16 桁 hex の docHash ペアを温存する（繰り返し指定可）                                                          | —        |
+
+#### 生成物を git 管理から除外する
+
+生成物の書き出し先（CLI の `output-dir` や `Write feedback.json` で選んだフォルダ）が git 管理下にある場合、`.gitignore` に次のパターンを追加するとレビュー成果物の誤コミットを防げる。
+
+```gitignore
+*-review.html
+*-feedback.json
+```
 
 ### キーボードショートカット
 

@@ -29,17 +29,49 @@ End users only need a **single HTML file** (`standalone.html`). No server, no ex
 
 ### Standalone build
 
-Download `standalone.html` from GitHub Releases and open it in your browser (no install required).
+Download `standalone.html` from [GitHub Releases](https://github.com/oubakiou/mdxg-redline/releases) and open it in your browser.
 
 ### CLI (recommended)
 
+#### When a human invokes the CLI directly
+
 ```bash
-npx mdxg-redline <input.md>   # writes alongside input.md and opens browser
+npx mdxg-redline path/to/draft.md            # generate review.html in the same directory and open it
+npx mdxg-redline path/to/draft.md ./reviews  # when you want a separate output-dir
 ```
 
-When an LLM agent needs to request a review from a human, or for one-off reviews of a single local markdown file, the bundled CLI builds a review HTML with the markdown already embedded and opens it in your default browser.
+#### When an LLM invokes the CLI via a skill
 
-#### Options
+```bash
+# Example via gh skill install
+gh skill install oubakiou/mdxg-redline md-review --agent claude-code --scope project
+
+# Example via npx skills add
+npx skills add oubakiou/mdxg-redline --skill md-review --agent claude-code --yes
+```
+
+An LLM agent (e.g. Claude Code) invokes this CLI through the `md-review` skill, ping-ponging markdown between the agent and the reviewer. Each round: the agent generates the review HTML → the reviewer comments → feedback.json is written out → the agent picks it up.
+
+```mermaid
+sequenceDiagram
+    participant Agent as LLM Agent
+    participant Folder as Shared folder
+    participant Browser as Browser
+    participant Reviewer as Reviewer
+    loop Each round
+      Agent->>Folder: Generate mdFileName-docHash-review.html<br/>via npx mdxg-redline
+      Folder->>Browser: CLI auto-launches the default browser
+      Reviewer->>Browser: Select text → add comments
+      Reviewer->>Browser: Click Write feedback.json
+      Browser->>Folder: Write mdFileName-docHash-feedback.json
+      Folder->>Agent: Pair review/feedback by shared prefix
+      Note over Agent: Generate revised markdown → next round
+    end
+```
+
+`Write feedback.json` relies on the File System Access API, so only Chromium-based browsers (Chrome / Edge / Arc / Brave / Opera) support it. On Safari / Firefox, fall back to `Comments ▾ → Export as JSON` (download) or `Copy as JSON` (clipboard).
+
+#### CLI options
 
 | Option                                   | Description                                                                                                                                                                                                                                                     | Default              |
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
@@ -65,56 +97,18 @@ cat spec.md | npx mdxg-redline - --document-name spec.md   # read markdown from 
 npx mdxg-redline --help                                    # print full usage and exit
 ```
 
-#### Output
-
-- Filename is auto-derived as `<input-md-basename>-<docHash>-review.html` (per §8 file-naming protocol)
-- `output-dir` defaults to the input's directory (or cwd when reading from stdin)
-
-#### Browser launch
+#### Browser auto-launch
 
 - By default the CLI launches the system browser via `$BROWSER` → `open` (macOS) → `xdg-open` (Linux) → `cmd.exe /c start` (Windows), in that order
 - When VS Code Remote Containers / Codespaces is detected, the CLI instead starts a tiny HTTP server on `127.0.0.1` at port `51729` (override with `MDXG_REDLINE_PORT`) and hands the host browser an `http://localhost:<port>/...` URL (since `file://` paths in the container are invisible to the host). If the preferred port is busy, the CLI falls back to a random port and prints a warning to stderr — **note that random ports may not be forwarded to the host browser if `forwardPorts` is not set to `auto`, so pin a known-free `MDXG_REDLINE_PORT` (or register it in `devcontainer.json` `forwardPorts`) for reliable host access**
 
-Requires Node.js 24+ (see `engines.node` in `package.json`; the build scripts run as TypeScript directly under `node`, which relies on the type stripping stabilized in the current Node 24 LTS line)
+#### Generated artifacts
 
-#### Standard loop between an LLM agent and a reviewer (Chromium-based browsers recommended)
+- The review HTML filename is auto-derived as `<input-md-basename>-<docHash>-review.html` (per §8 file-naming protocol)
+- The feedback JSON written by the reviewer is `<input-md-basename>-<docHash>-feedback.json`. It shares the same prefix as the review HTML, so pairs match mechanically
+- `output-dir` defaults to the input's directory (or cwd when reading from stdin)
 
-For workflows where an agent and a reviewer iterate over markdown multiple times on the same machine. Each round: the agent generates the review HTML → the reviewer comments → feedback.json is written out → the agent picks it up.
-
-```mermaid
-sequenceDiagram
-    participant Agent as LLM Agent
-    participant Folder as Shared folder
-    participant Browser as Browser
-    participant Reviewer as Reviewer
-    loop Each round
-      Agent->>Folder: Generate mdFileName-docHash-review.html<br/>via npx mdxg-redline
-      Folder->>Browser: CLI auto-launches the default browser
-      Reviewer->>Browser: Select text → add comments
-      Reviewer->>Browser: Click Write feedback.json
-      Browser->>Folder: Write mdFileName-docHash-feedback.json
-      Folder->>Agent: Pair review/feedback by shared prefix
-      Note over Agent: Generate revised markdown → next round
-    end
-```
-
-1. The agent runs `npx mdxg-redline <input.md> <folder>` to generate `<mdFileName>-<docHash>-review.html` (the CLI auto-launches the default browser)
-2. The reviewer writes comments and clicks `Write feedback.json`. The output folder is chosen once on first use; subsequent clicks write to the same folder without re-prompting
-3. `<mdFileName>-<docHash>-feedback.json` is written into the same folder. It shares the same `<mdFileName>-<docHash>` as the review HTML, so pairs match mechanically
-4. The agent picks up the feedback.json and generates the next round's HTML from a revised markdown — repeat
-
-`Write feedback.json` relies on the File System Access API, so only Chromium-based browsers (Chrome / Edge / Arc / Brave / Opera) support it. On Safari / Firefox, fall back to `Comments ▾ → Export as JSON` (download) or `Copy as JSON` (clipboard).
-
-### Excluding generated artifacts from git
-
-When the output directory (the CLI's `output-dir` or the folder chosen via `Write feedback.json`) lives inside a git repository, add the following patterns to `.gitignore` so that review artifacts are not accidentally committed:
-
-```gitignore
-*-review.html
-*-feedback.json
-```
-
-#### Cleanup mode
+#### Cleanup of generated artifacts
 
 Bulk-remove the review / feedback pairs that accumulate in a distribution folder with the `--clean` subcommand.
 
@@ -131,6 +125,15 @@ npx mdxg-redline --clean <dir> -r      # also descend into subdirectories
 | `--yes`             | Perform the deletion (without it, runs as a dry-run that only lists candidates)                         | dry-run        |
 | `-r`, `--recursive` | With `--clean`, also descend into subdirectories                                                        | top level only |
 | `--keep <docHash>`  | Preserve the pair for the given 16-hex docHash (may be repeated)                                        | —              |
+
+#### Excluding generated artifacts from git
+
+When the output directory (the CLI's `output-dir` or the folder chosen via `Write feedback.json`) lives inside a git repository, add the following patterns to `.gitignore` so that review artifacts are not accidentally committed:
+
+```gitignore
+*-review.html
+*-feedback.json
+```
 
 ### Keyboard shortcuts
 
