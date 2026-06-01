@@ -28,3 +28,5 @@ skills-lock.json
 # レビュー依頼の生成物・回収パッケージ (§8 ファイル命名規約)
 *-review.html
 *-feedback.json
+# skill 配布物に同梱する eval フィクスチャだけは追跡する
+!skills/**/evals/**/*-feedback.json

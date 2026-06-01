@@ -1,0 +1,15 @@
+{
+  "document": "spec.md",
+  "docHash": "287b2ae21f99425a",
+  "exportedAt": "2026-06-01T10:00:00.000Z",
+  "comments": [
+    {
+      "id": "f1a2b3c4",
+      "quote": "/api/users/me",
+      "comment": "現在のユーザー情報を取得するエンドポイントなので、`/api/me` のほうがシンプルで意図が伝わりやすい。リソース指向で揃えるなら他のエンドポイントとも命名規約を統一してほしい。",
+      "created": "2026-06-01T09:58:11.000Z",
+      "headingPath": ["# データ取得 API 仕様書", "## エンドポイント"],
+      "sourceLine": 9
+    }
+  ]
+}

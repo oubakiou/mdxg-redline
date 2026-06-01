@@ -1,0 +1,31 @@
+{
+  "document": "design.md",
+  "docHash": "43ffe960c0f6a216",
+  "exportedAt": "2026-06-01T10:00:00.000Z",
+  "comments": [
+    {
+      "id": "f3a1b2c3",
+      "quote": "PostgreSQL 14",
+      "comment": "PostgreSQL 16 に更新したほうが新機能 (JSON_TABLE, MERGE 等) を活かせる。14 → 16 の直接 pg_upgrade は問題なく動くので採用してほしい。",
+      "created": "2026-06-01T09:55:00.000Z",
+      "headingPath": ["# プロジェクト設計書", "## データベース"],
+      "sourceLine": 9
+    },
+    {
+      "id": "f3b2c3d4",
+      "quote": "/api/v1/",
+      "comment": "API のバージョニング戦略はどうする？ URL パスベース (`/api/v1/`) と Accept ヘッダベース (`Accept: application/vnd.example.v1+json`) のどちらを採用するか、判断基準を明示してほしい。",
+      "created": "2026-06-01T09:56:00.000Z",
+      "headingPath": ["# プロジェクト設計書", "## API"],
+      "sourceLine": 13
+    },
+    {
+      "id": "f3c3d4e5",
+      "quote": "Docker コンテナとして配布",
+      "comment": "ベースイメージは何を使う想定？ Alpine だとサイズは小さいがビルド時の glibc 互換性問題が起こりがち。distroless や debian-slim も比較検討してほしい。",
+      "created": "2026-06-01T09:57:00.000Z",
+      "headingPath": ["# プロジェクト設計書", "## デプロイ"],
+      "sourceLine": 17
+    }
+  ]
+}

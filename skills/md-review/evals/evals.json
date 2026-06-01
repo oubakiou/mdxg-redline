@@ -1,0 +1,25 @@
+{
+  "skill_name": "md-review",
+  "evals": [
+    {
+      "id": 1,
+      "name": "basic-roundtrip",
+      "prompt": "添付の spec.md を mdxg-redline で人間レビュワーに見せて、レビューしてほしい。レビュワーがコメントを書き終えて feedback.json が出現したら、それを取り込んで spec.md を改訂してほしい。最終的な改訂版 spec.md を出力ディレクトリに保存して。",
+      "expected_output": "skill が CLI を起動し、stdout から docHash 付き review.html のパスを取得し、対応する feedback.json をポーリングで検出。1 件のコメント（`/api/users/me` の命名提案）を spec.md に反映した改訂版が保存される。",
+      "files": [
+        "evals/files/eval1-basic/spec.md",
+        "evals/files/eval1-basic/spec-287b2ae21f99425a-feedback.json"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "mixed-comments-with-question",
+      "prompt": "添付の design.md を mdxg-redline で人間レビュワーに見せて、コメントを取り込んで適切に判断・反映してほしい。修正指示はその場で反映していい。質問や判断が必要なコメントは、無理に書き換えず、ユーザー（あなたから見たユーザー）に提示して判断を仰いでほしい。最終的な markdown と、ユーザーに提示する内容のサマリを出力ディレクトリに保存して。",
+      "expected_output": "skill が CLI を起動、3 件のコメントを取り込む。修正指示（PostgreSQL 14→16）は markdown に反映。質問（バージョニング戦略）と判断が必要な検討事項（Docker ベースイメージ）は反映せず、ユーザーへのサマリに『これらは判断が必要』として明示する。",
+      "files": [
+        "evals/files/eval3-mixed/design.md",
+        "evals/files/eval3-mixed/design-43ffe960c0f6a216-feedback.json"
+      ]
+    }
+  ]
+}
