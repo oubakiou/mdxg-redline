@@ -26,6 +26,30 @@ export const isAllowedImageHref = (href: string): boolean => {
   return scheme !== null && ALLOWED_IMAGE_SCHEMES.has(scheme)
 }
 
+/**
+ * 同ページ内 anchor hash (`#...`) 形式の href か判定する。`#` 始まりであれば true。
+ * scheme allowlist とは独立に「fragment-only」を意味し、DOM 内の `id="..."` 要素への
+ * ジャンプ以外の副作用を持たない (navigation を変更しない / 外部 origin に到達しない) ため、
+ * `renderer.link` で `<a href="#...">` をそのまま発行してよい安全境界として扱う。
+ */
+export const isHashOnlyHref = (href: string): boolean => href.startsWith('#')
+
+/**
+ * 相対パス href か判定する。`parseScheme` が null を返し (絶対 URL でない)、かつ
+ * hash-only でもないものを「相対パス」とみなす。
+ *
+ * 用途は「URL allowlist は通らないが、相対リンクとして書かれたものだとわかる」分岐の判定。
+ * 信頼境界の都合で `<a href>` としては出力しないが、視覚的にリンクであることと href 文字列を
+ * tooltip で残す UX のため、`renderer.link` 側で text-only fallback (`javascript:` 等) と
+ * 区別する判定として使う。
+ */
+export const isRelativePathHref = (href: string): boolean => {
+  if (isHashOnlyHref(href)) {
+    return false
+  }
+  return parseScheme(href) === null
+}
+
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
 
@@ -48,6 +72,42 @@ if (import.meta.vitest) {
       expect(isAllowedLinkHref('mailto:foo@example.com')).toBe(false)
     })
     /* eslint-enable no-script-url */
+  })
+
+  describe('isHashOnlyHref', () => {
+    it('`#` 始まりの href を hash-only と判定する', () => {
+      expect(isHashOnlyHref('#anchor')).toBe(true)
+      expect(isHashOnlyHref('#1-概要')).toBe(true)
+      expect(isHashOnlyHref('#')).toBe(true)
+    })
+
+    it('絶対 URL / 相対パス / 空文字は hash-only ではない', () => {
+      expect(isHashOnlyHref('https://example.com#x')).toBe(false)
+      expect(isHashOnlyHref('./other.md#x')).toBe(false)
+      expect(isHashOnlyHref('')).toBe(false)
+    })
+  })
+
+  describe('isRelativePathHref', () => {
+    it('スキーム無しの相対パスを true 判定する', () => {
+      expect(isRelativePathHref('./other.md')).toBe(true)
+      expect(isRelativePathHref('../sibling.md')).toBe(true)
+      expect(isRelativePathHref('docs/DESIGN.md')).toBe(true)
+      expect(isRelativePathHref('/abs/path')).toBe(true)
+    })
+
+    it('hash-only は相対パスではない (専用判定が優先される)', () => {
+      expect(isRelativePathHref('#anchor')).toBe(false)
+    })
+
+    it('絶対 URL (allowed / disallowed 問わず) は相対パスではない', () => {
+      expect(isRelativePathHref('https://example.com')).toBe(false)
+      expect(isRelativePathHref('http://example.com')).toBe(false)
+      /* eslint-disable no-script-url */
+      expect(isRelativePathHref('javascript:alert(1)')).toBe(false)
+      /* eslint-enable no-script-url */
+      expect(isRelativePathHref('mailto:foo@example.com')).toBe(false)
+    })
   })
 
   describe('isAllowedImageHref', () => {

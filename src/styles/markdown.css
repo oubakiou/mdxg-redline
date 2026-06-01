@@ -129,6 +129,11 @@
 #doc a:hover {
   color: var(--doc-link-hover);
 }
+#doc .disabled-link {
+  color: var(--doc-link);
+  text-decoration: underline;
+  cursor: not-allowed;
+}
 #doc ul,
 #doc ol {
   margin-top: 0;

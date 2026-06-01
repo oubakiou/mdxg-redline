@@ -4,7 +4,12 @@ import {
   createHeadingRenderer,
 } from './markdown-renderer/heading-id-injector'
 import { type CodeHighlighter, createCodeRenderer } from './markdown-code-renderer'
-import { isAllowedImageHref, isAllowedLinkHref } from './markdown-renderer/link-policy'
+import {
+  isAllowedImageHref,
+  isAllowedLinkHref,
+  isHashOnlyHref,
+  isRelativePathHref,
+} from './markdown-renderer/link-policy'
 import { escapeHtml } from './escape'
 import footnote from 'marked-footnote'
 import { renderMathInTextRun } from './markdown-renderer/math-inline'
@@ -55,13 +60,24 @@ const createRenderer = (
   renderer.text = renderMathInTextRun
 
   // 信頼できない markdown を前提に、URL スキームを allowlist で絞る (DESIGN.md §11)。
-  // 不許可リンクは <a> を出さず inner HTML をそのまま流して plain text 扱いにし、
-  // 不許可画像は alt テキストを描画して画像取得を起こさない。
+  // - hash-only (`#...`) は同ページ内 anchor として `<a href>` をそのまま発行 (副作用無し)
+  // - allowed scheme (http/https) は外部リンクとして発行
+  // - 相対パスは `<span class="disabled-link" title="<href>">` で「リンクとわかる外観 +
+  //   マウスオーバーで href を tooltip 表示」する disabled link UI に倒す (機能は無効)。
+  //   span の中身は markdown 由来のリンクテキストなので textSegments の対象に残す
+  //   (合成 UI ではない / .code-copy-btn 等の skip 対象とは性質が異なる)
+  // - それ以外 (javascript: / mailto: / data: 等の不許可スキーム) は text のみ残す
   renderer.link = (href: string, title: string | null, text: string): string => {
-    if (!isAllowedLinkHref(href)) {
-      return text
+    if (isHashOnlyHref(href)) {
+      return `<a href="${escapeHtml(href)}"${titleAttr(title)}>${text}</a>`
     }
-    return `<a href="${escapeHtml(href)}"${titleAttr(title)} rel="noopener noreferrer" target="_blank">${text}</a>`
+    if (isAllowedLinkHref(href)) {
+      return `<a href="${escapeHtml(href)}"${titleAttr(title)} rel="noopener noreferrer" target="_blank">${text}</a>`
+    }
+    if (isRelativePathHref(href)) {
+      return `<span class="disabled-link" title="${escapeHtml(href)}" aria-disabled="true">${text}</span>`
+    }
+    return text
   }
 
   renderer.image = (href: string, title: string | null, text: string): string => {
@@ -253,16 +269,35 @@ if (import.meta.vitest) {
     })
     /* eslint-enable no-script-url */
 
-    it('相対 URL のリンクは <a> を出さず text だけ描画する', () => {
+    it('相対 URL のリンクは <span class="disabled-link" title="<href>"> で出す (機能無効 + tooltip)', () => {
       const html = renderMarkdown('[neighbor](./other.md)')
       expect(html).not.toMatch(/<a\b/)
-      expect(html).toContain('neighbor')
+      expect(html).toContain('<span class="disabled-link" title="./other.md" aria-disabled="true">')
+      expect(html).toContain('neighbor</span>')
     })
 
-    it('mailto: リンクは <a> を出さない (許可スキームから外れている)', () => {
+    it('mailto: リンクは <a> も disabled-link も出さず text のみ残す (不許可スキーム)', () => {
       const html = renderMarkdown('[mail](mailto:foo@example.com)')
       expect(html).not.toMatch(/<a\b/)
+      expect(html).not.toContain('disabled-link')
       expect(html).toContain('mail')
+    })
+
+    it('hash-only リンク (#...) は <a href="#..."> として有効化される (自己ページ内 anchor)', () => {
+      const html = renderMarkdown('[Overview](#1-概要)')
+      expect(html).toContain('<a href="#1-概要"')
+      expect(html).toContain('>Overview</a>')
+      // 同ページ内 anchor なので rel / target は付けない (外部リンク扱いと区別)
+      expect(html).not.toContain('rel="noopener noreferrer"')
+      expect(html).not.toContain('target="_blank"')
+    })
+
+    it('disabled-link の title 属性は HTML escape される (属性インジェクション防止)', () => {
+      const html = renderMarkdown('[x](./a"b)')
+      expect(html).toContain('class="disabled-link"')
+      expect(html).toContain('title="./a&quot;b"')
+      // 生 " が属性値に漏れていない
+      expect(html).not.toMatch(/title="\.\/a"b"/)
     })
   })
 
@@ -402,13 +437,19 @@ if (import.meta.vitest) {
       expect(html).not.toContain('id=')
     })
 
-    it('H1 / H2 (ページ境界見出し) には id を付けない', () => {
+    it('H1 / H2 には raw heading text から計算した GitHub 互換 slug の id が付く', () => {
       const html = renderMarkdown('# Page\n\n## Sub Page\n\n### Section\n', null, {
         headingSlugs: ['section'],
       })
-      expect(html).toMatch(/<h1>Page<\/h1>/)
-      expect(html).toMatch(/<h2>Sub Page<\/h2>/)
+      expect(html).toContain('<h1 id="page">Page</h1>')
+      expect(html).toContain('<h2 id="sub-page">Sub Page</h2>')
       expect(html).toContain('<h3 id="section">Section</h3>')
+    })
+
+    it('H1 / H2 の id は日本語見出しでも CJK を保持した GitHub 互換 slug になる', () => {
+      const html = renderMarkdown('# 概要\n\n## 1. 概要\n')
+      expect(html).toContain('<h1 id="概要">概要</h1>')
+      expect(html).toContain('<h2 id="1-概要">1. 概要</h2>')
     })
 
     it('headingSlugs の数が H3–H6 個数より少なくても残りは id 無しで出る', () => {
