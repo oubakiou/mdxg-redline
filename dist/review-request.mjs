@@ -836,7 +836,7 @@ var parseCleanArgs = (argv) => {
 	};
 };
 //#endregion
-//#region src/cli/parse-run-args.ts
+//#region src/cli/flag-parser.ts
 var INITIAL_PARTITION_STATE = {
 	commentsWidth: null,
 	documentName: null,
@@ -846,21 +846,107 @@ var INITIAL_PARTITION_STATE = {
 	mermaid: null,
 	open: true,
 	pageNavWidth: null,
-	pendingCommentsWidth: false,
-	pendingDocName: false,
-	pendingMarkdownCss: false,
-	pendingMath: false,
-	pendingMathFonts: false,
-	pendingMermaid: false,
-	pendingPageNavWidth: false,
-	pendingShikiLangs: false,
-	pendingTheme: false,
+	pending: null,
 	positional: [],
 	shikiLangs: null,
 	showOpenFile: false,
 	themeHint: null,
 	valid: true
 };
+var defineFlagDef = (spec) => ({
+	consume: (acc, token) => {
+		const value = spec.parser(token);
+		if (value === null) return {
+			...acc,
+			valid: false
+		};
+		return spec.assign(acc, value);
+	},
+	flag: spec.flag
+});
+var parseThemeHintValue = (token) => {
+	if (!isThemeHint(token)) return null;
+	return token;
+};
+var parseMarkdownCssPathValue = (token) => {
+	if (token === "-") return null;
+	return token;
+};
+var VALUE_FLAG_DEFS = [
+	defineFlagDef({
+		assign: (acc, value) => ({
+			...acc,
+			documentName: value
+		}),
+		flag: DOCUMENT_NAME_FLAG,
+		parser: (token) => token
+	}),
+	defineFlagDef({
+		assign: (acc, value) => ({
+			...acc,
+			themeHint: value
+		}),
+		flag: THEME_FLAG,
+		parser: parseThemeHintValue
+	}),
+	defineFlagDef({
+		assign: (acc, value) => ({
+			...acc,
+			shikiLangs: value
+		}),
+		flag: SHIKI_LANGS_FLAG,
+		parser: (token) => parseShikiLangsValue(token)
+	}),
+	defineFlagDef({
+		assign: (acc, value) => ({
+			...acc,
+			commentsWidth: value
+		}),
+		flag: COMMENTS_WIDTH_FLAG,
+		parser: parseCommentsWidthValue
+	}),
+	defineFlagDef({
+		assign: (acc, value) => ({
+			...acc,
+			pageNavWidth: value
+		}),
+		flag: PAGE_NAV_WIDTH_FLAG,
+		parser: parsePageNavWidthValue
+	}),
+	defineFlagDef({
+		assign: (acc, value) => ({
+			...acc,
+			mermaid: value
+		}),
+		flag: MERMAID_FLAG,
+		parser: parseMermaidValue
+	}),
+	defineFlagDef({
+		assign: (acc, value) => ({
+			...acc,
+			math: value
+		}),
+		flag: MATH_FLAG,
+		parser: parseMathValue
+	}),
+	defineFlagDef({
+		assign: (acc, value) => ({
+			...acc,
+			mathFonts: value
+		}),
+		flag: MATH_FONTS_FLAG,
+		parser: parseMathFontsValue
+	}),
+	defineFlagDef({
+		assign: (acc, value) => ({
+			...acc,
+			markdownCssPath: value
+		}),
+		flag: MARKDOWN_CSS_FLAG,
+		parser: parseMarkdownCssPathValue
+	})
+];
+var VALUE_FLAG_INDEX = new Map(VALUE_FLAG_DEFS.map((def) => [def.flag, def]));
 var consumeStandaloneFlag = (acc, token) => {
 	if (token === "--no-open") return {
 		...acc,
@@ -872,193 +958,30 @@ var consumeStandaloneFlag = (acc, token) => {
 	};
 	return null;
 };
-var VALUE_FLAG_TABLE = [
-	{
-		flag: DOCUMENT_NAME_FLAG,
-		mark: (acc) => ({
-			...acc,
-			pendingDocName: true
-		})
-	},
-	{
-		flag: THEME_FLAG,
-		mark: (acc) => ({
-			...acc,
-			pendingTheme: true
-		})
-	},
-	{
-		flag: SHIKI_LANGS_FLAG,
-		mark: (acc) => ({
-			...acc,
-			pendingShikiLangs: true
-		})
-	},
-	{
-		flag: COMMENTS_WIDTH_FLAG,
-		mark: (acc) => ({
-			...acc,
-			pendingCommentsWidth: true
-		})
-	},
-	{
-		flag: PAGE_NAV_WIDTH_FLAG,
-		mark: (acc) => ({
-			...acc,
-			pendingPageNavWidth: true
-		})
-	},
-	{
-		flag: MERMAID_FLAG,
-		mark: (acc) => ({
-			...acc,
-			pendingMermaid: true
-		})
-	},
-	{
-		flag: MATH_FLAG,
-		mark: (acc) => ({
-			...acc,
-			pendingMath: true
-		})
-	},
-	{
-		flag: MATH_FONTS_FLAG,
-		mark: (acc) => ({
-			...acc,
-			pendingMathFonts: true
-		})
-	},
-	{
-		flag: MARKDOWN_CSS_FLAG,
-		mark: (acc) => ({
-			...acc,
-			pendingMarkdownCss: true
-		})
-	}
-];
-var consumeValueFlag = (acc, token) => {
-	const entry = VALUE_FLAG_TABLE.find((row) => row.flag === token);
-	if (!entry) return null;
-	return entry.mark(acc);
-};
 var consumeFlag = (acc, token) => {
 	const standalone = consumeStandaloneFlag(acc, token);
 	if (standalone !== null) return standalone;
-	const valueFlag = consumeValueFlag(acc, token);
-	if (valueFlag !== null) return valueFlag;
+	const def = VALUE_FLAG_INDEX.get(token);
+	if (def) return {
+		...acc,
+		pending: def
+	};
 	return {
 		...acc,
 		valid: false
 	};
 };
-var erasePendingValueSpec = (spec) => {
-	return spec;
-};
-var parseThemeHintValue = (token) => {
-	if (!isThemeHint(token)) return null;
-	return token;
-};
-var parseMarkdownCssPathValue = (token) => {
-	if (token === "-") return null;
-	return token;
-};
-var PENDING_VALUE_SPECS = [
-	erasePendingValueSpec({
-		apply: (acc, value) => ({
-			...acc,
-			documentName: value,
-			pendingDocName: false
-		}),
-		parser: (token) => token,
-		pendingKey: "pendingDocName"
-	}),
-	erasePendingValueSpec({
-		apply: (acc, value) => ({
-			...acc,
-			pendingTheme: false,
-			themeHint: value
-		}),
-		parser: parseThemeHintValue,
-		pendingKey: "pendingTheme"
-	}),
-	erasePendingValueSpec({
-		apply: (acc, value) => ({
-			...acc,
-			pendingShikiLangs: false,
-			shikiLangs: value
-		}),
-		parser: (token) => parseShikiLangsValue(token),
-		pendingKey: "pendingShikiLangs"
-	}),
-	erasePendingValueSpec({
-		apply: (acc, value) => ({
-			...acc,
-			commentsWidth: value,
-			pendingCommentsWidth: false
-		}),
-		parser: parseCommentsWidthValue,
-		pendingKey: "pendingCommentsWidth"
-	}),
-	erasePendingValueSpec({
-		apply: (acc, value) => ({
-			...acc,
-			pageNavWidth: value,
-			pendingPageNavWidth: false
-		}),
-		parser: parsePageNavWidthValue,
-		pendingKey: "pendingPageNavWidth"
-	}),
-	erasePendingValueSpec({
-		apply: (acc, value) => ({
-			...acc,
-			mermaid: value,
-			pendingMermaid: false
-		}),
-		parser: parseMermaidValue,
-		pendingKey: "pendingMermaid"
-	}),
-	erasePendingValueSpec({
-		apply: (acc, value) => ({
-			...acc,
-			math: value,
-			pendingMath: false
-		}),
-		parser: parseMathValue,
-		pendingKey: "pendingMath"
-	}),
-	erasePendingValueSpec({
-		apply: (acc, value) => ({
-			...acc,
-			mathFonts: value,
-			pendingMathFonts: false
-		}),
-		parser: parseMathFontsValue,
-		pendingKey: "pendingMathFonts"
-	}),
-	erasePendingValueSpec({
-		apply: (acc, value) => ({
-			...acc,
-			markdownCssPath: value,
-			pendingMarkdownCss: false
-		}),
-		parser: parseMarkdownCssPathValue,
-		pendingKey: "pendingMarkdownCss"
-	})
-];
 var consumePendingValue = (acc, token) => {
-	const spec = PENDING_VALUE_SPECS.find((row) => acc[row.pendingKey]);
-	if (!spec) return null;
+	if (acc.pending === null) return null;
 	if (token.startsWith("--")) return {
 		...acc,
+		pending: null,
 		valid: false
 	};
-	const value = spec.parser(token);
-	if (value === null) return {
+	return acc.pending.consume({
 		...acc,
-		valid: false
-	};
-	return spec.apply(acc, value);
+		pending: null
+	}, token);
 };
 var stepArg = (acc, token) => {
 	if (!acc.valid) return acc;
@@ -1070,27 +993,24 @@ var stepArg = (acc, token) => {
 		positional: [...acc.positional, token]
 	};
 };
-var attachPartitionStringOptionals = (result, state) => {
-	if (state.documentName !== null) result.documentName = state.documentName;
-	if (state.themeHint !== null) result.themeHint = state.themeHint;
-	if (state.shikiLangs !== null) result.shikiLangs = state.shikiLangs;
-	if (state.markdownCssPath !== null) result.markdownCssPath = state.markdownCssPath;
-};
-var attachPartitionExtensionOptionals = (result, state) => {
-	if (state.mermaid !== null) result.mermaid = state.mermaid;
-	if (state.math !== null) result.math = state.math;
-	if (state.mathFonts !== null) result.mathFonts = state.mathFonts;
-};
-var attachPartitionNumberOptionals = (result, state) => {
-	if (state.commentsWidth !== null) result.commentsWidth = state.commentsWidth;
-	if (state.pageNavWidth !== null) result.pageNavWidth = state.pageNavWidth;
+var isPartitionValid = (state) => state.valid && state.pending === null;
+//#endregion
+//#region src/cli/parse-run-args.ts
+var attachIfPresent = (result, key, value) => {
+	if (value === null || typeof value === "undefined") return;
+	result[key] = value;
 };
 var attachPartitionOptionals = (result, state) => {
-	attachPartitionStringOptionals(result, state);
-	attachPartitionExtensionOptionals(result, state);
-	attachPartitionNumberOptionals(result, state);
+	attachIfPresent(result, "documentName", state.documentName);
+	attachIfPresent(result, "themeHint", state.themeHint);
+	attachIfPresent(result, "shikiLangs", state.shikiLangs);
+	attachIfPresent(result, "markdownCssPath", state.markdownCssPath);
+	attachIfPresent(result, "mermaid", state.mermaid);
+	attachIfPresent(result, "math", state.math);
+	attachIfPresent(result, "mathFonts", state.mathFonts);
+	attachIfPresent(result, "commentsWidth", state.commentsWidth);
+	attachIfPresent(result, "pageNavWidth", state.pageNavWidth);
 };
-var isPartitionValid = (state) => state.valid && !state.pendingDocName && !state.pendingTheme && !state.pendingShikiLangs && !state.pendingCommentsWidth && !state.pendingPageNavWidth && !state.pendingMermaid && !state.pendingMath && !state.pendingMathFonts && !state.pendingMarkdownCss;
 var partitionArgs = (argv) => {
 	const state = argv.reduce(stepArg, INITIAL_PARTITION_STATE);
 	const result = {
@@ -1102,27 +1022,17 @@ var partitionArgs = (argv) => {
 	attachPartitionOptionals(result, state);
 	return result;
 };
-var attachRunStringOptionals = (result, parts) => {
-	const [, outputDir] = parts.positional;
-	if (typeof outputDir === "string") result.outputDir = outputDir;
-	if (typeof parts.documentName === "string") result.documentName = parts.documentName;
-	if (typeof parts.themeHint === "string") result.themeHint = parts.themeHint;
-	if (typeof parts.markdownCssPath === "string") result.markdownCssPath = parts.markdownCssPath;
-};
-var attachRunNonStringOptionals = (result, parts) => {
-	if (parts.shikiLangs) result.shikiLangs = parts.shikiLangs;
-	if (typeof parts.commentsWidth === "number") result.commentsWidth = parts.commentsWidth;
-	if (typeof parts.pageNavWidth === "number") result.pageNavWidth = parts.pageNavWidth;
-};
-var attachRunExtensionOptionals = (result, parts) => {
-	if (parts.mermaid) result.mermaid = parts.mermaid;
-	if (parts.math) result.math = parts.math;
-	if (parts.mathFonts) result.mathFonts = parts.mathFonts;
-};
 var attachRunOptionals = (result, parts) => {
-	attachRunStringOptionals(result, parts);
-	attachRunNonStringOptionals(result, parts);
-	attachRunExtensionOptionals(result, parts);
+	attachIfPresent(result, "outputDir", parts.positional[1]);
+	attachIfPresent(result, "documentName", parts.documentName);
+	attachIfPresent(result, "themeHint", parts.themeHint);
+	attachIfPresent(result, "markdownCssPath", parts.markdownCssPath);
+	attachIfPresent(result, "shikiLangs", parts.shikiLangs);
+	attachIfPresent(result, "commentsWidth", parts.commentsWidth);
+	attachIfPresent(result, "pageNavWidth", parts.pageNavWidth);
+	attachIfPresent(result, "mermaid", parts.mermaid);
+	attachIfPresent(result, "math", parts.math);
+	attachIfPresent(result, "mathFonts", parts.mathFonts);
 };
 var buildRunArgs = (parts) => {
 	const [inputPath] = parts.positional;
@@ -1336,6 +1246,38 @@ var REPLACEMENTS = {
 };
 var escapeHtml = (value) => value.replace(/[&<>"']/g, (ch) => REPLACEMENTS[ch] || ch);
 //#endregion
+//#region src/core/embed/html-attribute-rewriter.ts
+var HTML_TAG_RE = /<html\b[^>]*>/i;
+var VALID_ATTR_NAME_RE = /^[a-z][a-z0-9-]*$/;
+var assertAttrName = (attrName) => {
+	if (!VALID_ATTR_NAME_RE.test(attrName)) throw new Error(`unsupported attribute name for rewriter: ${attrName}`);
+};
+/**
+* 開きタグ文字列に `attrName="<escapedValue>"` を挿入 or 上書きする。
+* - 既存の `attrName="..."` があれば値を差し替え
+* - 無ければ末尾 `>` の直前にスペース付きで追加
+*
+* `escapedValue` は既に HTML 属性 escape 済み (`&quot;` / `&amp;` / `&lt;` / `&gt;` 等) である前提。
+*/
+var setOrInsertAttribute = (openingTag, attrName, escapedValue) => {
+	assertAttrName(attrName);
+	const re = new RegExp(`\\b${attrName}="[^"]*"`);
+	if (re.test(openingTag)) return openingTag.replace(re, `${attrName}="${escapedValue}"`);
+	return openingTag.replace(/>$/, ` ${attrName}="${escapedValue}">`);
+};
+/**
+* template HTML の `<html>` 開きタグに `data-*` 属性を 1 つ upsert する。
+* 値は HTML 属性 escape を経由するため、CLI バリデーション済みでない値でも安全。
+* <html> タグが見つからなければ Error を投げる (呼び出し側が CLI エラーに変換)。
+*/
+var upsertHtmlDataAttribute = (reviewHtml, attrName, value) => {
+	const match = HTML_TAG_RE.exec(reviewHtml);
+	if (!match) throw new Error("template HTML に <html> タグが見つかりません");
+	const [tag] = match;
+	const newTag = setOrInsertAttribute(tag, attrName, escapeHtml(value));
+	return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length);
+};
+//#endregion
 //#region src/build/inline-markdown-css.ts
 var MARKDOWN_CSS_RE = /(<style\b(?=[^>]*\bid="markdown-css")[^>]*>)([\s\S]*?)(<\/style>)/i;
 var maskHtmlComments = (html) => html.replace(/<!--[\s\S]*?-->/g, (match) => " ".repeat(match.length));
@@ -1365,16 +1307,21 @@ var EMBEDDED_MD_META_RE = /\s*<meta\b[^>]*\bname="mdxg-redline:embedded-md"[^>]*
 * JS 起動後の loadFromMarkdown 完了表示で同じ文字列を使うことで初期描画と JS 描画が一致する。
 */
 var formatLoadedStatus = (docName, docHash) => `${docName} (${docHash}) · loaded`;
+var replaceMatchedHtmlRegion = (html, regex, buildBody) => {
+	const match = regex.exec(html);
+	if (!match) return null;
+	const [fullMatch, openingTag, , closingTag] = match;
+	const replaced = `${openingTag}${buildBody()}${closingTag}`;
+	return html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length);
+};
 /**
 * `<span id="status">` の中身を CLI が書き換える。paint 前から最終状態を見せることで、
 * JS の loadFromMarkdown が走るまで「No file」が一瞬見える FOUC を構造的に防ぐ。
 */
 var rewriteInitialStatus = (reviewHtml, statusText) => {
-	const match = STATUS_SPAN_RE.exec(reviewHtml);
-	if (!match) throw new Error("template HTML に id=\"status\" の <span> タグが見つかりません");
-	const [fullMatch, openingTag, , closingTag] = match;
-	const replaced = `${openingTag}${escapeHtml(statusText)}${closingTag}`;
-	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
+	const result = replaceMatchedHtmlRegion(reviewHtml, STATUS_SPAN_RE, () => escapeHtml(statusText));
+	if (result === null) throw new Error("template HTML に id=\"status\" の <span> タグが見つかりません");
+	return result;
 };
 /**
 * paint 前介入用の <meta> を <head> 直下に挿入する (既存があれば置換、idempotent)。
@@ -1388,96 +1335,40 @@ var upsertEmbeddedMdMeta = (reviewHtml) => {
 	const insertPos = headMatch.index + headMatch[0].length;
 	return cleaned.slice(0, insertPos) + "\n    <meta name=\"mdxg-redline:embedded-md\" content=\"1\" />" + cleaned.slice(insertPos);
 };
-var DATA_NAME_RE = /\bdata-name="[^"]*"/;
-var HTML_TAG_RE = /<html\b[^>]*>/i;
-var DATA_THEME_RE = /\bdata-theme="[^"]*"/;
-var DATA_COMMENTS_WIDTH_RE = /\bdata-comments-width="[^"]*"/;
-var DATA_PAGE_NAV_WIDTH_RE = /\bdata-page-nav-width="[^"]*"/;
-var DATA_TOOLBAR_OPEN_FILE_RE = /\bdata-toolbar-open-file="[^"]*"/;
 var TITLE_RE = /(<title\b[^>]*>)([\s\S]*?)(<\/title>)/i;
-var replaceDataName = (openingTag, escapedName) => {
-	if (DATA_NAME_RE.test(openingTag)) return openingTag.replace(DATA_NAME_RE, `data-name="${escapedName}"`);
-	return openingTag.replace(/>$/, ` data-name="${escapedName}">`);
-};
-var replaceDataTheme = (openingTag, escapedTheme) => {
-	if (DATA_THEME_RE.test(openingTag)) return openingTag.replace(DATA_THEME_RE, `data-theme="${escapedTheme}"`);
-	return openingTag.replace(/>$/, ` data-theme="${escapedTheme}">`);
-};
-var replaceDataCommentsWidth = (openingTag, escapedValue) => {
-	if (DATA_COMMENTS_WIDTH_RE.test(openingTag)) return openingTag.replace(DATA_COMMENTS_WIDTH_RE, `data-comments-width="${escapedValue}"`);
-	return openingTag.replace(/>$/, ` data-comments-width="${escapedValue}">`);
-};
-var replaceDataPageNavWidth = (openingTag, escapedValue) => {
-	if (DATA_PAGE_NAV_WIDTH_RE.test(openingTag)) return openingTag.replace(DATA_PAGE_NAV_WIDTH_RE, `data-page-nav-width="${escapedValue}"`);
-	return openingTag.replace(/>$/, ` data-page-nav-width="${escapedValue}">`);
-};
 /**
 * `<html>` 開きタグに `data-theme="<themeHint>"` を挿入する。属性が既にあれば上書き。
 * inline script はこの属性を localStorage より低い優先度で初期値ヒントとして使う。
 * 未指定時は属性を付けないため、呼び出し側で themeHint の有無を判断してから呼ぶ
 * (CLI 既定では --theme 未指定時はこの関数を呼ばない方針)。
 */
-var upsertHtmlDataTheme = (reviewHtml, themeHint) => {
-	const match = HTML_TAG_RE.exec(reviewHtml);
-	if (!match) throw new Error("template HTML に <html> タグが見つかりません");
-	const [tag] = match;
-	const newTag = replaceDataTheme(tag, escapeHtml(themeHint));
-	return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length);
-};
+var upsertHtmlDataTheme = (reviewHtml, themeHint) => upsertHtmlDataAttribute(reviewHtml, "data-theme", themeHint);
 /**
 * `<html>` 開きタグに `data-comments-width="<value>"` を挿入する。属性が既にあれば上書き。
 * inline script はこの属性を localStorage より低い優先度で初期値ヒントとして使う。
 * 値の正当性 (0 or 240–640) は CLI 側でバリデーション済み前提だが、属性 escape 経路は
 * data-theme と揃える。
 */
-var upsertHtmlDataCommentsWidth = (reviewHtml, value) => {
-	const match = HTML_TAG_RE.exec(reviewHtml);
-	if (!match) throw new Error("template HTML に <html> タグが見つかりません");
-	const [tag] = match;
-	const newTag = replaceDataCommentsWidth(tag, escapeHtml(String(value)));
-	return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length);
-};
+var upsertHtmlDataCommentsWidth = (reviewHtml, value) => upsertHtmlDataAttribute(reviewHtml, "data-comments-width", String(value));
 /**
 * `<html>` 開きタグに `data-page-nav-width="<value>"` を挿入する。属性が既にあれば上書き。
 * 値の正当性 (0 or 180–480) は CLI 側でバリデーション済み前提。data-comments-width と対称。
 */
-var upsertHtmlDataPageNavWidth = (reviewHtml, value) => {
-	const match = HTML_TAG_RE.exec(reviewHtml);
-	if (!match) throw new Error("template HTML に <html> タグが見つかりません");
-	const [tag] = match;
-	const newTag = replaceDataPageNavWidth(tag, escapeHtml(String(value)));
-	return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length);
-};
-var replaceDataToolbarOpenFile = (openingTag, value) => {
-	if (DATA_TOOLBAR_OPEN_FILE_RE.test(openingTag)) return openingTag.replace(DATA_TOOLBAR_OPEN_FILE_RE, `data-toolbar-open-file="${value}"`);
-	return openingTag.replace(/>$/, ` data-toolbar-open-file="${value}">`);
-};
+var upsertHtmlDataPageNavWidth = (reviewHtml, value) => upsertHtmlDataAttribute(reviewHtml, "data-page-nav-width", String(value));
 /**
 * `<html>` 開きタグに `data-toolbar-open-file="off"` を挿入する (idempotent)。
 * CLI が --show-open-file を指定していない時にだけ呼び、ブラウザ側 toolbar.ts はこの属性で
 * Open file ボタンと隠し input を起動時に DOM から削除する (DESIGN.md §3 入力 1 のフットガン
 * を CLI 経路で構造的に塞ぐ意図)。値は `'off'` のみで運用するため型でも literal に絞る。
 */
-var upsertHtmlDataToolbarOpenFile = (reviewHtml, value) => {
-	const match = HTML_TAG_RE.exec(reviewHtml);
-	if (!match) throw new Error("template HTML に <html> タグが見つかりません");
-	const [tag] = match;
-	const newTag = replaceDataToolbarOpenFile(tag, escapeHtml(value));
-	return reviewHtml.slice(0, match.index) + newTag + reviewHtml.slice(match.index + tag.length);
-};
+var upsertHtmlDataToolbarOpenFile = (reviewHtml, value) => upsertHtmlDataAttribute(reviewHtml, "data-toolbar-open-file", value);
 /**
 * `<title>` の中身を書き換える (idempotent)。ブラウザタブ・ファイル共有先で配布物を識別できるよう、
 * CLI 経路では `"MDXG Redline — <docName>"` 形式で上書きする (DESIGN.md §5.e)。
 * <title> タグが見つからない場合は no-op (フェイタルではなく warning 相当)。
 * <title> 中の特殊文字は HTML escape される (信頼境界、DESIGN.md §11)。
 */
-var rewriteTitle = (reviewHtml, newTitle) => {
-	const match = TITLE_RE.exec(reviewHtml);
-	if (!match) return reviewHtml;
-	const [fullMatch, openingTag, , closingTag] = match;
-	const replaced = `${openingTag}${escapeHtml(newTitle)}${closingTag}`;
-	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
-};
+var rewriteTitle = (reviewHtml, newTitle) => replaceMatchedHtmlRegion(reviewHtml, TITLE_RE, () => escapeHtml(newTitle)) ?? reviewHtml;
 /**
 * `<script id="embedded-shiki-langs">` の中身を grammars の JSON で書き換える。
 * - `grammars` が空オブジェクト `{}` でも JSON `{}` が書き込まれる (browser は空 langs として扱う)
@@ -1486,11 +1377,9 @@ var rewriteTitle = (reviewHtml, newTitle) => {
 * embedded-md のように属性経由の上書きはなく、コンテンツ置換のみ。
 */
 var rewriteEmbeddedShikiLangs = (reviewHtml, grammars) => {
-	const match = EMBEDDED_SHIKI_LANGS_RE.exec(reviewHtml);
-	if (!match) throw new Error("template HTML に id=\"embedded-shiki-langs\" の <script> タグが見つかりません");
-	const [fullMatch, openingTag, , closingTag] = match;
-	const replaced = `${openingTag}${encodeEmbeddedShikiLangs(grammars)}${closingTag}`;
-	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
+	const result = replaceMatchedHtmlRegion(reviewHtml, EMBEDDED_SHIKI_LANGS_RE, () => encodeEmbeddedShikiLangs(grammars));
+	if (result === null) throw new Error("template HTML に id=\"embedded-shiki-langs\" の <script> タグが見つかりません");
+	return result;
 };
 /**
 * `<style id="markdown-css">` の中身をユーザー指定の CSS で書き換える。デフォルトでは build 時に
@@ -1513,7 +1402,7 @@ var rewriteReviewHtml = (reviewHtml, markdown, docName) => {
 	const match = EMBEDDED_MD_RE.exec(reviewHtml);
 	if (!match) throw new Error("template HTML に id=\"embedded-md\" の <script> タグが見つかりません");
 	const [fullMatch, openingTag, , closingTag] = match;
-	const replaced = `${replaceDataName(openingTag, escapeHtml(docName))}${encodeEmbeddedMarkdown(markdown)}${closingTag}`;
+	const replaced = `${setOrInsertAttribute(openingTag, "data-name", escapeHtml(docName))}${encodeEmbeddedMarkdown(markdown)}${closingTag}`;
 	return reviewHtml.slice(0, match.index) + replaced + reviewHtml.slice(match.index + fullMatch.length);
 };
 //#endregion
@@ -1634,25 +1523,38 @@ var findInlineEnd = (text, from) => {
 	}
 	return -1;
 };
-var matchDisplay = (text, start) => {
-	const endPos = findDisplayEnd(text, start + 2);
-	if (endPos === -1) return {
-		next: start + 2,
-		segment: null
-	};
-	const closeEnd = endPos + 2;
+var buildSegment = (args) => {
+	const { text, start, openLen, contentEnd, closeLen, type } = args;
+	const closeEnd = contentEnd + closeLen;
 	return {
 		next: closeEnd,
 		segment: {
 			end: closeEnd,
 			raw: text.slice(start, closeEnd),
-			source: text.slice(start + 2, endPos),
+			source: text.slice(start + openLen, contentEnd),
 			start,
-			type: "display"
+			type
 		}
 	};
 };
-var matchInline = (text, start) => {
+var displayScanner = (text, start) => {
+	if (text[start] !== "$" || text[start + 1] !== "$") return null;
+	const endPos = findDisplayEnd(text, start + 2);
+	if (endPos === -1) return {
+		next: start + 2,
+		segment: null
+	};
+	return buildSegment({
+		closeLen: 2,
+		contentEnd: endPos,
+		openLen: 2,
+		start,
+		text,
+		type: "display"
+	});
+};
+var inlineScanner = (text, start) => {
+	if (text[start] !== "$") return null;
 	if (isInvalidInlineOpening(text, start + 1)) return {
 		next: start + 1,
 		segment: null
@@ -1662,25 +1564,29 @@ var matchInline = (text, start) => {
 		next: start + 1,
 		segment: null
 	};
-	const closeEnd = endPos + 1;
-	return {
-		next: closeEnd,
-		segment: {
-			end: closeEnd,
-			raw: text.slice(start, closeEnd),
-			source: text.slice(start + 1, endPos),
-			start,
-			type: "inline"
-		}
-	};
+	return buildSegment({
+		closeLen: 1,
+		contentEnd: endPos,
+		openLen: 1,
+		start,
+		text,
+		type: "inline"
+	});
 };
+var SCANNERS = [displayScanner, inlineScanner];
 var stepAt = (text, cursor) => {
 	if (text[cursor] !== "$" || isEscapedDollar(text, cursor)) return {
 		next: cursor + 1,
 		segment: null
 	};
-	if (text[cursor + 1] === "$") return matchDisplay(text, cursor);
-	return matchInline(text, cursor);
+	for (const scanner of SCANNERS) {
+		const step = scanner(text, cursor);
+		if (step !== null) return step;
+	}
+	return {
+		next: cursor + 1,
+		segment: null
+	};
 };
 /**
 * `$...$` (inline) / `$$...$$` (display) 数式を 1 つの plain text 入力から検出する。
@@ -1982,6 +1888,40 @@ var composeReviewHtml = async (args, ctx) => {
 	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyMarkdownCss(await applyKatex(await applyMermaid(await applyShikiLangs(applyHintRewrites(args, ctx), args, ctx), args, ctx), args, ctx), args), formatLoadedStatus(ctx.docName, ctx.docHash)));
 };
 //#endregion
+//#region src/cli/clean-format.ts
+var formatEntryLines = (header, entries) => {
+	if (entries.length === 0) return [];
+	return [header, ...entries.map((entry) => `  ${entry.filename}`)];
+};
+var formatDryRun = (dir, result) => {
+	if (result.toDelete.length === 0 && result.kept.length === 0) return `No review/feedback artifacts found in ${dir}.\n`;
+	const deleteLines = formatEntryLines(`[dry-run] Would delete ${result.toDelete.length} file(s) in ${dir}:`, result.toDelete);
+	const keepLines = formatEntryLines(`Kept ${result.kept.length} file(s) matching --keep:`, result.kept);
+	return `${[
+		...deleteLines,
+		...keepLines,
+		`Run with --yes to delete.`
+	].join("\n")}\n`;
+};
+var formatDeleted = (dir, deleted, kept) => {
+	if (deleted === 0 && kept === 0) return `No review/feedback artifacts found in ${dir}.\n`;
+	const head = `Deleted ${deleted} file(s) in ${dir}.\n`;
+	if (kept === 0) return head;
+	return `${head}Kept ${kept} file(s) matching --keep.\n`;
+};
+//#endregion
+//#region src/cli/clean-io.ts
+var defaultCleanIo = {
+	readdir: async (path, opts = {}) => readdir(path, { recursive: opts.recursive === true }),
+	stderr: (text) => {
+		process.stderr.write(text);
+	},
+	stdout: (text) => {
+		process.stdout.write(text);
+	},
+	unlink: async (path) => unlink(path)
+};
+//#endregion
 //#region src/cli/clean.ts
 /**
 * `<mdFileName>-<16桁hex>-(review.html|feedback.json)` 形式のファイル名を識別する正規表現。
@@ -2015,26 +1955,6 @@ var classifyEntries = (filenames, keepHashes) => {
 		toDelete
 	};
 };
-var formatEntryLines = (header, entries) => {
-	if (entries.length === 0) return [];
-	return [header, ...entries.map((entry) => `  ${entry.filename}`)];
-};
-var formatDryRun = (dir, result) => {
-	if (result.toDelete.length === 0 && result.kept.length === 0) return `No review/feedback artifacts found in ${dir}.\n`;
-	const deleteLines = formatEntryLines(`[dry-run] Would delete ${result.toDelete.length} file(s) in ${dir}:`, result.toDelete);
-	const keepLines = formatEntryLines(`Kept ${result.kept.length} file(s) matching --keep:`, result.kept);
-	return `${[
-		...deleteLines,
-		...keepLines,
-		`Run with --yes to delete.`
-	].join("\n")}\n`;
-};
-var formatDeleted = (dir, deleted, kept) => {
-	if (deleted === 0 && kept === 0) return `No review/feedback artifacts found in ${dir}.\n`;
-	const head = `Deleted ${deleted} file(s) in ${dir}.\n`;
-	if (kept === 0) return head;
-	return `${head}Kept ${kept} file(s) matching --keep.\n`;
-};
 var deleteEntries = async (dir, entries, io) => {
 	await Promise.all(entries.map(async (entry) => io.unlink(resolve(dir, entry.filename))));
 };
@@ -2052,16 +1972,6 @@ var runClean = async (args, io) => {
 	await deleteEntries(dirAbs, result.toDelete, io);
 	io.stdout(formatDeleted(dirAbs, result.toDelete.length, result.kept.length));
 	return 0;
-};
-var defaultCleanIo = {
-	readdir: async (path, opts = {}) => readdir(path, { recursive: opts.recursive === true }),
-	stderr: (text) => {
-		process.stderr.write(text);
-	},
-	stdout: (text) => {
-		process.stdout.write(text);
-	},
-	unlink: async (path) => unlink(path)
 };
 //#endregion
 //#region src/cli/open-command.ts

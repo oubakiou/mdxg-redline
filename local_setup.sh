@@ -33,8 +33,13 @@ fi
 
 echo "デフォルトskillをインストールします"
 gh auth login
+gh skill install anthropics/skills skill-creator --agent claude-code --scope project
 gh skill install oubakiou/skills guarded-webfetch-codex --agent claude-code --scope project
 gh skill install oubakiou/skills guarded-websearch-codex --agent claude-code --scope project
+
+# python3はskill-creator 同梱の Python スクリプト (eval-viewer 等) を実行するために必要
+# bubblewrapはCodexに必要
+sudo apt-get update -qq && sudo apt-get install -y -qq python3 libpython3-stdlib bubblewrap > /dev/null 2>&1
 
 # npm にインストールされた vite-plus の vp をグローバル参照できるようにする
 echo "npm 管理の vite-plus(vp) を設定します"
