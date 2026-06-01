@@ -33,6 +33,7 @@ fi
 
 echo "デフォルトskillをインストールします"
 gh auth login
+gh skill install . md-review --from-local --agent claude-code --scope project --force
 gh skill install anthropics/skills skill-creator --agent claude-code --scope project
 gh skill install oubakiou/skills guarded-webfetch-codex --agent claude-code --scope project
 gh skill install oubakiou/skills guarded-websearch-codex --agent claude-code --scope project
