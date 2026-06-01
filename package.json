@@ -13,20 +13,33 @@
     "mdxg",
     "single-html"
   ],
+  "homepage": "https://github.com/oubakiou/mdxg-redline#readme",
+  "bugs": {
+    "url": "https://github.com/oubakiou/mdxg-redline/issues"
+  },
   "license": "MIT",
   "author": "oubakiou",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oubakiou/mdxg-redline.git"
+  },
   "bin": {
     "mdxg-redline": "dist/review-request.mjs"
   },
   "files": [
-    "dist/",
-    "src/",
+    "dist/embed-template.html",
+    "dist/markdown.sample.css",
+    "dist/review-request.mjs",
+    "dist/mermaid.mjs",
+    "dist/katex/",
+    "dist/shiki-langs/",
     "README.md",
     "LICENSE"
   ],
   "type": "module",
   "scripts": {
     "build": "vp build --config vite.mermaid.config.ts && vp build --config vite.katex.config.ts && node scripts/build-katex-css.ts && vp build && vp build --config vite.review-request.config.ts",
+    "prepublishOnly": "npm run build",
     "build:katex": "vp build --config vite.katex.config.ts && node scripts/build-katex-css.ts",
     "build:mermaid": "vp build --config vite.mermaid.config.ts",
     "build:review-request": "vp build --config vite.review-request.config.ts",
