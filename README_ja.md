@@ -22,6 +22,7 @@ MDXG Redline は、LLM エージェントが人間レビュワーから「長文
 - **シンタックスハイライト**: Shiki bundled 全言語 (約 235) のフェンスコードを描画
 - **Mermaid 対応**: ` ```mermaid ` ブロックを SVG に描画
 - **数式描画**: `$i\hbar \frac{\partial}{\partial t}\Psi(\mathbf{r}, t) = \hat{H}\Psi(\mathbf{r}, t)$` のような `$...$` / `$$...$$` 記法で、 $i\hbar \frac{\partial}{\partial t}\Psi(\mathbf{r}, t) = \hat{H}\Psi(\mathbf{r}, t)$ のように数式を描画。
+- **脚注**: `本文中の参照[^note]` と末尾の `[^note]: 脚注の本文` を組み合わせる GitHub Flavored Markdown 互換の記法をサポート。本文に脚注[^readme-fn-example]を埋め込むと、ページ末尾の "Footnotes" セクションに自動で集約される。
 - **マークダウンプレビューのスタイル差し替え**: 本文プレビュー部分の CSS を CLI `--markdown-css <path>` でユーザー定義 CSS に差し替え可能
 
 ## 使い方
@@ -197,3 +198,5 @@ vp test         # in-source tests を実行
 ## ライセンス
 
 MIT
+
+[^readme-fn-example]: これは README 上で実際にレンダリングされる脚注の例。GitHub 上でも MDXG Redline 上でも、同じ "Footnotes" セクションに集約される。

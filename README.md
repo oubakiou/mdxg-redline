@@ -22,6 +22,7 @@ End users only need a **single HTML file** (`standalone.html`). No server, no ex
 - **Syntax highlighting**: Fenced code blocks render for all Shiki-bundled languages (~235 grammars)
 - **Mermaid support**: ` ```mermaid ` blocks render as SVG
 - **Math rendering**: write math with `$...$` / `$$...$$` syntax like `$i\hbar \frac{\partial}{\partial t}\Psi(\mathbf{r}, t) = \hat{H}\Psi(\mathbf{r}, t)$`, rendered via KaTeX as $i\hbar \frac{\partial}{\partial t}\Psi(\mathbf{r}, t) = \hat{H}\Psi(\mathbf{r}, t)$.
+- **Footnotes**: GitHub Flavored Markdown footnote syntax — inline references like `text with reference[^note]` plus definitions like `[^note]: footnote body` at the end of the document. Footnotes embedded in body text[^readme-fn-example] are automatically gathered into a "Footnotes" section at the end of the page.
 - **Swappable markdown preview stylesheet**: Replace the body preview CSS with your own via the CLI `--markdown-css <path>` flag
 
 ## Usage
@@ -197,3 +198,5 @@ Design intent, structure, and trade-offs are documented in the design document [
 ## License
 
 MIT
+
+[^readme-fn-example]: This is an actual footnote that renders inside the README. It ends up in the same "Footnotes" section both on GitHub and inside MDXG Redline.
