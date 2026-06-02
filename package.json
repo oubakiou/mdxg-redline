@@ -1,6 +1,6 @@
 {
   "name": "mdxg-redline",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Inline review tool for MDXG markdown — capture highlighted comments and export them as structured JSON for LLM agents.",
   "keywords": [
     "annotations",
