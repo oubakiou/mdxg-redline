@@ -57,20 +57,14 @@ npx skills add oubakiou/mdxg-redline --skill md-review --agent claude-code --yes
 LLM エージェント (Claude Code 等) が `md-review` skill から本 CLI を呼び出し、エージェントとレビュワーの間で markdown を往復させるワークフロー。エージェントが review HTML を生成 → レビュワーがコメント → feedback.json を書き出し → エージェントが回収、を 1 ラウンドとして繰り返す。
 
 ```mermaid
-sequenceDiagram
-    participant Agent as LLM エージェント
-    participant Folder as 共有フォルダ
-    participant Browser as ブラウザ
-    participant Reviewer as レビュワー
-    loop 各ラウンド
-      Agent->>Folder: npx mdxg-redline で<br/>mdFileName-docHash-review.html を生成
-      Folder->>Browser: CLI が標準ブラウザを自動起動
-      Reviewer->>Browser: 選択 → コメント記入
-      Reviewer->>Browser: Write feedback.json をクリック
-      Browser->>Folder: mdFileName-docHash-feedback.json を書き出し
-      Folder->>Agent: 同一プレフィックスで review/feedback を対応付け
-      Note over Agent: 改訂版 markdown を生成 → 次ラウンドへ
-    end
+flowchart LR
+    Agent["エージェント (LLM)"]
+    Folder[("共有フォルダ")]
+    Browser["ブラウザ (MDXG Redline)"]
+    Agent -- "1. review-request CLI で<br/>&lt;name&gt;-&lt;hash&gt;-review.html を生成・配置" --> Folder
+    Folder -- "2. CLI が標準ブラウザで自動起動" --> Browser
+    Browser -- "3. Write feedback.json で<br/>&lt;name&gt;-&lt;hash&gt;-feedback.json を書き出し" --> Folder
+    Folder -- "4. エージェントが拾う" --> Agent
 ```
 
 `Write feedback.json` は File System Access API を使うため Chromium 系（Chrome / Edge / Arc / Brave / Opera）のみ対応。Safari / Firefox では `Comments ▾ → Export as JSON`（ダウンロード）または `Copy as JSON`（クリップボード）で代替する。

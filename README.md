@@ -57,20 +57,14 @@ npx skills add oubakiou/mdxg-redline --skill md-review --agent claude-code --yes
 An LLM agent (e.g. Claude Code) invokes this CLI through the `md-review` skill, ping-ponging markdown between the agent and the reviewer. Each round: the agent generates the review HTML → the reviewer comments → feedback.json is written out → the agent picks it up.
 
 ```mermaid
-sequenceDiagram
-    participant Agent as LLM Agent
-    participant Folder as Shared folder
-    participant Browser as Browser
-    participant Reviewer as Reviewer
-    loop Each round
-      Agent->>Folder: Generate mdFileName-docHash-review.html<br/>via npx mdxg-redline
-      Folder->>Browser: CLI auto-launches the default browser
-      Reviewer->>Browser: Select text → add comments
-      Reviewer->>Browser: Click Write feedback.json
-      Browser->>Folder: Write mdFileName-docHash-feedback.json
-      Folder->>Agent: Pair review/feedback by shared prefix
-      Note over Agent: Generate revised markdown → next round
-    end
+flowchart LR
+    Agent["Agent (LLM)"]
+    Folder[("Shared folder")]
+    Browser["Browser (MDXG Redline)"]
+    Agent -- "1. Generate &lt;name&gt;-&lt;hash&gt;-review.html<br/>via review-request CLI" --> Folder
+    Folder -- "2. CLI auto-launches default browser" --> Browser
+    Browser -- "3. Write &lt;name&gt;-&lt;hash&gt;-feedback.json<br/>via Write feedback.json" --> Folder
+    Folder -- "4. Agent picks it up" --> Agent
 ```
 
 `Write feedback.json` relies on the File System Access API, so only Chromium-based browsers (Chrome / Edge / Arc / Brave / Opera) support it. On Safari / Firefox, fall back to `Comments ▾ → Export as JSON` (download) or `Copy as JSON` (clipboard).
