@@ -105,6 +105,7 @@ npx mdxg-redline --help                                    # print full usage an
 - The review HTML filename is auto-derived as `<input-md-basename>-<docHash>-review.html` (per §8 file-naming protocol)
 - The feedback JSON written by the reviewer is `<input-md-basename>-<docHash>-feedback.json`. It shares the same prefix as the review HTML, so pairs match mechanically
 - `output-dir` defaults to the input's directory (or cwd when reading from stdin)
+- If a `<input-md-basename>-<docHash>-feedback.json` already exists at the target directory, the CLI auto-loads it and inlines the comments into the generated HTML so the reviewer can resume from the previous round. Mismatched docHash is skipped with a stderr warning. Skipped for stdin input to avoid accidentally reading a same-named JSON in cwd
 
 #### Cleanup of generated artifacts
 

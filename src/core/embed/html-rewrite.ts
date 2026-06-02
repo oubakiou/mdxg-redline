@@ -2,7 +2,11 @@
 // <html> 属性 / <span id="status"> / <title> / <head> 直下 meta などを書き換える pure logic 群。
 // embedded-md の本文書き換え (rewriteReviewHtml) と、HTML 属性 hint / status / title / meta upsert を担う。
 
-import { encodeEmbeddedMarkdown, encodeEmbeddedShikiLangs } from './script-encoding'
+import {
+  encodeEmbeddedFeedback,
+  encodeEmbeddedMarkdown,
+  encodeEmbeddedShikiLangs,
+} from './script-encoding'
 import { escapeHtml } from '../escape'
 import { setOrInsertAttribute, upsertHtmlDataAttribute } from './html-attribute-rewriter'
 import { inlineMarkdownCssIntoHtml } from '../../build/inline-markdown-css'
@@ -18,6 +22,11 @@ const EMBEDDED_MD_RE =
 // lookahead で要求し、説明文中の literal `<script id="embedded-shiki-langs">` に誤マッチしないようにする。
 const EMBEDDED_SHIKI_LANGS_RE =
   /(<script\b(?=[^>]*\bid="embedded-shiki-langs")(?=[^>]*\btype="application\/json")[^>]*>)([\s\S]*?)(<\/script>)/i
+
+// embedded-md / embedded-shiki-langs と同じパターン。resume 経路 (CLI が <name>-<hash>-feedback.json
+// を見つけたら注入) で使う。
+const EMBEDDED_FEEDBACK_RE =
+  /(<script\b(?=[^>]*\bid="embedded-feedback")(?=[^>]*\btype="application\/json")[^>]*>)([\s\S]*?)(<\/script>)/i
 
 const STATUS_SPAN_RE = /(<span\b(?=[^>]*\bid="status")[^>]*>)([\s\S]*?)(<\/span>)/i
 
@@ -142,6 +151,21 @@ export const rewriteEmbeddedShikiLangs = (
 }
 
 /**
+ * `<script id="embedded-feedback">` の中身を feedback payload の JSON で書き換える。
+ * CLI が同じ <name>-<hash>- プレフィックスの feedback.json を見つけた resume 経路で呼ばれる。
+ * 該当 `<script>` タグが template HTML に無ければ Error (template 不整合)。
+ */
+export const rewriteEmbeddedFeedback = (reviewHtml: string, payload: unknown): string => {
+  const result = replaceMatchedHtmlRegion(reviewHtml, EMBEDDED_FEEDBACK_RE, () =>
+    encodeEmbeddedFeedback(payload)
+  )
+  if (result === null) {
+    throw new Error('template HTML に id="embedded-feedback" の <script> タグが見つかりません')
+  }
+  return result
+}
+
+/**
  * `<style id="markdown-css">` の中身をユーザー指定の CSS で書き換える。デフォルトでは build 時に
  * `src/styles/markdown.css` の内容が inline されており、CLI `--markdown-css <path>` が指定された
  * ときだけ呼ばれる (DESIGN.md §3 / §12 §1 Theming)。
@@ -215,6 +239,50 @@ if (import.meta.vitest) {
     it('元文字列を破壊しない', () => {
       const html = baseHtml
       rewriteEmbeddedShikiLangs(html, { typescript: [] })
+      expect(html).toBe(baseHtml)
+    })
+  })
+
+  describe('rewriteEmbeddedFeedback', () => {
+    const baseHtml =
+      '<html><body><script id="embedded-feedback" type="application/json"></script></body></html>'
+
+    it('payload を script タグに書き込み、JSON.parse で復元できる', () => {
+      const payload = {
+        comments: [{ blockId: 'b001', endOffset: 4, id: 'a', quote: 'text', startOffset: 0 }],
+        docHash: 'a1b2c3d4e5f6a7b8',
+      }
+      const out = rewriteEmbeddedFeedback(baseHtml, payload)
+      const opening = out.indexOf('<script id="embedded-feedback"')
+      const tagOpenEnd = out.indexOf('>', opening) + 1
+      const closing = out.indexOf('</script>', tagOpenEnd)
+      const body = out.slice(tagOpenEnd, closing)
+      expect(body.includes('<')).toBe(false)
+      expect(JSON.parse(body)).toEqual(payload)
+    })
+
+    it('既存コンテンツを置き換える', () => {
+      const html =
+        '<html><body><script id="embedded-feedback" type="application/json">{"old":"yes"}</script></body></html>'
+      const out = rewriteEmbeddedFeedback(html, { comments: [], docHash: 'h' })
+      expect(out).not.toContain('"old":"yes"')
+      expect(out).toContain('"docHash":"h"')
+    })
+
+    it('embedded-feedback タグが無いと Error を投げる', () => {
+      expect(() => rewriteEmbeddedFeedback('<html></html>', { comments: [] })).toThrow(
+        /embedded-feedback/
+      )
+    })
+
+    it('type="application/json" が無い script タグは対象外', () => {
+      const html = '<script id="embedded-feedback"></script>'
+      expect(() => rewriteEmbeddedFeedback(html, { comments: [] })).toThrow(/embedded-feedback/)
+    })
+
+    it('元文字列を破壊しない', () => {
+      const html = baseHtml
+      rewriteEmbeddedFeedback(html, { comments: [] })
       expect(html).toBe(baseHtml)
     })
   })

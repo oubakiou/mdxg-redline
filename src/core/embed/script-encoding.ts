@@ -28,6 +28,15 @@ export const encodeEmbeddedMarkdown = (markdown: string): string =>
 export const encodeEmbeddedShikiLangs = (grammars: Record<string, unknown>): string =>
   escapeJsonForScriptTag(JSON.stringify(grammars))
 
+/**
+ * feedback payload を `<script id="embedded-feedback">` に埋め込み可能な JSON 文字列に
+ * エンコードする。CLI が同じ <name>-<hash>- プレフィックスの feedback.json から読み取って
+ * 注入する resume 経路で使う。`<` を Unicode escape する点は他の embedded-* と共通で、
+ * 復元側 (boot.ts) は textContent を `JSON.parse` → `embeddedCommentsFromUnknown` で受ける。
+ */
+export const encodeEmbeddedFeedback = (payload: unknown): string =>
+  escapeJsonForScriptTag(JSON.stringify(payload))
+
 // Mermaid / KaTeX bundle 中の literal `</script>` を `<\/script>` に escape する。
 // embedded-md / embedded-shiki-langs の `<` Unicode escape とは別経路 (こちらは素の JS source な
 // ので JSON encode を経由できない)。Mermaid のエラーメッセージ / regex / コメントに `</script>` が
@@ -84,6 +93,25 @@ if (import.meta.vitest) {
     it('バックスラッシュ・末尾改行・絵文字も保持される (docHash 一致のため)', () => {
       const md = `${String.raw`\n \\ 仕様書 🚀`}\n`
       expect(JSON.parse(encodeEmbeddedMarkdown(md))).toBe(md)
+    })
+  })
+
+  describe('encodeEmbeddedFeedback', () => {
+    it('payload object を JSON.parse で完全復元できる', () => {
+      const payload = {
+        comments: [{ blockId: 'b001', endOffset: 4, id: 'a', quote: 'text', startOffset: 0 }],
+        docHash: 'a1b2c3d4e5f6a7b8',
+        document: 'spec.md',
+        exportedAt: '2026-05-15T10:30:00.000Z',
+      }
+      expect(JSON.parse(encodeEmbeddedFeedback(payload))).toEqual(payload)
+    })
+
+    it('payload 中の literal < は Unicode escape されて raw < が一切現れない', () => {
+      const payload = { comments: [{ quote: '</script><div>' }] }
+      const encoded = encodeEmbeddedFeedback(payload)
+      expect(encoded.includes('<')).toBe(false)
+      expect(JSON.parse(encoded)).toEqual(payload)
     })
   })
 

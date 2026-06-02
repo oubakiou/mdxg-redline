@@ -5,9 +5,14 @@
 
 export { computeDocHash } from './embed/hash'
 export { deriveFeedbackJsonName, deriveReviewHtmlName, stripMarkdownExt } from './embed/names'
-export { encodeEmbeddedMarkdown, encodeEmbeddedShikiLangs } from './embed/script-encoding'
+export {
+  encodeEmbeddedFeedback,
+  encodeEmbeddedMarkdown,
+  encodeEmbeddedShikiLangs,
+} from './embed/script-encoding'
 export {
   formatLoadedStatus,
+  rewriteEmbeddedFeedback,
   rewriteEmbeddedMarkdownCss,
   rewriteEmbeddedShikiLangs,
   rewriteInitialStatus,

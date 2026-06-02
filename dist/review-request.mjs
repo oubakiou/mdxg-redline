@@ -1171,20 +1171,20 @@ Examples:
   mdxg-redline --clean ./reviews --recursive --yes
 `;
 //#endregion
-//#region src/cli/filename-sanitize.ts
-var sanitizeMdFileName = (name) => {
-	const cleaned = name.replace(/\p{Cc}/gu, "_").replace(/[\\/]/g, "_");
-	if (cleaned === "" || cleaned === "." || cleaned === "..") return "_";
-	if (/^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$/i.test(cleaned)) return `${cleaned}_`;
-	return cleaned;
-};
-//#endregion
 //#region src/cli/parse-args.ts
 var parseArgs = (argv) => {
 	if (argv.length === 0) return { mode: "help" };
 	if (argv.some((token) => HELP_FLAGS.has(token))) return { mode: "help" };
 	if (argv.includes("--clean")) return parseCleanArgs(argv);
 	return parseRunArgs(argv);
+};
+//#endregion
+//#region src/core/filename-sanitize.ts
+var sanitizeMdFileName = (name) => {
+	const cleaned = name.replace(/\p{Cc}/gu, "_").replace(/[\\/]/g, "_");
+	if (cleaned === "" || cleaned === "." || cleaned === "..") return "_";
+	if (/^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$/i.test(cleaned)) return `${cleaned}_`;
+	return cleaned;
 };
 //#endregion
 //#region src/core/embed/hash.ts
@@ -1209,6 +1209,8 @@ var computeDocHash = async (markdown) => {
 var stripMarkdownExt = (filename) => filename.replace(/\.(?:markdown|md)$/i, "");
 /** ファイル命名規約 §8 に従って配布用 HTML のファイル名を組み立てる */
 var deriveReviewHtmlName = (mdFileName, docHash) => `${mdFileName}-${docHash}-review.html`;
+/** ファイル命名規約 §8 に従って人間→エージェント方向の JSON ファイル名を組み立てる */
+var deriveFeedbackJsonName = (mdFileName, docHash) => `${mdFileName}-${docHash}-feedback.json`;
 //#endregion
 //#region src/core/embed/script-encoding.ts
 var escapeJsonForScriptTag = (jsonString) => jsonString.replace(/</g, String.raw`\u003C`);
@@ -1223,6 +1225,13 @@ var encodeEmbeddedMarkdown = (markdown) => escapeJsonForScriptTag(JSON.stringify
 * 復元側 (browser) は `JSON.parse` した後 createHighlighterCoreSync の `langs` に値を渡す。
 */
 var encodeEmbeddedShikiLangs = (grammars) => escapeJsonForScriptTag(JSON.stringify(grammars));
+/**
+* feedback payload を `<script id="embedded-feedback">` に埋め込み可能な JSON 文字列に
+* エンコードする。CLI が同じ <name>-<hash>- プレフィックスの feedback.json から読み取って
+* 注入する resume 経路で使う。`<` を Unicode escape する点は他の embedded-* と共通で、
+* 復元側 (boot.ts) は textContent を `JSON.parse` → `embeddedCommentsFromUnknown` で受ける。
+*/
+var encodeEmbeddedFeedback = (payload) => escapeJsonForScriptTag(JSON.stringify(payload));
 var escapeScriptTagInJs = (jsSource) => {
 	let count = 0;
 	const escaped = jsSource.replace(/<\/script>/gi, () => {
@@ -1299,6 +1308,7 @@ var inlineMarkdownCssIntoHtml = (html, css) => {
 //#region src/core/embed/html-rewrite.ts
 var EMBEDDED_MD_RE = /(<script\b(?=[^>]*\bid="embedded-md")(?=[^>]*\btype="text\/markdown")[^>]*>)([\s\S]*?)(<\/script>)/i;
 var EMBEDDED_SHIKI_LANGS_RE = /(<script\b(?=[^>]*\bid="embedded-shiki-langs")(?=[^>]*\btype="application\/json")[^>]*>)([\s\S]*?)(<\/script>)/i;
+var EMBEDDED_FEEDBACK_RE = /(<script\b(?=[^>]*\bid="embedded-feedback")(?=[^>]*\btype="application\/json")[^>]*>)([\s\S]*?)(<\/script>)/i;
 var STATUS_SPAN_RE = /(<span\b(?=[^>]*\bid="status")[^>]*>)([\s\S]*?)(<\/span>)/i;
 var HEAD_OPEN_RE = /<head\b[^>]*>/i;
 var EMBEDDED_MD_META_RE = /\s*<meta\b[^>]*\bname="mdxg-redline:embedded-md"[^>]*\/?>/i;
@@ -1379,6 +1389,16 @@ var rewriteTitle = (reviewHtml, newTitle) => replaceMatchedHtmlRegion(reviewHtml
 var rewriteEmbeddedShikiLangs = (reviewHtml, grammars) => {
 	const result = replaceMatchedHtmlRegion(reviewHtml, EMBEDDED_SHIKI_LANGS_RE, () => encodeEmbeddedShikiLangs(grammars));
 	if (result === null) throw new Error("template HTML に id=\"embedded-shiki-langs\" の <script> タグが見つかりません");
+	return result;
+};
+/**
+* `<script id="embedded-feedback">` の中身を feedback payload の JSON で書き換える。
+* CLI が同じ <name>-<hash>- プレフィックスの feedback.json を見つけた resume 経路で呼ばれる。
+* 該当 `<script>` タグが template HTML に無ければ Error (template 不整合)。
+*/
+var rewriteEmbeddedFeedback = (reviewHtml, payload) => {
+	const result = replaceMatchedHtmlRegion(reviewHtml, EMBEDDED_FEEDBACK_RE, () => encodeEmbeddedFeedback(payload));
+	if (result === null) throw new Error("template HTML に id=\"embedded-feedback\" の <script> タグが見つかりません");
 	return result;
 };
 /**
@@ -1766,6 +1786,134 @@ var applyMermaid = async (html, args, ctx) => {
 	return rewritten;
 };
 //#endregion
+//#region src/core/feedback.ts
+/** unknown が object record としてプロパティ参照可能かを最初に狭める最小ガード */
+var isRecord$1 = (value) => value !== null && typeof value === "object";
+/** JSON 由来 number の NaN / Infinity を弾く。offset 計算に流す値なので有限値だけ許可する */
+var isFiniteNumber = (value) => typeof value === "number" && Number.isFinite(value);
+/** ID や blockId のように空文字だと復元不能になる識別子向けの文字列ガード */
+var isNonEmptyString = (value) => typeof value === "string" && value.length > 0;
+var hasValidOffsets = (value) => {
+	const { endOffset, startOffset } = value;
+	return isFiniteNumber(startOffset) && isFiniteNumber(endOffset) && startOffset >= 0 && endOffset > startOffset;
+};
+/**
+* embedded feedback / 既存 feedback.json から来る 1 コメント分の検証 (pageIndex 未確定段階)。
+* `sourceLine` は §6.6 invariant により必須で、1 以上の正整数でなければならない。
+* `pageIndex` は import 後に sourceLine から逆引きして埋めるためここでは検証しない。
+*/
+var isImportableComment = (value) => {
+	if (!isRecord$1(value)) return false;
+	const { blockId, comment, created, id, quote, sourceLine } = value;
+	return isNonEmptyString(id) && isNonEmptyString(blockId) && typeof quote === "string" && typeof comment === "string" && isNonEmptyString(created) && isFiniteNumber(sourceLine) && sourceLine >= 1 && hasValidOffsets(value);
+};
+/** unknown 配列から有効な ImportedComment だけを取り出す。外部 JSON の壊れた要素は fail-soft で除外する */
+var commentsFromUnknown = (value) => {
+	if (!Array.isArray(value)) return [];
+	return value.filter(isImportableComment);
+};
+//#endregion
+//#region src/cli/assets/resume-feedback.ts
+var STDIN_TOKEN$1 = "-";
+var parseFeedbackJson = (raw) => {
+	try {
+		return JSON.parse(raw);
+	} catch {
+		return null;
+	}
+};
+var isRecord = (value) => value !== null && typeof value === "object";
+/**
+* `isImportableComment` を通る件数のみ数える。ブラウザ側 boot 経路は壊れた要素を fail-soft に
+* filter するため、raw `payload.comments.length` と「実際に貼り直される件数」が乖離する。
+*/
+var countComments = (payload) => {
+	if (!isRecord(payload)) return 0;
+	return commentsFromUnknown(payload.comments).length;
+};
+var extractDocHash = (payload) => {
+	if (!isRecord(payload)) return null;
+	if (typeof payload.docHash !== "string") return null;
+	return payload.docHash;
+};
+/**
+* `outputPath` と同じディレクトリにある `<mdFileName>-<docHash>-feedback.json` のフルパス。
+* compose-review-html.ts の outputPath 組み立てと同じ sanitize / stripExt ルールに揃える。
+*/
+var resolveFeedbackPath = (docName, docHash, outputPath) => {
+	const mdFileName = sanitizeMdFileName(stripMarkdownExt(docName));
+	return resolve(dirname(outputPath), deriveFeedbackJsonName(mdFileName, docHash));
+};
+var extractErrorCode = (error) => {
+	if (error instanceof Error && "code" in error) return String(error.code);
+	return "unknown";
+};
+/**
+* ENOENT (= 初回ラウンドで feedback.json が存在しない) は silent skip。
+* EACCES / EISDIR / ELOOP 等の他 I/O エラーも、resume が失敗するだけで review HTML 生成
+* 自体は続行できるため stderr 警告 + skip にダウングレードする (CLI 全体を落とさない)。
+*/
+var readFeedbackFile = async (feedbackPath) => {
+	try {
+		return {
+			raw: await readFile(feedbackPath, "utf8"),
+			warning: null
+		};
+	} catch (error) {
+		const code = extractErrorCode(error);
+		if (code === "ENOENT") return {
+			raw: null,
+			warning: null
+		};
+		return {
+			raw: null,
+			warning: `(skipped resuming ${feedbackPath}: read failed with ${code})\n`
+		};
+	}
+};
+var validateFeedbackPayload = (raw, expectedDocHash, feedbackPath) => {
+	const payload = parseFeedbackJson(raw);
+	if (payload === null) return {
+		payload: null,
+		warning: `(skipped resuming ${feedbackPath}: invalid JSON)\n`
+	};
+	const payloadDocHash = extractDocHash(payload);
+	if (payloadDocHash !== expectedDocHash) return {
+		payload: null,
+		warning: `(skipped resuming ${feedbackPath}: docHash mismatch — got ${payloadDocHash ?? "null"}, expected ${expectedDocHash})\n`
+	};
+	return {
+		payload,
+		warning: null
+	};
+};
+var readValidatedFeedback = async (feedbackPath, expectedDocHash) => {
+	const { raw, warning: readWarning } = await readFeedbackFile(feedbackPath);
+	if (readWarning !== null) process$1.stderr.write(readWarning);
+	if (raw === null) return null;
+	const { payload, warning } = validateFeedbackPayload(raw, expectedDocHash, feedbackPath);
+	if (warning !== null) {
+		process$1.stderr.write(warning);
+		return null;
+	}
+	return {
+		feedbackPath,
+		payload
+	};
+};
+var resolveResumePayload = async (args, ctx) => {
+	if (args.inputPath === STDIN_TOKEN$1) return null;
+	return readValidatedFeedback(resolveFeedbackPath(ctx.docName, ctx.docHash, ctx.outputPath), ctx.docHash);
+};
+var applyResumeFeedback = async (html, args, ctx) => {
+	const resolved = await resolveResumePayload(args, ctx);
+	if (resolved === null) return html;
+	const count = countComments(resolved.payload);
+	const rewritten = rewriteEmbeddedFeedback(html, resolved.payload);
+	process$1.stderr.write(`Resumed ${count} comment(s) from ${resolved.feedbackPath}.\n`);
+	return rewritten;
+};
+//#endregion
 //#region src/cli/error-message.ts
 var errorMessage = (error) => {
 	if (error instanceof Error) return error.message;
@@ -1885,7 +2033,7 @@ var applyHintRewrites = (args, ctx) => {
 	return applyTitleRewrite(applyToolbarOpenFileHint(applyPageNavWidthHint(applyCommentsWidthHint(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args.commentsWidth), args.pageNavWidth), args.showOpenFile), ctx.docName);
 };
 var composeReviewHtml = async (args, ctx) => {
-	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyMarkdownCss(await applyKatex(await applyMermaid(await applyShikiLangs(applyHintRewrites(args, ctx), args, ctx), args, ctx), args, ctx), args), formatLoadedStatus(ctx.docName, ctx.docHash)));
+	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyMarkdownCss(await applyResumeFeedback(await applyKatex(await applyMermaid(await applyShikiLangs(applyHintRewrites(args, ctx), args, ctx), args, ctx), args, ctx), args, ctx), args), formatLoadedStatus(ctx.docName, ctx.docHash)));
 };
 //#endregion
 //#region src/cli/clean-format.ts

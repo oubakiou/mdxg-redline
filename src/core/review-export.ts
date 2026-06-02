@@ -10,9 +10,13 @@ export interface ReviewExportState {
 
 /**
  * 1 コメント分を export 用に正規化する。
- * 内部 anchor (blockId / startOffset / endOffset) は外し、blockAnchors Map から markdown 上の
- * 開始行と祖先見出しを引いて差し替える。anchor が見つからない場合は安全側に倒し、
- * sourceLine=0 / headingPath=[] とする（LLM 側は quote grep にフォールバックする想定）。
+ * 後段 LLM 用に blockAnchors Map から markdown 上の開始行 (`sourceLine`) と祖先見出し
+ * (`headingPath`) を引いて追加し、`Comment` 本体の内部 anchor (`blockId` /
+ * `startOffset` / `endOffset`) はそのまま保持する。内部 anchor は LLM パイプラインからは
+ * 余剰だが、resume 経路 (`embedded-feedback`) で `isImportableComment` の必須フィールドを
+ * 満たすために含めている (`src/core/types.ts` の `ExportComment` jsdoc)。
+ * anchor が見つからない場合は安全側に倒し、`sourceLine=0` / `headingPath=[]` とする
+ * （LLM 側は quote grep にフォールバックする想定）。
  */
 const EMPTY_ANCHOR: BlockAnchor = { headingPath: [], sourceLine: 0 }
 
@@ -22,12 +26,15 @@ const toExportComment = (
 ): ExportComment => {
   const anchor = blockAnchors.get(comment.blockId) ?? EMPTY_ANCHOR
   return {
+    blockId: comment.blockId,
     comment: comment.comment,
     created: comment.created,
+    endOffset: comment.endOffset,
     headingPath: anchor.headingPath,
     id: comment.id,
     quote: comment.quote,
     sourceLine: anchor.sourceLine,
+    startOffset: comment.startOffset,
   }
 }
 
@@ -133,6 +140,27 @@ if (import.meta.vitest) {
       expect(result.docHash).toBe('a1b2c3d4e5f6a7b8')
       expect(result.document).toBe('review.md')
       expect(result.exportedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+    })
+
+    it('internal anchor (blockId / startOffset / endOffset) を export に含める (resume 経路用)', () => {
+      const comment: Comment = {
+        ...dummyCommentForTest('r1'),
+        blockId: 'b005',
+        endOffset: 17,
+        startOffset: 4,
+      }
+      const result = buildReviewExportPayload({
+        blockAnchors: new Map(),
+        comments: [comment],
+        docHash: 'h',
+        docName: 'r.md',
+      })
+
+      expect(result.comments[0]).toMatchObject({
+        blockId: 'b005',
+        endOffset: 17,
+        startOffset: 4,
+      })
     })
 
     it('blockAnchors から headingPath と sourceLine を引いて埋める', () => {

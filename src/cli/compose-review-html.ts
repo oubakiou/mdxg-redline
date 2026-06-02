@@ -5,7 +5,8 @@
 // - --markdown-css 差し替え
 // - 初期 status text と embedded-md meta upsert
 
-import { type RunArgs, sanitizeMdFileName } from './parse-args'
+import type { RunArgs } from './parse-args'
+import { sanitizeMdFileName } from '../core/filename-sanitize'
 import {
   computeDocHash,
   deriveReviewHtmlName,
@@ -25,6 +26,7 @@ import { dirname, resolve } from 'node:path'
 import type { EmbedContext } from './embed-context'
 import { applyKatex } from './assets/katex'
 import { applyMermaid } from './assets/mermaid'
+import { applyResumeFeedback } from './assets/resume-feedback'
 import { applyShikiLangs } from './assets/shiki'
 import { fileURLToPath } from 'node:url'
 import { readFile } from 'node:fs/promises'
@@ -135,7 +137,8 @@ export const composeReviewHtml = async (args: RunArgs, ctx: EmbedContext): Promi
   const withShiki = await applyShikiLangs(withHints, args, ctx)
   const withMermaid = await applyMermaid(withShiki, args, ctx)
   const withKatex = await applyKatex(withMermaid, args, ctx)
-  const withMarkdownCss = await applyMarkdownCss(withKatex, args)
+  const withResume = await applyResumeFeedback(withKatex, args, ctx)
+  const withMarkdownCss = await applyMarkdownCss(withResume, args)
   const statusText = formatLoadedStatus(ctx.docName, ctx.docHash)
   const withStatus = rewriteInitialStatus(withMarkdownCss, statusText)
   return upsertEmbeddedMdMeta(withStatus)

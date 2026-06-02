@@ -25,6 +25,7 @@ import { markFeedbackUnsaved, markFeedbackWritten, state } from '../state/app-st
 import { qs, toast } from '../dom/dom-utils'
 import type { ExportPayload } from '../../core/types'
 import { renderComments } from '../comments/comments'
+import { sanitizeMdFileName } from '../../core/filename-sanitize'
 
 const buildExportPayload = (): ExportPayload => buildReviewExportPayload(state)
 
@@ -67,14 +68,17 @@ export const restoreWorkspaceHandle = async (): Promise<boolean> => {
 
 /**
  * 現在の state からファイル命名規約 §8 に従う feedback.json のファイル名を導出する。
- * docName から拡張子を除いて mdFileName とし、現在の docHash と組み合わせる。
+ * docName から拡張子を除き sanitize した mdFileName と、現在の docHash を組み合わせる。
  * docName / docHash が未確定なら null（呼び出し側で抑止）。
+ * sanitize は CLI の compose-review-html / resume-feedback と同じ規則で揃え、
+ * `--document-name "a/b.md"` のような入力でも CLI 生成 HTML 名 (`a_b-<hash>-review.html`) と
+ * browser 書き出し名 (`a_b-<hash>-feedback.json`) のペアが §8 命名規約で一致するようにする。
  */
 const resolveFeedbackFilename = (): string | null => {
   if (!state.docName || !state.docHash) {
     return null
   }
-  return deriveFeedbackJsonName(stripMarkdownExt(state.docName), state.docHash)
+  return deriveFeedbackJsonName(sanitizeMdFileName(stripMarkdownExt(state.docName)), state.docHash)
 }
 
 /**
@@ -291,6 +295,13 @@ if (import.meta.vitest) {
       state.docName = 'spec.md'
       state.markdown = ''
       expect(resolveFeedbackFilename()).toBeNull()
+    })
+
+    it('docName 内のパス区切り文字は sanitize される (CLI compose と命名を揃える)', () => {
+      state.docHash = 'a1b2c3d4e5f6a7b8'
+      state.docName = 'a/b.md'
+      state.markdown = '# X'
+      expect(resolveFeedbackFilename()).toBe('a_b-a1b2c3d4e5f6a7b8-feedback.json')
     })
   })
 }
