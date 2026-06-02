@@ -832,21 +832,33 @@ html.toolbar-open-file-off #btn-load {
   border-color: rgba(31, 35, 40, 0.15);
   color: var(--ink);
 }
+/* disabled は opacity ではなく色で表現する。opacity < 1 は新しい stacking context を作る
+   ため、.tooltipped::after が同じパネル内の他要素より前面に来られなくなる (cards に隠れる)
+   のと、opacity が ::after にも継承されて tooltip 自体が薄く見えるのを避ける。 */
 .btn:disabled,
 .btn[disabled] {
   cursor: not-allowed;
-  opacity: 0.6;
+  color: var(--ink-faint);
+  border-color: var(--rule-muted);
 }
 .btn:disabled:hover,
 .btn[disabled]:hover {
   background: var(--paper-edge);
-  border-color: var(--rule);
-  color: var(--ink);
+  border-color: var(--rule-muted);
+  color: var(--ink-faint);
 }
+/* disabled primary は success 70% paper 30% で混ぜる。50% だと両テーマとも contrast 2:1 台で
+   ラベルが読めなくなる (light: 白 on #8fc49e 2.0:1 / dark: 暗 on #236344 2.4:1)。
+   WCAG 1.4.3 は inactive UI を contrast 要件から免除するが、最低限「読める dim」を維持する。
+   box-shadow は base の inset highlight を消してフラット化し、立体感で affordance を出さない。 */
+.btn-primary:disabled,
+.btn-primary[disabled],
 .btn-primary:disabled:hover,
 .btn-primary[disabled]:hover {
-  background: var(--success);
+  background: color-mix(in srgb, var(--success) 70%, var(--paper));
   color: var(--btn-primary-fg);
+  border-color: var(--rule-muted);
+  box-shadow: var(--shadow-small);
 }
 .btn-primary {
   background: var(--success);
@@ -865,6 +877,16 @@ html.toolbar-open-file-off #btn-load {
   border-color: transparent;
   background: transparent;
   box-shadow: none;
+}
+/* .btn:disabled の border-color: var(--rule-muted) と :disabled:hover の background: var(--paper-edge)
+   が ghost variant に漏れて透明契約 (border-color: transparent / background: transparent) を破るので、
+   ghost 側で明示的に transparent を再宣言する。現状 JS は ghost を disabled にしないので latent 防御。 */
+.btn-ghost:disabled,
+.btn-ghost[disabled],
+.btn-ghost:disabled:hover,
+.btn-ghost[disabled]:hover {
+  background: transparent;
+  border-color: transparent;
 }
 #btn-search span {
   font-size: 20px;
