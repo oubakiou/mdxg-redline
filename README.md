@@ -105,7 +105,6 @@ npx mdxg-redline --help                                    # print full usage an
 - The review HTML filename is auto-derived as `<input-md-basename>-<docHash>-review.html` (per §8 file-naming protocol)
 - The feedback JSON written by the reviewer is `<input-md-basename>-<docHash>-feedback.json`. It shares the same prefix as the review HTML, so pairs match mechanically
 - `output-dir` defaults to the input's directory (or cwd when reading from stdin)
-- If a `<input-md-basename>-<docHash>-feedback.json` already exists at the target directory, the CLI auto-loads it and inlines the comments into the generated HTML so the reviewer can resume from the previous round. Mismatched docHash is skipped with a stderr warning. Skipped for stdin input to avoid accidentally reading a same-named JSON in cwd
 
 #### Cleanup of generated artifacts
 
@@ -175,8 +174,11 @@ For the roadmap ahead, see [docs/DESIGN.md §12 MDXG compliance roadmap and futu
 
 The build tool is [Vite+ (vp)](https://viteplus.dev/), installed via npm (`vite-plus`) as a dev dependency. The devcontainer and `local_setup.sh` handle setup, so using those is the fastest path for local development.
 
+`vp build` is the shortest command and only produces the main build artifacts (`dist/standalone.html` / `dist/embed-template.html`). To produce the full distribution set (mermaid runtime, KaTeX runtime, and the review-request CLI as well), run `npm run build`.
+
 ```bash
-vp build        # Generates dist/standalone.html, dist/embed-template.html, and dist/review-request.mjs
+vp build        # Generates only dist/standalone.html and dist/embed-template.html (shortest)
+npm run build   # Generates the full distribution (mermaid / katex / standalone / embed-template / review-request)
 vp check --fix  # Runs format / lint / type checks together (--fix auto-fixes)
 vp test         # Runs in-source tests
 ```
