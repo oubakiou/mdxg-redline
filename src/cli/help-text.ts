@@ -20,10 +20,12 @@ Options:
                          with stdin input.
   --theme <value>        Set the initial theme hint for the generated HTML.
                          One of: system | light | dark. Written as a
-                         <html data-theme> attribute and used only when the
-                         viewer has no localStorage preference yet (the user's
-                         UI toggle history always wins). Omit to leave the
-                         attribute off entirely.
+                         <html data-theme> attribute. Takes precedence over
+                         the viewer's localStorage at every reload (the CLI
+                         hint always wins on initial paint; UI toggle clicks
+                         override only within the current session, and a
+                         subsequent reload re-applies the CLI hint). Omit to
+                         leave the attribute off entirely.
   --shiki-langs <value>  Select which Shiki grammars to embed in the HTML
                          for syntax highlighting. One of:
                            auto  Scan the input markdown and embed only the
@@ -43,9 +45,11 @@ Options:
                                      it).
                            280–640   Start open with the given width in pixels.
                          Written as a <html data-comments-width> attribute and
-                         used only when the viewer has no localStorage
-                         preference yet (the user's UI history always wins).
-                         Omit to leave the attribute off entirely.
+                         takes precedence over the viewer's localStorage at
+                         every reload (UI drags / toggle-tab clicks override
+                         only within the current session; reload re-applies
+                         the CLI hint). Omit to leave the attribute off
+                         entirely.
   --page-nav-width <px>  Set the initial document-pages panel (left TOC) width
                          hint. One of:
                            0         Start with the panel closed (only the left

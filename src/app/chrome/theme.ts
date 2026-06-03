@@ -1,4 +1,4 @@
-// Theme (light/dark/system) の単一の真実の源と、優先順位 P1 (localStorage > CLI hint > OS) の
+// Theme (light/dark/system) の単一の真実の源と、優先順位 P1 (CLI hint > localStorage > OS) の
 // 決定ロジック。純粋関数 (resolve* / next* / isStoredTheme) と DOM/localStorage 側関数を
 // 同居させているが、純粋関数は副作用ゼロで in-source test できる粒度に保つ。
 // 設計判断・優先順位は DESIGN.md §7c / §12 §1 Theming 行を参照。
@@ -40,17 +40,19 @@ export const nextStoredTheme = (current: StoredTheme): StoredTheme => {
 
 /**
  * inline script と同じ優先順位 P1 で最終 AppliedTheme を決定する純粋関数。
- *   1. stored (localStorage) があればそれ
- *   2. cliHint (<html data-theme>) があればそれ
+ *   1. cliHint (<html data-theme>) があればそれ
+ *   2. stored (localStorage) があればそれ
  *   3. それ以外は 'system'
  * いずれの段階でも 'system' は systemPrefersDark で light/dark に展開する。
+ * CLI が明示指定された時だけユーザーの localStorage を上書きする (`--theme` を
+ * 指定せず素で開いたときは従来通り localStorage が効く)。
  */
 export const resolveEffectiveTheme = (
   stored: StoredTheme | null,
   cliHint: StoredTheme | null,
   systemPrefersDark: boolean
 ): AppliedTheme => {
-  const effective: StoredTheme = stored ?? cliHint ?? 'system'
+  const effective: StoredTheme = cliHint ?? stored ?? 'system'
   return resolveAppliedTheme(effective, systemPrefersDark)
 }
 
@@ -153,29 +155,42 @@ if (import.meta.vitest) {
   })
 
   describe('resolveEffectiveTheme', () => {
-    it('P1-1: stored があれば stored が最優先 (CLI hint と OS を無視)', () => {
-      expect(resolveEffectiveTheme('light', 'dark', true)).toBe('light')
-      expect(resolveEffectiveTheme('dark', 'light', false)).toBe('dark')
+    it('P1-1: cliHint があれば cliHint が最優先 (stored と OS を無視)', () => {
+      expect(resolveEffectiveTheme('light', 'dark', true)).toBe('dark')
+      expect(resolveEffectiveTheme('dark', 'light', false)).toBe('light')
     })
 
-    it('P1-1: stored=system は OS 設定を反映 (CLI hint は無視)', () => {
-      expect(resolveEffectiveTheme('system', 'dark', true)).toBe('dark')
-      expect(resolveEffectiveTheme('system', 'dark', false)).toBe('light')
+    it('P1-1: cliHint=system は OS 設定を反映 (stored は無視)', () => {
+      expect(resolveEffectiveTheme('dark', 'system', true)).toBe('dark')
+      expect(resolveEffectiveTheme('light', 'system', false)).toBe('light')
     })
 
-    it('P1-2: stored=null かつ cliHint があれば cliHint を使う', () => {
-      expect(resolveEffectiveTheme(null, 'dark', false)).toBe('dark')
-      expect(resolveEffectiveTheme(null, 'light', true)).toBe('light')
+    it('P1-2: cliHint=null かつ stored があれば stored を使う', () => {
+      expect(resolveEffectiveTheme('light', null, true)).toBe('light')
+      expect(resolveEffectiveTheme('dark', null, false)).toBe('dark')
     })
 
-    it('P1-2: stored=null かつ cliHint=system は OS 設定を反映', () => {
-      expect(resolveEffectiveTheme(null, 'system', true)).toBe('dark')
-      expect(resolveEffectiveTheme(null, 'system', false)).toBe('light')
+    it('P1-2: cliHint=null かつ stored=system は OS 設定を反映', () => {
+      expect(resolveEffectiveTheme('system', null, true)).toBe('dark')
+      expect(resolveEffectiveTheme('system', null, false)).toBe('light')
     })
 
-    it('P1-3: stored=null かつ cliHint=null は system 既定 (OS 設定反映)', () => {
+    it('P1-3: cliHint=null かつ stored=null は system 既定 (OS 設定反映)', () => {
       expect(resolveEffectiveTheme(null, null, true)).toBe('dark')
       expect(resolveEffectiveTheme(null, null, false)).toBe('light')
+    })
+
+    // chrome/toolbar.ts:subscribeSystemTheme の guard は effective StoredTheme が 'system' のときだけ
+    // OS 変化を反映する。FOUC inline script の paint 結果と runtime の subscribe 結果がズレないよう、
+    // 次の 2 ケースは「effective = 'system' → OS prefers を反映」の不変条件を直接押さえる。
+    it('regression: cliHint=system AND stored=dark は cliHint が勝って effective=system (OS 反映)', () => {
+      expect(resolveEffectiveTheme('dark', 'system', true)).toBe('dark')
+      expect(resolveEffectiveTheme('dark', 'system', false)).toBe('light')
+    })
+
+    it('regression: cliHint=dark AND stored=system は cliHint が勝って effective=dark (OS 無視)', () => {
+      expect(resolveEffectiveTheme('system', 'dark', true)).toBe('dark')
+      expect(resolveEffectiveTheme('system', 'dark', false)).toBe('dark')
     })
   })
 }

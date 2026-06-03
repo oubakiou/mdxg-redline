@@ -11,6 +11,8 @@
 
 https://github.com/user-attachments/assets/d40ccab2-c7fd-4321-aefc-3e42cc5df9af
 
+紹介記事: [コードの読み書きが減ったら次はドキュメントレビューの高速化が必要になる。高速MDレビューツール MDXG Redlineの紹介](https://zenn.dev/oubakiou/articles/764d92a5018e94)
+
 MDXG Redline は、LLM エージェントが人間レビュワーから「長文 markdown に対するフィードバック」を **散文の感想ではなく位置情報付きの構造化 JSON** として受け取るためのブラウザツールです。LLM エージェントと人間レビュワーの間に立ち、「markdown を貼って、散文のフィードバックを受け取る」という曖昧なループを、**機械可読なフィードバック成果物** に置き換えます。
 
 エンドユーザーには **単一 HTML ファイル**（`standalone.html`）を配布するだけで動きます。サーバー不要・追加インストール不要・ LLM コンテンツ起点での外部通信ゼロ。
@@ -40,17 +42,18 @@ MDXG Redline は、LLM エージェントが人間レビュワーから「長文
 #### 人間が CLI を直接起動する場合
 
 ```bash
-npx mdxg-redline path/to/draft.md            # 同じディレクトリに review.html を生成して開く
-npx mdxg-redline path/to/draft.md ./reviews  # output-dir を分けたい場合
+npx mdxg-redline path/to/draft.md                        # 同じディレクトリに review.html を生成して開く
+npx mdxg-redline path/to/draft.md ./reviews              # output-dir を分けたい場合
+npx mdxg-redline --comments-width 0 path/to/draft.md     # コメント機能を非表示にして単なるマークダウンビューワーとして開く
 ```
 
 #### LLM が skill 経由で CLI を起動する場合
 
 ```bash
-# gh skill install での例
+# gh skill install でのskillインストール例
 gh skill install oubakiou/mdxg-redline md-review --agent claude-code --scope project
 
-# npx skills add での例
+# npx skills add でのskillインストール例
 npx skills add oubakiou/mdxg-redline --skill md-review --agent claude-code --yes
 ```
 

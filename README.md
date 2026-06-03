@@ -40,17 +40,18 @@ Download `standalone.html` from [GitHub Releases](https://github.com/oubakiou/md
 #### When a human invokes the CLI directly
 
 ```bash
-npx mdxg-redline path/to/draft.md            # generate review.html in the same directory and open it
-npx mdxg-redline path/to/draft.md ./reviews  # when you want a separate output-dir
+npx mdxg-redline path/to/draft.md                        # generate review.html in the same directory and open it
+npx mdxg-redline path/to/draft.md ./reviews              # when you want a separate output-dir
+npx mdxg-redline --comments-width 0 path/to/draft.md     # hide the comments panel and open as a plain markdown viewer
 ```
 
 #### When an LLM invokes the CLI via a skill
 
 ```bash
-# Example via gh skill install
+# Skill installation example with gh skill install
 gh skill install oubakiou/mdxg-redline md-review --agent claude-code --scope project
 
-# Example via npx skills add
+# Skill installation example with npx skills add
 npx skills add oubakiou/mdxg-redline --skill md-review --agent claude-code --yes
 ```
 

@@ -5,6 +5,9 @@
 // 右パネル (comments) と左パネル (page-nav) は値域・storage key・default 幅が異なるだけで
 // 構造的に対称な実装になっているため、本 factory で 1 か所に統合する
 // (DESIGN.md §7c / §12 §1 Theming 行の優先順位 P1 と同じ規約)。
+// 優先順位 P1 は CLI hint > localStorage > default。CLI で `--comments-width 0` のような
+// 明示指定があれば毎回必ずそれを尊重し、明示指定が無い場合だけユーザーが UI で操作した
+// localStorage 値を引き継ぐ。
 // 個別の named export と値域定数は src/app/{comments/comments-width,navigation/page-nav-width}.ts の薄い wrapper で再公開する。
 
 export type SidebarOpenState = 'open' | 'closed'
@@ -124,8 +127,8 @@ export const createSidebarWidthModule = (config: SidebarWidthConfig): SidebarWid
     storedOpen: SidebarOpenState | null,
     cliHint: SidebarHint | null
   ): SidebarState => {
-    const width = storedWidth ?? hintWidth(cliHint) ?? config.defaultWidth
-    const open = storedOpen ?? hintOpen(cliHint) ?? 'open'
+    const width = hintWidth(cliHint) ?? storedWidth ?? config.defaultWidth
+    const open = hintOpen(cliHint) ?? storedOpen ?? 'open'
     return { open, width }
   }
 
@@ -262,14 +265,18 @@ if (import.meta.vitest) {
       expect(mod.parseHint('auto')).toBeNull()
     })
 
-    it('resolveEffectiveState は localStorage > CLI hint > default の P1', () => {
+    it('resolveEffectiveState は CLI hint > localStorage > default の P1', () => {
       expect(mod.resolveEffectiveState(320, 'open', { open: 'closed', width: null })).toEqual({
-        open: 'open',
+        open: 'closed',
         width: 320,
       })
       expect(mod.resolveEffectiveState(null, null, { open: 'open', width: 480 })).toEqual({
         open: 'open',
         width: 480,
+      })
+      expect(mod.resolveEffectiveState(320, 'open', null)).toEqual({
+        open: 'open',
+        width: 320,
       })
       expect(mod.resolveEffectiveState(null, null, null)).toEqual({
         open: 'open',

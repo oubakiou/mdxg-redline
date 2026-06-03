@@ -89,7 +89,8 @@ const TITLE_RE = /(<title\b[^>]*>)([\s\S]*?)(<\/title>)/i
 
 /**
  * `<html>` 開きタグに `data-theme="<themeHint>"` を挿入する。属性が既にあれば上書き。
- * inline script はこの属性を localStorage より低い優先度で初期値ヒントとして使う。
+ * inline script はこの属性を localStorage より高い優先度で初期値ヒントとして使う
+ * (CLI 明示指定があれば毎回必ず paint を上書きする)。
  * 未指定時は属性を付けないため、呼び出し側で themeHint の有無を判断してから呼ぶ
  * (CLI 既定では --theme 未指定時はこの関数を呼ばない方針)。
  */
@@ -98,7 +99,8 @@ export const upsertHtmlDataTheme = (reviewHtml: string, themeHint: string): stri
 
 /**
  * `<html>` 開きタグに `data-comments-width="<value>"` を挿入する。属性が既にあれば上書き。
- * inline script はこの属性を localStorage より低い優先度で初期値ヒントとして使う。
+ * inline script はこの属性を localStorage より高い優先度で初期値ヒントとして使う
+ * (CLI 明示指定があれば毎回必ず paint を上書きする)。
  * 値の正当性 (0 or 240–640) は CLI 側でバリデーション済み前提だが、属性 escape 経路は
  * data-theme と揃える。
  */

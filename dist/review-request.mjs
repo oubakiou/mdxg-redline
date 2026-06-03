@@ -726,13 +726,222 @@ var parseShikiLangsList = (trimmed) => {
 /**
 * `--shiki-langs` の値を ShikiLangsMode にパースする。pure。
 * 空白だけ / 未サポートのみは空 list (= none と等価) を返す。
+*
+* 仕様上 null を返す経路を持たないため、他の value flag (`--theme` 等) と違い
+* `flag-parser.ts` の `defineFlagDef` で `formatInvalidValueMessage` の invalid 経路に
+* 乗らない。`--shiki-langs mylang,xxx-fake` のような未サポートのみの入力は
+* `{ kind: 'list', langs: <empty> }` (= none と等価) として "成功" 扱いになり、CLI は
+* エラーメッセージを出さずに plain text fallback で描画する。意図的な silent-drop
+* (typo を弾くのではなく、最も近い動作 = 'none' に降格する) なので他フラグとは挙動が異なる。
 */
 var parseShikiLangsValue = (value) => parseShikiLangsKeyword(value.trim()) ?? parseShikiLangsList(value.trim());
+var COMMENTS_WIDTH_VALUE_HELP = "0 (closed) or 280-640 (open width in px, integer)";
+var PAGE_NAV_WIDTH_VALUE_HELP = "0 (closed) or 180-480 (open width in px, integer)";
+var THEME_VALUE_HELP = "system, light, or dark";
+var MERMAID_VALUE_HELP = "auto, on, or off";
+var MATH_VALUE_HELP = "auto, on, or off";
+var MATH_FONTS_VALUE_HELP = "minimal or all";
+var SHIKI_LANGS_VALUE_HELP = "auto, all, none, or a comma-separated language list (e.g. ts,js,py)";
+var MARKDOWN_CSS_VALUE_HELP = "a file path (cannot be `-`)";
+var DOCUMENT_NAME_VALUE_HELP = "a non-empty file name";
+var KEEP_VALUE_HELP = "a 16-character hex docHash (0-9, a-f)";
+//#endregion
+//#region src/cli/flag-parser.ts
+var INITIAL_PARTITION_STATE = {
+	commentsWidth: null,
+	documentName: null,
+	error: null,
+	markdownCssPath: null,
+	math: null,
+	mathFonts: null,
+	mermaid: null,
+	open: true,
+	pageNavWidth: null,
+	pending: null,
+	positional: [],
+	shikiLangs: null,
+	showOpenFile: false,
+	themeHint: null,
+	valid: true
+};
+var quoteToken = (token) => `'${token}'`;
+var formatInvalidValueMessage = (flag, token, valueHelp) => `${flag}: invalid value ${quoteToken(token)} (expected ${valueHelp})`;
+var formatMissingValueMessage = (flag, valueHelp) => `${flag}: missing value (expected ${valueHelp})`;
+var formatUnknownFlagMessage = (token) => `unknown option: ${token}`;
+var defineFlagDef = (spec) => ({
+	consume: (acc, token) => {
+		const value = spec.parser(token);
+		if (value === null) return {
+			...acc,
+			error: formatInvalidValueMessage(spec.flag, token, spec.valueHelp),
+			valid: false
+		};
+		return spec.assign(acc, value);
+	},
+	flag: spec.flag,
+	valueHelp: spec.valueHelp
+});
+var parseThemeHintValue = (token) => {
+	if (!isThemeHint(token)) return null;
+	return token;
+};
+var parseMarkdownCssPathValue = (token) => {
+	if (token === "-") return null;
+	return token;
+};
+var VALUE_FLAG_DEFS = [
+	defineFlagDef({
+		assign: (acc, value) => ({
+			...acc,
+			documentName: value
+		}),
+		flag: DOCUMENT_NAME_FLAG,
+		parser: (token) => token,
+		valueHelp: DOCUMENT_NAME_VALUE_HELP
+	}),
+	defineFlagDef({
+		assign: (acc, value) => ({
+			...acc,
+			themeHint: value
+		}),
+		flag: THEME_FLAG,
+		parser: parseThemeHintValue,
+		valueHelp: THEME_VALUE_HELP
+	}),
+	defineFlagDef({
+		assign: (acc, value) => ({
+			...acc,
+			shikiLangs: value
+		}),
+		flag: SHIKI_LANGS_FLAG,
+		parser: (token) => parseShikiLangsValue(token),
+		valueHelp: SHIKI_LANGS_VALUE_HELP
+	}),
+	defineFlagDef({
+		assign: (acc, value) => ({
+			...acc,
+			commentsWidth: value
+		}),
+		flag: COMMENTS_WIDTH_FLAG,
+		parser: parseCommentsWidthValue,
+		valueHelp: COMMENTS_WIDTH_VALUE_HELP
+	}),
+	defineFlagDef({
+		assign: (acc, value) => ({
+			...acc,
+			pageNavWidth: value
+		}),
+		flag: PAGE_NAV_WIDTH_FLAG,
+		parser: parsePageNavWidthValue,
+		valueHelp: PAGE_NAV_WIDTH_VALUE_HELP
+	}),
+	defineFlagDef({
+		assign: (acc, value) => ({
+			...acc,
+			mermaid: value
+		}),
+		flag: MERMAID_FLAG,
+		parser: parseMermaidValue,
+		valueHelp: MERMAID_VALUE_HELP
+	}),
+	defineFlagDef({
+		assign: (acc, value) => ({
+			...acc,
+			math: value
+		}),
+		flag: MATH_FLAG,
+		parser: parseMathValue,
+		valueHelp: MATH_VALUE_HELP
+	}),
+	defineFlagDef({
+		assign: (acc, value) => ({
+			...acc,
+			mathFonts: value
+		}),
+		flag: MATH_FONTS_FLAG,
+		parser: parseMathFontsValue,
+		valueHelp: MATH_FONTS_VALUE_HELP
+	}),
+	defineFlagDef({
+		assign: (acc, value) => ({
+			...acc,
+			markdownCssPath: value
+		}),
+		flag: MARKDOWN_CSS_FLAG,
+		parser: parseMarkdownCssPathValue,
+		valueHelp: MARKDOWN_CSS_VALUE_HELP
+	})
+];
+var VALUE_FLAG_INDEX = new Map(VALUE_FLAG_DEFS.map((def) => [def.flag, def]));
+var consumeStandaloneFlag = (acc, token) => {
+	if (token === "--no-open") return {
+		...acc,
+		open: false
+	};
+	if (token === "--show-open-file") return {
+		...acc,
+		showOpenFile: true
+	};
+	return null;
+};
+var consumeFlag = (acc, token) => {
+	const standalone = consumeStandaloneFlag(acc, token);
+	if (standalone !== null) return standalone;
+	const def = VALUE_FLAG_INDEX.get(token);
+	if (def) return {
+		...acc,
+		pending: def
+	};
+	return {
+		...acc,
+		error: formatUnknownFlagMessage(token),
+		valid: false
+	};
+};
+var consumePendingValue = (acc, token) => {
+	if (acc.pending === null) return null;
+	if (token.startsWith("--")) return {
+		...acc,
+		error: formatMissingValueMessage(acc.pending.flag, acc.pending.valueHelp),
+		pending: null,
+		valid: false
+	};
+	return acc.pending.consume({
+		...acc,
+		pending: null
+	}, token);
+};
+var stepArg = (acc, token) => {
+	if (!acc.valid) return acc;
+	const pending = consumePendingValue(acc, token);
+	if (pending !== null) return pending;
+	if (token.startsWith("--")) return consumeFlag(acc, token);
+	return {
+		...acc,
+		positional: [...acc.positional, token]
+	};
+};
+var isPartitionValid = (state) => state.valid && state.pending === null;
+/**
+* reduce 終了時に「pending な flag が残っている (= 値欠落で argv 終端)」状態を
+* `valid: false` + 値欠落メッセージ付きに正規化する。orchestrator 側で
+* `isPartitionValid` の結果と合わせて invalid 経路に流す前に呼ぶ。
+*/
+var finalizePartitionState = (state) => {
+	if (state.valid && state.pending !== null) return {
+		...state,
+		error: formatMissingValueMessage(state.pending.flag, state.pending.valueHelp),
+		pending: null,
+		valid: false
+	};
+	return state;
+};
 //#endregion
 //#region src/cli/parse-clean-args.ts
 var INITIAL_CLEAN_STATE = {
 	cleanSeen: false,
 	dir: null,
+	error: null,
 	keep: /* @__PURE__ */ new Set(),
 	pendingDir: false,
 	pendingKeep: false,
@@ -748,6 +957,7 @@ var consumeCleanDirValue = (acc, token) => ({
 var consumeCleanKeepValue = (acc, token) => {
 	if (!HEX_16_PATTERN.test(token)) return {
 		...acc,
+		error: formatInvalidValueMessage(KEEP_FLAG, token, KEEP_VALUE_HELP),
 		valid: false
 	};
 	const next = new Set(acc.keep);
@@ -761,6 +971,7 @@ var consumeCleanKeepValue = (acc, token) => {
 var markCleanFlag = (acc) => {
 	if (acc.cleanSeen) return {
 		...acc,
+		error: `${CLEAN_FLAG}: specified more than once (use it only once to avoid wiping the wrong directory)`,
 		valid: false
 	};
 	return {
@@ -808,6 +1019,7 @@ var consumeCleanFlag = (acc, token) => {
 	const entry = CLEAN_FLAG_TABLE.find((row) => row.flag === token);
 	if (!entry) return {
 		...acc,
+		error: formatUnknownFlagMessage(token),
 		valid: false
 	};
 	return entry.mark(acc);
@@ -824,9 +1036,17 @@ var stepCleanArg = (acc, token) => {
 	if (acc.pendingKeep) return consumeCleanKeepValue(acc, token);
 	return consumeCleanFlag(acc, token);
 };
+var cleanInvalid = (error) => {
+	if (error === null) return { mode: "invalid" };
+	return {
+		error,
+		mode: "invalid"
+	};
+};
 var parseCleanArgs = (argv) => {
 	const state = argv.reduce(stepCleanArg, INITIAL_CLEAN_STATE);
-	if (!state.valid || state.pendingKeep) return { mode: "invalid" };
+	if (!state.valid) return cleanInvalid(state.error);
+	if (state.pendingKeep) return cleanInvalid(formatMissingValueMessage(KEEP_FLAG, KEEP_VALUE_HELP));
 	return {
 		dir: state.dir ?? ".",
 		keep: state.keep,
@@ -835,165 +1055,6 @@ var parseCleanArgs = (argv) => {
 		yes: state.yes
 	};
 };
-//#endregion
-//#region src/cli/flag-parser.ts
-var INITIAL_PARTITION_STATE = {
-	commentsWidth: null,
-	documentName: null,
-	markdownCssPath: null,
-	math: null,
-	mathFonts: null,
-	mermaid: null,
-	open: true,
-	pageNavWidth: null,
-	pending: null,
-	positional: [],
-	shikiLangs: null,
-	showOpenFile: false,
-	themeHint: null,
-	valid: true
-};
-var defineFlagDef = (spec) => ({
-	consume: (acc, token) => {
-		const value = spec.parser(token);
-		if (value === null) return {
-			...acc,
-			valid: false
-		};
-		return spec.assign(acc, value);
-	},
-	flag: spec.flag
-});
-var parseThemeHintValue = (token) => {
-	if (!isThemeHint(token)) return null;
-	return token;
-};
-var parseMarkdownCssPathValue = (token) => {
-	if (token === "-") return null;
-	return token;
-};
-var VALUE_FLAG_DEFS = [
-	defineFlagDef({
-		assign: (acc, value) => ({
-			...acc,
-			documentName: value
-		}),
-		flag: DOCUMENT_NAME_FLAG,
-		parser: (token) => token
-	}),
-	defineFlagDef({
-		assign: (acc, value) => ({
-			...acc,
-			themeHint: value
-		}),
-		flag: THEME_FLAG,
-		parser: parseThemeHintValue
-	}),
-	defineFlagDef({
-		assign: (acc, value) => ({
-			...acc,
-			shikiLangs: value
-		}),
-		flag: SHIKI_LANGS_FLAG,
-		parser: (token) => parseShikiLangsValue(token)
-	}),
-	defineFlagDef({
-		assign: (acc, value) => ({
-			...acc,
-			commentsWidth: value
-		}),
-		flag: COMMENTS_WIDTH_FLAG,
-		parser: parseCommentsWidthValue
-	}),
-	defineFlagDef({
-		assign: (acc, value) => ({
-			...acc,
-			pageNavWidth: value
-		}),
-		flag: PAGE_NAV_WIDTH_FLAG,
-		parser: parsePageNavWidthValue
-	}),
-	defineFlagDef({
-		assign: (acc, value) => ({
-			...acc,
-			mermaid: value
-		}),
-		flag: MERMAID_FLAG,
-		parser: parseMermaidValue
-	}),
-	defineFlagDef({
-		assign: (acc, value) => ({
-			...acc,
-			math: value
-		}),
-		flag: MATH_FLAG,
-		parser: parseMathValue
-	}),
-	defineFlagDef({
-		assign: (acc, value) => ({
-			...acc,
-			mathFonts: value
-		}),
-		flag: MATH_FONTS_FLAG,
-		parser: parseMathFontsValue
-	}),
-	defineFlagDef({
-		assign: (acc, value) => ({
-			...acc,
-			markdownCssPath: value
-		}),
-		flag: MARKDOWN_CSS_FLAG,
-		parser: parseMarkdownCssPathValue
-	})
-];
-var VALUE_FLAG_INDEX = new Map(VALUE_FLAG_DEFS.map((def) => [def.flag, def]));
-var consumeStandaloneFlag = (acc, token) => {
-	if (token === "--no-open") return {
-		...acc,
-		open: false
-	};
-	if (token === "--show-open-file") return {
-		...acc,
-		showOpenFile: true
-	};
-	return null;
-};
-var consumeFlag = (acc, token) => {
-	const standalone = consumeStandaloneFlag(acc, token);
-	if (standalone !== null) return standalone;
-	const def = VALUE_FLAG_INDEX.get(token);
-	if (def) return {
-		...acc,
-		pending: def
-	};
-	return {
-		...acc,
-		valid: false
-	};
-};
-var consumePendingValue = (acc, token) => {
-	if (acc.pending === null) return null;
-	if (token.startsWith("--")) return {
-		...acc,
-		pending: null,
-		valid: false
-	};
-	return acc.pending.consume({
-		...acc,
-		pending: null
-	}, token);
-};
-var stepArg = (acc, token) => {
-	if (!acc.valid) return acc;
-	const pending = consumePendingValue(acc, token);
-	if (pending !== null) return pending;
-	if (token.startsWith("--")) return consumeFlag(acc, token);
-	return {
-		...acc,
-		positional: [...acc.positional, token]
-	};
-};
-var isPartitionValid = (state) => state.valid && state.pending === null;
 //#endregion
 //#region src/cli/parse-run-args.ts
 var attachIfPresent = (result, key, value) => {
@@ -1012,13 +1073,14 @@ var attachPartitionOptionals = (result, state) => {
 	attachIfPresent(result, "pageNavWidth", state.pageNavWidth);
 };
 var partitionArgs = (argv) => {
-	const state = argv.reduce(stepArg, INITIAL_PARTITION_STATE);
+	const state = finalizePartitionState(argv.reduce(stepArg, INITIAL_PARTITION_STATE));
 	const result = {
 		open: state.open,
 		positional: state.positional,
 		showOpenFile: state.showOpenFile,
 		valid: isPartitionValid(state)
 	};
+	if (state.error !== null) result.error = state.error;
 	attachPartitionOptionals(result, state);
 	return result;
 };
@@ -1045,10 +1107,21 @@ var buildRunArgs = (parts) => {
 	attachRunOptionals(result, parts);
 	return result;
 };
+var invalid = (error) => {
+	if (typeof error === "undefined") return { mode: "invalid" };
+	return {
+		error,
+		mode: "invalid"
+	};
+};
+var formatPositionalError = (count) => {
+	if (count === 0) return "missing input markdown (expected <input.md|-> [output-dir])";
+	return `too many positional arguments: ${count} (expected at most 2: <input.md|-> [output-dir])`;
+};
 var parseRunArgs = (argv) => {
 	const parts = partitionArgs(argv);
-	if (!parts.valid) return { mode: "invalid" };
-	if (parts.positional.length < 1 || parts.positional.length > 2) return { mode: "invalid" };
+	if (!parts.valid) return invalid(parts.error);
+	if (parts.positional.length < 1 || parts.positional.length > 2) return invalid(formatPositionalError(parts.positional.length));
 	return buildRunArgs(parts);
 };
 //#endregion
@@ -1071,10 +1144,12 @@ Options:
                          with stdin input.
   --theme <value>        Set the initial theme hint for the generated HTML.
                          One of: system | light | dark. Written as a
-                         <html data-theme> attribute and used only when the
-                         viewer has no localStorage preference yet (the user's
-                         UI toggle history always wins). Omit to leave the
-                         attribute off entirely.
+                         <html data-theme> attribute. Takes precedence over
+                         the viewer's localStorage at every reload (the CLI
+                         hint always wins on initial paint; UI toggle clicks
+                         override only within the current session, and a
+                         subsequent reload re-applies the CLI hint). Omit to
+                         leave the attribute off entirely.
   --shiki-langs <value>  Select which Shiki grammars to embed in the HTML
                          for syntax highlighting. One of:
                            auto  Scan the input markdown and embed only the
@@ -1094,9 +1169,11 @@ Options:
                                      it).
                            280–640   Start open with the given width in pixels.
                          Written as a <html data-comments-width> attribute and
-                         used only when the viewer has no localStorage
-                         preference yet (the user's UI history always wins).
-                         Omit to leave the attribute off entirely.
+                         takes precedence over the viewer's localStorage at
+                         every reload (UI drags / toggle-tab clicks override
+                         only within the current session; reload re-applies
+                         the CLI hint). Omit to leave the attribute off
+                         entirely.
   --page-nav-width <px>  Set the initial document-pages panel (left TOC) width
                          hint. One of:
                            0         Start with the panel closed (only the left
@@ -1348,14 +1425,16 @@ var upsertEmbeddedMdMeta = (reviewHtml) => {
 var TITLE_RE = /(<title\b[^>]*>)([\s\S]*?)(<\/title>)/i;
 /**
 * `<html>` 開きタグに `data-theme="<themeHint>"` を挿入する。属性が既にあれば上書き。
-* inline script はこの属性を localStorage より低い優先度で初期値ヒントとして使う。
+* inline script はこの属性を localStorage より高い優先度で初期値ヒントとして使う
+* (CLI 明示指定があれば毎回必ず paint を上書きする)。
 * 未指定時は属性を付けないため、呼び出し側で themeHint の有無を判断してから呼ぶ
 * (CLI 既定では --theme 未指定時はこの関数を呼ばない方針)。
 */
 var upsertHtmlDataTheme = (reviewHtml, themeHint) => upsertHtmlDataAttribute(reviewHtml, "data-theme", themeHint);
 /**
 * `<html>` 開きタグに `data-comments-width="<value>"` を挿入する。属性が既にあれば上書き。
-* inline script はこの属性を localStorage より低い優先度で初期値ヒントとして使う。
+* inline script はこの属性を localStorage より高い優先度で初期値ヒントとして使う
+* (CLI 明示指定があれば毎回必ず paint を上書きする)。
 * 値の正当性 (0 or 240–640) は CLI 側でバリデーション済み前提だが、属性 escape 経路は
 * data-theme と揃える。
 */
@@ -2255,13 +2334,17 @@ var runEmbed = async (args) => {
 	process$1.stdout.write(`${ctx.outputPath}\n`);
 	if (args.open) await openOutput(ctx.outputPath);
 };
+var formatInvalidArgsMessage = (detail) => {
+	if (typeof detail === "string" && detail.length > 0) return `mdxg-redline: invalid arguments: ${detail}. Run \`mdxg-redline --help\` for usage.\n`;
+	return `mdxg-redline: invalid arguments. Run \`mdxg-redline --help\` for usage.\n`;
+};
 var handleNonRunModes = (args) => {
 	if (args.mode === "help") {
 		process$1.stdout.write(HELP_TEXT);
 		return true;
 	}
 	if (args.mode === "invalid") {
-		process$1.stderr.write(`mdxg-redline: invalid arguments. Run \`mdxg-redline --help\` for usage.\n`);
+		process$1.stderr.write(formatInvalidArgsMessage(args.error));
 		process$1.exit(1);
 	}
 	return false;

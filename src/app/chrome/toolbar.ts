@@ -5,7 +5,7 @@ import {
   nextStoredTheme,
   readCliHint,
   readStoredTheme,
-  resolveEffectiveTheme,
+  resolveAppliedTheme,
   subscribeSystemTheme,
   writeStoredTheme,
 } from './theme'
@@ -129,14 +129,18 @@ const THEME_TOOLTIP_NEXT: Readonly<Record<StoredTheme, string>> = {
   system: 'Switch to light',
 }
 
-// localStorage 未設定時は 'system' 既定。MDXG §1 [MUST NOT] (ユーザー設定必須化禁止) を満たす
-const currentStored = (): StoredTheme => readStoredTheme() ?? 'system'
+// FOUC inline script と同じ P1 (cliHint > stored > 'system') で起動時の effective StoredTheme を求める。
+// localStorage 未設定時は 'system' 既定 (MDXG §1 [MUST NOT] ユーザー設定必須化禁止を満たす)。
+// この値で session state を初期化することで、画面の paint・ボタン表示・OS subscribe が同じ「現在の
+// テーマ循環状態」を参照できるようになる (cliHint と localStorage が不一致のとき、ボタンが
+// localStorage 側を表示して初回クリックが no-op に見える事故を防ぐ)。
+const initialSelection = (): StoredTheme => readCliHint() ?? readStoredTheme() ?? 'system'
 
-/** stored 値から button の見た目とアクセシブル名 / tooltip を更新する */
-const renderThemeButton = (button: HTMLElement, stored: StoredTheme): void => {
-  button.textContent = THEME_ICON[stored]
-  button.setAttribute('aria-label', THEME_LABEL[stored])
-  button.setAttribute('data-tooltip', THEME_TOOLTIP_NEXT[stored])
+/** session state 値から button の見た目とアクセシブル名 / tooltip を更新する */
+const renderThemeButton = (button: HTMLElement, selection: StoredTheme): void => {
+  button.textContent = THEME_ICON[selection]
+  button.setAttribute('aria-label', THEME_LABEL[selection])
+  button.setAttribute('data-tooltip', THEME_TOOLTIP_NEXT[selection])
 }
 
 /**
@@ -153,27 +157,38 @@ const refreshMermaidAfterTheme = (): void => {
   }
 }
 
+// 起動から click / OS subscribe にまたがる「現在のテーマ循環状態」。
+// const + プロパティ更新で `let` 禁止と整合させる (CLAUDE.md / AGENTS.md)。
+interface ThemeSessionState {
+  current: StoredTheme
+}
+
 const wireThemeToggle = (): void => {
   const button = qs('#btn-theme')
-  renderThemeButton(button, currentStored())
+  // session state は FOUC inline script と同じ effective StoredTheme で初期化する。
+  // 画面の paint・ボタン表示・OS subscribe を同じ値で一貫させ、CLI hint と localStorage が
+  // 不一致のときに初回クリックが no-op に見える事故 (例: stored='light', cliHint='dark') を防ぐ。
+  const session: ThemeSessionState = { current: initialSelection() }
+  renderThemeButton(button, session.current)
   button.addEventListener('click', (): void => {
-    const next = nextStoredTheme(currentStored())
+    const next = nextStoredTheme(session.current)
+    session.current = next
     writeStoredTheme(next)
-    applyAppliedTheme(resolveEffectiveTheme(next, readCliHint(), getSystemPrefersDark()))
+    // CLI hint は「初回 paint で localStorage より優先」する起動時ヒントなので、
+    // ユーザーがその後に UI でクリックした選択は CLI hint を上書きする (resolveAppliedTheme は
+    // stored × OS で完結する純関数)。次回ロード時はまた CLI hint が paint を上書きする。
+    applyAppliedTheme(resolveAppliedTheme(next, getSystemPrefersDark()))
     renderThemeButton(button, next)
     refreshMermaidAfterTheme()
   })
-  // OS テーマ変更は stored が 'system' 由来 (localStorage 未設定 + cliHint も無し or system) の間だけ
-  // 反映する。明示 light/dark の間は OS 変化を無視する (DESIGN.md §7c / §12 §1 Theming 行)。
+  // OS テーマ変更は session.current が 'system' のときだけ反映する。session state は
+  // FOUC paint と同じ初期値 + クリックで更新されるので、cliHint と stored を再評価する必要は無く、
+  // ユーザーが UI で 'system' に切り替えた直後の OS 変化も自然に反映される。
   subscribeSystemTheme((prefersDark): void => {
-    const stored = readStoredTheme()
-    if (stored !== null && stored !== 'system') {
+    if (session.current !== 'system') {
       return
     }
-    if (stored === null && readCliHint() !== null && readCliHint() !== 'system') {
-      return
-    }
-    applyAppliedTheme(resolveEffectiveTheme(stored, readCliHint(), prefersDark))
+    applyAppliedTheme(resolveAppliedTheme('system', prefersDark))
     refreshMermaidAfterTheme()
   })
 }

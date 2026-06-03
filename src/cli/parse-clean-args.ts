@@ -6,15 +6,22 @@ import {
   CLEAN_FLAG,
   HEX_16_PATTERN,
   KEEP_FLAG,
+  KEEP_VALUE_HELP,
   type ParsedArgs,
   RECURSIVE_FLAG,
   RECURSIVE_SHORT_FLAG,
   YES_FLAG,
 } from './arg-spec'
+import {
+  formatInvalidValueMessage,
+  formatMissingValueMessage,
+  formatUnknownFlagMessage,
+} from './flag-parser'
 
 interface CleanPartitionState {
   cleanSeen: boolean
   dir: string | null
+  error: string | null
   keep: Set<string>
   pendingDir: boolean
   pendingKeep: boolean
@@ -26,6 +33,7 @@ interface CleanPartitionState {
 const INITIAL_CLEAN_STATE: CleanPartitionState = {
   cleanSeen: false,
   dir: null,
+  error: null,
   keep: new Set(),
   pendingDir: false,
   pendingKeep: false,
@@ -41,7 +49,11 @@ const consumeCleanDirValue = (acc: CleanPartitionState, token: string): CleanPar
 
 const consumeCleanKeepValue = (acc: CleanPartitionState, token: string): CleanPartitionState => {
   if (!HEX_16_PATTERN.test(token)) {
-    return { ...acc, valid: false }
+    return {
+      ...acc,
+      error: formatInvalidValueMessage(KEEP_FLAG, token, KEEP_VALUE_HELP),
+      valid: false,
+    }
   }
   const next = new Set(acc.keep)
   next.add(token.toLowerCase())
@@ -53,7 +65,11 @@ const consumeCleanKeepValue = (acc: CleanPartitionState, token: string): CleanPa
 // --keep は仕様上繰り返し指定で hash を蓄積するため、ここでは重複チェックしない。
 const markCleanFlag = (acc: CleanPartitionState): CleanPartitionState => {
   if (acc.cleanSeen) {
-    return { ...acc, valid: false }
+    return {
+      ...acc,
+      error: `${CLEAN_FLAG}: specified more than once (use it only once to avoid wiping the wrong directory)`,
+      valid: false,
+    }
   }
   return { ...acc, cleanSeen: true, pendingDir: true }
 }
@@ -75,7 +91,7 @@ const isCleanFlagToken = (token: string): boolean =>
 const consumeCleanFlag = (acc: CleanPartitionState, token: string): CleanPartitionState => {
   const entry = CLEAN_FLAG_TABLE.find((row): boolean => row.flag === token)
   if (!entry) {
-    return { ...acc, valid: false }
+    return { ...acc, error: formatUnknownFlagMessage(token), valid: false }
   }
   return entry.mark(acc)
 }
@@ -99,10 +115,20 @@ const stepCleanArg = (acc: CleanPartitionState, token: string): CleanPartitionSt
   return consumeCleanFlag(acc, token)
 }
 
+const cleanInvalid = (error: string | null): ParsedArgs => {
+  if (error === null) {
+    return { mode: 'invalid' }
+  }
+  return { error, mode: 'invalid' }
+}
+
 export const parseCleanArgs = (argv: readonly string[]): ParsedArgs => {
   const state = argv.reduce<CleanPartitionState>(stepCleanArg, INITIAL_CLEAN_STATE)
-  if (!state.valid || state.pendingKeep) {
-    return { mode: 'invalid' }
+  if (!state.valid) {
+    return cleanInvalid(state.error)
+  }
+  if (state.pendingKeep) {
+    return cleanInvalid(formatMissingValueMessage(KEEP_FLAG, KEEP_VALUE_HELP))
   }
   // dir 省略時 (`--clean` 単独 / `--clean --yes` 等) はカレントディレクトリを対象とする。
   return {
@@ -182,26 +208,30 @@ if (import.meta.vitest) {
     })
 
     it('--keep の値が 16 桁 hex でない場合は invalid', () => {
-      expect(parseCleanArgs(['--clean', '/tmp/x', '--keep', 'abc'])).toEqual({ mode: 'invalid' })
-      expect(parseCleanArgs(['--clean', '/tmp/x', '--keep', 'zzzzzzzzzzzzzzzz'])).toEqual({
+      expect(parseCleanArgs(['--clean', '/tmp/x', '--keep', 'abc'])).toMatchObject({
+        mode: 'invalid',
+      })
+      expect(parseCleanArgs(['--clean', '/tmp/x', '--keep', 'zzzzzzzzzzzzzzzz'])).toMatchObject({
         mode: 'invalid',
       })
     })
 
     it('--keep の値欠落は invalid', () => {
-      expect(parseCleanArgs(['--clean', '/tmp/x', '--keep'])).toEqual({ mode: 'invalid' })
+      expect(parseCleanArgs(['--clean', '/tmp/x', '--keep'])).toMatchObject({ mode: 'invalid' })
     })
 
     it('clean モードでは run モード用フラグ (--no-open / --theme 等) は invalid', () => {
-      expect(parseCleanArgs(['--clean', '/tmp/x', '--no-open'])).toEqual({ mode: 'invalid' })
-      expect(parseCleanArgs(['--clean', '/tmp/x', '--theme', 'dark'])).toEqual({ mode: 'invalid' })
+      expect(parseCleanArgs(['--clean', '/tmp/x', '--no-open'])).toMatchObject({ mode: 'invalid' })
+      expect(parseCleanArgs(['--clean', '/tmp/x', '--theme', 'dark'])).toMatchObject({
+        mode: 'invalid',
+      })
     })
 
     it('--clean を 2 回以上指定すると invalid (後勝ちで誤ディレクトリ削除を防ぐ)', () => {
-      expect(parseCleanArgs(['--clean', '/tmp/a', '--clean', '/tmp/b'])).toEqual({
+      expect(parseCleanArgs(['--clean', '/tmp/a', '--clean', '/tmp/b'])).toMatchObject({
         mode: 'invalid',
       })
-      expect(parseCleanArgs(['--clean', '/tmp/a', '--clean', '/tmp/b', '--yes'])).toEqual({
+      expect(parseCleanArgs(['--clean', '/tmp/a', '--clean', '/tmp/b', '--yes'])).toMatchObject({
         mode: 'invalid',
       })
     })
@@ -235,6 +265,37 @@ if (import.meta.vitest) {
         expect(parsed.recursive).toBe(true)
         expect(parsed.yes).toBe(true)
       }
+    })
+  })
+
+  describe('parseCleanArgs: invalid arguments の error メッセージ', () => {
+    it('未知 flag は unknown option を含む', () => {
+      expect(parseCleanArgs(['--clean', '/tmp/x', '--no-open'])).toEqual({
+        error: 'unknown option: --no-open',
+        mode: 'invalid',
+      })
+    })
+
+    it('--keep の無効な hex は flag 名と期待形式を含む', () => {
+      expect(parseCleanArgs(['--clean', '/tmp/x', '--keep', 'abc'])).toEqual({
+        error: "--keep: invalid value 'abc' (expected a 16-character hex docHash (0-9, a-f))",
+        mode: 'invalid',
+      })
+    })
+
+    it('--keep 末尾で値欠落は missing value メッセージになる', () => {
+      expect(parseCleanArgs(['--clean', '/tmp/x', '--keep'])).toEqual({
+        error: '--keep: missing value (expected a 16-character hex docHash (0-9, a-f))',
+        mode: 'invalid',
+      })
+    })
+
+    it('--clean を 2 回以上指定すると specified more than once を含む', () => {
+      expect(parseCleanArgs(['--clean', '/tmp/a', '--clean', '/tmp/b'])).toEqual({
+        error:
+          '--clean: specified more than once (use it only once to avoid wiping the wrong directory)',
+        mode: 'invalid',
+      })
     })
   })
 }

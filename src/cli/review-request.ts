@@ -31,15 +31,20 @@ const runEmbed = async (args: RunArgs): Promise<void> => {
   }
 }
 
+const formatInvalidArgsMessage = (detail: string | undefined): string => {
+  if (typeof detail === 'string' && detail.length > 0) {
+    return `mdxg-redline: invalid arguments: ${detail}. Run \`mdxg-redline --help\` for usage.\n`
+  }
+  return `mdxg-redline: invalid arguments. Run \`mdxg-redline --help\` for usage.\n`
+}
+
 const handleNonRunModes = (args: ReturnType<typeof parseArgs>): boolean => {
   if (args.mode === 'help') {
     process.stdout.write(HELP_TEXT)
     return true
   }
   if (args.mode === 'invalid') {
-    process.stderr.write(
-      `mdxg-redline: invalid arguments. Run \`mdxg-redline --help\` for usage.\n`
-    )
+    process.stderr.write(formatInvalidArgsMessage(args.error))
     process.exit(1)
   }
   return false
@@ -127,6 +132,27 @@ if (import.meta.vitest) {
         }).toThrow('process.exit called')
         expect(exitSpy).toHaveBeenCalledWith(1)
         expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('invalid arguments'))
+      } finally {
+        stderrSpy.mockRestore()
+        exitSpy.mockRestore()
+      }
+    })
+
+    it('mode=invalid に error がある時は detail を stderr に含めて出す', () => {
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation((): never => {
+        throw new Error('process.exit called')
+      })
+      try {
+        expect((): void => {
+          handleNonRunModes({
+            error: "--comments-width: invalid value '200' (expected 0 (closed) or 280-640)",
+            mode: 'invalid',
+          })
+        }).toThrow('process.exit called')
+        expect(stderrSpy).toHaveBeenCalledWith(
+          "mdxg-redline: invalid arguments: --comments-width: invalid value '200' (expected 0 (closed) or 280-640). Run `mdxg-redline --help` for usage.\n"
+        )
       } finally {
         stderrSpy.mockRestore()
         exitSpy.mockRestore()

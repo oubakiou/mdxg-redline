@@ -9,7 +9,7 @@
     />
     <title>MDXG Redline</title>
     <!-- FOUC 防止のため stylesheet より前で paint 直前に .dark を付ける。
-         優先順位 P1: localStorage > <html data-theme> > prefers-color-scheme
+         優先順位 P1: <html data-theme> > localStorage > prefers-color-scheme
          (DESIGN.md §7c / §12 §1 Theming 行)。
          壊れた値 (旧バージョン / 他アプリの混入 / 手動編集) で初期描画と後続ランタイムが
          ズレないよう、'system' | 'light' | 'dark' のホワイトリストで検証する
@@ -20,7 +20,7 @@
         var hint = document.documentElement.getAttribute('data-theme')
         var s = stored === 'system' || stored === 'light' || stored === 'dark' ? stored : null
         var h = hint === 'system' || hint === 'light' || hint === 'dark' ? hint : null
-        var effective = s || h || 'system'
+        var effective = h || s || 'system'
         var dark =
           effective === 'dark' ||
           (effective === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
@@ -30,7 +30,7 @@
         }
       } catch (e) {}
       // --- Comments panel width / open state (FOUC 防止のため stylesheet より前で確定する) ---
-      // 優先順位 P1: localStorage > <html data-comments-width> > default 360 (open)。
+      // 優先順位 P1: <html data-comments-width> > localStorage > default 360 (open)。
       // theme と同じく、壊れた値 (旧バージョン / 他アプリの混入 / 手動編集) で初期描画と
       // 後続ランタイムがズレないよう、280–640 の数値・open/closed ホワイトリストで検証する
       // (comments-width.ts の isValidStoredCommentsWidth / isCommentsOpenState と同じ判定)。
@@ -51,8 +51,8 @@
           sbHintWidth = sbHintNum
           sbHintOpen = 'open'
         }
-        var effWidth = sbWidth !== null ? sbWidth : sbHintWidth !== null ? sbHintWidth : 360
-        var effOpen = sbOpen !== null ? sbOpen : sbHintOpen !== null ? sbHintOpen : 'open'
+        var effWidth = sbHintWidth !== null ? sbHintWidth : sbWidth !== null ? sbWidth : 360
+        var effOpen = sbHintOpen !== null ? sbHintOpen : sbOpen !== null ? sbOpen : 'open'
         document.documentElement.style.setProperty(
           '--comments-width',
           effOpen === 'open' ? effWidth + 'px' : '0px'
@@ -60,7 +60,7 @@
         if (effOpen === 'closed') document.documentElement.classList.add('comments-closed')
       } catch (e) {}
       // --- Page-nav width / open state (FOUC 防止のため stylesheet より前で確定する) ---
-      // 優先順位 P1: localStorage > <html data-page-nav-width> > default 220 (open)。
+      // 優先順位 P1: <html data-page-nav-width> > localStorage > default 220 (open)。
       // comments panel と同じ書きぶりで、壊れた値 (旧バージョン / 他アプリの混入 / 手動編集) に対しては
       // 180–480 の数値・open/closed ホワイトリストで検証 (page-nav-width.ts と同じ判定)。
       try {
@@ -80,8 +80,8 @@
           pnHintWidth = pnHintNum
           pnHintOpen = 'open'
         }
-        var effPnWidth = pnWidth !== null ? pnWidth : pnHintWidth !== null ? pnHintWidth : 220
-        var effPnOpen = pnOpen !== null ? pnOpen : pnHintOpen !== null ? pnHintOpen : 'open'
+        var effPnWidth = pnHintWidth !== null ? pnHintWidth : pnWidth !== null ? pnWidth : 220
+        var effPnOpen = pnHintOpen !== null ? pnHintOpen : pnOpen !== null ? pnOpen : 'open'
         document.documentElement.style.setProperty(
           '--page-nav-width',
           effPnOpen === 'open' ? effPnWidth + 'px' : '0px'

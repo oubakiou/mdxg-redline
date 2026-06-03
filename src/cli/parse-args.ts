@@ -79,11 +79,11 @@ if (import.meta.vitest) {
     })
 
     it('run モードの invalid は素通しする', () => {
-      expect(parseArgs(['--unknown', 'spec.md'])).toEqual({ mode: 'invalid' })
+      expect(parseArgs(['--unknown', 'spec.md'])).toMatchObject({ mode: 'invalid' })
     })
 
     it('clean モードの invalid は素通しする', () => {
-      expect(parseArgs(['--clean', '/tmp/x', '--no-open'])).toEqual({ mode: 'invalid' })
+      expect(parseArgs(['--clean', '/tmp/x', '--no-open'])).toMatchObject({ mode: 'invalid' })
     })
   })
 }

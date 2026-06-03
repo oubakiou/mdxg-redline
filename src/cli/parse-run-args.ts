@@ -14,12 +14,15 @@ import type {
 import {
   INITIAL_PARTITION_STATE,
   type PartitionState,
+  finalizePartitionState,
   isPartitionValid,
   stepArg,
 } from './flag-parser'
 
 interface PartitionedArgs {
   documentName?: string
+  /** flag-parser が組み立てた失敗 context。invalid 経路でのみ stderr に出す。 */
+  error?: string
   markdownCssPath?: string
   math?: MathMode
   mathFonts?: MathFontsMode
@@ -60,12 +63,17 @@ const attachPartitionOptionals = (result: PartitionedArgs, state: PartitionState
 }
 
 const partitionArgs = (argv: readonly string[]): PartitionedArgs => {
-  const state = argv.reduce<PartitionState>(stepArg, INITIAL_PARTITION_STATE)
+  const state = finalizePartitionState(
+    argv.reduce<PartitionState>(stepArg, INITIAL_PARTITION_STATE)
+  )
   const result: PartitionedArgs = {
     open: state.open,
     positional: state.positional,
     showOpenFile: state.showOpenFile,
     valid: isPartitionValid(state),
+  }
+  if (state.error !== null) {
+    result.error = state.error
   }
   attachPartitionOptionals(result, state)
   return result
@@ -98,15 +106,29 @@ const buildRunArgs = (parts: PartitionedArgs): { mode: 'run' } & RunArgs => {
   return result
 }
 
+const invalid = (error?: string): ParsedArgs => {
+  if (typeof error === 'undefined') {
+    return { mode: 'invalid' }
+  }
+  return { error, mode: 'invalid' }
+}
+
+const formatPositionalError = (count: number): string => {
+  if (count === 0) {
+    return 'missing input markdown (expected <input.md|-> [output-dir])'
+  }
+  return `too many positional arguments: ${count} (expected at most 2: <input.md|-> [output-dir])`
+}
+
 // 位置引数 (<input.md|->, [output-dir]) と --no-open / --document-name 等を混在順序で受け付ける。
 // 未知フラグ・位置引数の個数違反・値欠落は invalid。help / clean の振り分けは parse-args.ts が先に行う。
 export const parseRunArgs = (argv: readonly string[]): ParsedArgs => {
   const parts = partitionArgs(argv)
   if (!parts.valid) {
-    return { mode: 'invalid' }
+    return invalid(parts.error)
   }
   if (parts.positional.length < 1 || parts.positional.length > 2) {
-    return { mode: 'invalid' }
+    return invalid(formatPositionalError(parts.positional.length))
   }
   return buildRunArgs(parts)
 }
@@ -194,11 +216,11 @@ if (import.meta.vitest) {
     })
 
     it('--document-name が末尾にあって値が無い場合は invalid', () => {
-      expect(parseRunArgs(['spec.md', '--document-name'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['spec.md', '--document-name'])).toMatchObject({ mode: 'invalid' })
     })
 
     it('--document-name の値位置に別フラグが来た場合は invalid', () => {
-      expect(parseRunArgs(['--document-name', '--no-open', 'spec.md'])).toEqual({
+      expect(parseRunArgs(['--document-name', '--no-open', 'spec.md'])).toMatchObject({
         mode: 'invalid',
       })
     })
@@ -235,15 +257,15 @@ if (import.meta.vitest) {
 
   describe('parseRunArgs: invalid モード', () => {
     it('--no-open だけで位置引数がない場合は invalid', () => {
-      expect(parseRunArgs(['--no-open'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['--no-open'])).toMatchObject({ mode: 'invalid' })
     })
 
     it('位置引数が 3 個以上は invalid', () => {
-      expect(parseRunArgs(['a.md', 'b', 'c'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['a.md', 'b', 'c'])).toMatchObject({ mode: 'invalid' })
     })
 
     it('未知のフラグは invalid', () => {
-      expect(parseRunArgs(['--unknown', 'spec.md'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['--unknown', 'spec.md'])).toMatchObject({ mode: 'invalid' })
     })
   })
 
@@ -270,17 +292,17 @@ if (import.meta.vitest) {
     })
 
     it('--theme が末尾にあって値が無い場合は invalid', () => {
-      expect(parseRunArgs(['spec.md', '--theme'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['spec.md', '--theme'])).toMatchObject({ mode: 'invalid' })
     })
 
     it('--theme の値位置に別フラグが来た場合は invalid', () => {
-      expect(parseRunArgs(['--theme', '--no-open', 'spec.md'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['--theme', '--no-open', 'spec.md'])).toMatchObject({ mode: 'invalid' })
     })
 
     it('--theme の値が許容外 (auto / 空文字 / 大文字) は invalid', () => {
-      expect(parseRunArgs(['--theme', 'auto', 'spec.md'])).toEqual({ mode: 'invalid' })
-      expect(parseRunArgs(['--theme', '', 'spec.md'])).toEqual({ mode: 'invalid' })
-      expect(parseRunArgs(['--theme', 'Dark', 'spec.md'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['--theme', 'auto', 'spec.md'])).toMatchObject({ mode: 'invalid' })
+      expect(parseRunArgs(['--theme', '', 'spec.md'])).toMatchObject({ mode: 'invalid' })
+      expect(parseRunArgs(['--theme', 'Dark', 'spec.md'])).toMatchObject({ mode: 'invalid' })
     })
 
     it('--theme 未指定時は themeHint が含まれない (data-theme 属性は付かない)', () => {
@@ -344,11 +366,13 @@ if (import.meta.vitest) {
     })
 
     it('--shiki-langs が末尾にあって値が無い場合は invalid', () => {
-      expect(parseRunArgs(['spec.md', '--shiki-langs'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['spec.md', '--shiki-langs'])).toMatchObject({ mode: 'invalid' })
     })
 
     it('--shiki-langs の値位置に別フラグが来た場合は invalid', () => {
-      expect(parseRunArgs(['--shiki-langs', '--no-open', 'spec.md'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['--shiki-langs', '--no-open', 'spec.md'])).toMatchObject({
+        mode: 'invalid',
+      })
     })
 
     it('--shiki-langs 未指定時は shikiLangs が含まれない', () => {
@@ -357,6 +381,21 @@ if (import.meta.vitest) {
         mode: 'run',
         open: true,
       })
+    })
+
+    // arg-spec.ts の parseShikiLangsValue は仕様上 null を返さず、未サポート言語のみの入力でも
+    // 空 list (= none と等価) を成功として返す。他 value flag (e.g. --theme) では invalid に
+    // 落ちるところを silent-drop に降格する設計上の非対称性を regression として固定する。
+    it('--shiki-langs に未サポート識別子のみを渡しても silent-drop で run モード扱い', () => {
+      expect(parseRunArgs(['--shiki-langs', 'mylang,xxx-fake', 'spec.md'])).toMatchObject({
+        inputPath: 'spec.md',
+        mode: 'run',
+        shikiLangs: { kind: 'list' },
+      })
+      const parsed = parseRunArgs(['--shiki-langs', 'mylang,xxx-fake', 'spec.md'])
+      if (parsed.mode === 'run' && parsed.shikiLangs && parsed.shikiLangs.kind === 'list') {
+        expect(parsed.shikiLangs.langs.size).toBe(0)
+      }
     })
   })
 
@@ -383,16 +422,16 @@ if (import.meta.vitest) {
     })
 
     it('--mermaid が末尾にあって値が無い場合は invalid', () => {
-      expect(parseRunArgs(['spec.md', '--mermaid'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['spec.md', '--mermaid'])).toMatchObject({ mode: 'invalid' })
     })
 
     it('--mermaid の値位置に別フラグが来た場合は invalid', () => {
-      expect(parseRunArgs(['--mermaid', '--no-open', 'spec.md'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['--mermaid', '--no-open', 'spec.md'])).toMatchObject({ mode: 'invalid' })
     })
 
     it('--mermaid の値が許容外 (yes / Auto / 空文字) は invalid', () => {
-      expect(parseRunArgs(['--mermaid', 'yes', 'spec.md'])).toEqual({ mode: 'invalid' })
-      expect(parseRunArgs(['--mermaid', 'Auto', 'spec.md'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['--mermaid', 'yes', 'spec.md'])).toMatchObject({ mode: 'invalid' })
+      expect(parseRunArgs(['--mermaid', 'Auto', 'spec.md'])).toMatchObject({ mode: 'invalid' })
     })
 
     it('--mermaid 未指定時は mermaid が含まれない (CLI 側で auto 既定として解釈)', () => {
@@ -452,25 +491,27 @@ if (import.meta.vitest) {
     })
 
     it('--math が末尾で値が無い場合は invalid', () => {
-      expect(parseRunArgs(['spec.md', '--math'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['spec.md', '--math'])).toMatchObject({ mode: 'invalid' })
     })
 
     it('--math の値位置に別フラグが来た場合は invalid', () => {
-      expect(parseRunArgs(['--math', '--no-open', 'spec.md'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['--math', '--no-open', 'spec.md'])).toMatchObject({ mode: 'invalid' })
     })
 
     it('--math の値が許容外 (yes / Auto / 空文字) は invalid', () => {
-      expect(parseRunArgs(['--math', 'yes', 'spec.md'])).toEqual({ mode: 'invalid' })
-      expect(parseRunArgs(['--math', 'Auto', 'spec.md'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['--math', 'yes', 'spec.md'])).toMatchObject({ mode: 'invalid' })
+      expect(parseRunArgs(['--math', 'Auto', 'spec.md'])).toMatchObject({ mode: 'invalid' })
     })
 
     it('--math-fonts が末尾で値が無い場合は invalid', () => {
-      expect(parseRunArgs(['spec.md', '--math-fonts'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['spec.md', '--math-fonts'])).toMatchObject({ mode: 'invalid' })
     })
 
     it('--math-fonts の値が許容外 (full / Minimal / 空文字) は invalid', () => {
-      expect(parseRunArgs(['--math-fonts', 'full', 'spec.md'])).toEqual({ mode: 'invalid' })
-      expect(parseRunArgs(['--math-fonts', 'Minimal', 'spec.md'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['--math-fonts', 'full', 'spec.md'])).toMatchObject({ mode: 'invalid' })
+      expect(parseRunArgs(['--math-fonts', 'Minimal', 'spec.md'])).toMatchObject({
+        mode: 'invalid',
+      })
     })
 
     it('--math / --math-fonts 未指定時は対応プロパティを含まない', () => {
@@ -511,23 +552,31 @@ if (import.meta.vitest) {
     })
 
     it('--comments-width が末尾にあって値が無い場合は invalid', () => {
-      expect(parseRunArgs(['spec.md', '--comments-width'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['spec.md', '--comments-width'])).toMatchObject({ mode: 'invalid' })
     })
 
     it('--comments-width の値位置に別フラグが来た場合は invalid', () => {
-      expect(parseRunArgs(['--comments-width', '--no-open', 'spec.md'])).toEqual({
+      expect(parseRunArgs(['--comments-width', '--no-open', 'spec.md'])).toMatchObject({
         mode: 'invalid',
       })
     })
 
     it('--comments-width 範囲外 (279 / 641) は invalid', () => {
-      expect(parseRunArgs(['--comments-width', '279', 'spec.md'])).toEqual({ mode: 'invalid' })
-      expect(parseRunArgs(['--comments-width', '641', 'spec.md'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['--comments-width', '279', 'spec.md'])).toMatchObject({
+        mode: 'invalid',
+      })
+      expect(parseRunArgs(['--comments-width', '641', 'spec.md'])).toMatchObject({
+        mode: 'invalid',
+      })
     })
 
     it('--comments-width 非数値 (auto / px 単位付き) は invalid', () => {
-      expect(parseRunArgs(['--comments-width', 'auto', 'spec.md'])).toEqual({ mode: 'invalid' })
-      expect(parseRunArgs(['--comments-width', '360px', 'spec.md'])).toEqual({ mode: 'invalid' })
+      expect(parseRunArgs(['--comments-width', 'auto', 'spec.md'])).toMatchObject({
+        mode: 'invalid',
+      })
+      expect(parseRunArgs(['--comments-width', '360px', 'spec.md'])).toMatchObject({
+        mode: 'invalid',
+      })
     })
 
     it('--comments-width 未指定時は commentsWidth が含まれない', () => {
@@ -556,6 +605,69 @@ if (import.meta.vitest) {
         open: false,
         outputDir: '/tmp/out',
         themeHint: 'dark',
+      })
+    })
+  })
+
+  describe('parseRunArgs: invalid arguments の error メッセージ', () => {
+    // どの flag・どの token・どの期待値で失敗したかを 1 行で伝えられるよう、各分岐の
+    // 代表ケースで error 文字列をスナップショット的に検証する。stderr に出る詳細部分の
+    // contract test。
+    it('範囲外の --comments-width はどの値が invalid かと期待範囲を含む', () => {
+      expect(parseRunArgs(['--comments-width', '200', 'spec.md'])).toEqual({
+        error:
+          "--comments-width: invalid value '200' (expected 0 (closed) or 280-640 (open width in px, integer))",
+        mode: 'invalid',
+      })
+    })
+
+    it('範囲外の --page-nav-width は flag 名と期待範囲を含む', () => {
+      expect(parseRunArgs(['--page-nav-width', '999', 'spec.md'])).toEqual({
+        error:
+          "--page-nav-width: invalid value '999' (expected 0 (closed) or 180-480 (open width in px, integer))",
+        mode: 'invalid',
+      })
+    })
+
+    it('未知の --theme 値は期待される enum を含む', () => {
+      expect(parseRunArgs(['--theme', 'midnight', 'spec.md'])).toEqual({
+        error: "--theme: invalid value 'midnight' (expected system, light, or dark)",
+        mode: 'invalid',
+      })
+    })
+
+    it('--theme 末尾で値欠落は missing value メッセージになる', () => {
+      expect(parseRunArgs(['spec.md', '--theme'])).toEqual({
+        error: '--theme: missing value (expected system, light, or dark)',
+        mode: 'invalid',
+      })
+    })
+
+    it('値位置に別フラグが来た時も missing value メッセージになる', () => {
+      expect(parseRunArgs(['--theme', '--no-open', 'spec.md'])).toEqual({
+        error: '--theme: missing value (expected system, light, or dark)',
+        mode: 'invalid',
+      })
+    })
+
+    it('未知 flag は unknown option を含む', () => {
+      expect(parseRunArgs(['--unknown', 'spec.md'])).toEqual({
+        error: 'unknown option: --unknown',
+        mode: 'invalid',
+      })
+    })
+
+    it('位置引数 0 個は missing input を含む', () => {
+      expect(parseRunArgs(['--no-open'])).toEqual({
+        error: 'missing input markdown (expected <input.md|-> [output-dir])',
+        mode: 'invalid',
+      })
+    })
+
+    it('位置引数 3 個以上は too many positional を含む', () => {
+      expect(parseRunArgs(['a.md', 'b', 'c'])).toEqual({
+        error: 'too many positional arguments: 3 (expected at most 2: <input.md|-> [output-dir])',
+        mode: 'invalid',
       })
     })
   })

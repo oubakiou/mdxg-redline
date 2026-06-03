@@ -200,6 +200,13 @@ const parseShikiLangsList = (trimmed: string): ShikiLangsMode => {
 /**
  * `--shiki-langs` の値を ShikiLangsMode にパースする。pure。
  * 空白だけ / 未サポートのみは空 list (= none と等価) を返す。
+ *
+ * 仕様上 null を返す経路を持たないため、他の value flag (`--theme` 等) と違い
+ * `flag-parser.ts` の `defineFlagDef` で `formatInvalidValueMessage` の invalid 経路に
+ * 乗らない。`--shiki-langs mylang,xxx-fake` のような未サポートのみの入力は
+ * `{ kind: 'list', langs: <empty> }` (= none と等価) として "成功" 扱いになり、CLI は
+ * エラーメッセージを出さずに plain text fallback で描画する。意図的な silent-drop
+ * (typo を弾くのではなく、最も近い動作 = 'none' に降格する) なので他フラグとは挙動が異なる。
  */
 export const parseShikiLangsValue = (value: string): ShikiLangsMode =>
   parseShikiLangsKeyword(value.trim()) ?? parseShikiLangsList(value.trim())
@@ -243,11 +250,36 @@ export interface CleanArgsParsed {
   yes: boolean
 }
 
+export interface InvalidArgs {
+  mode: 'invalid'
+  /**
+   * 失敗 token・期待値などを 1 行に整形したメッセージ。CLI が stderr に出す詳細部分。
+   * 値欠落 / 未知 flag / 範囲外などの分岐ごとに parse-* / flag-parser 側で組み立てる。
+   * 旧 invalid 形 (`{ mode: 'invalid' }`) との後方互換を残すため optional。
+   */
+  error?: string
+}
+
 export type ParsedArgs =
   | { mode: 'help' }
-  | { mode: 'invalid' }
+  | InvalidArgs
   | ({ mode: 'run' } & RunArgs)
   | ({ mode: 'clean' } & CleanArgsParsed)
+
+// 各 value flag が期待する形を 1 行で説明する human-readable hint。
+// flag-parser の defineFlagDef 経由でエラーメッセージに埋め込み、stderr で「何を渡せばよいか」を
+// すぐに分かるようにする。
+export const COMMENTS_WIDTH_VALUE_HELP = '0 (closed) or 280-640 (open width in px, integer)'
+export const PAGE_NAV_WIDTH_VALUE_HELP = '0 (closed) or 180-480 (open width in px, integer)'
+export const THEME_VALUE_HELP = 'system, light, or dark'
+export const MERMAID_VALUE_HELP = 'auto, on, or off'
+export const MATH_VALUE_HELP = 'auto, on, or off'
+export const MATH_FONTS_VALUE_HELP = 'minimal or all'
+export const SHIKI_LANGS_VALUE_HELP =
+  'auto, all, none, or a comma-separated language list (e.g. ts,js,py)'
+export const MARKDOWN_CSS_VALUE_HELP = 'a file path (cannot be `-`)'
+export const DOCUMENT_NAME_VALUE_HELP = 'a non-empty file name'
+export const KEEP_VALUE_HELP = 'a 16-character hex docHash (0-9, a-f)'
 
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
