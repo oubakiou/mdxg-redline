@@ -1,0 +1,448 @@
+# オンライン版 (URL fetch viewer) 設計・実装計画
+
+DESIGN.md §3 入力 / §9 起動シーケンス / §11 信頼境界 / §13 ビルドパイプライン に対応するための設計判断と実装手順をまとめる。本計画では既存の standalone.html / embed-template.html を変更せず、第 3 の配布物として `dist/online.html` を追加し、URL クエリ `?mdurl=<https://...>` から markdown を fetch して描画する経路を導入する。完了時点で DESIGN.md §3 / §9 / §11 / §13 に「オンライン版」を表す節を追記し、本ドキュメントは `docs/archive/online-edition.archive.md` にアーカイブする想定。
+
+## 1. 対応スコープ
+
+「standalone.html ベースで、URL クエリで対象 markdown の URL を受け取って表示できるオンライン版」というユーザー要件を満たす。
+
+| 要件                                                                                  | 現状 | 完了条件                                                                                                                 |
+| ------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------ |
+| [MUST] `dist/online.html` を第 3 の配布物として追加                                   | 未   | `vp build` で `dist/online.html` が出力され、ホスティング先で `/online.html` を開くとビューワーが起動する                |
+| [MUST] `?mdurl=<https://...>` で markdown を fetch して描画                           | 未   | `?mdurl=https://raw.githubusercontent.com/.../README.md` で開くと該当 markdown が描画される                              |
+| [MUST] 画面上から URL を指定する UI を提供                                            | 未   | toolbar 等から常時アクセス可能な「Open URL」UI で URL を入力すると、その URL がクエリに反映された状態で再描画される      |
+| [MUST] standalone.html / embed-template.html の信頼境界（`connect-src 'none'`）を維持 | ✓    | 既存 2 HTML の CSP 文字列が一切変わらないことを構造的に保証する                                                          |
+| [MUST] オンライン版独自の CSP で URL fetch 対象を allowlist 化                        | 未   | `dist/online.html` の `<meta http-equiv="Content-Security-Policy">` が `connect-src` に明示 allowlist を持つ             |
+| [MUST] fetch 失敗時の graceful fallback                                               | 未   | 404 / CORS エラー / timeout / 非 text レスポンスのそれぞれで、画面に分かるエラー表示が出て空状態か再試行 UI に落ちる     |
+| [MUST] `file://` 起動時はオンライン版機能を発火させない                               | 未   | `location.protocol !== 'http(s):'` のとき URL クエリ経路を skip し、エラー画面か "online edition は http(s) 必須" を出す |
+| [SHOULD] オンライン版でも Write feedback.json / Copy as JSON / Export as JSON が動く  | ✓    | 既存出力経路 (§3 出力) はそのまま動く（File System Access の workspace-handle はホスティング origin に紐づく）           |
+
+追加実装（要件外だが UX 上有用）：
+
+- ホスティング先での CSP ヘッダ (HTTP response header) を meta と二重に設定する考慮（meta だけだと server-side で剥がれる事故を避ける目的）
+
+スコープ外（別タスクで扱う / 意図的に割り切る）：
+
+- 複数ユーザー / リアルタイム共同編集 — DESIGN.md §1 スコープ外を継承
+- feedback.json のサーバー保存 / 共有 — 同上、出力はクライアント側のみ
+- 認証 / アクセス制限
+- 任意 URL のサーバーサイドプロキシ経由 fetch（CORS 回避のための独自サーバー）
+
+## 2. リファレンス実装と差分
+
+URL クエリで外部リソースを受け取って描画する単一 HTML ツールは Web 上に複数存在する。代表的なパターンを 3 つ挙げる：
+
+1. **[mermaid.live](https://mermaid.live/)** — URL クエリ `?code=<base64>` または fragment `#pako:<compressed>` で diagram source を受け、SVG 描画する単一 SPA
+2. **[draw.io](https://app.diagrams.net/)** — URL クエリ `?url=<https://...>` で外部 XML を fetch して開く経路を持つ（Google Drive 連携などのバックエンドも別途あり）
+3. **[gist.io](https://gist.io/)** — URL pathname `/<gist-id>` で Gist の markdown を fetch して描画
+
+本実装は **配布物が単一 HTML + 外部依存ゼロ + 信頼境界を狭く保つ** という制約のため、上記のうち最もシンプルな draw.io 型（クエリで URL を受けて fetch）の流れを採用しつつ、次の差分を持つ：
+
+| リファレンス実装の典型                           | 本実装での置換                                                                   |
+| ------------------------------------------------ | -------------------------------------------------------------------------------- |
+| 任意 https URL を fetch（オープン CORS 前提）    | **URL allowlist で fetch 対象を制限**（`raw.githubusercontent.com` 等）          |
+| バックエンドプロキシで CORS 回避                 | バックエンドを持たないためプロキシなし。CORS 失敗時はエラー画面に落とす          |
+| 配布物が SPA framework（React/Vue/Svelte）で複雑 | 既存 viteSingleFile bundle に第 3 出口を追加するだけで、フレームワーク非依存維持 |
+| クエリで code 本文を base64 / 圧縮埋め込み       | 本実装は **URL fetch のみサポート**。本文埋め込みは見送り（§5.b）                |
+| CSP は緩い（任意 https に到達可能）              | オンライン版独自 CSP で `connect-src` を allowlist 化                            |
+
+リファレンス実装群は CORS / SSRF 的攻撃面 / プライバシーへの配慮を「ユーザー責任」に寄せる傾向があるが、本実装は **「LLM 生成 markdown も読み込む」前提 (DESIGN.md §11)** を継承するため、allowlist 経路を採る。詳細は §5.b。
+
+**なぜ allowlist が必要か（補足）**: ブラウザの fetch は CORS 制約により「サーバが `Access-Control-Allow-Origin` ヘッダで明示的に許可している URL」しか取得できないため、allowlist を取らずに `connect-src https:` まで広げてもユーザーが任意 URL を貼って成功するわけではない。それでも allowlist を明示的に設計上の制約として据える理由は、(1) 攻撃面（クエリ経由で任意 GET をブラウザに行わせる経路）を CSP レベルで構造的に閉じる、(2) "どこから取得した markdown か" のレビュワー側の認識を「対応リスト内のホスト」に絞ることでフィッシング的コンテンツの誘導余地を減らす、(3) `dist/online.html` を配置するホスティング側で `_headers` 等の HTTP CSP と一致した期待挙動を保証する、の 3 点。CORS 単独では (1)〜(3) を満たせない（CSP は受動的制約として効くが、CORS はサーバ任意の挙動）。
+
+**CORS が失敗する典型ケース**:
+
+- 認証必須エンドポイント（private GitHub repo の raw / 社内 wiki / Google Drive Direct URL 等）: `Access-Control-Allow-Origin` ヘッダが付かない、または `*` 以外の制限的な値
+- 一部 OSS hosting（GitLab self-hosted の素の構成 / Bitbucket raw URL 等）: 既定で CORS ヘッダが付かないことが多い
+- ブラウザの "redirect chase" 中に途中の hop が CORS NG（リダイレクト経路の一つでも `Access-Control-Allow-Origin` が欠ければ全体が失敗）
+- `https://` 以外のスキーム（`http://` / `ftp://` / `file://` 等）: そもそも `connect-src https://...` allowlist の対象外
+- preflight が走るリクエスト（カスタムヘッダ付与時等）に `OPTIONS` メソッドのレスポンスが欠ける
+
+本実装は GET / 標準ヘッダのみで markdown を取りに行く設計のため preflight 経路は基本走らないが、allowlist のホストが将来 CORS ポリシーを変えた場合の検知のため、Step 6 ホスティング検証時に対応ホストごとに実機 fetch を回す（§5.d エラーカテゴリ参照）。
+
+## 3. 設計の中核要素
+
+### 3.1 配布物の 3 系統化
+
+既存の 2 出口に第 3 の `dist/online.html` を追加する。3 出口は共通の `src/review.html` を入力に派生し、構造的不変条件（`<script id="embedded-md">` 等のタグ位置、§13）は同じ。差は **埋め込みコンテンツと CSP のみ**：
+
+| 配布物                     | 用途                      | embedded-md    | CSP `connect-src`                                   | URL fetch 経路 | ホスティング前提  |
+| -------------------------- | ------------------------- | -------------- | --------------------------------------------------- | -------------- | ----------------- |
+| `dist/standalone.html`     | ローカル Open file        | 空             | `'none'`                                            | 無効           | `file://` メイン  |
+| `dist/embed-template.html` | CLI rewrite テンプレート  | 空（CLI 注入） | `'none'`                                            | 無効           | CLI 経由のみ      |
+| `dist/online.html` (新規)  | オンライン版（URL fetch） | 空             | allowlist (例: `https://raw.githubusercontent.com`) | **有効**       | `http(s)://` 専用 |
+
+ビルドは `vite.online.config.ts` を新規追加するか、既存 `vite.config.ts` の `mdxg-split-outputs` plugin に第 3 経路を追加する。設計判断は §5.a。
+
+### 3.2 URL クエリスキーマ
+
+`dist/online.html` 起動時に `location.search` をパースし、次のクエリパラメータを解釈する：
+
+| キー    | 値            | 必須 | 挙動                                                   |
+| ------- | ------------- | ---- | ------------------------------------------------------ |
+| `mdurl` | `https://...` | -    | allowlist 検証後 fetch、成功すれば markdown として描画 |
+
+`state.docName` は URL pathname の末端から推定する（例: `.../docs/SPEC.md` → `SPEC.md`）。クエリでの上書き経路は持たない。
+
+`mdurl` 未指定で開かれた場合は標準版と同じ空状態で起動し、ユーザーは toolbar の「Open URL」UI または既存の Open file 経路から markdown を読み込む（§3.4 / §5.f）。
+
+### 3.3 URL allowlist と CSP
+
+オンライン版独自の CSP は標準版を継承しつつ `connect-src` のみ差分を持つ：
+
+```
+default-src 'none';
+script-src 'self' 'unsafe-inline';
+style-src 'unsafe-inline';
+img-src https: data:;
+font-src data:;
+connect-src https://raw.githubusercontent.com https://gist.githubusercontent.com;
+base-uri 'none';
+form-action 'none';
+```
+
+`connect-src` allowlist は次の 2 ドメインを default とする：
+
+- `raw.githubusercontent.com` — GitHub repo の raw markdown（最も典型的なユースケース）
+- `gist.githubusercontent.com` — Gist の raw markdown
+
+ビルド時に `--online-connect-src <csv>` でホスティング先ごとに追加 allowlist を指定できる設計（既定は上記 2 ドメイン）。詳細は §5.b。
+
+ブラウザ側のクライアント検証ロジック (`src/core/online-url.ts` 新規) も同じ allowlist を持ち、fetch 前に URL を検証する。CSP と二重防御：CSP は技術的な強制、クライアント検証はエラーメッセージを早めに出す UX 目的。
+
+### 3.4 起動シーケンス分岐
+
+DESIGN.md §9 の起動シーケンスに URL クエリ経路を追加する：
+
+```
+0. IndexedDB から workspace-handle をサイレント復元（既存）
+
+1. オンライン版判定（dist/online.html 由来か）
+   1a. <html data-mdxg-online="1"> が設定済みか確認（ビルド時に online.html だけ付与）
+   1b. オンライン版なら 2 へ、それ以外は 3 へ（既存の embedded-md 経路）
+
+2. URL クエリ ?mdurl= の処理（オンライン版のみ）
+   2a. location.protocol が http(s) でない場合、エラー画面 + "Open file" fallback
+   2b. URLSearchParams で mdurl を取得
+   2c. mdurl 未指定なら 3 へフォールスルー（toolbar の Open URL は引き続き利用可）
+   2d. mdurl 指定ありなら allowlist 検証
+       - allowlist hit: fetch → text 取得 → ハッシュ計算 → loadFromMarkdown(text, basename(mdurl))
+       - allowlist miss: エラー画面 + "対応 URL に限る" 説明
+   2e. fetch 失敗時はエラー画面 + 再試行 UI
+
+3. embedded-md (<script id="embedded-md">) があれば適用（既存）
+
+4. それ以外は空状態のまま Open file / Open URL 待ち
+```
+
+オンライン版判定フラグ `data-mdxg-online="1"` をビルド時に `online.html` のみに付与する理由：boot.ts の単一エントリで全 3 配布物を扱うため、HTML 側のマーカーで分岐を切る。standalone.html / embed-template.html は属性なし、boot.ts は属性 nil なら従来経路を辿る。
+
+### 3.5 信頼境界の継承と境界線
+
+オンライン版でも次の既存信頼境界 (§11.a) はすべて維持する：
+
+- raw HTML は escape all（renderer 層で文字エスケープ、`<script>` / event handler は DOM として出ない）
+- リンク / 画像の URL スキーム allowlist（`http(s):` / `data:` / 同ページ anchor 限定）
+- Shiki / Mermaid / KaTeX の sanitize 設定（`securityLevel:'strict'` / `trust:false` 等）
+- embedded feedback の型ガード
+
+オンライン版で新たに開く攻撃面：
+
+1. **fetch 経路の SSRF 的悪用** → CSP `connect-src` allowlist で構造的に塞ぐ
+2. **URL クエリ経由でフィッシング的コンテンツを「信頼された UI」に乗せる** → raw HTML escape all が継続的に有効。ただしユーザーに対して「この markdown は外部 URL 経由」であることをステータスバー等で可視化する案を §5.f で検討
+3. **URL がサーバアクセスログに残る** → §5.h で扱う
+
+### 3.6 配布物サイズ見積もり
+
+`dist/online.html` の見積もりサイズ：
+
+| 構成                                              | 配布物サイズ          | 増分（standalone 比） |
+| ------------------------------------------------- | --------------------- | --------------------- |
+| standalone.html (現状)                            | ~48 MB / gzip ~6.9 MB | —                     |
+| online.html (URL fetch UI + URL 検証ロジック追加) | ~48 MB / gzip ~7.0 MB | +約 1-2 KB gzipped    |
+
+URL fetch / 検証 / エラー UI は数 KB の TypeScript で済むため、増分は無視できる規模。Shiki / Mermaid / KaTeX runtime は standalone と同じく事前 inline するため、サイズの大部分はそちらが占める。
+
+ホスティング先での gzip 配信に対応していれば、初回ロード ~7 MB の体感は ~2-3 秒。一度キャッシュされれば即時。
+
+## 4. 実装ステップ
+
+順序は依存関係順。各ステップ完了で in-source test と手動視覚チェックを通す。
+
+### Step 1: 設計判断確定と PoC
+
+- 本ドキュメント §5 の設計判断をレビュー
+- `raw.githubusercontent.com` への fetch + CORS が想定通り動くかを localhost で実機検証
+- ホスティング先候補（Cloudflare Pages / Vercel / Netlify）の CSP ヘッダ挙動を 1 つ選んで実測
+
+成果物：§5 マッピング表が確定、PoC で `fetch('https://raw.githubusercontent.com/.../README.md')` が CORS パスする確認
+
+### Step 2: pure ロジック層（URL 検証 / fetch ラッパ）
+
+UI / DOM に依存しない pure 関数を `src/core/online-url.ts` として実装し、in-source test を通す。
+
+```ts
+export function validateOnlineUrl(input: string, allowlist: readonly string[]): ValidationResult
+export async function fetchMarkdownFromUrl(url: string, opts: FetchOpts): Promise<FetchResult>
+```
+
+- `validateOnlineUrl`: URL parse → protocol https チェック → host allowlist 照合 → 結果型を返す
+- `fetchMarkdownFromUrl`: AbortController 付き fetch → status / content-type / body サイズ上限 → 統一エラー型を返す
+- 境界条件: 不正 URL / scheme 不一致 / host allowlist 外 / 404 / CORS / timeout / 非テキストレスポンス / サイズ超過
+
+成果物：`src/core/online-url.ts` + in-source test（正常系 / allowlist hit/miss / scheme チェック / 各 fetch 失敗ケース / 空 URL）
+
+### Step 3: ビルドパイプライン拡張
+
+`vite.config.ts` + `mdxg-split-outputs` plugin を拡張し、`dist/online.html` を 3 つ目の出口として生成する。
+
+- 中間出力 `dist/review.html` から `dist/online.html` を派生（既存の standalone / embed-template と同様の rewrite 経路）
+- `<html data-mdxg-online="1">` 属性を付与
+- `<meta http-equiv="Content-Security-Policy">` を online 版用に書き換え（`connect-src` を allowlist に差し替え）
+- CLI から `--online-connect-src <csv>` で allowlist を build 時に拡張できる経路を追加（任意、Step 6 と統合）
+
+ビルド系統チェーンへの影響：`dist/online.html` は `standalone.html` と同等で Shiki bundled 全言語 + Mermaid + KaTeX (`all` 相当) を inline する（オンライン版を開いたユーザーが任意の markdown を流し込めるよう、依存範囲も最大にしておく）。
+
+成果物：`vp build` で 3 つの HTML が `dist/` に出力される。CSP / `data-mdxg-online` 属性の差分が in-source test で検証される。
+
+### Step 4: 起動シーケンス分岐（boot.ts）
+
+`src/app/boot.ts` に §3.4 の優先順チェーンを追加する。
+
+- オンライン版判定（`document.documentElement.hasAttribute('data-mdxg-online')`）
+- URL クエリ取得（`URLSearchParams(location.search)`）
+- `location.protocol` 検証（`http:` / `https:` 以外はエラー）
+- URL allowlist 検証（`validateOnlineUrl`）
+- fetch 実行（`fetchMarkdownFromUrl`）
+- 結果を `loadFromMarkdown` に流す（既存の入力経路 1 / 2 と合流）
+
+成果物：online.html を `?mdurl=<valid>` で開くと markdown が描画される。`?mdurl=` 未指定 / 無効 URL / fetch 失敗時のフォールバック画面が出る。
+
+### Step 5: UI 層（toolbar Open URL ボタン / エラー画面）
+
+オンライン版で常時 URL 指定経路にアクセスできるよう、`src/app/online/` 配下に最小 UI を実装する。
+
+- 既存 toolbar（`src/app/chrome/toolbar.ts`）に「Open URL」ボタンを追加（既存の Open file ボタンの近傍に配置）
+- クリックで modal を開き、Markdown URL の入力フィールド + 送信ボタンを表示
+- 送信時に `?mdurl=<入力 URL>` を `location.assign` で反映して同一ページを reload（URL を共有可能にするため）
+- 既存の Open file ボタン経路 (§3 入力 1) はそのまま併存（ローカルファイル選択もオンライン版で使える）
+- fetch 失敗時のエラー画面: 失敗カテゴリ（CORS / 404 / timeout / 非対応 host / allowlist miss）に応じてメッセージ + 「別 URL を試す」ボタン（Open URL modal を再 open）
+
+成果物：online.html 起動時に toolbar から URL 指定ができ、エラー時にも user-friendly な復帰経路がある。
+
+### Step 6: ホスティング設定
+
+最初のホスティング先を 1 つ選んで実機配信を行い、CSP / CORS / gzip 配信が想定通り動くことを確認する。
+
+- ホスティング先選定: §5.c で判断（Cloudflare Pages を第 1 候補とする）
+- CSP の HTTP response header での補強（meta との二重設定）
+- gzip / brotli の配信確認
+- ドメイン: 既存 `oubakiou.github.io` 系統に揃えるか、独自ドメインを取るかは別判断（本プランでは hosting prefix のみ確定）
+
+成果物：選定ホスティング先で `https://<host>/online.html?mdurl=<sample>` が描画される
+
+### Step 7: DESIGN.md 反映と本ドキュメントの role 切替
+
+- DESIGN.md §3 入力に「経路 3. URL クエリ (オンライン版)」を追加
+- DESIGN.md §9 起動シーケンスに §3.4 の分岐を追記
+- DESIGN.md §11 信頼境界に「オンライン版 CSP の差分」と「URL allowlist のクライアント検証」を追記
+- DESIGN.md §13 ビルドパイプラインの「ビルドの出口は 3 つ」記述を 4 つに更新、`dist/online.html` の役割表に追加
+- 本ドキュメントを `docs/archive/online-edition.archive.md` にリネーム
+
+成果物：DESIGN.md 更新 + 本ドキュメントの archive
+
+## 5. 設計判断
+
+### a. 配布物の分離方式
+
+| 候補                                                       | 採用 | 理由                                                                                                                              |
+| ---------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **A. `dist/online.html` を第 3 配布物として独立**          | ✓    | standalone の `connect-src 'none'` を絶対的に維持できる。CSP / 起動分岐 / UI が物理的に分離するため drift が構造的に起きない      |
+| B. standalone と同一 HTML で動作モード切替                 | ✗    | CSP を緩めた時点で「standalone は完全オフライン」の保証が壊れる。ローカル開いたユーザーが意図せず外部到達経路を持つことになる     |
+| C. standalone はそのまま、別リポジトリにオンライン版を作る | ✗    | コードベース重複・ビルド資材二重管理。本実装の `vite.config.ts` + `mdxg-split-outputs` plugin で 3 つ目の出口を足すコストは小さい |
+
+採用案の論点：
+
+- **3 出口は共通入力 (`src/review.html`) から派生する不変条件**を維持する（DESIGN.md §13 末尾）。`<script id="embedded-md">` 等のタグ位置はすべて同一に保つ
+- **boot.ts の分岐は HTML 属性 1 個（`data-mdxg-online`）で判定**。実装の差分は最小限に抑える
+- 将来 online 版独自の機能（共有 URL 短縮、履歴）を追加する余地は残るが、初版は URL fetch + 表示のみ
+
+### b. URL allowlist の方針
+
+| 候補                                         | 採用 | 理由                                                                                                                                            |
+| -------------------------------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A. ドメイン allowlist（既定 2 ドメイン）** | ✓    | CORS が確実、SSRF 様の意図しないアクセスを構造的に塞ぐ。raw.githubusercontent.com / gist.githubusercontent.com で OSS markdown の大部分をカバー |
+| B. 任意の https URL を許可                   | ✗    | CORS 失敗が頻発する UX、攻撃面拡大（クエリ経由で任意 GET をブラウザに行わせる）                                                                 |
+| C. 動的に URL 検証（CORS preflight）         | ✗    | 失敗まで判定できず UX が悪い、攻撃面も任意 https と同じ                                                                                         |
+
+採用案の論点と mitigation：
+
+- **allowlist の拡張経路**: ビルド時に `--online-connect-src <csv>` で追加可能。ホスティング者が必要に応じて拡張できる
+- **CORS と allowlist の役割分担**: CORS はサーバ側の任意の挙動で許可を絞る受動的制約、allowlist はクライアント / CSP で許可を狭く保つ能動的制約。CORS だけだと「サーバが緩く許可している任意 URL」がクエリ経由でブラウザに到達でき、攻撃面が広がる（§2「なぜ allowlist が必要か」参照）
+- **既知の制限**: 自社 wiki / 認証必須エンドポイントは allowlist 拡張で対応するか、別途プロキシ経由のアプローチを検討する必要がある
+
+### c. クエリ vs ハッシュ
+
+| 候補                         | 採用 | 理由                                                                                                             |
+| ---------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------- |
+| **A. クエリ (`?mdurl=...`)** | ✓    | 既存 DESIGN.md §9 の hash 経由ナビゲーション (`#<page-slug>__<heading-slug>`) と衝突しない。共有時の透明性が高い |
+| B. ハッシュ (`#mdurl=...`)   | ✗    | §9 の hash 解決経路に分岐追加が必要で複雑化。`location.hash` は page 内ナビでも書き換わるため永続性が弱い        |
+| C. クエリとハッシュ両対応    | ✗    | スキーマが二重化し UX とドキュメントが煩雑になる                                                                 |
+
+採用案の論点：
+
+- **プライバシー上の懸念**: クエリ文字列はホスティング先のアクセスログに残る。これは §5.h で扱うが、ユーザー教育で対処する方針
+- **クエリは共有 URL として安定**: `location.search` は page 内ナビで書き換わらず、ブックマークや Slack シェアに耐える
+
+### d. fetch 失敗時のフォールバック
+
+| 候補                                      | 採用 | 理由                                                                                                     |
+| ----------------------------------------- | ---- | -------------------------------------------------------------------------------------------------------- |
+| **A. エラー画面 + 再試行 / 別 URL UI**    | ✓    | バックエンド不要、ユーザーが状況を把握して別アクションに移れる。失敗カテゴリごとにメッセージを出し分ける |
+| B. サーバーサイドプロキシ経由で CORS 回避 | ✗    | バックエンド導入が要求され、本実装の「単一 HTML、サーバーなし」原則 (DESIGN.md §1 / §11) と衝突          |
+| C. 失敗時は silent fallback で空状態に    | ✗    | ユーザーが「なぜ描画されないか」を理解できず、サポート問い合わせ的体験になる                             |
+
+採用案のエラーカテゴリ：
+
+- **CORS error**: 「このホストは CORS 対応していません。raw.githubusercontent.com 等の対応ホストを試してください」
+- **404 / network error**: 「URL が見つかりません。スペル / ブランチ名を確認してください」
+- **timeout**: 「fetch がタイムアウトしました。ネットワーク状況を確認のうえ再試行してください」
+- **non-text / size exceed**: 「対応形式または対応サイズではありません」
+- **allowlist miss**: 「このホストは対応 URL リストに含まれていません」+ allowlist の一覧表示
+
+### e. `file://` 起動時の挙動
+
+| 候補                                            | 採用   | 理由                                                                                                                                     |
+| ----------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **A. URL fetch を skip、警告 + Open file 経路** | ✓      | `file://` では fetch が CORS で必ず失敗するため、機能を出すこと自体が嘘になる。standalone と等価動作 (URL クエリは無視 + Open file 待ち) |
+| B. オンライン版は `file://` で動作不可とする    | ✗      | 配布物は HTML 1 個なので、ダブルクリックで開いた時に「動かない」と表示するのは UX が悪い                                                 |
+| C. クエリのみエラー、本文 (Open file) は使える  | ✓ 同等 | A と実質同じ                                                                                                                             |
+
+採用案: A = C。`file://` 起動時にも Open file 経路 (§3 入力 1) は動かしたままにする。URL クエリ部分だけ「http(s) 起動時にのみ機能します」のヒントを出す。
+
+### f. オンライン版コンテンツの可視化
+
+| 候補                                                   | 採用 | 理由                                                                                                                  |
+| ------------------------------------------------------ | ---- | --------------------------------------------------------------------------------------------------------------------- |
+| **A. ステータスバーに fetch 元 URL を常時表示**        | ✓    | レビュワーが「この markdown は外部 URL 経由で取得されたもの」を一目で判別できる。フィッシング的コンテンツへの第一防御 |
+| B. fetch 元情報を出さない                              | ✗    | 信頼境界の expansion に対する UX 上の補強が無い                                                                       |
+| C. モーダルで毎回確認を出す（OK を押すまで描画しない） | ✗    | UX が重い、ブックマーク経由の再アクセスで毎回確認は冗長                                                               |
+
+採用案の補強：
+
+- 表示形式: `Source: https://raw.githubusercontent.com/.../README.md` のような単行表示
+- リンクとして click 可能（オリジナル URL を直接開ける）
+- copy / export 経路で feedback.json にも `source` フィールドとして含める（後段 LLM が出自を理解できる）
+
+### g. ホスティング先選定
+
+| 候補                    | 採用 | 理由                                                                                                                      |
+| ----------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------- |
+| **A. Cloudflare Pages** | ✓    | 静的配信 + HTTP header カスタマイズ (`_headers` ファイル) + gzip/brotli 自動、無料枠で安定運用。CSP header 二重設定が可能 |
+| B. GitHub Pages         | ✗    | プロジェクトはこれまで GitHub Pages デモを検討していたが、HTTP response header の柔軟性が低い。CSP header の追加は不可    |
+| C. Vercel               | ✗    | Cloudflare Pages とほぼ同等の機能。選定上の決定打が無いため第 1 候補にしない                                              |
+| D. Netlify              | ✗    | Cloudflare Pages とほぼ同等。同上                                                                                         |
+
+採用案の論点：
+
+- **CSP は meta タグだけでなく HTTP header にも入れる**（二重防御）。Cloudflare Pages は `_headers` ファイルで簡単に設定可能
+- **将来カスタムドメイン**: 検討する場合は Cloudflare Pages + Cloudflare DNS の組合せが運用しやすい
+- **デプロイ自動化**: GitHub Actions から Cloudflare Pages にデプロイする標準 action があるため、CI 連携は既存パターンで足りる
+
+### h. プライバシー（URL がサーバログに残る）
+
+採用方針: **ユーザー教育 + ステータスバー表示で対処。技術的に hash 経路への切り替えはしない**
+
+理由：
+
+- 機密 URL を共有する想定がない（公開リポジトリの README / 公開仕様書が主用途）
+- ユーザーが機密扱いしたい場合は standalone.html を local で開く経路を使ってもらう
+
+README / 配布物の説明にこの境界を明示する。「オンライン版は公開 markdown URL の共有を想定。機密文書は standalone を local で使ってください」のような形。
+
+### i. 配布物サイズと runtime 内容物
+
+| 候補                                      | 採用 | 理由                                                                                                                   |
+| ----------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------- |
+| **A. standalone と同等（全部入り）**      | ✓    | 任意の markdown が流し込まれるため、Shiki bundled 全言語 + Mermaid + KaTeX `all` を inline する必要がある              |
+| B. 軽量版（必要時に動的注入）             | ✗    | オンライン版で fetch した markdown のフェンス言語 / Mermaid / 数式の有無を起動時に予測できないため、動的注入は実装困難 |
+| C. CLI 経路と同じ最小版（言語抽出後注入） | ✗    | オンライン版は CLI を介さないため、注入経路を別途実装する必要があり過剰                                                |
+
+採用案: standalone と完全に等価な内容物を inline する。差は CSP / URL fetch ロジック / URL 入力 UI のみ。
+
+## 6. テスト方針
+
+### in-source test（新規）
+
+- `core/online-url.ts`：
+  - `validateOnlineUrl`: 正常系（allowlist hit） / scheme 不一致 / host allowlist 外 / malformed URL / 空文字
+  - `fetchMarkdownFromUrl`: success / 404 / CORS error / timeout / 非テキスト Content-Type / body サイズ超過 / network error
+  - allowlist の正規化（trailing slash / port 含む / 大文字小文字）
+
+- `core/embed.ts`（既存テストに追加）：
+  - 3 配布物の HTML 構造的不変条件（`<script id="embedded-md">` 等のタグ位置が standalone と online で同じ）
+  - online.html の `<html data-mdxg-online="1">` 属性
+  - online.html の CSP `connect-src` allowlist が想定値で書き出される
+
+- `app/boot.ts`（既存テストに追加）：
+  - `data-mdxg-online` 属性ありで URL クエリ経路が発火する
+  - `?mdurl=` なしのオンライン版で空状態 + toolbar の Open URL ボタンが表示される
+  - `?mdurl=` ありで fetch 経路が呼ばれる
+  - allowlist 外 URL でエラー画面に分岐する
+  - `file://` 起動でクエリ無視 + Open file 経路維持
+
+### 手動視覚チェックリスト
+
+`npm run build` 後、Cloudflare Pages（または PoC ローカルサーバー）にデプロイして以下を確認：
+
+- [ ] `https://<host>/online.html` を素の状態で開くと toolbar に Open URL ボタンが出る
+- [ ] `?mdurl=https://raw.githubusercontent.com/.../README.md` で実 markdown が描画される
+- [ ] ステータスバーに `Source: <url>` が表示される
+- [ ] dark / light テーマ切替が動く
+- [ ] コメント追加 → Copy as JSON / Export as JSON で出力できる
+- [ ] Write feedback.json で workspace-handle 経由のローカル保存ができる
+- [ ] `?mdurl=` に allowlist 外ドメインを渡すとエラー画面 + allowlist 一覧
+- [ ] `?mdurl=` に 404 URL を渡すとエラー画面 + 再試行 UI
+- [ ] toolbar の Open URL ボタンから URL を送信すると `?mdurl=...` がクエリに反映されて描画される
+- [ ] `file://` で `dist/online.html` を直接開いた時、URL クエリ経路は無効化されて Open file が動く
+- [ ] standalone.html の CSP が `connect-src 'none'` のまま回帰していない
+- [ ] embed-template.html（CLI 経由）の CSP が `connect-src 'none'` のまま回帰していない
+- [ ] サイズ増分が見積もり通り（gzip ~7.0 MB 程度）
+
+## 7. 受け入れ基準
+
+- §1 対応スコープ表の全 [MUST] 行が完了条件を満たす
+- `dist/online.html` が `vp build` で出力され、URL fetch + 描画が動く
+- 既存 standalone.html / embed-template.html の CSP / 挙動が一切変わらない（in-source test で構造的に保証）
+- 配布物サイズ増分が standalone 比 +5 KB gzipped 以内
+- in-source test 全通過（既存 + §6 新規）
+- DESIGN.md §3 / §9 / §11 / §13 が更新される
+- 第 1 候補ホスティング先（Cloudflare Pages）で実機配信が成立する
+- ステータスバーに fetch 元 URL が常時表示される
+
+## 8. 想定リスクと回避策
+
+| リスク                                                                      | 回避策                                                                                                        |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `raw.githubusercontent.com` の CORS ポリシーが将来変更され fetch が失敗する | Step 1 PoC で `Access-Control-Allow-Origin: *` を実機確認。allowlist 拡張で別ミラーを足す経路を準備           |
+| allowlist 外 URL を要望されてユーザー要件が広がる                           | `--online-connect-src` ビルドフラグでホスティング者が拡張できる経路を Step 3 で準備                           |
+| URL クエリがサーバアクセスログに残ってプライバシー懸念が出る                | §5.h: ユーザー教育で対処、機密用途は standalone.html を local 起動で誘導                                      |
+| `dist/online.html` の追加でビルド時間 / 配布物サイズが大きく増える          | §3.6 / §5.i: 増分は無視できる規模。CI ビルド時間は ~5 秒程度の増加見込み                                      |
+| standalone.html の CSP が誤って緩む（drift）                                | §3.1: 3 出口の差を `mdxg-split-outputs` plugin で構造的に分離。in-source test で CSP 文字列を検証             |
+| boot.ts のオンライン版分岐がローカル版に影響する                            | §3.4: `data-mdxg-online` 属性ガードで分岐。in-source test で属性なし時に従来経路を辿ることを検証              |
+| fetch 失敗時に空状態のまま体験が悪い                                        | §5.d: 失敗カテゴリごとのエラーメッセージ + 再試行 / 別 URL UI を出す                                          |
+| URL allowlist が UX を狭めすぎる                                            | エラー画面で allowlist 一覧を提示、ユーザーが対応 URL に誘導される。`--online-connect-src` ビルド時拡張で対応 |
+| CORS / network error で再現性のない失敗                                     | Step 1 PoC + Step 6 実機検証で典型ホストの動作を確定。エラーカテゴリごとに復帰経路を実装                      |
+| Cloudflare Pages の CSP header と meta CSP が drift する                    | §5.g: `_headers` ファイルでビルド出力と同じ CSP を配信。in-source test と CD 時の sanity チェックで diff 検出 |
+
+## 9. 参考
+
+- [DESIGN.md §3 ユーザーフロー / 入力](./DESIGN.md#3-ユーザーフロー) — 既存 2 入力経路（ファイル選択 / 埋め込み）
+- [DESIGN.md §9 起動シーケンス](./DESIGN.md#9-起動シーケンス) — boot.ts の優先順チェーン
+- [DESIGN.md §11 セキュリティとプライバシー](./DESIGN.md#11-セキュリティとプライバシー) — 信頼境界 + CSP + プライバシー設計
+- [DESIGN.md §13 ビルドパイプライン](./DESIGN.md#13-ビルドパイプライン) — 既存 2 出口と `mdxg-split-outputs` plugin
+- [Cloudflare Pages docs: `_headers` file](https://developers.cloudflare.com/pages/configuration/headers/) — HTTP header カスタマイズ
+- [MDN: Content-Security-Policy `connect-src`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/connect-src)
+- [raw.githubusercontent.com CORS policy](https://docs.github.com/en/repositories/working-with-files/using-files/downloading-source-code-archives#downloading-source-code-archives-from-the-repository-view)
+- [mermaid.live](https://mermaid.live/) — URL クエリで diagram source を受ける単一 HTML ツール（参考実装）
+- [docs/github-pages.md](./github-pages.md) — 静的デモ公開プラン（本プランの前段で見送り、オンライン版に移行）
