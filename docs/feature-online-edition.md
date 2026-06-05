@@ -1,6 +1,6 @@
 # オンライン版 (URL fetch viewer) 設計・実装計画
 
-DESIGN.md §3 入力 / §9 起動シーケンス / §11 信頼境界 / §13 ビルドパイプライン に対応するための設計判断と実装手順をまとめる。本計画では既存の standalone.html / embed-template.html を変更せず、第 3 の配布物として `dist/online.html` を追加し、URL クエリ `?mdurl=<https://...>` から markdown を fetch して描画する経路を導入する。完了時点で DESIGN.md §3 / §9 / §11 / §13 に「オンライン版」を表す節を追記し、本ドキュメントは `docs/archive/online-edition.archive.md` にアーカイブする想定。
+DESIGN.md §3 入力 / §9 起動シーケンス / §11 信頼境界 / §13 ビルドパイプライン に対応するための設計判断と実装手順をまとめる。本計画では既存の standalone.html / embed-template.html を変更せず、第 3 の配布物として `dist/online.html` を追加し、URL クエリ `?mdurl=<https://...>` から markdown を fetch して描画する経路を導入する。完了時点で DESIGN.md §3 / §9 / §11 / §13 に「オンライン版」を表す節を追記し、本ドキュメントは `docs/archive/feature-online-edition.archive.md` にアーカイブする想定。
 
 ## 1. 対応スコープ
 
@@ -293,7 +293,7 @@ export async function fetchMarkdownFromUrl(url: string, opts: FetchOpts): Promis
 - DESIGN.md §9 起動シーケンスに §3.4 の分岐を追記
 - DESIGN.md §11 信頼境界に「オンライン版 CSP の差分」と「URL allowlist のクライアント検証」を追記
 - DESIGN.md §13 ビルドパイプラインの「ビルドの出口は 3 つ」記述を 4 つに更新、`dist/online.html` の役割表に追加
-- 本ドキュメントを `docs/archive/online-edition.archive.md` にリネーム
+- 本ドキュメントを `docs/archive/feature-online-edition.archive.md` にリネーム
 
 成果物：DESIGN.md 更新 + 本ドキュメントの archive
 
