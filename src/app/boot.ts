@@ -10,9 +10,10 @@ import { markFeedbackWritten, replaceComments, state } from './state/app-state'
 import { findPageIndexBySourceLine } from '../core/page-split'
 import { reapplyAllMarks } from './comments/mark-engine'
 import { renderComments } from './comments/comments'
+import { showOnlineError } from './online/error-display'
+import { showOnlineSource } from './online/source-display'
 import { resolveOnlineAllowlistFromJson } from '../core/online-allowlist-config'
 import { restoreWorkspaceHandle } from './workspace/workspace'
-import { toast } from './dom/dom-utils'
 
 interface BootRuntime {
   loadFromMarkdown: (name: string, text: string) => Promise<void>
@@ -170,14 +171,22 @@ const readUrlQuery = (): string | null => {
   return url
 }
 
-/** allowlist 検証込みで fetch して、成功すれば loadFromMarkdown に渡す。失敗は §5.d toast */
+/**
+ * allowlist 検証込みで fetch して、成功すれば loadFromMarkdown に渡す。
+ * 成功時は Source link を status bar に表示 (§5.f Referer leak 防止 3 属性付き)、
+ * `#empty-state-default` を `has-embedded-md` class 追加で隠す (online edition は CLI rewrite を
+ * 経由しないため `<meta name="mdxg-redline:embedded-md">` がなく、boot 時に class が立たない)。
+ * 失敗時は §5.d カテゴリ別メッセージを inline error UI に表示 + 「別 URL を試す」ボタン (Step 5)。
+ */
 const tryFetchAndLoad = async (url: string, runtime: BootRuntime): Promise<boolean> => {
   const allowlist = readOnlineAllowlistFromDom()
   const result = await fetchMarkdownFromUrl(url, DEFAULT_FETCH_OPTS, allowlist)
   if (!result.ok) {
-    toast(formatFetchFailureMessage(result))
+    showOnlineError(formatFetchFailureMessage(result))
     return false
   }
+  document.documentElement.classList.add('has-embedded-md')
+  showOnlineSource(result.finalUrl)
   await runtime.loadFromMarkdown(deriveDocNameFromUrl(url), result.text)
   return true
 }
@@ -185,8 +194,8 @@ const tryFetchAndLoad = async (url: string, runtime: BootRuntime): Promise<boole
 /**
  * §3.4 ステップ 2: online edition で `?url=` クエリがあれば fetch して loadFromMarkdown に流す。
  * - `?url=` 未指定 → false で既存経路 (embedded-md) にフォールスルー
- * - location.protocol が http(s) でない → エラー toast + フォールスルー (file:// 起動方針 §5.e)
- * - fetch 失敗 → §5.d カテゴリ別 toast + フォールスルー
+ * - location.protocol が http(s) でない → showOnlineError + フォールスルー (file:// 起動方針 §5.e)
+ * - fetch 失敗 → §5.d カテゴリ別 showOnlineError + フォールスルー
  * 戻り値 true は loadFromMarkdown 成功 (embedded-md 経路を skip)
  */
 export const loadFromOnlineUrlQuery = async (runtime: BootRuntime): Promise<boolean> => {
@@ -195,7 +204,7 @@ export const loadFromOnlineUrlQuery = async (runtime: BootRuntime): Promise<bool
     return false
   }
   if (!isHttpProtocol(globalThis.location.protocol)) {
-    toast('online edition は http(s) でホスティングされた環境でのみ機能します')
+    showOnlineError('online edition は http(s) でホスティングされた環境でのみ機能します')
     return false
   }
   return tryFetchAndLoad(url, runtime)

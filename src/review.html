@@ -182,7 +182,12 @@
       </div>
       <div class="toolbar-actions">
         <span id="status" class="label toolbar-status">No file</span>
+        <!-- online edition 専用 source indicator。data-mdxg-online ガード下のみ visible (CSS) -->
+        <span id="online-source" class="label toolbar-source" hidden></span>
         <button class="btn" id="btn-load">Open file</button>
+        <!-- online edition 専用 Open URL ボタン。data-mdxg-online ガード下のみ visible (CSS),
+             event handler の attach も同条件で gate (JS) する (§3.1 二層 gating)。 -->
+        <button class="btn toolbar-open-url" id="btn-open-url">Open URL</button>
         <button
           class="btn btn-ghost tooltipped"
           id="btn-search"
@@ -304,6 +309,18 @@
           <div class="empty-state" id="empty-state-default">
             <div class="empty-state-title">No file loaded</div>
             <div class="label empty-state-hint">Open a markdown file to start reviewing</div>
+          </div>
+          <!-- online edition の fetch 失敗時のみ JS が visible 化する持続的エラー表示。
+               toast (1.8s で消える) と違い、ユーザーが状況を理解して別アクションに移れるよう
+               「別 URL を試す」ボタンで Open URL modal を再 open する経路を残す (§5.d / Step 5)。 -->
+          <div class="empty-state online-edition-only" id="empty-state-online-error" hidden>
+            <div class="empty-state-title">URL を読み込めませんでした</div>
+            <div class="label empty-state-hint" id="online-error-message"></div>
+            <div class="empty-state-actions">
+              <button class="btn btn-primary" id="online-error-retry" type="button">
+                別 URL を試す
+              </button>
+            </div>
           </div>
         </div>
         <div id="doc"></div>
@@ -486,6 +503,49 @@
             </span>
             <button type="button" class="btn btn-primary" id="help-modal-close">Close</button>
           </span>
+        </footer>
+      </div>
+    </div>
+
+    <!-- online edition 専用 Open URL modal (§3.2 URL クエリスキーマ / §5.d エラー復帰経路)。
+         data-mdxg-online ガード下のみ JS が wire する。submit で
+         ?url=<encodeURIComponent(input)> を location.assign で反映して同一ページを reload。
+         standalone / embed-template でも DOM は存在するが backdrop の display:none + JS attach
+         なしで完全 hidden (§3.1 二層 gating)。 -->
+    <div class="modal-backdrop open-url-modal-backdrop" id="open-url-modal-backdrop">
+      <div
+        class="modal modal-compact"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="open-url-modal-title"
+      >
+        <header class="modal-header">
+          <h2 class="modal-title" id="open-url-modal-title">Open URL</h2>
+        </header>
+        <form id="open-url-form" class="modal-body" novalidate>
+          <label for="open-url-input" class="open-url-label"> Markdown URL (https only) </label>
+          <input
+            type="url"
+            id="open-url-input"
+            class="open-url-input"
+            inputmode="url"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="https://raw.githubusercontent.com/owner/repo/main/README.md"
+            required
+          />
+          <p id="open-url-error" class="open-url-error" role="alert" hidden></p>
+        </form>
+        <footer class="modal-actions">
+          <button type="button" class="btn" id="open-url-modal-cancel">Cancel</button>
+          <button
+            type="submit"
+            class="btn btn-primary"
+            id="open-url-modal-submit"
+            form="open-url-form"
+          >
+            Open
+          </button>
         </footer>
       </div>
     </div>

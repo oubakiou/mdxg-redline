@@ -4,6 +4,7 @@
 import { closeCommentModal } from '../comments/comment-modal'
 import { closeHelpModal, openHelpModal } from './help-modal'
 import { closeMermaidModal } from '../renderers/mermaid-modal'
+import { closeOpenUrlModal } from '../online/open-url-modal'
 import { closeSearch, isSearchOpen, openSearch } from '../search/search'
 import { qs } from '../dom/dom-utils'
 import {
@@ -31,6 +32,7 @@ export const setupKeyboardHandlers = (commentsMenu: DropdownLike, sendMenu: Drop
     closeCommentModal()
     closeHelpModal()
     closeMermaidModal()
+    closeOpenUrlModal()
     commentsMenu.close()
     sendMenu.close()
     if (isSearchOpen()) {

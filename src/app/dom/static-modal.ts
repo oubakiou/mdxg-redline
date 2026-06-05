@@ -13,6 +13,12 @@ export interface StaticModalConfig {
   closeButtonId: string
   onAfterOpen?: () => void
   onAfterClose?: () => void
+  /**
+   * 開く直後に focus する要素 ID。未指定なら close button (config.closeButtonId) に focus する
+   * (WAI-ARIA Authoring Practices のモーダルパターン既定)。input ベース modal (Open URL 等) で
+   * 「開いたら即座にタイプ開始」UX を実現するため、close button focus を上書きする用途。
+   */
+  initialFocusId?: string
 }
 
 export interface StaticModalController {
@@ -55,10 +61,11 @@ export const createStaticModalController = (config: StaticModalConfig): StaticMo
     }
   }
 
-  const focusCloseButton = (): void => {
-    const btn = document.getElementById(config.closeButtonId)
-    if (btn instanceof HTMLElement) {
-      btn.focus()
+  const focusInitial = (): void => {
+    const targetId = config.initialFocusId ?? config.closeButtonId
+    const target = document.getElementById(targetId)
+    if (target instanceof HTMLElement) {
+      target.focus()
     }
   }
 
@@ -79,7 +86,7 @@ export const createStaticModalController = (config: StaticModalConfig): StaticMo
     if (config.onAfterOpen) {
       config.onAfterOpen()
     }
-    focusCloseButton()
+    focusInitial()
   }
 
   const close = (): void => {
@@ -159,7 +166,7 @@ if (import.meta.vitest) {
       expect(backdrop.classList.contains('open')).toBe(false)
     })
 
-    it('open 後は close button に focus する', () => {
+    it('open 後は close button に focus する (initialFocusId 未指定時の既定)', () => {
       const { closeBtn } = setupModalFixtureForTest()
       const ctl = createStaticModalController({
         backdropId: 'test-modal-backdrop',
@@ -167,6 +174,20 @@ if (import.meta.vitest) {
       })
       ctl.open()
       expect(document.activeElement).toBe(closeBtn)
+    })
+
+    it('initialFocusId を指定すると close button ではなく指定要素に focus する', () => {
+      const { backdrop } = setupModalFixtureForTest()
+      const input = document.createElement('input')
+      input.id = 'test-modal-input'
+      backdrop.appendChild(input)
+      const ctl = createStaticModalController({
+        backdropId: 'test-modal-backdrop',
+        closeButtonId: 'test-modal-close',
+        initialFocusId: 'test-modal-input',
+      })
+      ctl.open()
+      expect(document.activeElement).toBe(input)
     })
 
     it('close で open 前にフォーカスしていた trigger 要素に focus を戻す', () => {

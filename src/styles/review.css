@@ -809,6 +809,24 @@ html[data-toolbar-open-file='off'] #btn-load,
 html.toolbar-open-file-off #btn-load {
   display: none;
 }
+
+/* online edition 専用 UI (Open URL ボタン / Source 表示 / Open URL modal)。
+   `.toolbar-open-url` / `.toolbar-source` / `.open-url-modal-backdrop` はデフォルト非表示で、
+   data-mdxg-online="1" の時のみ visible になる。CSS gating で FOUC / 視覚的混入を防ぎ、
+   JS gating (src/app/online/open-url-modal.ts の attach) と二層で防御する (§3.1)。
+   `.toolbar-source` は JS が source URL を持った時点で `hidden` 属性を外して visible にする。 */
+.toolbar-open-url,
+.toolbar-source {
+  display: none;
+}
+html[data-mdxg-online='1'] .toolbar-open-url {
+  display: inline-flex;
+}
+html[data-mdxg-online='1'] .toolbar-source:not([hidden]) {
+  display: inline-flex;
+  gap: 4px;
+  margin-right: 8px;
+}
 .btn {
   font-family: var(--font-system);
   font-size: 14px;
@@ -1625,6 +1643,18 @@ mark.search-hl.search-hl-current {
 }
 .empty-state-hint {
   margin-bottom: 16px;
+}
+.empty-state-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+/* online edition 以外 (standalone / embed-template) では online-edition-only クラスを持つ
+   empty-state は paint 直後から完全非表示 (CSS gating §3.1)。data-mdxg-online でも
+   `hidden` 属性で初期は隠し、JS が showOnlineError 経由で hidden を外す。 */
+html:not([data-mdxg-online='1']) .online-edition-only {
+  display: none !important;
 }
 
 /* Toast */

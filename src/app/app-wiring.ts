@@ -41,6 +41,8 @@ import { state } from './state/app-state'
 import { wireFloater } from './comments/floater'
 import { wireFootnoteTooltip } from './document/footnote-tooltip'
 import { wireMermaidModal } from './renderers/mermaid-modal'
+import { wireOnlineErrorRetry } from './online/error-display'
+import { wireOpenUrlModal } from './online/open-url-modal'
 import { wireToolbar } from './chrome/toolbar'
 
 interface BootstrapDeps {
@@ -49,14 +51,26 @@ interface BootstrapDeps {
   loadFromMarkdown: (name: string, text: string) => Promise<void>
 }
 
-const setupModalsAndPanels = (): void => {
-  initCommentsResize()
-  initPageNavResize()
+// online edition (data-mdxg-online ガード) でのみ wire される。standalone / embed-template
+// では各関数が冒頭で no-op return するため副作用ゼロ (§3.1 二層 gating)。
+const setupOnlineEditionUi = (): void => {
+  wireOpenUrlModal()
+  wireOnlineErrorRetry()
+}
+
+const wireCoreModals = (): void => {
   wireFloater()
   wireCommentModal()
   wireHelpModal()
   wireMermaidModal()
   wireFootnoteTooltip()
+}
+
+const setupModalsAndPanels = (): void => {
+  initCommentsResize()
+  initPageNavResize()
+  wireCoreModals()
+  setupOnlineEditionUi()
   setOnCommentNavigate(navigateToComment)
   setOnCommentEdit(openEditCommentModal)
   // page scroll-spy が activePageIndex を更新した直後の TOC active 表示更新。
