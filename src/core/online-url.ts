@@ -68,7 +68,7 @@ const portSuffix = (port: string): string => {
   return `:${port}`
 }
 
-const normalizeOriginForCompare = (url: URL): string => {
+export const normalizeOriginForCompare = (url: URL): string => {
   const host = url.hostname.toLowerCase().replace(/\.$/u, '')
   return `${url.protocol}//${host}${portSuffix(url.port)}`
 }

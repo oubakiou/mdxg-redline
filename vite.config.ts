@@ -6,6 +6,8 @@ import {
 } from './scripts/lib/shiki-meta.ts'
 import { dirname, resolve } from 'node:path'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { buildOnlineAllowlist } from './src/build/online-allowlist.ts'
+import { buildOnlineHtml } from './src/build/online-html.ts'
 import { inlineMarkdownCssIntoHtml } from './src/build/inline-markdown-css.ts'
 import { type Plugin, defineConfig } from 'vite-plus'
 import { fileURLToPath } from 'node:url'
@@ -277,6 +279,26 @@ const markdownCssInlinePlugin = (): Plugin => ({
   },
 })
 
+// dist/online.html は standalone と同等の依存内容物 (Shiki 全 grammar / Mermaid / KaTeX inline) を
+// 持ち、その上で 3 つの mutation だけ差分 apply する (docs/feature-online-edition.md §3.1 / Step 3):
+//   1. <html data-mdxg-online="1">
+//   2. CSP `connect-src 'none'` → `connect-src <allowlist origins>`
+//   3. <head> に <script type="application/json" id="online-allowlist">[...]</script>
+// allowlist は MDXG_ONLINE_CONNECT_SRC env (CSV) を DEFAULT に union + 正規化 + 重複排除した結果。
+const buildOnlineHtmlFromStandalone = (standaloneHtml: string): string => {
+  const allowlist = buildOnlineAllowlist(process.env, {
+    warn: (msg: string): void => {
+      console.warn(msg)
+    },
+  })
+  // build の再現性に env が影響するため、解決済み allowlist を必ず stdout に emit する。
+  // CI ログ / 開発者の手元両方で「この build がどの allowlist を採用したか」が後追いできる。
+  console.log(
+    `[mdxg-online] dist/online.html allowlist (${allowlist.length}): ${allowlist.join(' ')}`
+  )
+  return buildOnlineHtml(standaloneHtml, { allowlist })
+}
+
 const splitOutputsPlugin = (): Plugin => ({
   apply: 'build',
   closeBundle: async (): Promise<void> => {
@@ -284,10 +306,13 @@ const splitOutputsPlugin = (): Plugin => ({
     const intermediatePath = resolve(distDir, 'review.html')
     const embedTemplatePath = resolve(distDir, 'embed-template.html')
     const standalonePath = resolve(distDir, 'standalone.html')
+    const onlinePath = resolve(distDir, 'online.html')
     const html = await readFile(intermediatePath, 'utf8')
     const standaloneHtml = await buildStandaloneHtml(distDir, html)
+    const onlineHtml = buildOnlineHtmlFromStandalone(standaloneHtml)
     await Promise.all([
       writeFile(standalonePath, standaloneHtml, 'utf8'),
+      writeFile(onlinePath, onlineHtml, 'utf8'),
       rename(intermediatePath, embedTemplatePath),
     ])
   },

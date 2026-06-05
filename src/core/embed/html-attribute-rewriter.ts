@@ -4,7 +4,7 @@
 // 個別属性 (data-theme / data-comments-width / data-page-nav-width / data-toolbar-open-file)
 // を扱う薄い public ラッパに縮小する。
 
-import { escapeHtml } from '../escape'
+import { escapeHtml } from '../escape.ts'
 
 const HTML_TAG_RE = /<html\b[^>]*>/i
 
