@@ -422,7 +422,7 @@ async function fetchMarkdownFromUrl(url, opts) {
 
 成果物：online.html 起動時に toolbar から URL 指定ができ、エラー時にも persistent な復帰経路がある。実装関数の擬似コードステップ対応は §3.4「実装関数対応」表を参照。
 
-### Step 6: ホスティング設定 — 未着手
+### Step 6: ホスティング設定 — 配信ファイル emit 実装済み / 実機配信は未着手
 
 最初のホスティング先を 1 つ選んで実機配信を行い、CSP / CORS / gzip 配信が想定通り動くことを確認する。
 
@@ -431,7 +431,37 @@ async function fetchMarkdownFromUrl(url, opts) {
 - gzip / brotli の配信確認
 - ドメイン: 既存 `oubakiou.github.io` 系統に揃えるか、独自ドメインを取るかは別判断（本プランでは hosting prefix のみ確定）
 
-成果物：選定ホスティング先で `https://<host>/online.html?url=<sample>` が描画される
+成果物：選定ホスティング先で `https://<host>/?url=<sample>` または `https://<host>/online.html?url=<sample>` が描画される
+
+#### Step 6 実装済み: `dist/_headers` / `dist/_redirects` の build 時 emit
+
+`vp build` / `npm run build` で次の 2 つの Cloudflare Pages 設定ファイルが `dist/` に自動生成される（`src/build/online-headers.ts` / `src/build/online-redirects.ts` を `splitOutputsPlugin` に統合）。
+
+- **`dist/_headers`**: 全リソースに `Referrer-Policy: no-referrer` / `X-Content-Type-Options: nosniff` を返し、**`/online.html` と `/`** にのみ allowlist 適用後の CSP を `Content-Security-Policy:` HTTP response header として返す。`/online.html` の `<meta http-equiv="Content-Security-Policy">` と完全に同じ文字列を `extractCspContent(onlineHtml)` で抽出して使うため、meta CSP と HTTP header CSP は構造的に drift しない（single source of truth）。`standalone.html` / `embed-template.html` 等が同じホスティングに置かれた場合でも、それらには online 用 CSP が返らず、`<meta>` 側の `connect-src 'none'` がそのまま効く（§3.1 信頼境界の分離原則）。
+- **`dist/_redirects`**: `/ /online.html 200` の 1 行のみ。Cloudflare Pages 仕様で status 200 は **rewrite**（URL バーは `/` のまま、内部で `/online.html` の content を配信、クエリ文字列 `?url=...` は保持）。`/online.html?url=...` 形式での直接アクセスも並立して動作する（rewrite 方向は `/` → `/online.html` のみ）。
+
+これにより、ユーザーは Cloudflare Pages ダッシュボードで GitHub repo を連携し、build command `npm run build` / output dir `dist` を指定するだけで、
+
+- `https://<host>/?url=<sample>`（URL バーは `/` のまま）
+- `https://<host>/online.html?url=<sample>`（明示パス）
+
+の両方が動作する状態がデプロイされる。CSP header / 基本セキュリティヘッダも自動で配信される。
+
+**配布チャネル境界の更新**: `dist/_headers` / `dist/_redirects` は `dist/standalone.html` / `dist/online.html` と同じく **git tracked** にし、`package.json` の `files`（npm publish 対象）には **含めない**（CLI 経路では使わないため）。
+
+#### Step 6 未着手: 実機 Cloudflare Pages 連携
+
+CLI 側で完結しない作業はユーザー側で実施する：
+
+1. Cloudflare Pages ダッシュボードで `oubakiou/mdxg-redline` repo を連携
+   - Framework preset: None
+   - Build command: `npm run build`
+   - Build output directory: `dist`
+   - Root directory: `/`
+   - Environment variables: 既定では未設定（DEFAULT 2 ドメインのみ allowlist）。追加 allowlist が必要なら `MDXG_ONLINE_CONNECT_SRC=https://host1,https://host2` を設定
+2. デプロイ後に `https://<project>.pages.dev/?url=<sample>` で実機検証（§6 手動視覚チェックリスト全項目）
+3. CSP / `_headers` / `_redirects` の挙動が想定通りか devtools Network パネルで確認
+4. gzip / brotli の Content-Encoding が付くか確認
 
 ### Step 7: DESIGN.md 反映と本ドキュメントの role 切替 — 未着手
 

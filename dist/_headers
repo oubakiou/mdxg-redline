@@ -1,0 +1,9 @@
+/*
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+
+/
+  Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; connect-src https://raw.githubusercontent.com https://gist.githubusercontent.com; script-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'
+
+/online.html
+  Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; connect-src https://raw.githubusercontent.com https://gist.githubusercontent.com; script-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'

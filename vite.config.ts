@@ -7,7 +7,9 @@ import {
 import { dirname, resolve } from 'node:path'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { buildOnlineAllowlist } from './src/build/online-allowlist.ts'
+import { buildOnlineHeadersFile } from './src/build/online-headers.ts'
 import { buildOnlineHtml } from './src/build/online-html.ts'
+import { buildOnlineRedirectsFile } from './src/build/online-redirects.ts'
 import { inlineMarkdownCssIntoHtml } from './src/build/inline-markdown-css.ts'
 import { type Plugin, defineConfig } from 'vite-plus'
 import { fileURLToPath } from 'node:url'
@@ -299,6 +301,19 @@ const buildOnlineHtmlFromStandalone = (standaloneHtml: string): string => {
   return buildOnlineHtml(standaloneHtml, { allowlist })
 }
 
+// Cloudflare Pages hosting 用の静的設定ファイルを dist/ に emit する
+// (docs/feature-online-edition.md §5.g):
+// - _headers: online.html / `/` に allowlist 適用後 CSP を HTTP response header として返す
+//   (meta CSP との single source of truth は extractCspContent 経由で構造的に担保)
+// - _redirects: `/` への request を /online.html の content として rewrite (status 200)。
+//   URL バーは `/` のまま保たれ、`?url=...` クエリも保持される。
+const emitHostingConfigFiles = async (distDir: string, onlineHtml: string): Promise<void> => {
+  await Promise.all([
+    writeFile(resolve(distDir, '_headers'), buildOnlineHeadersFile(onlineHtml), 'utf8'),
+    writeFile(resolve(distDir, '_redirects'), buildOnlineRedirectsFile(), 'utf8'),
+  ])
+}
+
 const splitOutputsPlugin = (): Plugin => ({
   apply: 'build',
   closeBundle: async (): Promise<void> => {
@@ -313,6 +328,7 @@ const splitOutputsPlugin = (): Plugin => ({
     await Promise.all([
       writeFile(standalonePath, standaloneHtml, 'utf8'),
       writeFile(onlinePath, onlineHtml, 'utf8'),
+      emitHostingConfigFiles(distDir, onlineHtml),
       rename(intermediatePath, embedTemplatePath),
     ])
   },

@@ -32,6 +32,21 @@ const findCspContent = (html: string): { match: RegExpExecArray; content: string
   return { content, match }
 }
 
+// 既存 build 済み HTML (例: dist/online.html) から CSP meta タグの content を抽出する。
+// docs/feature-online-edition.md §5.g の `_headers` 生成で、HTTP response header の CSP と
+// `<meta>` CSP を drift させない single source of truth として使う。
+// `connect-src 'none'` literal の require は外す: online.html では allowlist 適用後の値が入っている。
+export const extractCspContent = (html: string): string => {
+  const match = CSP_META_RE.exec(html)
+  if (!match) {
+    throw new Error(
+      'extractCspContent: <meta http-equiv="Content-Security-Policy"> タグが見つかりません'
+    )
+  }
+  const [, content] = match
+  return content
+}
+
 const rewriteCspConnectSrc = (html: string, allowlist: readonly string[]): string => {
   const { match, content } = findCspContent(html)
   const [fullTag] = match
@@ -245,6 +260,27 @@ if (import.meta.vitest) {
   describe('buildOnlineHtml: 入力検証', () => {
     it('allowlist が空配列なら throw (buildOnlineAllowlist は最低 DEFAULT を返すため空は契約違反)', () => {
       expect(() => buildOnlineHtml(SAMPLE_HTML, { allowlist: [] })).toThrow(/allowlist/u)
+    })
+  })
+
+  describe('extractCspContent', () => {
+    it('CSP meta タグから content 文字列を抽出する', () => {
+      expect(extractCspContent(SAMPLE_HTML)).toContain("connect-src 'none'")
+      expect(extractCspContent(SAMPLE_HTML)).toContain("default-src 'none'")
+    })
+
+    it('online.html の allowlist 適用後 CSP も抽出できる (connect-src none 要件なし)', () => {
+      const onlineHtml = buildOnlineHtml(SAMPLE_HTML, { allowlist: DEFAULT_TEST_ALLOWLIST })
+      const content = extractCspContent(onlineHtml)
+      expect(content).toContain(
+        'connect-src https://raw.githubusercontent.com https://gist.githubusercontent.com'
+      )
+      expect(content).not.toContain("connect-src 'none'")
+    })
+
+    it('CSP meta タグが無いと throw', () => {
+      const noCsp = SAMPLE_HTML.replace(/<meta\s+http-equiv[\s\S]*?\/>/u, '')
+      expect(() => extractCspContent(noCsp)).toThrow(/Content-Security-Policy/u)
     })
   })
 }
