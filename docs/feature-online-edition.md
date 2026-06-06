@@ -2,6 +2,8 @@
 
 DESIGN.md §3 入力 / §9 起動シーケンス / §11 信頼境界 / §13 ビルドパイプライン に対応するための設計判断と実装手順をまとめる。本計画では既存の standalone.html / embed-template.html を変更せず、第 3 の配布物として `dist/online.html` を追加し、URL クエリ `?url=<https://...>` から markdown を fetch して描画する経路を導入する。完了時点で DESIGN.md §3 / §9 / §11 / §13 に「オンライン版」を表す節を追記し、本ドキュメントは `docs/archive/feature-online-edition.archive.md` にアーカイブする想定。
 
+> ⚠️ **方針変更あり (§8 参照)**: Step 1–7 は「online.html は standalone と同等の依存内容物 (Shiki bundled 全 grammar / Mermaid / KaTeX inline) を持つ」前提で書かれているが、Step 6 の実機検証で **Cloudflare Pages の per-file 25 MiB 制限** に抵触したため §8 で設計を反転した。以降は **「online.html は最小 shell として配布し、読み込んだ markdown の内容に応じて必要なアセットを runtime で動的 fetch する」** 方針に切り替わる。Step 1–7 の記述のうち「standalone と同等」「~48 MB / gzip ~7 MB」等の前提は §8 で上書きされたものとして読むこと。
+
 ## 1. 対応スコープ
 
 「standalone.html ベースで、URL クエリで対象 markdown の URL を受け取って表示できるオンライン版」というユーザー要件を満たす。
@@ -463,15 +465,32 @@ CLI 側で完結しない作業はユーザー側で実施する：
 3. CSP / `_headers` / `_redirects` の挙動が想定通りか devtools Network パネルで確認
 4. gzip / brotli の Content-Encoding が付くか確認
 
-### Step 7: DESIGN.md 反映と本ドキュメントの role 切替 — 未着手
+### Step 7: DESIGN.md 反映と本ドキュメントの role 切替 — 部分着手 (§8 で再見直し)
 
-- DESIGN.md §3 入力に「経路 3. URL クエリ (オンライン版)」を追加
-- DESIGN.md §9 起動シーケンスに §3.4 の分岐を追記
-- DESIGN.md §11 信頼境界に「オンライン版 CSP の差分」と「URL allowlist のクライアント検証」を追記
-- DESIGN.md §13 ビルドパイプラインの「ビルドの出口は 3 つ」記述を 4 つに更新、`dist/online.html` の役割表に追加
-- 本ドキュメントを `docs/archive/feature-online-edition.archive.md` にリネーム
+- ✅ DESIGN.md §3 入力に「経路 3. URL クエリ (オンライン版)」を追加（実装済み、ただし §8 の方針変更で online.html のサイズ表記と「standalone と同等」記述は要書き換え）
+- ✅ DESIGN.md §9 起動シーケンスに §3.4 の分岐を追記（実装済み、ただし §8 で `loadOnlineAssets` ステージ追加が必要）
+- ✅ DESIGN.md §11 信頼境界に「オンライン版 CSP の差分」と「URL allowlist のクライアント検証」を追記（実装済み、ただし §8 の `connect-src 'self'` 追加で CSP 表が更新必要）
+- ✅ DESIGN.md §13 ビルドパイプラインの「ビルドの出口は 3 つ」記述を 4 つに更新、`dist/online.html` の役割表に追加（実装済み、ただし §8 で online.html サイズ・依存内容物・mdxg-split-outputs plugin 役割が変わる）
+- ❌ 本ドキュメントを `docs/archive/feature-online-edition.archive.md` にリネーム（§8 の方針変更を取り込んで「実装計画」が継続中のため archive は保留、§8 完了後に改めて archive する）
 
-成果物：DESIGN.md 更新 + 本ドキュメントの archive
+成果物：DESIGN.md 部分更新（要再見直し） + archive 化は §8 完了まで保留
+
+### Step 8: 方針変更 — Cloudflare Pages 25 MiB 制限を受けた設計反転 — 未着手
+
+Step 6 の Cloudflare Pages 実機検証で **per-file 25 MiB 制限** に抵触し (`online.html` が 46.6 MiB)、deploy 失敗。スマートフォン回線での初回 download UX も raw ~48 MB / gzip ~7 MB では非現実的。
+
+`dist/online.html` を **embed-template.html 相当の最小 shell** として配布し、`?url=` で markdown を取得した直後に内容を scan、必要なアセット (Shiki grammar / Mermaid / KaTeX) だけを同一オリジンから動的 fetch して bridges に merge する設計に反転する。CLI の `--shiki-langs auto` / `--mermaid auto` / `--math auto` モードを runtime に持ち上げる位置付け。
+
+新設計の要旨：
+
+- `dist/online.html` ~300–500 KiB raw / gzip ~100–150 KiB（Phase A+B+C 完了時）
+- 起動時 `loadOnlineAssets(text, baseUrl)` で scan → `Promise.allSettled` 並行 fetch → bridges merge
+- silent + progressive upgrade（既存 renderer の bridge 待ちパターンを再利用）
+- 個別エラー graceful degradation（Shiki 1 言語失敗で他は載る）
+- CSP `connect-src 'self'` 追加（allowlist origins と並立）
+- Phase A (Shiki dynamic fetch) で 25 MiB 制限を切り、Phase B (Mermaid) + Phase C (KaTeX) で ~300 KiB に到達
+
+実装計画・設計判断・テスト方針・想定リスクは [`docs/feature-online-runtime-assets.md`](./feature-online-runtime-assets.md) に独立した planning doc として書き起こした。本ドキュメント (Step 1–7) は「standalone と同等の依存内容物」前提で書かれているため、§8 以降の作業は新 planning doc を主とし、本ドキュメントは経緯記録として §8 完了後に archive 化する。
 
 ## 5. 設計判断
 
