@@ -2,7 +2,7 @@ import { buildOnlineHtml, extractCspContent } from './online-html.ts'
 
 // Cloudflare Pages の _headers ファイルフォーマット
 // (https://developers.cloudflare.com/pages/configuration/headers/) で online.html の信頼境界を
-// HTTP response header 層でも強制する。docs/feature-online-edition.md §5.g の方針:
+// HTTP response header 層でも強制する。docs/archive/feature-online-edition.archive.md §5.g の方針:
 // - online.html / `/` (_redirects で /online.html に rewrite される) のみに allowlist 付き CSP を返す
 // - 他リソース (standalone.html / embed-template.html 等が同じホスティングに置かれた場合) には
 //   online 用 CSP を返さない (信頼境界の分離原則、§3.1)

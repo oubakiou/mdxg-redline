@@ -282,7 +282,7 @@ const markdownCssInlinePlugin = (): Plugin => ({
 })
 
 // dist/online.html は standalone と同等の依存内容物 (Shiki 全 grammar / Mermaid / KaTeX inline) を
-// 持ち、その上で 3 つの mutation だけ差分 apply する (docs/feature-online-edition.md §3.1 / Step 3):
+// 持ち、その上で 3 つの mutation だけ差分 apply する (docs/archive/feature-online-edition.archive.md §3.1):
 //   1. <html data-mdxg-online="1">
 //   2. CSP `connect-src 'none'` → `connect-src <allowlist origins>`
 //   3. <head> に <script type="application/json" id="online-allowlist">[...]</script>
@@ -302,7 +302,7 @@ const buildOnlineHtmlFromStandalone = (standaloneHtml: string): string => {
 }
 
 // Cloudflare Pages hosting 用の静的設定ファイルを dist/ に emit する
-// (docs/feature-online-edition.md §5.g):
+// (docs/archive/feature-online-edition.archive.md §5.g):
 // - _headers: online.html / `/` に allowlist 適用後 CSP を HTTP response header として返す
 //   (meta CSP との single source of truth は extractCspContent 経由で構造的に担保)
 // - _redirects: `/` への request を /online.html の content として rewrite (status 200)。

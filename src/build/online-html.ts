@@ -1,6 +1,6 @@
 import { upsertHtmlDataAttribute } from '../core/embed/html-attribute-rewriter.ts'
 
-// standalone.html を素材にして online.html を派生させる pure 関数群。docs/feature-online-edition.md
+// standalone.html を素材にして online.html を派生させる pure 関数群。docs/archive/feature-online-edition.archive.md
 // §3.1 / Step 3 に従い、次の 3 つの mutation のみを行う：
 // 1. `<html>` に `data-mdxg-online="1"` 属性を upsert（boot.ts の経路分岐マーカー）
 // 2. CSP `connect-src 'none'` → `connect-src <allowlist origins joined by space>`
@@ -33,7 +33,7 @@ const findCspContent = (html: string): { match: RegExpExecArray; content: string
 }
 
 // 既存 build 済み HTML (例: dist/online.html) から CSP meta タグの content を抽出する。
-// docs/feature-online-edition.md §5.g の `_headers` 生成で、HTTP response header の CSP と
+// docs/archive/feature-online-edition.archive.md §5.g の `_headers` 生成で、HTTP response header の CSP と
 // `<meta>` CSP を drift させない single source of truth として使う。
 // `connect-src 'none'` literal の require は外す: online.html では allowlist 適用後の値が入っている。
 export const extractCspContent = (html: string): string => {

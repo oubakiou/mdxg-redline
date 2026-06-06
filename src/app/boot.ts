@@ -211,7 +211,7 @@ export const loadFromOnlineUrlQuery = async (runtime: BootRuntime): Promise<bool
 }
 
 /**
- * 起動時のロード優先順位を順に試す（詳細は DESIGN.md §9 / docs/feature-online-edition.md §3.4）。
+ * 起動時のロード優先順位を順に試す（詳細は DESIGN.md §9 / docs/archive/feature-online-edition.archive.md §3.4）。
  * 0. 保存済みの出力先フォルダ handle を IDB からサイレント復元（書き出し時の picker 省略用）
  * 1. オンライン版 (`data-mdxg-online`) で `?url=` があれば fetch (allowlist 検証は wrapper 内で完結)
  * 2. 埋め込み MD（review-request CLI 配布 / 同梱配布のケース）

@@ -1,5 +1,5 @@
 // Cloudflare Pages の _redirects フォーマットで `/` への request を `/online.html` の content
-// として配信する rewrite (status 200) を生成する (docs/feature-online-edition.md §5.g):
+// として配信する rewrite (status 200) を生成する (docs/archive/feature-online-edition.archive.md §5.g):
 // - URL バーは `/` のまま (302 / 301 のような URL 変更を起こさない)
 // - `?url=...` 等のクエリ文字列は rewrite 先にそのまま渡される (Cloudflare Pages 仕様)
 // - `/online.html` への直接アクセスも並立して動作する (rewrite の方向性が `/` → `/online.html`)
