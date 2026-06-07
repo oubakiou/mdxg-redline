@@ -414,4 +414,43 @@ if (import.meta.vitest) {
       expect(() => extractCspContent(noCsp)).toThrow(/Content-Security-Policy/u)
     })
   })
+
+  // src/review.html の実 CSP を読んで構造的不変条件を検証する drift 防止 test
+  // (docs/archive/bug-csp-font-src-missing.archive.md §6 を構造化)。 buildOnlineHtml は
+  // src/review.html → dist/standalone.html → dist/hosting/index.html の派生経路で CSP を
+  // そのまま継承するため、 src の CSP に必要 directive が揃っていれば全配布物に反映される。
+  describe('src/review.html CSP 構造的不変条件 (drift guard)', () => {
+    const REQUIRED_DIRECTIVES: readonly string[] = [
+      "default-src 'none'", // 全 directive の fallback 締切
+      "style-src 'unsafe-inline'", // inline style (review.css / 404 page 用)
+      'img-src https: data:', // 外部画像 + inline SVG favicon (data URI)
+      'font-src data:', // KaTeX woff2 inline (data URI) - 本 test の主眼
+      "connect-src 'none'", // standalone は外部 fetch ゼロ (online は派生時に置換)
+      "script-src 'self' 'unsafe-inline'", // self ESM + inline bootstrap
+      "base-uri 'none'", // <base> 注入による fetch 経路 hijack 防止
+      "form-action 'none'", // <form action> 経路の漏出防止
+    ]
+
+    const readReviewHtmlCsp = async (): Promise<string> => {
+      const fs = await import('node:fs/promises')
+      const path = await import('node:path')
+      const url = await import('node:url')
+      const thisDir = path.dirname(url.fileURLToPath(import.meta.url))
+      const reviewHtmlPath = path.resolve(thisDir, '..', 'review.html')
+      const reviewHtml = await fs.readFile(reviewHtmlPath, 'utf8')
+      return extractCspContent(reviewHtml)
+    }
+
+    it('src/review.html の CSP に必須 directive が全て含まれる', async () => {
+      const cspContent = await readReviewHtmlCsp()
+      for (const directive of REQUIRED_DIRECTIVES) {
+        expect(cspContent).toContain(directive)
+      }
+    })
+
+    it('font-src data: を含む (KaTeX woff2 inline の遮断回帰防止)', async () => {
+      const cspContent = await readReviewHtmlCsp()
+      expect(cspContent).toContain('font-src data:')
+    })
+  })
 }
