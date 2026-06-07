@@ -1,8 +1,14 @@
 // Step 3b: KaTeX CSS のフォント data URI 化 + minimal/extra への分離。
 // `katex/dist/katex.min.css` を読み、`@font-face { ... url(fonts/*.woff2) ... }` ブロックを
 // `url(data:font/woff2;base64,...)` に書き換え、`url(*.ttf)` / `url(*.woff)` は
-// `url(about:blank)` に潰す。woff2 fallthrough は modern target 全サポート前提
+// `local("")` (空 local() = CSS Level 3 仕様で常に miss、 次の src へフォールスルー) に
+// 潰す。woff2 fallthrough は modern target 全サポート前提
 // (docs/mdxg-math-rendering.archive.md §3.1 / §5.g)。
+// 旧設計では `url(about:blank)` を使っていたが、 CSP `font-src data:` の制約で
+// `about:` scheme が許可されておらず、 ブラウザが src を順に試す挙動で 1 つ目の
+// `about:blank` が CSP violation として Console に noise を出していた (実描画は
+// 2 つ目の woff2 data URI で成功するため実害なし)。 `local("")` は CSP の評価対象に
+// ならず、 noise を構造的に消す標準 idiom。
 //
 // 2 系統に分岐して書き出す:
 //   - dist/katex/katex.css         : minimal セット (Main / AMS / Math / Size1〜4 の 9 family)
@@ -37,7 +43,7 @@ const OUT_DIR = resolve(ROOT_DIR, 'dist', 'katex')
 //   2. フォントセット: katex.min.css の @font-face root が既知 12 種のみで新規/改名/削除が
 //      ないこと (minimal = Main/Math/AMS/Size1-4、extra = Caligraphic/Fraktur/Script/
 //      SansSerif/Typewriter)。全 @font-face block に woff2 url があること
-//      (.ttf/.woff を about:blank に潰し woff2 へ fallthrough する本スクリプトの前提)。
+//      (.ttf/.woff を local("") に潰し woff2 へ fallthrough する本スクリプトの前提)。
 //   3. renderToString API 契約: 同期で文字列を返し、文法エラー -> katex-error class /
 //      未知マクロ -> best-effort <mtext> (katex-error なし) の判定境界が維持されること
 //      (ブラウザ側 data-math-failed 判定がこの境界に依存)。
@@ -112,7 +118,8 @@ const extractFontFamilyRoot = (block: string): string | null => {
 }
 
 // `url(fonts/X.woff2)` の 1 件を data URI に置換する非同期ステップ。
-// woff2 以外は about:blank に潰す (woff2 への fallthrough 前提)。
+// woff2 以外は `local("")` に潰す (空 local family は CSS Level 3 仕様で常に miss、
+// 次の src へフォールスルー、 CSP `font-src data:` の評価対象にならず Console noise を出さない)。
 const buildUrlReplacement = async (
   match: RegExpMatchArray
 ): Promise<{ from: string; kind: 'dropped' | 'inlined'; to: string }> => {
@@ -125,7 +132,7 @@ const buildUrlReplacement = async (
       to: `url(data:font/woff2;base64,${buf.toString('base64')})`,
     }
   }
-  return { from: original, kind: 'dropped', to: 'url(about:blank)' }
+  return { from: original, kind: 'dropped', to: 'local("")' }
 }
 
 const inlineWoff2InBlock = async (block: string, stats: Stats): Promise<string> => {
