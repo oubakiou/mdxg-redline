@@ -33,6 +33,8 @@ import { toggleHelpModal, wireHelpModal } from './chrome/help-modal'
 import { boot, isOnlineEdition } from './boot'
 import { attachShikiLangsReadyListener } from './renderers/shiki-upgrade'
 import { createDropdownMenu } from './dom/menu'
+import { createOnlineAssetCache, type OnlineAssetCache } from './online/asset-loader'
+import { decorateLoadFromMarkdownForOnline } from './online/runtime-decorator'
 import { initCommentsResize } from './comments/comments-resize'
 import { initPageNavResize } from './navigation/page-nav-resize'
 import { registerPostMarksReapplied } from './comments/mark-engine'
@@ -50,6 +52,27 @@ interface BootstrapDeps {
   buildExportPayload: () => ExportPayload
   commentCountLabel: () => string
   loadFromMarkdown: (name: string, text: string) => Promise<void>
+}
+
+/**
+ * online edition では `loadFromMarkdown` を decorator で装飾し、toolbar (Open file) /
+ * boot (?url=) / Open URL modal (reload 経由 boot) の全入力経路で同じ装飾関数を経由させる。
+ * decorator が cache の世代 / AbortController を進めて asset-loader を fire-and-forget で発火する。
+ * standalone / embed-template (online edition でない) では base をそのまま透過する。
+ */
+export const resolveBootstrapDeps = (
+  deps: BootstrapDeps,
+  online: boolean,
+  cache?: OnlineAssetCache
+): BootstrapDeps => {
+  if (!online) {
+    return deps
+  }
+  const assetCache = cache ?? createOnlineAssetCache()
+  return {
+    ...deps,
+    loadFromMarkdown: decorateLoadFromMarkdownForOnline(deps.loadFromMarkdown, assetCache),
+  }
 }
 
 // online edition (data-mdxg-online ガード) でのみ wire される。standalone / embed-template
@@ -169,13 +192,66 @@ const launchBoot = (loadFromMarkdown: BootstrapDeps['loadFromMarkdown']): void =
 }
 
 export const bootstrapReviewApp = (deps: BootstrapDeps): void => {
+  const online = isOnlineEdition()
+  const effectiveDeps = resolveBootstrapDeps(deps, online)
   setupModalsAndPanels()
-  const sendMenu = setupDropdownsAndKeyboard(deps)
+  const sendMenu = setupDropdownsAndKeyboard(effectiveDeps)
   setupSearchWiring()
   setupToolbarButtons(sendMenu)
   setupNavigationRouting()
-  if (isOnlineEdition()) {
+  if (online) {
     attachShikiLangsReadyListener(qs('#doc'))
   }
-  launchBoot(deps.loadFromMarkdown)
+  launchBoot(effectiveDeps.loadFromMarkdown)
+}
+
+if (import.meta.vitest) {
+  const { describe, expect, it, vi } = import.meta.vitest
+
+  const makeDeps = (): BootstrapDeps => ({
+    buildExportPayload: vi.fn(),
+    commentCountLabel: vi.fn((): string => '0 comments'),
+    loadFromMarkdown: vi.fn(async (): Promise<void> => {
+      // no-op
+    }),
+  })
+
+  describe('resolveBootstrapDeps', () => {
+    it('online=false なら deps をそのまま返す (standalone / embed への副作用ゼロ)', () => {
+      const deps = makeDeps()
+      const result = resolveBootstrapDeps(deps, false)
+      expect(result).toBe(deps)
+      expect(result.loadFromMarkdown).toBe(deps.loadFromMarkdown)
+    })
+
+    it('online=true で loadFromMarkdown が装飾され base と別関数になる', () => {
+      const deps = makeDeps()
+      const result = resolveBootstrapDeps(deps, true)
+      expect(result.loadFromMarkdown).not.toBe(deps.loadFromMarkdown)
+    })
+
+    it('online=true でも他フィールド (buildExportPayload / commentCountLabel) は透過', () => {
+      const deps = makeDeps()
+      const result = resolveBootstrapDeps(deps, true)
+      expect(result.buildExportPayload).toBe(deps.buildExportPayload)
+      expect(result.commentCountLabel).toBe(deps.commentCountLabel)
+    })
+
+    it('外部 cache を渡すと装飾 runtime 呼び出しで cache.generation が +1 される (decorator 経由確認)', async () => {
+      const deps = makeDeps()
+      const cache = createOnlineAssetCache()
+      const result = resolveBootstrapDeps(deps, true, cache)
+      expect(cache.generation).toBe(0)
+      await result.loadFromMarkdown('doc.md', '# x\n')
+      expect(cache.generation).toBe(1)
+      expect(deps.loadFromMarkdown).toHaveBeenCalledWith('doc.md', '# x\n')
+    })
+
+    it('cache 省略時は新規 OnlineAssetCache が内部生成され、装飾後 base が呼ばれる', async () => {
+      const deps = makeDeps()
+      const result = resolveBootstrapDeps(deps, true)
+      await result.loadFromMarkdown('doc.md', '# y\n')
+      expect(deps.loadFromMarkdown).toHaveBeenCalledWith('doc.md', '# y\n')
+    })
+  })
 }
