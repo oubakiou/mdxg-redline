@@ -422,18 +422,32 @@ Phase A.2 の本作業中、 計画書の本文には書かれていなかった
 
 これらの不変条件 (sequential rename / bak 保全 / 厳密 parse / buildStart 取得 / abrupt termination) を Phase B / C の `splitOutputsPlugin` 改修で破らないこと。
 
-### Step 4: Phase A.3 — runtime decorator を app-wiring に組み込み + 実機検証
+### Step 4 ✅ 完了: Phase A.3 — runtime decorator を app-wiring に組み込み + hosting target 切り出し (commit `1187cc6` + 後続 commit)
 
-§5.k の runtime decorator を `src/app/app-wiring.ts` に組み込み、全入力経路 (toolbar / Open URL modal / boot) で装飾 runtime が使われるようにする 1 PR (Item 3 対応)。
+§5.k の runtime decorator を `src/app/app-wiring.ts` に組み込み、全入力経路 (toolbar / Open URL modal / boot) で装飾 runtime が使われるようにする 1 PR (Item 3 対応)。 加えて Cloudflare Pages 実機セットアップに着手した結果、 dist 直下 (CLI / Releases 配布) と Pages 配信 subset を物理的に分離する hosting target 切り出しを行った (下記「実装中に追加された設計判断」参照)。
 
 - `src/app/app-wiring.ts`: `isOnlineEdition()` true なら `decorateLoadFromMarkdownForOnline(baseRuntime, createOnlineAssetCache())` を一度だけ呼んで装飾、toolbar / boot / Open URL modal すべての attach 先に同じ装飾 runtime を渡す
 - `boot.ts` / `chrome/toolbar.ts` / `app/online/open-url-modal.ts` の側は変更なし (`runtime.loadFromMarkdown` を呼ぶ既存コードのまま、装飾 runtime が透過的に asset-loader 経路を走らせる)
 - `boot.ts` 側に inline で書いていた wrapper は削除 (decorator に集約)
-- `npx wrangler pages dev dist` でローカルエミュレーション、`/?url=...` / `/online.html?url=...` / **Open file 経路** / Open URL modal 経由のいずれでも asset-loader が走ることを DevTools Network パネルで確認
+- `npx wrangler pages dev dist/hosting` でローカルエミュレーション、`/?url=...` / **Open file 経路** / Open URL modal 経由のいずれでも asset-loader が走ることを DevTools Network パネルで確認
 - main に push → Cloudflare Pages 自動 redeploy → deploy 成立 + 実機 markdown 描画を確認
 - `https://<project>.pages.dev/?url=https://raw.githubusercontent.com/oubakiou/mdxg-redline/main/README_ja.md` で grammar fetch が DevTools Network パネルに見えることを確認
 
-成果物：Phase A 完了 (commit が main に push されて Cloudflare Pages で deploy 成立、全 4 入力経路で asset-loader が走る)
+成果物：Phase A 完了 (commit が main に push されて Cloudflare Pages で deploy 成立、全 4 入力経路で asset-loader が走る、 Pages の Build output directory に `dist/hosting` を指定)
+
+#### 実装中に追加された設計判断 (Pages deploy セットアップ補強)
+
+Phase A.3 の本作業中、 Cloudflare Pages 実機セットアップに着手した結果、 計画書の本文には書かれていなかった 5 つの設計判断を追加で導入した。 計画 §1 [MUST] 受け入れ基準「Cloudflare Pages で deploy が per-file size error なし で成立する」を満たすために必要な作業で、 Phase B / C で `splitOutputsPlugin` 周辺を触る人が前提を知らずに不変条件を壊すことがないよう、 commit 履歴より参照しやすい形でここに残す。 詳細はすべて `vite.config.ts` / `src/build/online-headers.ts` 内のコメントに集約済み。
+
+1. **`dist/hosting/` を Pages 配信 subset として source-of-truth 化** — `dist/standalone.html` (47 MB、 Pages の per-file 25 MiB 制限超) / `dist/embed-template.html` / `dist/review-request.mjs` / `dist/mermaid.mjs` / `dist/katex/` / `dist/shiki-langs/` は CLI または GitHub Releases 配布専用で hosting には不要なため、 Pages の Build output directory を `dist/hosting` に向けて構造的に除外する。 dist 直下 = CLI / Releases 配布用、 `dist/hosting/` = ホスティング配信用 の境界が物理的に明確 (subset コピー方式ではなく **最初から `dist/hosting/` 配下に直接 emit** することで重複ゼロ + transform 不要)。 含める entry: `index.html` (online.html リネーム) / `_headers` (path 書き直し済み) / `fingerprinted/` / `canonical/`。 `vite.config.ts` の `resolveFinalGrammarDirs` / `resolveSplitOutputPaths` / `emitHostingHeaders` で構造的に保証。
+2. **vendor-neutral 命名 (`hosting/`)** — Cloudflare 固有名 (`cf-pages` / `pages` / `cloudflare`) を避け、 Vercel / Netlify 等の別ホスティングへ将来切り替えても dir 名を変える必要がない設計。
+3. **`online.html` → `index.html` リネーム + `_redirects` 廃止** — Pages 慣習で `/` への request は自動的に `index.html` を返すため、 `dist/hosting/index.html` という命名にすると `_redirects` (`/ /online.html 200`) が不要になる。 `dist/_redirects` 自体を `git rm` し、 `src/build/online-redirects.ts` も削除。 `buildOnlineHtml` の出力先を `dist/hosting/index.html` に直結。
+4. **`_headers` の path section を `/index.html` に書き換え** — `src/build/online-headers.ts` の path section `/online.html` を `/index.html` に変更。 `/` (Pages の default index 配信) と `/index.html` (直接 URL アクセス) の両方に同じ CSP / Cache-Control を返す防御。 in-source test の expectation も `/index.html` に更新、 旧名残の混入回帰防止として「`/online.html` が結果に残らない」assert を追加。
+5. **subset コピー方式の廃止 (中間案 B の却下)** — Phase A.3 初期検討では「dist 直下に旧仕様の online.html / `_headers` / fingerprinted / canonical を残し、 `src/build/hosting-target.ts` の `emitHostingTarget` で `dist/hosting/` に subset コピーする」中間案 B も検討したが、 「source-of-truth が 1 つで重複なし / transform 関数不要 / `_redirects` の存在自体が消える / CLI と Pages の境界が物理的に明確」の利点を取って **最初から `dist/hosting/` に直接 emit する C 設計** を採用。 `hosting-target.ts` / `online-redirects.ts` は実装しない (作っていた場合は削除)。
+
+これらの不変条件 (subset 切り出し / vendor-neutral 命名 / index.html リネーム / `_headers` の path 整合 / 直接 emit) を Phase B / C で hosting target に Mermaid / KaTeX 追加する際に破らないこと。 Phase B で `mermaid.<hash>.mjs` が `dist/hosting/fingerprinted/` 配下に直接 emit されれば自動的に Pages 配信 subset に含まれる。 Phase C も同様。
+
+DESIGN.md §3 / §9 / §11.b / §13 の path 名 (`dist/online.html` → `dist/hosting/index.html` 等) は §13 の build pipeline 周辺のみ最小修正し、 詳細議論 (§11.b CSP / §3 入力 3 / §9 起動シーケンス) は Step 7 でまとめて C 設計に合わせて書き直す。
 
 ### Step 5: Phase B — Mermaid の dynamic import + 永続 listener + load failure retry
 

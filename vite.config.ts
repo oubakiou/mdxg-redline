@@ -10,7 +10,6 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { buildOnlineAllowlist } from './src/build/online-allowlist.ts'
 import { buildOnlineHeadersFile } from './src/build/online-headers.ts'
 import { type OnlineAssetManifestPayload, buildOnlineHtml } from './src/build/online-html.ts'
-import { buildOnlineRedirectsFile } from './src/build/online-redirects.ts'
 import { inlineMarkdownCssIntoHtml } from './src/build/inline-markdown-css.ts'
 import { type Plugin, defineConfig } from 'vite-plus'
 import { fileURLToPath } from 'node:url'
@@ -41,13 +40,16 @@ const regenerateAliasesTs = async (): Promise<void> => {
   await writeFile(outPath, ts, 'utf8')
 }
 
-// online edition は manifest 経由で `dist/fingerprinted/shiki-langs/<lang>.<hash>.json` (immutable
-// cache 対象) と `dist/canonical/shiki-langs/<lang>.json` (404 retry 先 + 古い HTML cache が直接
-// fetch する fallback) の 2 系統を必要とする。fingerprinted は content hash 焼き込みで `_headers`
-// の `immutable, max-age=31536000` 配信を可能にし、canonical は `max-age=300` で deploy 直後の
-// 世代ずれ過渡期に新版を返す (docs/feature-online-runtime-assets.md §5.i)。
+// online edition は manifest 経由で `dist/hosting/fingerprinted/shiki-langs/<lang>.<hash>.json`
+// (immutable cache 対象) と `dist/hosting/canonical/shiki-langs/<lang>.json` (404 retry 先 +
+// 古い HTML cache が直接 fetch する fallback) の 2 系統を必要とする。fingerprinted は content
+// hash 焼き込みで `_headers` の `immutable, max-age=31536000` 配信を可能にし、canonical は
+// `max-age=300` で deploy 直後の世代ずれ過渡期に新版を返す (docs/feature-online-runtime-assets.md
+// §5.i)。両者は Pages の Build output directory として指定する `dist/hosting/` 配下に置く
+// (Step 4 の C 設計判断、 詳細は resolveFinalGrammarDirs / resolveSplitOutputPaths のコメント)。
 // 加えて CLI 経路 (`npm publish` 対象の `dist/shiki-langs/`、review-request CLI が markdown scan
-// 結果に応じて inject する素材) は従来パスを維持する。3 セットそれぞれが独立用途で衝突しない。
+// 結果に応じて inject する素材) は dist 直下の従来パスを維持する。3 セットそれぞれが独立用途で
+// 衝突しない。
 const FINGERPRINT_HASH_LEN = 8
 
 const sha256Prefix = (content: string): string =>
@@ -97,10 +99,15 @@ const prepareTmpDirs = async (dirs: GrammarOutputDirs): Promise<void> => {
   ])
 }
 
+// online edition 用の canonical / fingerprinted は Cloudflare Pages 配信 subset として
+// `dist/hosting/` 配下に直接 emit する (Pages の Build output directory を `dist/hosting`
+// に指定する設計、 docs/feature-online-runtime-assets.md Step 4 ✅ 完了の C 設計判断)。
+// CLI 用 `dist/shiki-langs/` は dist 直下のまま (review-request CLI が markdown scan
+// 結果に応じて inject する素材)。
 const resolveFinalGrammarDirs = (): GrammarOutputDirs => ({
-  canonicalDir: resolve(ROOT_DIR, 'dist', 'canonical', 'shiki-langs'),
+  canonicalDir: resolve(ROOT_DIR, 'dist', 'hosting', 'canonical', 'shiki-langs'),
   cliDir: resolve(ROOT_DIR, 'dist', 'shiki-langs'),
-  fingerprintedDir: resolve(ROOT_DIR, 'dist', 'fingerprinted', 'shiki-langs'),
+  fingerprintedDir: resolve(ROOT_DIR, 'dist', 'hosting', 'fingerprinted', 'shiki-langs'),
 })
 
 // rename 1 件分の三角関係 (tmp → final → bak)。 sequential rename の進捗を記録するため
@@ -270,8 +277,8 @@ const prepareBakRoot = async (bakRoot: string): Promise<void> => {
 
 const prepareFinalParents = async (): Promise<void> => {
   await Promise.all([
-    mkdir(resolve(ROOT_DIR, 'dist', 'canonical'), { recursive: true }),
-    mkdir(resolve(ROOT_DIR, 'dist', 'fingerprinted'), { recursive: true }),
+    mkdir(resolve(ROOT_DIR, 'dist', 'hosting', 'canonical'), { recursive: true }),
+    mkdir(resolve(ROOT_DIR, 'dist', 'hosting', 'fingerprinted'), { recursive: true }),
   ])
 }
 
@@ -784,7 +791,7 @@ const markdownCssInlinePlugin = (): Plugin => ({
   },
 })
 
-// dist/online.html は standalone を素材として派生し、docs/feature-online-runtime-assets.md
+// dist/hosting/index.html は standalone を素材として派生し、docs/feature-online-runtime-assets.md
 // Phase A.2 の 5 mutation を apply する (buildOnlineHtml の comment 参照):
 //   1. <html data-mdxg-online="1">
 //   2. CSP `connect-src 'none'` → `connect-src 'self' <allowlist>`
@@ -805,27 +812,27 @@ const buildOnlineHtmlFromStandalone = (
   // build の再現性に env が影響するため、解決済み allowlist を必ず stdout に emit する。
   // CI ログ / 開発者の手元両方で「この build がどの allowlist を採用したか」が後追いできる。
   console.log(
-    `[mdxg-online] dist/online.html allowlist (${allowlist.length}): ${allowlist.join(' ')}`
+    `[mdxg-online] dist/hosting/index.html allowlist (${allowlist.length}): ${allowlist.join(' ')}`
   )
   return buildOnlineHtml(standaloneHtml, { allowlist, manifest })
 }
 
-// Cloudflare Pages hosting 用の静的設定ファイルを dist/ に emit する
-// (docs/archive/feature-online-edition.archive.md §5.g):
-// - _headers: online.html / `/` に allowlist 適用後 CSP を HTTP response header として返す
-//   (meta CSP との single source of truth は extractCspContent 経由で構造的に担保)
-// - _redirects: `/` への request を /online.html の content として rewrite (status 200)。
-//   URL バーは `/` のまま保たれ、`?url=...` クエリも保持される。
-const emitHostingConfigFiles = async (distDir: string, onlineHtml: string): Promise<void> => {
-  await Promise.all([
-    writeFile(resolve(distDir, '_headers'), buildOnlineHeadersFile(onlineHtml), 'utf8'),
-    writeFile(resolve(distDir, '_redirects'), buildOnlineRedirectsFile(), 'utf8'),
-  ])
+// Cloudflare Pages hosting 用の `_headers` を `dist/hosting/` に emit する。
+// `/` と `/index.html` (Pages の default index 配信と直接 URL アクセスの両経路) に allowlist
+// 適用後 CSP を HTTP response header として返す。 meta CSP との single source of truth は
+// extractCspContent 経由で構造的に担保。
+//
+// `_redirects` は配置しない: Pages 慣習で `/` request は自動的に `index.html` を返すため、
+// 旧設計の `/ /online.html 200` rewrite は不要 (online.html → index.html リネームの C 設計判断、
+// docs/feature-online-runtime-assets.md Step 4)。
+const emitHostingHeaders = async (hostingDir: string, onlineHtml: string): Promise<void> => {
+  await writeFile(resolve(hostingDir, '_headers'), buildOnlineHeadersFile(onlineHtml), 'utf8')
 }
 
 interface SplitOutputPaths {
   distDir: string
   embedTemplatePath: string
+  hostingDir: string
   intermediatePath: string
   onlinePath: string
   standalonePath: string
@@ -833,11 +840,13 @@ interface SplitOutputPaths {
 
 const resolveSplitOutputPaths = (): SplitOutputPaths => {
   const distDir = resolve(ROOT_DIR, 'dist')
+  const hostingDir = resolve(distDir, 'hosting')
   return {
     distDir,
     embedTemplatePath: resolve(distDir, 'embed-template.html'),
+    hostingDir,
     intermediatePath: resolve(distDir, 'review.html'),
-    onlinePath: resolve(distDir, 'online.html'),
+    onlinePath: resolve(hostingDir, 'index.html'),
     standalonePath: resolve(distDir, 'standalone.html'),
   }
 }
@@ -860,10 +869,14 @@ const runSplitOutputs = async (): Promise<void> => {
   const standaloneHtml = await buildStandaloneHtml(paths.distDir, html)
   const manifest = buildManifestPayload(grammarEmission)
   const onlineHtml = buildOnlineHtmlFromStandalone(standaloneHtml, manifest)
+  // emitGrammarJsonFiles が dist/hosting/{canonical,fingerprinted}/shiki-langs を rename で
+  // 作るため hostingDir 自体は既に存在するが、 初回 build や grammar 経路の swap 後で消えている
+  // 経路を防御するため明示 mkdir する。 recursive で idempotent。
+  await mkdir(paths.hostingDir, { recursive: true })
   await Promise.all([
     writeFile(paths.standalonePath, standaloneHtml, 'utf8'),
     writeFile(paths.onlinePath, onlineHtml, 'utf8'),
-    emitHostingConfigFiles(paths.distDir, onlineHtml),
+    emitHostingHeaders(paths.hostingDir, onlineHtml),
     rename(paths.intermediatePath, paths.embedTemplatePath),
   ])
 }

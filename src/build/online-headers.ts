@@ -5,11 +5,14 @@ import {
 } from './online-html.ts'
 
 // Cloudflare Pages の _headers ファイルフォーマット
-// (https://developers.cloudflare.com/pages/configuration/headers/) で online.html の信頼境界を
-// HTTP response header 層でも強制する。docs/archive/feature-online-edition.archive.md §5.g の方針:
-// - online.html / `/` (_redirects で /online.html に rewrite される) のみに allowlist 付き CSP を返す
-// - 他リソース (standalone.html / embed-template.html 等が同じホスティングに置かれた場合) には
-//   online 用 CSP を返さない (信頼境界の分離原則、§3.1)
+// (https://developers.cloudflare.com/pages/configuration/headers/) で Pages 配信時の
+// online edition (`/index.html` = build artifact `dist/hosting/index.html`) の信頼境界を HTTP
+// response header 層でも強制する。
+// - `/` (Pages が default index 配信で index.html を返す) と `/index.html` (直接アクセス) の
+//   両方に allowlist 付き CSP を返す
+// - dist 直下の CLI 配布物 (standalone.html / embed-template.html 等) は hosting target に
+//   含めず Pages にアップロードされないため、 オンライン版 CSP の漏出経路はない (§3.1 信頼境界
+//   の分離原則、 hosting target subset 切り出しは vite.config.ts の runSplitOutputs で構造的に保証)
 // - 全リソースに基本セキュリティヘッダ (Referrer-Policy: no-referrer / X-Content-Type-Options: nosniff)
 //
 // CSP content は引数の onlineHtml から `<meta http-equiv="Content-Security-Policy">` を抽出するため、
@@ -25,12 +28,9 @@ import {
 // Referrer-Policy / X-Content-Type-Options も `/*` のみで指定し specific path で再指定しないため、
 // カンマ結合の発生余地はない (specific path には additive で /* 由来の値が付く)。
 //
-// `_redirects` の status 200 rewrite と `_headers` の評価順:
-// - 公式 docs に "redirects are applied before headers" と明記。ただし rewrite (status 200) 時に
-//   `_headers` が rewrite **前** の request URL ベースで評価されるか、rewrite **後** の URL ベースか
-//   は公式 docs で明示されていない。
-// - 両方の可能性に対する防御として `/` と `/online.html` の両方に同じ CSP を書く。
-//   rewrite 前評価なら `/` rule が当たり、rewrite 後評価なら `/online.html` rule が当たる。
+// Pages が `/` request に対して内部的に index.html を返す経路で `_headers` が `/` ベースで
+// 評価されるか `/index.html` ベースで評価されるかは公式 docs で明示されていない。 両方の可能性に
+// 対する防御として `/` と `/index.html` の両方に同じ CSP を書く。
 //
 // Cloudflare Pages の `_headers` ヘッダ値あたり上限は 2,000 文字。allowlist (env 由来) が肥大化して
 // CSP 行が上限を超えると、Cloudflare が無音で truncate / 無視して CSP 全体が無効化される最悪
@@ -38,9 +38,9 @@ import {
 export const CLOUDFLARE_HEADER_VALUE_LIMIT = 2000
 
 // docs/feature-online-runtime-assets.md §5.f / §5.i Item 1 で確定の path 単位 Cache-Control 分離:
-// - `/online.html` / `/`  → max-age=300 (5 分、HTML cache は短寿命にして deploy 世代ずれ過渡期を最小化)
-// - `/fingerprinted/*`    → max-age=31536000 immutable (hash 焼き込み済み資材、永久 cache 可)
-// - `/canonical/*`        → max-age=300 (新版 deploy で内容更新される fallback、immutable は禁止)
+// - `/index.html` / `/`  → max-age=300 (5 分、HTML cache は短寿命にして deploy 世代ずれ過渡期を最小化)
+// - `/fingerprinted/*`   → max-age=31536000 immutable (hash 焼き込み済み資材、永久 cache 可)
+// - `/canonical/*`       → max-age=300 (新版 deploy で内容更新される fallback、immutable は禁止)
 const HTML_CACHE_CONTROL = '  Cache-Control: public, max-age=300'
 const FINGERPRINTED_CACHE_CONTROL = '  Cache-Control: public, max-age=31536000, immutable'
 const CANONICAL_CACHE_CONTROL = '  Cache-Control: public, max-age=300'
@@ -62,7 +62,7 @@ export const buildOnlineHeadersFile = (onlineHtml: string): string => {
     cspLine,
     HTML_CACHE_CONTROL,
     '',
-    '/online.html',
+    '/index.html',
     cspLine,
     HTML_CACHE_CONTROL,
     '',
@@ -118,14 +118,19 @@ if (import.meta.vitest) {
     buildOnlineHtml(SAMPLE_HTML, { allowlist: SAMPLE_ALLOWLIST, manifest: SAMPLE_MANIFEST })
 
   describe('buildOnlineHeadersFile: 基本構造', () => {
-    it('/*  /  /online.html の 3 セクションを順に持つ', () => {
+    it('/*  /  /index.html の 3 セクションを順に持つ', () => {
       const text = buildOnlineHeadersFile(buildSampleOnlineHtml())
       const slashStarIdx = text.indexOf('/*')
       const slashIdx = text.indexOf('\n/\n')
-      const onlineIdx = text.indexOf('/online.html')
+      const indexIdx = text.indexOf('/index.html')
       expect(slashStarIdx).toBeGreaterThanOrEqual(0)
       expect(slashIdx).toBeGreaterThan(slashStarIdx)
-      expect(onlineIdx).toBeGreaterThan(slashIdx)
+      expect(indexIdx).toBeGreaterThan(slashIdx)
+    })
+
+    it('/online.html の path section を含まない (旧名残の混入回帰防止)', () => {
+      const text = buildOnlineHeadersFile(buildSampleOnlineHtml())
+      expect(text).not.toContain('/online.html')
     })
 
     it('末尾改行を含む (POSIX text file 慣習)', () => {
@@ -146,8 +151,8 @@ if (import.meta.vitest) {
     })
   })
 
-  describe('buildOnlineHeadersFile: CSP (/ と /online.html)', () => {
-    it('/ と /online.html に同じ CSP content を返す (rewrite 元と先で挙動を揃える)', () => {
+  describe('buildOnlineHeadersFile: CSP (/ と /index.html)', () => {
+    it('/ と /index.html に同じ CSP content を返す (Pages の `/` 自動配信と直接 URL アクセスで挙動を揃える)', () => {
       const text = buildOnlineHeadersFile(buildSampleOnlineHtml())
       const cspMatches = [...text.matchAll(/Content-Security-Policy: (.+)/gu)]
       expect(cspMatches).toHaveLength(2)
@@ -161,7 +166,7 @@ if (import.meta.vitest) {
       )
     })
 
-    it('online.html の meta CSP と HTTP header CSP が完全一致 (drift 検出)', () => {
+    it('index.html の meta CSP と HTTP header CSP が完全一致 (drift 検出)', () => {
       const onlineHtml = buildSampleOnlineHtml()
       const headersText = buildOnlineHeadersFile(onlineHtml)
       const metaCsp = extractCspContent(onlineHtml)
@@ -190,9 +195,9 @@ if (import.meta.vitest) {
       expect(section).not.toContain('immutable')
     })
 
-    it('/online.html に max-age=300 (rewrite 元と先で挙動を揃える)', () => {
+    it('/index.html に max-age=300 (Pages の `/` 自動配信と直接 URL アクセスで挙動を揃える)', () => {
       const text = buildOnlineHeadersFile(buildSampleOnlineHtml())
-      const section = extractHeadersSectionForTest(text, '/online.html', 4)
+      const section = extractHeadersSectionForTest(text, '/index.html', 4)
       expect(section).toContain('Cache-Control: public, max-age=300')
       expect(section).not.toContain('immutable')
     })

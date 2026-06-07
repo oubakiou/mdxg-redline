@@ -6,7 +6,7 @@
   Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; connect-src 'self' https://raw.githubusercontent.com https://gist.githubusercontent.com; script-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'
   Cache-Control: public, max-age=300
 
-/online.html
+/index.html
   Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; connect-src 'self' https://raw.githubusercontent.com https://gist.githubusercontent.com; script-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'
   Cache-Control: public, max-age=300
 
