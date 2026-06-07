@@ -8,6 +8,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { dirname, resolve } from 'node:path'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { buildOnlineAllowlist } from './src/build/online-allowlist.ts'
+import { buildOnline404Html } from './src/build/online-404.ts'
 import { buildOnlineHeadersFile } from './src/build/online-headers.ts'
 import { type OnlineAssetManifestPayload, buildOnlineHtml } from './src/build/online-html.ts'
 import { inlineMarkdownCssIntoHtml } from './src/build/inline-markdown-css.ts'
@@ -829,6 +830,15 @@ const emitHostingHeaders = async (hostingDir: string, onlineHtml: string): Promi
   await writeFile(resolve(hostingDir, '_headers'), buildOnlineHeadersFile(onlineHtml), 'utf8')
 }
 
+// Cloudflare Pages の SPA fallback (存在しないパス → index.html を 200 で返す) を抑制する
+// `404.html` を `dist/hosting/` に emit する。 Pages は dist 直下に 404.html があると、
+// 存在しないパスに対して 404 status + 404.html の内容を返すように切り替わる (公式 docs:
+// https://developers.cloudflare.com/pages/configuration/serving-pages/)。 build pipeline
+// から見ると pure 関数の出力を書き出すだけ。
+const emitHosting404 = async (hostingDir: string): Promise<void> => {
+  await writeFile(resolve(hostingDir, '404.html'), buildOnline404Html(), 'utf8')
+}
+
 interface SplitOutputPaths {
   distDir: string
   embedTemplatePath: string
@@ -877,6 +887,7 @@ const runSplitOutputs = async (): Promise<void> => {
     writeFile(paths.standalonePath, standaloneHtml, 'utf8'),
     writeFile(paths.onlinePath, onlineHtml, 'utf8'),
     emitHostingHeaders(paths.hostingDir, onlineHtml),
+    emitHosting404(paths.hostingDir),
     rename(paths.intermediatePath, paths.embedTemplatePath),
   ])
 }

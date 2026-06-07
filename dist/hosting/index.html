@@ -13,6 +13,20 @@
       content="default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; connect-src 'self' https://raw.githubusercontent.com https://gist.githubusercontent.com; script-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'"
     />
     <title>MDXG Redline</title>
+    <!-- inline SVG favicon (赤背景 + 白「M」)。 default `/favicon.ico` の自動 GET を抑制し、
+         Cloudflare Pages の SPA fallback (存在しないパス → index.html を 200 で返す) で
+         text/html が返って image として解釈エラーになる挙動を防ぐ。 CSP `img-src https: data:`
+         で data URI を許可済み。 apple-touch-icon にも同じ SVG を指定し iOS Safari の
+         `/apple-touch-icon.png` 自動 GET も同時に抑制する。 -->
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23d32f2f'/><text x='16' y='22' font-size='20' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'>M</text></svg>"
+    />
+    <link
+      rel="apple-touch-icon"
+      href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23d32f2f'/><text x='16' y='22' font-size='20' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'>M</text></svg>"
+    />
     <!-- FOUC 防止のため stylesheet より前で paint 直前に .dark を付ける。
          優先順位 P1: <html data-theme> > localStorage > prefers-color-scheme
          (DESIGN.md §7c / §12 §1 Theming 行)。
