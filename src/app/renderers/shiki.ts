@@ -91,6 +91,48 @@ export const getOrCreateHighlighter = (): HighlighterCore | null => {
 }
 
 /**
+ * lazy singleton を「未初期化」状態に戻す。次回 `getOrCreateHighlighter` で
+ * `embedded-shiki-langs` を読み直して再 init する。`installShikiGrammars` の内部から呼ばれる
+ * のと、in-source test の状態リセットで使う。
+ *
+ * 既存 instance がある場合は `dispose()` で OnigScanner 等の native resource を解放してから
+ * 参照を捨てる。Grammar 追加のたびに dispose しないと旧 instance が JS heap に残って累積する。
+ */
+export const resetShikiHighlighter = (): void => {
+  if (cachedHighlighter !== false && cachedHighlighter !== null) {
+    cachedHighlighter.dispose()
+  }
+  cachedHighlighter = false
+}
+
+/**
+ * `<script id="embedded-shiki-langs">` の textContent を既存 + 新規 grammar の spread merge で
+ * update し、`cachedHighlighter` を未初期化状態に reset して次回 `getOrCreateHighlighter` で
+ * 再 init が走るようにする。Shiki API に bridge global / `loadLanguage` 経路がないため、
+ * embedded script の textContent を single source of truth として扱う設計。
+ */
+export const installShikiGrammars = (newGrammars: Record<string, unknown>): void => {
+  if (typeof document === 'undefined') {
+    return
+  }
+  const existing = readEmbeddedShikiLangs()
+  const merged = { ...existing, ...newGrammars }
+  const el = document.getElementById('embedded-shiki-langs')
+  const target = ((): HTMLElement => {
+    if (el instanceof HTMLElement) {
+      return el
+    }
+    const created = document.createElement('script')
+    created.id = 'embedded-shiki-langs'
+    created.type = 'application/json'
+    document.body.appendChild(created)
+    return created
+  })()
+  target.textContent = JSON.stringify(merged)
+  resetShikiHighlighter()
+}
+
+/**
  * 単一フェンスを Shiki で HTML 文字列化する。highlighter が null のとき、または
  * lang 識別子が未対応 / loadedLanguages 外のときは null を返し、呼び出し側で plain fallback。
  * defaultColor: false で `<span style="--shiki-light/--shiki-dark">` の dual theme を出力させ、

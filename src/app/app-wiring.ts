@@ -30,7 +30,8 @@ import { openEditCommentModal, wireCommentModal } from './comments/comment-modal
 import { qs, toast } from './dom/dom-utils'
 import { type DropdownLike, setupKeyboardHandlers } from './chrome/global-keyboard'
 import { toggleHelpModal, wireHelpModal } from './chrome/help-modal'
-import { boot } from './boot'
+import { boot, isOnlineEdition } from './boot'
+import { attachShikiLangsReadyListener } from './renderers/shiki-upgrade'
 import { createDropdownMenu } from './dom/menu'
 import { initCommentsResize } from './comments/comments-resize'
 import { initPageNavResize } from './navigation/page-nav-resize'
@@ -173,5 +174,8 @@ export const bootstrapReviewApp = (deps: BootstrapDeps): void => {
   setupSearchWiring()
   setupToolbarButtons(sendMenu)
   setupNavigationRouting()
+  if (isOnlineEdition()) {
+    attachShikiLangsReadyListener(qs('#doc'))
+  }
   launchBoot(deps.loadFromMarkdown)
 }

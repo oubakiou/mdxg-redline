@@ -126,3 +126,146 @@ export const scheduleShikiUpgrade = (doc: HTMLElement): void => {
     performShikiUpgrade(doc)
   })
 }
+
+// attach 済み listener function reference を保持。null = 未 attach。
+// `resetShikiLangsListenerForTest` で `removeEventListener` するために handler 自体を持っておく。
+let shikiLangsListener: (() => void) | null = null
+
+/**
+ * `mdxg:shiki-langs-ready` を永続 listen して受け取るたび `upgrade(doc)` を再走させる。
+ * 遅延が大きい回線や複数 grammar の段階 load でも upgrade が取りこぼされないことを保証する。
+ * event 自体が発火しない経路では attach されても何も起こらない。
+ *
+ * 重複 attach は module-level reference (`shikiLangsListener`) のガードで idempotent。
+ * `upgrade` は dependency injection 用の optional 引数で、default は本 module の
+ * `scheduleShikiUpgrade`。listener の発火を test から直接 verify するためにある。
+ */
+export const attachShikiLangsReadyListener = (
+  doc: HTMLElement,
+  upgrade: (doc: HTMLElement) => void = scheduleShikiUpgrade
+): void => {
+  if (shikiLangsListener !== null) {
+    return
+  }
+  if (typeof document === 'undefined') {
+    return
+  }
+  const listener = (): void => {
+    upgrade(doc)
+  }
+  shikiLangsListener = listener
+  document.addEventListener('mdxg:shiki-langs-ready', listener)
+}
+
+/**
+ * 永続 listener を実際に `removeEventListener` で外し、reference を null に戻す test 専用 helper。
+ * 本番経路では呼ばない (page reload で破棄される設計)。
+ */
+export const resetShikiLangsListenerForTest = (): void => {
+  if (shikiLangsListener !== null && typeof document !== 'undefined') {
+    document.removeEventListener('mdxg:shiki-langs-ready', shikiLangsListener)
+  }
+  shikiLangsListener = null
+}
+
+const createTestDocEl = (id: string): HTMLElement => {
+  const doc = document.createElement('div')
+  doc.id = id
+  document.body.appendChild(doc)
+  return doc
+}
+
+const dispatchShikiLangsReady = (times: number): void => {
+  for (let count = 0; count < times; count += 1) {
+    document.dispatchEvent(new Event('mdxg:shiki-langs-ready'))
+  }
+}
+
+const attachWithEphemeralDoc = (
+  id: string,
+  upgrade: (doc: HTMLElement) => void
+): { remove: () => void } => {
+  const doc = createTestDocEl(id)
+  attachShikiLangsReadyListener(doc, upgrade)
+  return { remove: (): void => doc.remove() }
+}
+
+interface ResetIsolationCallCounts {
+  newCount: number
+  oldCount: number
+}
+
+interface MockFnLike {
+  (...args: unknown[]): unknown
+  mock: { calls: unknown[][] }
+}
+
+const runResetIsolationScenario = (makeFn: () => MockFnLike): ResetIsolationCallCounts => {
+  const oldUpgrade = makeFn()
+  const newUpgrade = makeFn()
+  const first = attachWithEphemeralDoc('doc-test-reset-old', oldUpgrade)
+  first.remove()
+  resetShikiLangsListenerForTest()
+  const second = attachWithEphemeralDoc('doc-test-reset-new', newUpgrade)
+  try {
+    dispatchShikiLangsReady(1)
+    return { newCount: newUpgrade.mock.calls.length, oldCount: oldUpgrade.mock.calls.length }
+  } finally {
+    second.remove()
+  }
+}
+
+if (import.meta.vitest) {
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest
+
+  describe('attachShikiLangsReadyListener', () => {
+    afterEach((): void => {
+      resetShikiLangsListenerForTest()
+    })
+
+    it('event 発火で upgrade が doc を引数に呼ばれる', () => {
+      const doc = createTestDocEl('doc-test-1')
+      const upgrade = vi.fn()
+      try {
+        attachShikiLangsReadyListener(doc, upgrade)
+        dispatchShikiLangsReady(1)
+        expect(upgrade).toHaveBeenCalledTimes(1)
+        expect(upgrade).toHaveBeenCalledWith(doc)
+      } finally {
+        doc.remove()
+      }
+    })
+
+    it('2 回呼んでも listener は 1 度しか attach されない (idempotent)', () => {
+      const doc = createTestDocEl('doc-test-2')
+      const upgrade = vi.fn()
+      try {
+        attachShikiLangsReadyListener(doc, upgrade)
+        attachShikiLangsReadyListener(doc, upgrade)
+        dispatchShikiLangsReady(1)
+        expect(upgrade).toHaveBeenCalledTimes(1)
+      } finally {
+        doc.remove()
+      }
+    })
+
+    it('永続 listener なので複数回 event 発火しても都度 upgrade が走る', () => {
+      const doc = createTestDocEl('doc-test-3')
+      const upgrade = vi.fn()
+      try {
+        attachShikiLangsReadyListener(doc, upgrade)
+        dispatchShikiLangsReady(3)
+        expect(upgrade).toHaveBeenCalledTimes(3)
+      } finally {
+        doc.remove()
+      }
+    })
+
+    it('reset 後は古い listener が累積せず、新しい upgrade だけが呼ばれる', () => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const counts = runResetIsolationScenario((): MockFnLike => vi.fn() as unknown as MockFnLike)
+      expect(counts.newCount).toBe(1)
+      expect(counts.oldCount).toBe(0)
+    })
+  })
+}
