@@ -392,7 +392,7 @@ export const loadOnlineAssets = (
 
 成果物：`src/app/online/asset-loader.ts` + `src/core/online-asset-manifest.ts` + `src/app/online/runtime-decorator.ts` 新規 + `shiki.ts` / `shiki-upgrade.ts` 最小拡張 + in-source test (16-18 ケース)
 
-### Step 3: Phase A.2 — build pipeline + manifest + CSP の修正
+### Step 3 ✅ 完了: Phase A.2 — build pipeline + manifest + CSP の修正 (commit `89feefd`)
 
 `vite.config.ts` の `splitOutputsPlugin` で online.html の Shiki inline を skip + asset manifest を生成、CSP に `'self'` を追加する 1 PR。
 
@@ -409,7 +409,18 @@ export const loadOnlineAssets = (
 - standalone.html / embed-template.html は manifest を inject **しない** (信頼境界の分離維持、§3.1)
 - `npm run build` で `dist/online.html` raw が ~6.6 MiB (Phase A 想定)、`dist/shiki-langs/*.<hash>.json` が hash 付きで emit されることを確認
 
-成果物：`dist/online.html` raw が < 25 MiB、CSP / `_headers` 両方に `connect-src 'self'`、`<script id="online-asset-manifest">` が inline、grammar JSON が hash 付き
+成果物：`dist/online.html` raw が < 25 MiB (実測 4.16 MiB)、CSP / `_headers` 両方に `connect-src 'self'`、`<script id="online-asset-manifest">` が inline、grammar JSON が hash 付き
+
+#### 実装中に追加された設計判断 (レビュー指摘で補強)
+
+Phase A.2 の本作業中、 計画書の本文には書かれていなかった 4 つの設計判断を追加で導入した。 Phase B / C / Step 4 以降で `splitOutputsPlugin` 周辺を触る人が前提を知らずに不変条件を壊すことがないよう、 commit 履歴より参照しやすい形でここに残す。 詳細はすべて `vite.config.ts` 内のコメントに集約済み。
+
+1. **退避ロールバック + AggregateError + bak 保全** — grammar emit の swap (旧 dist → 新 dist) を「旧 dir を `dist/.bak-shiki-<random>/` に退避 → tmp dir を rename で promote → 全成功で bak rm」の atomic パターンに変更。 promote 失敗時は `rollbackSwap` (完了 rename を逆順取消 + bak から復元)、 退避失敗時は `restoreBakToFinal`。 復元自体が失敗したら `handleSwapStepFailure` が **bak.root を保全して `AggregateError(originalError, rollbackError)` を throw** する (旧成果物の最後のコピーを失わない原則、 メッセージに bak path を含めて手動回復可能に)。 関連 helper: `tryRenameCollectingFailures` / `restoreBakToFinal` / `rollbackSwap` / `handleSwapStepFailure`。
+2. **file lock + 厳密 parse + token 照合** — 同 ROOT で並列 build (例: `vp build --watch` + 単発 `vp build`) が swap 区間で互いに干渉するのを防ぐため、 `dist/.shiki-build.lock` で排他制御。 lock 内容は **`PID\n<32 桁 lowercase hex>\n` を正規表現で厳密 parse** し、 trailing garbage / 余分な行を受理しない (`LOCK_CONTENT_RE = /^(\d+)\n([0-9a-f]{32})\n?$/u`)。 `process.kill(pid, 0)` の **EPERM は生存扱い**。 **stale lock の自動削除は行わず常に fail-fast** で、 「完了を待つ / 確認後 rm」と案内を分岐。 解放時は取得時 token と現在の lock 内容を照合し、 一致時のみ削除 (理論上の TOCTOU は残るが通常運用での誤削除を防ぐ)。 関連 helper: `parseLockContent` / `acquireGrammarBuildLock` / `failOnExistingLock` / `releaseGrammarBuildLock`。
+3. **lock 取得を `buildStart` に移動** — Vite/Rolldown は `writeBundle` で共有の `dist/review.html` を書くため、 lock を `closeBundle` で取ると lock 取得前に並列 build が review.html を上書きする race が残る。 lock は `splitOutputsPlugin.buildStart` で acquire し、 success path (`closeBundle`) と failure path (`buildEnd(error)`) の両方で release を保証。 token は module-level state (`ownedLockToken`) で hook 間共有。
+4. **`process.exit(1)` で abrupt termination** — `vite-plus` が plugin の async throw を握って build を `closeBundle` まで進行させる挙動が実機検証で観測されたため、 `buildStart` の lock 取得失敗を catch して **`process.exit(1)` で確実に build を止める**。 lint 設定 `unicorn/no-process-exit` は `*.config.ts` で off に override (build pipeline 用途として正規)。
+
+これらの不変条件 (sequential rename / bak 保全 / 厳密 parse / buildStart 取得 / abrupt termination) を Phase B / C の `splitOutputsPlugin` 改修で破らないこと。
 
 ### Step 4: Phase A.3 — runtime decorator を app-wiring に組み込み + 実機検証
 
