@@ -1,5 +1,6 @@
 # MDXG Redline
 
+[![MKDN](https://img.shields.io/badge/MKDN-view-red?style=for-the-badge)](https://mdxg-redline.pages.dev/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME.md#p:mdxg-redline)
 [![npm](https://img.shields.io/npm/v/mdxg-redline.svg?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/mdxg-redline)
 
 [![English](https://img.shields.io/badge/Language-English-blue?style=for-the-badge)](./README.md)
@@ -30,6 +31,12 @@ End users only need a **single HTML file** (`standalone.html`). No server, no ex
 - **Swappable markdown preview stylesheet**: Replace the body preview CSS with your own via the CLI `--markdown-css <path>` flag
 
 ## Usage
+
+### Online edition
+
+Open [`https://mdxg-redline.pages.dev/`](https://mdxg-redline.pages.dev/) in your browser and enter the markdown URL via the toolbar "Open URL" button. Alternatively, bootstrap directly with `?url=<encodeURIComponent(markdown URL)>`. Example: [view this README in the online viewer](https://mdxg-redline.pages.dev/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME.md#p:mdxg-redline).
+
+Allowed fetch hosts are restricted to `raw.githubusercontent.com` and `gist.githubusercontent.com` (CSP `connect-src` allowlist). If you self-host, extend the allowlist via the `MDXG_ONLINE_CONNECT_SRC` environment variable (see [docs/feature-online-runtime-assets.md](docs/feature-online-runtime-assets.md)).
 
 ### Standalone build
 

@@ -1,5 +1,6 @@
 # MDXG Redline
 
+[![MKDN](https://img.shields.io/badge/MKDN-view-red?style=for-the-badge)](https://mdxg-redline.pages.dev/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME_ja.md#p:mdxg-redline)
 [![npm](https://img.shields.io/npm/v/mdxg-redline.svg?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/mdxg-redline)
 
 [![English](https://img.shields.io/badge/Language-English-lightgrey?style=for-the-badge)](./README.md)
@@ -32,6 +33,12 @@ MDXG Redline は、LLM エージェントが人間レビュワーから「長文
 - **マークダウンプレビューのスタイル差し替え**: 本文プレビュー部分の CSS を CLI `--markdown-css <path>` でユーザー定義 CSS に差し替え可能
 
 ## 使い方
+
+### オンライン版
+
+ブラウザで [`https://mdxg-redline.pages.dev/`](https://mdxg-redline.pages.dev/) を開き、 toolbar の「Open URL」ボタンから表示したい markdown の URL を入力する。 または `?url=<encodeURIComponent(markdown URL)>` クエリで直接起動できる。 例: [本 README を online viewer で開く](https://mdxg-redline.pages.dev/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME_ja.md#p:mdxg-redline)。
+
+対応する markdown URL の host は `raw.githubusercontent.com` / `gist.githubusercontent.com` に絞られている (CSP `connect-src` の allowlist)。 self-host して allowlist を拡張する場合は環境変数 `MDXG_ONLINE_CONNECT_SRC` で追加する (詳細は [docs/feature-online-runtime-assets.md](docs/feature-online-runtime-assets.md))。
 
 ### standalone 版
 
