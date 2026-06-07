@@ -541,9 +541,10 @@ export const loadOnlineAssets = (
 
 採用案の論点と mitigation：
 
-- **in-memory cache (SHOULD)**: 同一 session の Open file 経路で「別 markdown を読んだ時に既ロードの grammar を再 fetch しない」を担う。Set / boolean の小さいデータのみ
-- **HTTP cache (MUST)**: fingerprinted (`/fingerprinted/*`) パスに対し `_headers` で `Cache-Control: max-age=31536000, immutable` を設定 (§5.i)。`?url=` 再 submit + reload でも browser は cache から hit、実 fetch ゼロ
-- **canonical は短寿命**: `/canonical/*` は新版 deploy で内容更新されるため `Cache-Control: max-age=300` (§5.i Item 1 対応)。fingerprinted と canonical で異なる Cache-Control を持つよう **ディレクトリ分離** が前提
+- **in-memory cache (SHOULD)**: 同一 session の Open file 経路で「別 markdown を読んだ時に既ロードの grammar を再 fetch しない」を担う。Set / boolean の小さいデータのみ。**ライフサイクルは page lifetime に閉じる** (reload / タブクローズで破棄、`onlineAssetCache` が module-level で確保される `Set<SupportedLang>` / boolean フラグ / `Map<URL, Promise>` のいずれも JS heap に存在する間だけ生存、§5.m の世代 ID も同様)
+- **HTTP cache (MUST)**: fingerprinted (`/fingerprinted/*`) パスに対し `_headers` で `Cache-Control: max-age=31536000, immutable` を設定 (§5.i)。`?url=` 再 submit + reload でも browser は cache から hit、実 fetch ゼロ。**粒度は asset 1 ファイル = cache 1 エントリ** (`<lang>.<hash>.json` 1 ファイル、`mermaid.<hash>.mjs` 1 ファイル、KaTeX の JS / CSS / fonts-extra も独立 3 エントリ)
+- **HTTP cache のセッション境界をまたいだ生存**: browser の disk cache に格納されるため **タブ / セッション / ブラウザ再起動をまたいで永続化** (`max-age=31536000` = 1 年、`immutable` で revalidation も発生しない)。前セッションで fetch 済みの `typescript.<hash>.json` は次セッションで `?url=` を再 submit しても、別 markdown が同じ言語のフェンスを含んでも、**同一 hash パスである限り fetch ゼロ**。**破棄条件は限定的**: (1) browser cache 手動消去、(2) DevTools の Disable cache、(3) シークレット / プライベートブラウジング、(4) browser の cache eviction (容量逼迫 / LRU、稀)、(5) 新版 deploy で grammar 内容が変わって hash が変わった場合 (旧 hash entry は disuse で eviction 対象)
+- **canonical は短寿命**: `/canonical/*` は新版 deploy で内容更新されるため `Cache-Control: max-age=300` (§5.i Item 1 対応)。fingerprinted と canonical で異なる Cache-Control を持つよう **ディレクトリ分離** が前提。canonical entry は 5 分で revalidation 対象になるため deploy 直後の世代ずれ過渡期で確実に新版が返る
 - **HTML cache の短寿命化**: `dist/online.html` は manifest を持つため deploy で hash 表が変わる。HTML 自体は `Cache-Control: max-age=300` 程度 (§5.i Item 5 対応) で deploy 世代ずれの過渡期を最小化
 - **in-memory cache と HTTP cache の重複は許容**: page reload 時に in-memory cache は破棄され、reload 後の boot で再度 asset-loader が走るが、HTTP cache で実 fetch がゼロのため performance loss なし
 - **DevTools での挙動確認**: 「Disable cache」を有効にした場合は in-memory cache のみで動作 (`?url=` 再 submit で実 fetch される)。手動視覚チェックでこの挙動を別途確認
