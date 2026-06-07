@@ -1,4 +1,8 @@
-import { buildOnlineHtml, extractCspContent } from './online-html.ts'
+import {
+  type OnlineAssetManifestPayload,
+  buildOnlineHtml,
+  extractCspContent,
+} from './online-html.ts'
 
 // Cloudflare Pages の _headers ファイルフォーマット
 // (https://developers.cloudflare.com/pages/configuration/headers/) で online.html の信頼境界を
@@ -33,6 +37,14 @@ import { buildOnlineHtml, extractCspContent } from './online-html.ts'
 // ケースがある。fail-fast 防御として生成時点で行長を assertion する。
 export const CLOUDFLARE_HEADER_VALUE_LIMIT = 2000
 
+// docs/feature-online-runtime-assets.md §5.f / §5.i Item 1 で確定の path 単位 Cache-Control 分離:
+// - `/online.html` / `/`  → max-age=300 (5 分、HTML cache は短寿命にして deploy 世代ずれ過渡期を最小化)
+// - `/fingerprinted/*`    → max-age=31536000 immutable (hash 焼き込み済み資材、永久 cache 可)
+// - `/canonical/*`        → max-age=300 (新版 deploy で内容更新される fallback、immutable は禁止)
+const HTML_CACHE_CONTROL = '  Cache-Control: public, max-age=300'
+const FINGERPRINTED_CACHE_CONTROL = '  Cache-Control: public, max-age=31536000, immutable'
+const CANONICAL_CACHE_CONTROL = '  Cache-Control: public, max-age=300'
+
 export const buildOnlineHeadersFile = (onlineHtml: string): string => {
   const cspContent = extractCspContent(onlineHtml)
   const cspLine = `  Content-Security-Policy: ${cspContent}`
@@ -48,11 +60,30 @@ export const buildOnlineHeadersFile = (onlineHtml: string): string => {
     '',
     '/',
     cspLine,
+    HTML_CACHE_CONTROL,
     '',
     '/online.html',
     cspLine,
+    HTML_CACHE_CONTROL,
+    '',
+    '/fingerprinted/*',
+    FINGERPRINTED_CACHE_CONTROL,
+    '',
+    '/canonical/*',
+    CANONICAL_CACHE_CONTROL,
     '',
   ].join('\n')
+}
+
+// path 名から該当セクションの数行を切り出す test 用 helper。in-source test の statement
+// 数制限 (max-statements: 10) を満たすため top-level に切り出す (production 経路では unused)。
+const extractHeadersSectionForTest = (text: string, pathLine: string, span: number): string => {
+  const lines = text.split('\n')
+  const idx = lines.indexOf(pathLine)
+  if (idx === -1) {
+    return ''
+  }
+  return lines.slice(idx, idx + span).join('\n')
 }
 
 if (import.meta.vitest) {
@@ -66,6 +97,7 @@ if (import.meta.vitest) {
       http-equiv="Content-Security-Policy"
       content="default-src 'none'; connect-src 'none'; script-src 'self' 'unsafe-inline'"
     />
+    <script type="application/json" id="embedded-shiki-langs">{"typescript":[{"name":"typescript","scopeName":"source.ts"}]}</script>
     <title>x</title>
   </head>
   <body></body>
@@ -76,8 +108,14 @@ if (import.meta.vitest) {
     'https://gist.githubusercontent.com',
   ]
 
+  const SAMPLE_MANIFEST: OnlineAssetManifestPayload = {
+    katex: null,
+    mermaid: null,
+    shikiLangs: { typescript: 'fingerprinted/shiki-langs/typescript.abcd1234.json' },
+  }
+
   const buildSampleOnlineHtml = (): string =>
-    buildOnlineHtml(SAMPLE_HTML, { allowlist: SAMPLE_ALLOWLIST })
+    buildOnlineHtml(SAMPLE_HTML, { allowlist: SAMPLE_ALLOWLIST, manifest: SAMPLE_MANIFEST })
 
   describe('buildOnlineHeadersFile: 基本構造', () => {
     it('/*  /  /online.html の 3 セクションを順に持つ', () => {
@@ -116,10 +154,10 @@ if (import.meta.vitest) {
       expect(cspMatches[0][1]).toBe(cspMatches[1][1])
     })
 
-    it('CSP に allowlist 適用後の connect-src が含まれる (single source of truth)', () => {
+    it("CSP に 'self' + allowlist origins の connect-src が含まれる (single source of truth)", () => {
       const text = buildOnlineHeadersFile(buildSampleOnlineHtml())
       expect(text).toContain(
-        'connect-src https://raw.githubusercontent.com https://gist.githubusercontent.com'
+        "connect-src 'self' https://raw.githubusercontent.com https://gist.githubusercontent.com"
       )
     })
 
@@ -137,9 +175,45 @@ if (import.meta.vitest) {
     it('env 由来の追加 allowlist host が CSP に展開される', () => {
       const withExtra = buildOnlineHtml(SAMPLE_HTML, {
         allowlist: [...SAMPLE_ALLOWLIST, 'https://wiki.internal'],
+        manifest: SAMPLE_MANIFEST,
       })
       const text = buildOnlineHeadersFile(withExtra)
       expect(text).toContain('https://wiki.internal')
+    })
+  })
+
+  describe('buildOnlineHeadersFile: Cache-Control の path 単位分離 (Phase A.2 §5.f / §5.i Item 1)', () => {
+    it('/ に max-age=300 (HTML cache を短寿命化、immutable は付かない)', () => {
+      const text = buildOnlineHeadersFile(buildSampleOnlineHtml())
+      const section = extractHeadersSectionForTest(text, '/', 4)
+      expect(section).toContain('Cache-Control: public, max-age=300')
+      expect(section).not.toContain('immutable')
+    })
+
+    it('/online.html に max-age=300 (rewrite 元と先で挙動を揃える)', () => {
+      const text = buildOnlineHeadersFile(buildSampleOnlineHtml())
+      const section = extractHeadersSectionForTest(text, '/online.html', 4)
+      expect(section).toContain('Cache-Control: public, max-age=300')
+      expect(section).not.toContain('immutable')
+    })
+
+    it('/fingerprinted/* に immutable + max-age=31536000 (永久 cache)', () => {
+      const text = buildOnlineHeadersFile(buildSampleOnlineHtml())
+      expect(text).toContain('/fingerprinted/*')
+      expect(text).toContain('Cache-Control: public, max-age=31536000, immutable')
+    })
+
+    it('/canonical/* に max-age=300 (immutable は付かない、Item 1)', () => {
+      const text = buildOnlineHeadersFile(buildSampleOnlineHtml())
+      const section = extractHeadersSectionForTest(text, '/canonical/*', 3)
+      expect(section).toContain('Cache-Control: public, max-age=300')
+      expect(section).not.toContain('immutable')
+    })
+
+    it('fingerprinted / canonical 両 section が存在する (3 段 fail-safe 成立条件)', () => {
+      const text = buildOnlineHeadersFile(buildSampleOnlineHtml())
+      expect(text).toContain('/fingerprinted/*')
+      expect(text).toContain('/canonical/*')
     })
   })
 
@@ -152,7 +226,10 @@ if (import.meta.vitest) {
 
   describe('buildOnlineHeadersFile: Cloudflare Pages 2000 文字制限', () => {
     const buildOnlineHtmlWithNAllowlist = (origins: readonly string[]): string =>
-      buildOnlineHtml(SAMPLE_HTML, { allowlist: [...SAMPLE_ALLOWLIST, ...origins] })
+      buildOnlineHtml(SAMPLE_HTML, {
+        allowlist: [...SAMPLE_ALLOWLIST, ...origins],
+        manifest: SAMPLE_MANIFEST,
+      })
 
     it('CSP 行が 2000 文字以内なら正常に生成される (default allowlist)', () => {
       expect(() => buildOnlineHeadersFile(buildSampleOnlineHtml())).not.toThrow()
