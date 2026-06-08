@@ -6,6 +6,15 @@
 // AbortController.abort() の直後に inFlight.clear() を呼ばないと、abort 済み Promise が
 // Map に残り、次世代の同一 URL 要求がそれを再利用 → 即 AbortError で reject される競合に
 // 陥る。
+//
+// retry 戦略: fingerprinted → canonical の 1 度限りの fallback (deploy 世代ずれ救済) のみ
+// 行い、 transient 失敗に対する exponential backoff / 個別 retry は持たない。 スマホ 3G/4G で
+// 1 度 fail した fetch を即 retry しても成功率は低く (network 状態が原因)、 Mermaid runtime
+// ~3 MB を 3 回試すと回線負荷とユーザー wait が過大になる。 永続失敗時は status bar の
+// retry boundary をユーザー操作 (Open URL modal の再 submit / page reload) に集約し、
+// `?url=` reload で cache reset + 全 retry が走る経路に倒す方が UX 自然。 transient 失敗の
+// 救済は将来 Service Worker での stale-while-revalidate で別途扱う余地がある (本実装の
+// スコープ外)。
 
 import { installShikiGrammars } from '../renderers/shiki'
 import {

@@ -10,6 +10,15 @@ import { loadOnlineAssets, type OnlineAssetCache } from './asset-loader'
 
 export type LoadFromMarkdown = (name: string, text: string) => Promise<void>
 
+// asset-loader が manifest 由来の相対パス (例: `fingerprinted/mermaid.<hash>.mjs`、
+// 先頭スラッシュなしの dir-relative) を `new URL(path, baseUrl)` で resolve する base。
+// `document.baseURI` は `<base href>` を尊重し、 不在時は `document.URL` を返す。
+// `<base href>` 不在の subpath hosting (例: `https://host/mdxg-redline/index.html`) では
+// `location.href` を base にしても dir-relative 解決で正しく動くが、 将来 head に
+// `<base href="/mdxg-redline/">` を埋めて asset 配信パスを切り替える設計余地を残すため
+// `document.baseURI` を採用する (location.href は `<base href>` を無視するので不可)。
+// `?url=...` クエリは `new URL(relative, base)` の解決時に drop されるため fetch URL
+// へ漏れない。
 const getOnlineBaseUrl = (): URL => {
   if (typeof document === 'undefined') {
     return new URL('about:blank')

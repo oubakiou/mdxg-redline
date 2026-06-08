@@ -2,7 +2,7 @@
 
 DESIGN.md §3 入力 / §9 起動シーケンス / §11.b CSP / §13 ビルドパイプライン に対応するための、オンライン版 (`dist/online.html`) の **「ミニマル shell + runtime 動的 fetch」** 化の設計判断と実装手順をまとめる。完了時点で本ドキュメントは `docs/archive/feature-online-runtime-assets.archive.md` にアーカイブされ、DESIGN.md §3 / §9 / §11.b / §13 の対応箇所が新方針で書き直される想定。
 
-経緯と Step 1–7 の継承関係は [`docs/archive/feature-online-edition.archive.md`](./archive/feature-online-edition.archive.md) §8 を参照。本ドキュメントは §8 で告知された方針反転を **独立した実装計画** として書き起こす。
+経緯と Step 1–7 の継承関係は [`docs/archive/feature-online-edition.archive.md`](./feature-online-edition.archive.md) §8 を参照。本ドキュメントは §8 で告知された方針反転を **独立した実装計画** として書き起こす。
 
 ## 1. 対応スコープ
 
@@ -933,13 +933,13 @@ fire-and-forget の asset-loader (§3.4) は **連続して別文書を開いた
 
 ## 9. 参考
 
-- [DESIGN.md §3 ユーザーフロー / 入力](./DESIGN.md#3-ユーザーフロー) — 既存 3 入力経路（ファイル選択 / 埋め込み / URL クエリ）
-- [DESIGN.md §9 起動シーケンス](./DESIGN.md#9-起動シーケンス) — boot.ts の優先順チェーン
-- [DESIGN.md §11.b CSP](./DESIGN.md#b-content-security-policy二重保険) — 配布物別 CSP の差分原則
-- [DESIGN.md §13 ビルドパイプライン](./DESIGN.md#13-ビルドパイプライン) — `mdxg-split-outputs` plugin と 4 配布物
-- [docs/archive/feature-online-edition.archive.md](./archive/feature-online-edition.archive.md) §8 — 本プランの方針反転告知と Step 1–7 の経緯
-- [docs/archive/mdxg-diagram-rendering.archive.md](./archive/mdxg-diagram-rendering.archive.md) — Mermaid bridge 設計 (`__mdxgMermaid` / `mdxg:mermaid-ready`)
-- [docs/archive/mdxg-math-rendering.archive.md](./archive/mdxg-math-rendering.archive.md) — KaTeX bridge 設計 (`__mdxgKatex` / `mdxg:katex-ready`) と font 取り扱い
+- [DESIGN.md §3 ユーザーフロー / 入力](../DESIGN.md#3-ユーザーフロー) — 既存 3 入力経路（ファイル選択 / 埋め込み / URL クエリ）
+- [DESIGN.md §9 起動シーケンス](../DESIGN.md#9-起動シーケンス) — boot.ts の優先順チェーン
+- [DESIGN.md §11.b CSP](../DESIGN.md#b-content-security-policy二重保険) — 配布物別 CSP の差分原則
+- [DESIGN.md §13 ビルドパイプライン](../DESIGN.md#13-ビルドパイプライン) — `mdxg-split-outputs` plugin と 4 配布物
+- [docs/archive/feature-online-edition.archive.md](./feature-online-edition.archive.md) §8 — 本プランの方針反転告知と Step 1–7 の経緯
+- [docs/archive/mdxg-diagram-rendering.archive.md](./mdxg-diagram-rendering.archive.md) — Mermaid bridge 設計 (`__mdxgMermaid` / `mdxg:mermaid-ready`)
+- [docs/archive/mdxg-math-rendering.archive.md](./mdxg-math-rendering.archive.md) — KaTeX bridge 設計 (`__mdxgKatex` / `mdxg:katex-ready`) と font 取り扱い
 - [Cloudflare Pages: Limits](https://developers.cloudflare.com/pages/platform/limits/) — per-file 25 MiB 制限
 - [MDN: Dynamic import()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/import) — bundler 非依存の runtime import
 - [MDN: Promise.allSettled](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/allSettled) — 個別エラー graceful の標準パターン
