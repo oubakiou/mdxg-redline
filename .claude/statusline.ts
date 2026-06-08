@@ -7,6 +7,14 @@ import path from 'node:path'
  * https://code.claude.com/docs/ja/statusline
  */
 
+// `git diff --numstat` 等の読み取り系コマンドは、 stat 情報が stale な index を refresh する
+// ために exclusive な `.git/index.lock` を握る。 ステータスラインは数秒ごとに呼ばれるので、
+// ユーザーの `git commit` と頻繁にレースして `Unable to create '.git/index.lock'` を起こす。
+// `GIT_OPTIONAL_LOCKS=0` は git 公式の escape hatch で、読み取り系の lock 取得を skip させる
+// (副作用: 表示する staged/modified カウントが一瞬古いことがあるが、ステータスラインの目的では
+// 許容できる)。 LazyGit / VS Code Git extension / Starship 等の標準テクニック。
+process.env.GIT_OPTIONAL_LOCKS = '0'
+
 const GREEN = '\x1b[32m'
 const YELLOW = '\x1b[33m'
 const RED = '\x1b[31m'
