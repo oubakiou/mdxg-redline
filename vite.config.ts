@@ -10,6 +10,12 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { buildOnlineAllowlist } from './src/build/online-allowlist.ts'
 import { buildOnline404Html } from './src/build/online-404.ts'
 import { buildOnlineHeadersFile } from './src/build/online-headers.ts'
+import {
+  type KatexAssetEmission,
+  type MermaidRuntimeEmission,
+  type ShikiGrammarEmission,
+  buildManifestPayload,
+} from './src/build/online-asset-emission.ts'
 import { type OnlineAssetManifestPayload, buildOnlineHtml } from './src/build/online-html.ts'
 import { inlineMarkdownCssIntoHtml } from './src/build/inline-markdown-css.ts'
 import { type Plugin, defineConfig } from 'vite-plus'
@@ -47,7 +53,7 @@ const regenerateAliasesTs = async (): Promise<void> => {
 // hash 焼き込みで `_headers` の `immutable, max-age=31536000` 配信を可能にし、canonical は
 // `max-age=300` で deploy 直後の世代ずれ過渡期に新版を返す (docs/feature-online-runtime-assets.md
 // §5.i)。両者は Pages の Build output directory として指定する `dist/hosting/` 配下に置く
-// (Step 4 の C 設計判断、 詳細は resolveFinalGrammarDirs / resolveSplitOutputPaths のコメント)。
+// (詳細は resolveFinalGrammarDirs / resolveSplitOutputPaths のコメント)。
 // 加えて CLI 経路 (`npm publish` 対象の `dist/shiki-langs/`、review-request CLI が markdown scan
 // 結果に応じて inject する素材) は dist 直下の従来パスを維持する。3 セットそれぞれが独立用途で
 // 衝突しない。
@@ -58,10 +64,6 @@ const sha256Prefix = (content: string): string =>
 
 interface GrammarManifestEntry {
   fingerprintedPath: string
-}
-
-interface ShikiGrammarEmission {
-  manifest: Readonly<Record<string, GrammarManifestEntry>>
 }
 
 interface GrammarOutputDirs {
@@ -101,10 +103,9 @@ const prepareTmpDirs = async (dirs: GrammarOutputDirs): Promise<void> => {
 }
 
 // online edition 用の canonical / fingerprinted は Cloudflare Pages 配信 subset として
-// `dist/hosting/` 配下に直接 emit する (Pages の Build output directory を `dist/hosting`
-// に指定する設計、 docs/feature-online-runtime-assets.md Step 4 ✅ 完了の C 設計判断)。
-// CLI 用 `dist/shiki-langs/` は dist 直下のまま (review-request CLI が markdown scan
-// 結果に応じて inject する素材)。
+// `dist/hosting/` 配下に直接 emit する (Pages の Build output directory を `dist/hosting` に指定する設計)。
+// CLI 用 `dist/shiki-langs/` は dist 直下のまま (review-request CLI が markdown scan 結果に応じて
+// inject する素材)。
 const resolveFinalGrammarDirs = (): GrammarOutputDirs => ({
   canonicalDir: resolve(ROOT_DIR, 'dist', 'hosting', 'canonical', 'shiki-langs'),
   cliDir: resolve(ROOT_DIR, 'dist', 'shiki-langs'),
@@ -362,7 +363,7 @@ const swapTmpIntoDist = async (tmpDirs: GrammarOutputDirs): Promise<void> => {
 // 不整合を起こす。 splitOutputsPlugin.closeBundle 全体 (grammar emit + standalone/online HTML 書き出し
 // + hosting config) を `dist/.shiki-build.lock` で囲い、 同時 build を fail-fast で拒否する。
 //
-// 設計 (Phase A.2 レビュー指摘の反映):
+// 設計:
 // - lock 範囲: closeBundle 全体。 emit だけ守ると、 emit 完了 → HTML 書き出しの窓で別 build が
 //   grammar を入れ替え、 先の build の manifest が消えた fingerprinted path を埋め込む race が
 //   起きる。
@@ -555,35 +556,7 @@ const emitGrammarJsonFiles = async (): Promise<ShikiGrammarEmission> => {
   }
 }
 
-interface MermaidRuntimeEmission {
-  fingerprintedPath: string
-}
-
-interface AssetEmission {
-  mermaid: MermaidRuntimeEmission | null
-  shiki: ShikiGrammarEmission
-}
-
-const resolveMermaidManifestPath = (mermaid: MermaidRuntimeEmission | null): string | null => {
-  if (mermaid === null) {
-    return null
-  }
-  return mermaid.fingerprintedPath
-}
-
-const buildManifestPayload = (emission: AssetEmission): OnlineAssetManifestPayload => {
-  const shikiLangs: Record<string, string> = {}
-  for (const [lang, entry] of Object.entries(emission.shiki.manifest)) {
-    shikiLangs[lang] = entry.fingerprintedPath
-  }
-  return {
-    katex: null,
-    mermaid: resolveMermaidManifestPath(emission.mermaid),
-    shikiLangs,
-  }
-}
-
-// Phase B: Mermaid runtime (`dist/mermaid.mjs`) を `dist/hosting/{fingerprinted,canonical}/` に
+// Mermaid runtime (`dist/mermaid.mjs`) を `dist/hosting/{fingerprinted,canonical}/` に
 // 2 系統 emit する。fingerprinted (`mermaid.<hash>.mjs`) は manifest 経由で online runtime が
 // dynamic import し `Cache-Control: immutable, max-age=31536000` 対象。canonical (`mermaid.mjs`) は
 // loader の load failure retry 先 + deploy 世代ずれ過渡期に古い HTML が直接 import する fallback で
@@ -638,6 +611,82 @@ const emitMermaidRuntimeFiles = async (
   return { fingerprintedPath: `fingerprinted/${fingerprintedName}` }
 }
 
+// KaTeX 3 ファイル (JS / CSS / fontsExtraCss) を `dist/hosting/{fingerprinted,canonical}/
+// katex/` に 2 系統 emit する。 各ファイルは独立に hash 計算 + retry されるため (§5.i Item 2)、
+// 3 ファイルを 1 manifest entry として束ねつつ runtime fetch の単位は独立に保つ。
+//
+// `dist/katex/*` のいずれかが build 時に未生成だと readKatexAssetsForHosting が null を返し、
+// manifest の katex フィールドも null になる (Mermaid と同パターン)。 standalone は KaTeX inline
+// 維持なので影響なし。
+const readKatexAssetsForHosting = async (distDir: string): Promise<KatexAssets | null> => {
+  try {
+    const [js, minimalCss, fontsExtraCss] = await Promise.all([
+      readFile(resolve(distDir, 'katex', 'katex.mjs'), 'utf8'),
+      readFile(resolve(distDir, 'katex', 'katex.css'), 'utf8'),
+      readFile(resolve(distDir, 'katex', 'katex-fonts-extra.css'), 'utf8'),
+    ])
+    return { fontsExtraCss, js, minimalCss }
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      console.warn(
+        '[mdxg-split-outputs] dist/katex/* が見つからないため dist/hosting/ への KaTeX emit を skip しました。 `vp build --config vite.katex.config.ts && node scripts/build-katex-css.ts` を先に実行してください。'
+      )
+      return null
+    }
+    throw error
+  }
+}
+
+interface KatexFingerprintedNames {
+  cssName: string
+  fontsExtraCssName: string
+  jsName: string
+}
+
+const computeKatexFingerprintedNames = (assets: KatexAssets): KatexFingerprintedNames => ({
+  cssName: `katex.${sha256Prefix(assets.minimalCss)}.css`,
+  fontsExtraCssName: `katex-fonts-extra.${sha256Prefix(assets.fontsExtraCss)}.css`,
+  jsName: `katex.${sha256Prefix(assets.js)}.mjs`,
+})
+
+const writeKatexAssetTriple = async (
+  hostingDir: string,
+  names: KatexFingerprintedNames,
+  assets: KatexAssets
+): Promise<void> => {
+  const fingerprintedDir = resolve(hostingDir, 'fingerprinted', 'katex')
+  const canonicalDir = resolve(hostingDir, 'canonical', 'katex')
+  await Promise.all([
+    mkdir(fingerprintedDir, { recursive: true }),
+    mkdir(canonicalDir, { recursive: true }),
+  ])
+  await Promise.all([
+    writeFile(resolve(fingerprintedDir, names.jsName), assets.js, 'utf8'),
+    writeFile(resolve(fingerprintedDir, names.cssName), assets.minimalCss, 'utf8'),
+    writeFile(resolve(fingerprintedDir, names.fontsExtraCssName), assets.fontsExtraCss, 'utf8'),
+    writeFile(resolve(canonicalDir, 'katex.mjs'), assets.js, 'utf8'),
+    writeFile(resolve(canonicalDir, 'katex.css'), assets.minimalCss, 'utf8'),
+    writeFile(resolve(canonicalDir, 'katex-fonts-extra.css'), assets.fontsExtraCss, 'utf8'),
+  ])
+}
+
+const emitKatexAssetFiles = async (
+  distDir: string,
+  hostingDir: string
+): Promise<KatexAssetEmission | null> => {
+  const assets = await readKatexAssetsForHosting(distDir)
+  if (assets === null) {
+    return null
+  }
+  const names = computeKatexFingerprintedNames(assets)
+  await writeKatexAssetTriple(hostingDir, names, assets)
+  return {
+    cssPath: `fingerprinted/katex/${names.cssName}`,
+    fontsExtraCssPath: `fingerprinted/katex/${names.fontsExtraCssName}`,
+    jsPath: `fingerprinted/katex/${names.jsName}`,
+  }
+}
+
 // Shiki 同梱言語のメタを `src/core/shiki-aliases.generated.ts` に再生成する buildStart 専任 plugin。
 // 生成物は CLI / browser 双方がコンパイル時に import する固定マップで、buildStart 段階で完了して
 // いる必要がある (transform 時点で aliases を参照するため)。
@@ -665,9 +714,9 @@ const EMBEDDED_MERMAID_RE_BUILD =
   /(<script\b(?=[^>]*\bid="embedded-mermaid")(?=[^>]*\btype="module")[^>]*>)([\s\S]*?)(<\/script>)/i
 
 // KaTeX runtime / CSS / fonts-extra CSS 注入用 (docs/mdxg-math-rendering.md §5.k / §5.l)。
-// CLI 経路は embed.ts の rewriteEmbeddedKatex (Step 4 で追加) を使うが、standalone build は
-// build chain 専用にここで inline する。standalone はフォント範囲 `all` 固定なので
-// fonts-extra も無条件に書き込む。Mermaid と完全に対称。
+// CLI 経路は embed.ts の rewriteEmbeddedKatex を使うが、 standalone build は build chain 専用に
+// ここで inline する。 standalone はフォント範囲 `all` 固定なので fonts-extra も無条件に書き込む。
+// Mermaid と完全に対称。
 const EMBEDDED_KATEX_JS_RE_BUILD =
   /(<script\b(?=[^>]*\bid="embedded-katex")(?=[^>]*\btype="module")[^>]*>)([\s\S]*?)(<\/script>)/i
 const EMBEDDED_KATEX_CSS_RE_BUILD =
@@ -742,7 +791,7 @@ const inlineGrammarsIntoHtml = (html: string, grammars: Record<string, unknown>)
   // ⚠️ template literal の中身は **literal バックスラッシュ + u003C** (7 バイト) で書く必要がある。
   // ソース上で `<` のように Unicode escape を直接書くと TypeScript lexer が先に `<` 1 文字に
   // 解決してしまい、`String.raw` が raw 形式を保持する余地が無くなって replace が no-op になる
-  // 罠がある (将来同じ場所を編集する時は hexdump で `60 5c 75 30 30 33 43 60` を確認)。
+  // 罠がある (`hexdump` で `60 5c 75 30 30 33 43 60` の byte 列になっていることを確認)。
   const payload = JSON.stringify(grammars).replace(/</g, String.raw`\u003C`)
   const replaced = `${openingTag}${payload}${closingTag}`
   return html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length)
@@ -867,8 +916,8 @@ const markdownCssInlinePlugin = (): Plugin => ({
   },
 })
 
-// dist/hosting/index.html は standalone を素材として派生し、docs/feature-online-runtime-assets.md
-// Phase A.2 の 5 mutation を apply する (buildOnlineHtml の comment 参照):
+// dist/hosting/index.html は standalone を素材として派生し、 5 mutation を apply する
+// (buildOnlineHtml の comment 参照):
 //   1. <html data-mdxg-online="1">
 //   2. CSP `connect-src 'none'` → `connect-src 'self' <allowlist>`
 //   3. <head> に <script type="application/json" id="online-allowlist">[...]</script>
@@ -899,8 +948,7 @@ const buildOnlineHtmlFromStandalone = (
 // extractCspContent 経由で構造的に担保。
 //
 // `_redirects` は配置しない: Pages 慣習で `/` request は自動的に `index.html` を返すため、
-// 旧設計の `/ /online.html 200` rewrite は不要 (online.html → index.html リネームの C 設計判断、
-// docs/feature-online-runtime-assets.md Step 4)。
+// `/ /online.html 200` rewrite は不要 (build 出力名を online.html ではなく index.html に揃える設計)。
 const emitHostingHeaders = async (hostingDir: string, onlineHtml: string): Promise<void> => {
   await writeFile(resolve(hostingDir, '_headers'), buildOnlineHeadersFile(onlineHtml), 'utf8')
 }
@@ -956,11 +1004,18 @@ const runSplitOutputs = async (): Promise<void> => {
   // 作るため hostingDir 自体は既に存在するが、 初回 build や grammar 経路の swap 後で消えている
   // 経路を防御するため明示 mkdir する。 recursive で idempotent。
   await mkdir(paths.hostingDir, { recursive: true })
-  // Phase B: Mermaid runtime を dist/hosting/{fingerprinted,canonical}/ に emit してから
-  // manifest を組み立てる。emit が skip された場合 (dist/mermaid.mjs 不在) は manifest の
-  // mermaid フィールドが null になり、 loader 側は canonical fail-safe → 失敗集約に倒れる。
-  const mermaidEmission = await emitMermaidRuntimeFiles(paths.distDir, paths.hostingDir)
-  const manifest = buildManifestPayload({ mermaid: mermaidEmission, shiki: grammarEmission })
+  // Mermaid / KaTeX runtime を dist/hosting/{fingerprinted,canonical}/ に emit してから
+  // manifest を組み立てる。 emit が skip された場合 (dist/mermaid.mjs / dist/katex/* 不在) は manifest の
+  // 該当フィールドが null になり、 loader 側は canonical fail-safe → 失敗集約に倒れる。
+  const [mermaidEmission, katexEmission] = await Promise.all([
+    emitMermaidRuntimeFiles(paths.distDir, paths.hostingDir),
+    emitKatexAssetFiles(paths.distDir, paths.hostingDir),
+  ])
+  const manifest = buildManifestPayload({
+    katex: katexEmission,
+    mermaid: mermaidEmission,
+    shiki: grammarEmission,
+  })
   const onlineHtml = buildOnlineHtmlFromStandalone(standaloneHtml, manifest)
   await Promise.all([
     writeFile(paths.standalonePath, standaloneHtml, 'utf8'),

@@ -11,8 +11,10 @@ import { installShikiGrammars } from '../renderers/shiki'
 import {
   type OnlineAssetManifest,
   readOnlineAssetManifestFromDom,
+  resolveCanonicalKatexPaths,
   resolveCanonicalMermaidPath,
   resolveCanonicalShikiLangPath,
+  resolveKatexPaths,
   resolveMermaidPath,
   resolveShikiLangPath,
 } from '../../core/online-asset-manifest'
@@ -27,10 +29,10 @@ export interface OnlineAssetCache {
   generation: number
   /** 同一 URL の重複取得を集約。abort 時に clear() で旧 Promise を切り離す必要がある */
   readonly inFlight: Map<string, Promise<unknown>>
-  /** runtime 後追い注入が未実装の間は true 初期化で loader を skip させる stub (Phase C で外す) */
+  /** runtime ロード済みフラグ。 loadKatexRuntime の 3 ファイル (JS/CSS/fontsExtra) 全成功で true */
   katex: boolean
   readonly langs: Set<SupportedLang>
-  /** runtime ロード済みフラグ。Phase B で false 初期化に切替済み (loadMermaidRuntime 経路で true に) */
+  /** runtime ロード済みフラグ。 loadMermaidRuntime の dynamic import 成功で true */
   mermaid: boolean
 }
 
@@ -54,6 +56,17 @@ export interface AssetLoadFailure {
   reason?: AssetLoadReason
 }
 
+/**
+ * KaTeX 3 ファイル (JS / CSS / fontsExtraCss) の個別 load 状態。 `katexLoaded` (boolean) は
+ * 「3 ファイル全成功」を示す aggregated flag だが、 status UI 側で「JS だけ成功 / CSS だけ失敗」
+ * を識別したい場合に個別 flag を参照する用途。
+ */
+export interface KatexLoadDetail {
+  cssLoaded: boolean
+  fontsExtraLoaded: boolean
+  jsLoaded: boolean
+}
+
 export interface OnlineAssetLoadResult {
   failures: AssetLoadFailure[]
   /**
@@ -62,26 +75,30 @@ export interface OnlineAssetLoadResult {
    * 後世代の status を上書きするのを防ぐ用途。
    */
   generation: number
-  /** KaTeX runtime 後追い注入が未実装の間は cache stub の効果で常に `true` を返す */
+  /**
+   * KaTeX 必要 markdown では「3 ファイル全成功」のみ true。 不要 markdown では cache.katex
+   * (既ロード履歴) を返す。
+   */
   katexLoaded: boolean
+  /** 3 ファイル個別 load 状態。 needKatex=false なら null (未試行)。 */
+  katexDetail: KatexLoadDetail | null
   loadedLangs: SupportedLang[]
   /**
-   * Phase B 以降: Mermaid 必要 markdown では今回 load の成否を返す。Mermaid 不要 markdown では
-   * cache に既ロード履歴があるかを返す (Open file 経路で「以前 load 済み」を表現)。
+   * Mermaid 必要 markdown では今回 load の成否を返す。 Mermaid 不要 markdown では cache に
+   * 既ロード履歴があるかを返す (Open file 経路で「以前 load 済み」を表現)。
    */
   mermaidLoaded: boolean
 }
 
 /**
- * fresh な `OnlineAssetCache` を作る。`katex` は loader 未実装の間 stub として `true` で初期化し、
- * 本実装が入った時点で `false` 初期化に切り替えて gate を解く。`mermaid` は Phase B で
- * loader 本実装が入ったため `false` 初期化に切替済み。
+ * fresh な `OnlineAssetCache` を作る。 `mermaid` / `katex` は `false` 初期化で、 該当 markdown が
+ * 必要としたときに loader 経路で fetch + import 成功で `true` に立ち上がる。
  */
 export const createOnlineAssetCache = (): OnlineAssetCache => ({
   currentAbortController: null,
   generation: 0,
   inFlight: new Map<string, Promise<unknown>>(),
-  katex: true,
+  katex: false,
   langs: new Set<SupportedLang>(),
   mermaid: false,
 })
@@ -349,6 +366,9 @@ interface ShikiBatchResult {
   mergedGrammars: Record<string, unknown>
 }
 
+// `cache.langs.add(...)` は signal.aborted を直接見ない。 abort された lang は
+// `loadOneShikiLang` 内部で grammar=null を返すため間接的に gate されており、 abort 直後の
+// cache 汚染は起きない。
 const ingestSettledShikiResult = (
   cache: OnlineAssetCache,
   settled: PromiseSettledResult<ShikiLangLoadResult>,
@@ -475,7 +495,7 @@ const computeAssetRequirements = (
   return { ctx, missing, needKatex, needMermaid }
 }
 
-// === Mermaid runtime loader (Phase B) ===
+// === Mermaid runtime loader ===
 
 interface MermaidLoadOutcome {
   failures: AssetLoadFailure[]
@@ -488,7 +508,7 @@ const MERMAID_SENTINEL = '/* runtime-loaded */'
  * `<script id="embedded-mermaid">` の textContent に sentinel を書き込み、
  * `waitForRuntime` の hasEmbeddedScript gate (textContent.trim().length > 0) を通過させる。
  * 注入は dynamic import の **前** に行うことで、 boot 直後の waitForRuntime 試行が
- * 即 null 返却して諦めるのを防ぐ (永続 listener と併せて遅延 load を救済する Phase B 設計)。
+ * 即 null 返却して諦めるのを防ぐ (永続 listener と併せて遅延 load を救済する設計)。
  */
 const ensureMermaidSentinel = (): void => {
   if (typeof document === 'undefined') {
@@ -624,7 +644,7 @@ const loadMermaidOnce = async (ctx: AssetLoadContext): Promise<MermaidLoadOutcom
 }
 
 /**
- * Mermaid runtime を同一オリジン dynamic import で後追い注入する (Phase B 中核)。
+ * Mermaid runtime を同一オリジン dynamic import で後追い注入する。
  * 手順: (1) sentinel を `<script id="embedded-mermaid">` に注入、 (2) manifest 経由
  * fingerprinted URL で `import()`、 (3) reject 時に canonical へ任意 retry。 成功時は
  * mermaid-entry.ts の bridge コードが `globalThis.__mdxgMermaid` 代入 + `mdxg:mermaid-ready`
@@ -665,16 +685,461 @@ const loadMermaidIfNeeded = async (
   return loadMermaidRuntime(reqs.ctx, cache)
 }
 
+// === KaTeX runtime loader ===
+// 3 ファイル独立 retry: JS は import (任意 reject で canonical)、 CSS / fontsExtraCss は fetch
+// (404 で canonical)。 1 つの canonical 成功で他は救わない。 全 3 成功時のみ cache.katex = true。
+
+interface KatexLoadOutcome {
+  cssLoaded: boolean
+  failures: AssetLoadFailure[]
+  fontsExtraLoaded: boolean
+  jsLoaded: boolean
+  loaded: boolean
+}
+
+type KatexImporter = (url: URL) => Promise<string | null>
+
+const defaultKatexImporter: KatexImporter = async (url: URL): Promise<string | null> => {
+  try {
+    await import(/* @vite-ignore */ url.href)
+    return null
+  } catch (error) {
+    return String(error)
+  }
+}
+
+let katexImporter: KatexImporter = defaultKatexImporter
+
+export const setKatexImporterForTest = (importer: KatexImporter): void => {
+  katexImporter = importer
+}
+
+export const resetKatexImporterForTest = (): void => {
+  katexImporter = defaultKatexImporter
+}
+
+const KATEX_JS_SENTINEL = '/* runtime-loaded */'
+
+const ensureKatexJsSentinel = (): void => {
+  if (typeof document === 'undefined') {
+    return
+  }
+  const el = document.getElementById('embedded-katex')
+  if (!(el instanceof HTMLElement)) {
+    return
+  }
+  if ((el.textContent ?? '').trim().length === 0) {
+    el.textContent = KATEX_JS_SENTINEL
+  }
+}
+
+const clearKatexJsSentinel = (): void => {
+  if (typeof document === 'undefined') {
+    return
+  }
+  const el = document.getElementById('embedded-katex')
+  if (!(el instanceof HTMLElement)) {
+    return
+  }
+  if ((el.textContent ?? '').trim() === KATEX_JS_SENTINEL.trim()) {
+    el.textContent = ''
+  }
+}
+
+const KATEX_ABORTED_FAILURE: AssetLoadFailure = {
+  asset: 'katex',
+  cause: 'aborted-by-newer-generation',
+  detail: 'aborted by newer generation',
+}
+
+const buildKatexJsImportFailure = (url: URL, detail: string): AssetLoadFailure => ({
+  asset: 'katex',
+  cause: 'katex-import-reject',
+  detail: `import reject at ${url.href}: ${detail}`,
+})
+
+const buildKatexJsRecoveryFailure = (
+  fingerprintedUrl: URL,
+  canonicalUrl: URL
+): AssetLoadFailure => ({
+  asset: 'katex',
+  cause: 'katex-import-reject',
+  detail: `fingerprinted import reject at ${fingerprintedUrl.href}, recovered from ${canonicalUrl.href}`,
+  reason: 'recovered-from-load-failure',
+})
+
+interface KatexJsLoadResult {
+  failures: AssetLoadFailure[]
+  loaded: boolean
+}
+
+const tryKatexJsCanonicalRetry = async (
+  ctx: AssetLoadContext,
+  fingerprintedUrl: URL,
+  fingerprintedError: string
+): Promise<KatexJsLoadResult> => {
+  const canonicalUrl = new URL(resolveCanonicalKatexPaths().js, ctx.baseUrl)
+  if (canonicalUrl.href === fingerprintedUrl.href) {
+    return {
+      failures: [buildKatexJsImportFailure(fingerprintedUrl, fingerprintedError)],
+      loaded: false,
+    }
+  }
+  const canonicalError = await katexImporter(canonicalUrl)
+  if (ctx.signal.aborted) {
+    return { failures: [KATEX_ABORTED_FAILURE], loaded: false }
+  }
+  if (canonicalError === null) {
+    return { failures: [buildKatexJsRecoveryFailure(fingerprintedUrl, canonicalUrl)], loaded: true }
+  }
+  return { failures: [buildKatexJsImportFailure(canonicalUrl, canonicalError)], loaded: false }
+}
+
+const loadKatexJsOnce = async (
+  ctx: AssetLoadContext,
+  fingerprintedPath: string
+): Promise<KatexJsLoadResult> => {
+  if (ctx.signal.aborted) {
+    return { failures: [KATEX_ABORTED_FAILURE], loaded: false }
+  }
+  ensureKatexJsSentinel()
+  const fingerprintedUrl = new URL(fingerprintedPath, ctx.baseUrl)
+  const fingerprintedError = await katexImporter(fingerprintedUrl)
+  if (ctx.signal.aborted) {
+    return { failures: [KATEX_ABORTED_FAILURE], loaded: false }
+  }
+  if (fingerprintedError === null) {
+    return { failures: [], loaded: true }
+  }
+  return tryKatexJsCanonicalRetry(ctx, fingerprintedUrl, fingerprintedError)
+}
+
+interface KatexCssOutcome {
+  css: string | null
+  networkError: string | null
+  status: number | null
+}
+
+// 200 OK + 空 body は CDN error page / 不正 cache の signal。 loaded=true として集約すると
+// cache.katex=true に立ち上がり「永久 unstyled」状態が cache 経由で固定化されるため、 network
+// 失敗扱いに倒して loaded=false にする (次回 reload で fresh fetch を許す)。
+const parseKatexCssResponse = async (response: Response): Promise<KatexCssOutcome> => {
+  if (response.status === 404) {
+    return { css: null, networkError: null, status: 404 }
+  }
+  if (!response.ok) {
+    return { css: null, networkError: `HTTP ${response.status}`, status: response.status }
+  }
+  const css = await response.text()
+  if (css.trim().length === 0) {
+    return { css: null, networkError: 'empty body', status: response.status }
+  }
+  return { css, networkError: null, status: response.status }
+}
+
+const fetchKatexCssOnce = async (url: URL, signal: AbortSignal): Promise<KatexCssOutcome> => {
+  try {
+    const response = await fetch(url.href, { signal })
+    return await parseKatexCssResponse(response)
+  } catch (error) {
+    return { css: null, networkError: String(error), status: null }
+  }
+}
+
+interface KatexCssLoadResult {
+  failures: AssetLoadFailure[]
+  loaded: boolean
+}
+
+const buildKatexCssFetchFailure = (
+  blockId: string,
+  outcome: KatexCssOutcome,
+  url: URL
+): AssetLoadFailure => {
+  if (outcome.status === 404) {
+    return {
+      asset: 'katex',
+      cause: 'katex-css-fetch-404',
+      detail: `404 at ${url.href} (${blockId})`,
+    }
+  }
+  return {
+    asset: 'katex',
+    cause: 'katex-css-fetch-network',
+    detail:
+      outcome.networkError ?? `status ${outcome.status ?? 'unknown'} at ${url.href} (${blockId})`,
+  }
+}
+
+const buildKatexCssRecoveryFailure = (
+  blockId: string,
+  fingerprintedUrl: URL,
+  canonicalUrl: URL
+): AssetLoadFailure => ({
+  asset: 'katex',
+  cause: 'katex-css-fetch-404',
+  detail: `fingerprinted 404 at ${fingerprintedUrl.href} (${blockId}), recovered from ${canonicalUrl.href}`,
+  reason: 'recovered-from-404',
+})
+
+// 防御的 guard: 既存 textContent が空のときのみ書き込む。 dedupeFetch をすり抜けた重複 inject や
+// 別経路で先に CSS が書き込まれていた場合の意図せぬ上書きを防ぐ。 同 ID style 要素に有効な CSS が
+// 既に入っていれば「先勝ち」とする (loadKatexRuntime は cache.katex=true で 2 度目を skip するため、
+// 通常経路では空 → 1 度 inject の流れになり guard は no-op)。
+const injectKatexCss = (blockId: string, css: string): void => {
+  if (typeof document === 'undefined') {
+    return
+  }
+  const el = document.getElementById(blockId)
+  if (!(el instanceof HTMLStyleElement)) {
+    return
+  }
+  if ((el.textContent ?? '').trim().length > 0) {
+    return
+  }
+  el.textContent = css
+}
+
+interface KatexCssTarget {
+  blockId: string
+  canonicalPath: string
+  fingerprintedPath: string
+}
+
+interface KatexCssCanonicalRetryContext {
+  ctx: AssetLoadContext
+  fingerprintedOutcome: KatexCssOutcome
+  fingerprintedUrl: URL
+  target: KatexCssTarget
+}
+
+const finalizeKatexCssCanonicalRetry = (
+  canonical: KatexCssOutcome,
+  canonicalUrl: URL,
+  retryCtx: KatexCssCanonicalRetryContext
+): KatexCssLoadResult => {
+  if (canonical.css !== null) {
+    injectKatexCss(retryCtx.target.blockId, canonical.css)
+    return {
+      failures: [
+        buildKatexCssRecoveryFailure(
+          retryCtx.target.blockId,
+          retryCtx.fingerprintedUrl,
+          canonicalUrl
+        ),
+      ],
+      loaded: true,
+    }
+  }
+  return {
+    failures: [buildKatexCssFetchFailure(retryCtx.target.blockId, canonical, canonicalUrl)],
+    loaded: false,
+  }
+}
+
+const tryKatexCssCanonicalRetry = async (
+  retryCtx: KatexCssCanonicalRetryContext
+): Promise<KatexCssLoadResult> => {
+  const canonicalUrl = new URL(retryCtx.target.canonicalPath, retryCtx.ctx.baseUrl)
+  if (canonicalUrl.href === retryCtx.fingerprintedUrl.href) {
+    return {
+      failures: [
+        buildKatexCssFetchFailure(
+          retryCtx.target.blockId,
+          retryCtx.fingerprintedOutcome,
+          retryCtx.fingerprintedUrl
+        ),
+      ],
+      loaded: false,
+    }
+  }
+  const canonical = await fetchKatexCssOnce(canonicalUrl, retryCtx.ctx.signal)
+  if (retryCtx.ctx.signal.aborted) {
+    return { failures: [KATEX_ABORTED_FAILURE], loaded: false }
+  }
+  return finalizeKatexCssCanonicalRetry(canonical, canonicalUrl, retryCtx)
+}
+
+interface KatexCssFinalizeArgs {
+  ctx: AssetLoadContext
+  fingerprinted: KatexCssOutcome
+  fingerprintedUrl: URL
+  target: KatexCssTarget
+}
+
+const finalizeKatexCssFingerprinted = async (
+  args: KatexCssFinalizeArgs
+): Promise<KatexCssLoadResult> => {
+  if (args.fingerprinted.css !== null) {
+    injectKatexCss(args.target.blockId, args.fingerprinted.css)
+    return { failures: [], loaded: true }
+  }
+  if (args.fingerprinted.status === 404) {
+    return tryKatexCssCanonicalRetry({
+      ctx: args.ctx,
+      fingerprintedOutcome: args.fingerprinted,
+      fingerprintedUrl: args.fingerprintedUrl,
+      target: args.target,
+    })
+  }
+  return {
+    failures: [
+      buildKatexCssFetchFailure(args.target.blockId, args.fingerprinted, args.fingerprintedUrl),
+    ],
+    loaded: false,
+  }
+}
+
+const loadKatexCssOnce = async (
+  ctx: AssetLoadContext,
+  target: KatexCssTarget
+): Promise<KatexCssLoadResult> => {
+  if (ctx.signal.aborted) {
+    return { failures: [KATEX_ABORTED_FAILURE], loaded: false }
+  }
+  const fingerprintedUrl = new URL(target.fingerprintedPath, ctx.baseUrl)
+  const fingerprinted = await fetchKatexCssOnce(fingerprintedUrl, ctx.signal)
+  if (ctx.signal.aborted) {
+    return { failures: [KATEX_ABORTED_FAILURE], loaded: false }
+  }
+  return finalizeKatexCssFingerprinted({ ctx, fingerprinted, fingerprintedUrl, target })
+}
+
+const KATEX_CSS_BLOCK_ID = 'embedded-katex-css'
+const KATEX_FONTS_EXTRA_CSS_BLOCK_ID = 'embedded-katex-fonts-extra-css'
+
+const buildKatexCssTargets = (
+  fingerprinted: { css: string; fontsExtraCss: string },
+  canonical: { css: string; fontsExtraCss: string }
+): { css: KatexCssTarget; fontsExtra: KatexCssTarget } => ({
+  css: {
+    blockId: KATEX_CSS_BLOCK_ID,
+    canonicalPath: canonical.css,
+    fingerprintedPath: fingerprinted.css,
+  },
+  fontsExtra: {
+    blockId: KATEX_FONTS_EXTRA_CSS_BLOCK_ID,
+    canonicalPath: canonical.fontsExtraCss,
+    fingerprintedPath: fingerprinted.fontsExtraCss,
+  },
+})
+
+const loadKatexOnce = async (ctx: AssetLoadContext): Promise<KatexLoadOutcome> => {
+  if (ctx.signal.aborted) {
+    return {
+      cssLoaded: false,
+      failures: [KATEX_ABORTED_FAILURE],
+      fontsExtraLoaded: false,
+      jsLoaded: false,
+      loaded: false,
+    }
+  }
+  const fingerprinted = resolveKatexPaths(ctx.manifest)
+  const targets = buildKatexCssTargets(fingerprinted, resolveCanonicalKatexPaths())
+  const [js, css, fontsExtra] = await Promise.all([
+    loadKatexJsOnce(ctx, fingerprinted.js),
+    loadKatexCssOnce(ctx, targets.css),
+    loadKatexCssOnce(ctx, targets.fontsExtra),
+  ])
+  return {
+    cssLoaded: css.loaded,
+    failures: [...js.failures, ...css.failures, ...fontsExtra.failures],
+    fontsExtraLoaded: fontsExtra.loaded,
+    jsLoaded: js.loaded,
+    loaded: js.loaded && css.loaded && fontsExtra.loaded,
+  }
+}
+
 /**
- * `OnlineAssetLoadResult.mermaidLoaded` の値を計算する。 status UI / decorator consumer 向け semantics:
+ * KaTeX runtime (JS + CSS + fonts-extra CSS) を同一オリジン dynamic import + fetch で
+ * 後追い注入する。 3 ファイル独立 retry: JS は import (任意 reject で canonical)、
+ * CSS / fontsExtra は fetch (404 で canonical)。 1 つの canonical 成功で他は救わない。 全 3 成功時のみ
+ * cache.katex = true (世代 gate で旧世代の stale write を防ぐ)。 JS 失敗時のみ sentinel rollback
+ * (CSS は textContent 空のまま KaTeX 描画されない以外副作用なし)。
+ */
+export const loadKatexRuntime = async (
+  ctx: AssetLoadContext,
+  cache: OnlineAssetCache
+): Promise<KatexLoadOutcome> => {
+  const fingerprinted = resolveKatexPaths(ctx.manifest)
+  const key = `katex:${new URL(fingerprinted.js, ctx.baseUrl).href}`
+  const outcome = await dedupeFetch(
+    cache,
+    key,
+    async (): Promise<KatexLoadOutcome> => loadKatexOnce(ctx)
+  )
+  if (outcome.loaded && !ctx.signal.aborted) {
+    cache.katex = true
+    // entry の 1 度目 dispatch (JS evaluate 直後) は CSS 未注入の状態で発火しているため、
+    // renderer 側 isKatexCssReady gate で skip されている。 CSS 注入完了後に改めて event を
+    // dispatch して永続 listener に再 upgrade を促す (CSS 注入済みで gate 通過 → KaTeX HTML 描画)。
+    if (typeof document !== 'undefined') {
+      document.dispatchEvent(new Event('mdxg:katex-ready'))
+    }
+  } else if (!outcome.jsLoaded) {
+    clearKatexJsSentinel()
+  }
+  return outcome
+}
+
+const loadKatexIfNeeded = async (
+  reqs: AssetRequirements,
+  cache: OnlineAssetCache
+): Promise<KatexLoadOutcome> => {
+  if (!reqs.needKatex) {
+    return {
+      cssLoaded: false,
+      failures: [],
+      fontsExtraLoaded: false,
+      jsLoaded: false,
+      loaded: false,
+    }
+  }
+  return loadKatexRuntime(reqs.ctx, cache)
+}
+
+/**
+ * `OnlineAssetLoadResult.katexLoaded` の値を計算する (resolveMermaidLoadedFlag と semantics 対称)。
+ * needKatex=true なら今回 load の成否、 needKatex=false なら cache.katex (過去 session で load 済み
+ * かどうか)。
+ */
+const resolveKatexLoadedFlag = (
+  reqs: AssetRequirements,
+  katex: KatexLoadOutcome,
+  cache: OnlineAssetCache
+): boolean => {
+  if (reqs.needKatex) {
+    return katex.loaded
+  }
+  return cache.katex
+}
+
+/**
+ * 3 ファイル個別 load 状態を OnlineAssetLoadResult に露出する。 status UI 側で「JS だけ成功 /
+ * CSS だけ失敗」を識別する用途。 needKatex=false (未試行) なら null を返し、 katex.loaded 単独の
+ * boolean では失われる情報を補完する。
+ */
+const resolveKatexDetail = (
+  reqs: AssetRequirements,
+  katex: KatexLoadOutcome
+): KatexLoadDetail | null => {
+  if (!reqs.needKatex) {
+    return null
+  }
+  return {
+    cssLoaded: katex.cssLoaded,
+    fontsExtraLoaded: katex.fontsExtraLoaded,
+    jsLoaded: katex.jsLoaded,
+  }
+}
+
+/**
+ * `OnlineAssetLoadResult.mermaidLoaded` の値を計算する semantics:
  * - **reqs.needMermaid === true**: 今回 load の成否 (true = 今 fetch 成功 or canonical recovered、 false = 永続失敗)
- * - **reqs.needMermaid === false**: cache.mermaid (true = 過去 session 内で load 済み = bridge 動作可能、
- *   false = 一度も load していない = 「未必要」と区別できない曖昧状態)
+ * - **reqs.needMermaid === false**: cache.mermaid (true = 既ロード = bridge 動作可能、 false = 未試行 = 失敗と区別できない曖昧状態)
  *
- * 「Mermaid 不要 markdown × 未 load」で false が返る経路があり、 これは「load 失敗」ではなく「未必要」を
- * 意味する。 status UI 側で「load 失敗」と「未必要」を区別したい場合は、 別途 `mermaidNeeded: boolean`
- * 相当の field を OnlineAssetLoadResult に追加する設計拡張が必要。 現状の Phase B では status UI が
- * 未接続 (`runtime-decorator.ts` の catch のみ)、 Phase C で status UI を接続する前に契約を詰める。
+ * 「Mermaid 不要 markdown × 未 load」で false が返る経路は「load 失敗」ではなく「未必要」を意味する。
+ * status UI 側で両者を区別したい場合は別 field (例: `mermaidNeeded: boolean`) を追加する。
  */
 const resolveMermaidLoadedFlag = (
   reqs: AssetRequirements,
@@ -700,14 +1165,16 @@ export const loadOnlineAssets = async (
 ): Promise<OnlineAssetLoadResult> => {
   const myGeneration = cache.generation
   const reqs = computeAssetRequirements(markdown, baseUrl, cache)
-  const [shiki, mermaid] = await Promise.all([
+  const [shiki, mermaid, katex] = await Promise.all([
     loadShikiGrammars(reqs.ctx, reqs.missing, cache),
     loadMermaidIfNeeded(reqs, cache),
+    loadKatexIfNeeded(reqs, cache),
   ])
   return {
-    failures: [...shiki.failures, ...mermaid.failures],
+    failures: [...shiki.failures, ...mermaid.failures, ...katex.failures],
     generation: myGeneration,
-    katexLoaded: !reqs.needKatex && cache.katex,
+    katexDetail: resolveKatexDetail(reqs, katex),
+    katexLoaded: resolveKatexLoadedFlag(reqs, katex, cache),
     loadedLangs: shiki.loaded,
     mermaidLoaded: resolveMermaidLoadedFlag(reqs, mermaid, cache),
   }
@@ -774,17 +1241,19 @@ const getFirstFetchUrl = (spy: FetchSpyLike): string => {
 }
 
 const cleanupTestNodes = (): void => {
-  const manifestEl = document.getElementById('online-asset-manifest')
-  if (manifestEl !== null) {
-    manifestEl.remove()
-  }
-  const shikiEl = document.getElementById('embedded-shiki-langs')
-  if (shikiEl !== null) {
-    shikiEl.remove()
-  }
-  const mermaidEl = document.getElementById('embedded-mermaid')
-  if (mermaidEl !== null) {
-    mermaidEl.remove()
+  const ids = [
+    'online-asset-manifest',
+    'embedded-shiki-langs',
+    'embedded-mermaid',
+    'embedded-katex',
+    'embedded-katex-css',
+    'embedded-katex-fonts-extra-css',
+  ]
+  for (const id of ids) {
+    const el = document.getElementById(id)
+    if (el !== null) {
+      el.remove()
+    }
   }
 }
 
@@ -860,14 +1329,87 @@ const runAbortedThenClearedCycle = async (importer: MermaidImporter): Promise<Me
   return ctx
 }
 
+// === KaTeX test helpers (module scope) ===
+
+const createKatexScriptElForTest = (): HTMLElement => {
+  const existing = document.getElementById('embedded-katex')
+  if (existing instanceof HTMLElement) {
+    return existing
+  }
+  const el = document.createElement('script')
+  el.id = 'embedded-katex'
+  el.setAttribute('type', 'module')
+  el.textContent = ''
+  document.body.appendChild(el)
+  return el
+}
+
+const createKatexStyleElForTest = (id: string): HTMLStyleElement => {
+  const existing = document.getElementById(id)
+  if (existing instanceof HTMLStyleElement) {
+    return existing
+  }
+  const el = document.createElement('style')
+  el.id = id
+  el.textContent = ''
+  document.body.appendChild(el)
+  return el
+}
+
+interface KatexTestCtx {
+  cache: OnlineAssetCache
+  cssEl: HTMLStyleElement
+  fontsExtraEl: HTMLStyleElement
+  jsEl: HTMLElement
+}
+
+const FINGERPRINTED_KATEX_MANIFEST = JSON.stringify({
+  katex: {
+    css: 'fingerprinted/katex/katex.aaa.css',
+    fontsExtraCss: 'fingerprinted/katex/katex-fonts-extra.bbb.css',
+    js: 'fingerprinted/katex/katex.ccc.mjs',
+  },
+  shikiLangs: {},
+})
+
+const KATEX_TEST_MD = '$x^2$\n'
+
+interface KatexTestSetup {
+  importer: KatexImporter
+  manifestJson?: string
+}
+
+const setupKatexTest = (opts: KatexTestSetup): KatexTestCtx => {
+  installEmbeddedShikiLangsScript()
+  const jsEl = createKatexScriptElForTest()
+  const cssEl = createKatexStyleElForTest('embedded-katex-css')
+  const fontsExtraEl = createKatexStyleElForTest('embedded-katex-fonts-extra-css')
+  if (typeof opts.manifestJson === 'string') {
+    installManifestScript(opts.manifestJson)
+  }
+  setKatexImporterForTest(opts.importer)
+  return { cache: createOnlineAssetCache(), cssEl, fontsExtraEl, jsEl }
+}
+
+const okCssResponse = (body: string): Response =>
+  new Response(body, { headers: { 'content-type': 'text/css' }, status: 200 })
+
+const notFoundCssResponse = (): Response => new Response('not found', { status: 404 })
+
+const abortCacheNow = (cache: OnlineAssetCache): void => {
+  const controller = new AbortController()
+  controller.abort()
+  cache.currentAbortController = controller
+}
+
 if (import.meta.vitest) {
   const { afterEach, beforeEach, describe, expect, it, vi } = import.meta.vitest
 
   describe('createOnlineAssetCache', () => {
-    it('Mermaid (Phase B 本実装) は false 初期化、KaTeX は stub で true 初期化', () => {
+    it('Mermaid / KaTeX いずれも false 初期化 (loader 成功で true に立ち上がる gate)', () => {
       const cache = createOnlineAssetCache()
       expect(cache.mermaid).toBe(false)
-      expect(cache.katex).toBe(true)
+      expect(cache.katex).toBe(false)
       expect(cache.langs.size).toBe(0)
       expect(cache.generation).toBe(0)
       expect(cache.currentAbortController).toBeNull()
@@ -1166,7 +1708,7 @@ if (import.meta.vitest) {
     })
   })
 
-  describe('loadMermaidRuntime (Phase B): fingerprinted → canonical retry', () => {
+  describe('loadMermaidRuntime: fingerprinted → canonical retry', () => {
     beforeEach((): void => {
       resetCachedManifestForTest()
     })
@@ -1269,7 +1811,7 @@ if (import.meta.vitest) {
     })
   })
 
-  describe('loadMermaidRuntime (Phase B): sentinel rollback / 世代 gate / regression guard', () => {
+  describe('loadMermaidRuntime: sentinel rollback / 世代 gate / regression guard', () => {
     beforeEach((): void => {
       resetCachedManifestForTest()
     })
@@ -1305,6 +1847,383 @@ if (import.meta.vitest) {
       expect(importSpy).toHaveBeenCalledTimes(1)
       expect(cache.mermaid).toBe(true)
       expect(result.mermaidLoaded).toBe(true)
+    })
+  })
+
+  describe('loadKatexRuntime: 3 ファイル独立 retry', () => {
+    beforeEach((): void => {
+      resetCachedManifestForTest()
+    })
+    afterEach((): void => {
+      cleanupTestNodes()
+      resetKatexImporterForTest()
+      vi.unstubAllGlobals()
+    })
+
+    it('数式の無い markdown では import / fetch が発火しない', async () => {
+      const importSpy = vi.fn()
+      const fetchSpy = vi.fn()
+      vi.stubGlobal('fetch', fetchSpy)
+      const { cache } = setupKatexTest({ importer: importSpy })
+      await loadOnlineAssets('# no math\n', new URL('https://h/'), cache)
+      expect(importSpy).not.toHaveBeenCalled()
+      expect(fetchSpy).not.toHaveBeenCalled()
+      expect(cache.katex).toBe(false)
+    })
+
+    it('3 ファイル全成功で cache.katex=true + sentinel + CSS textContent exact 注入', async () => {
+      const importSpy = vi.fn(async (): Promise<string | null> => null)
+      const fetchSpy = vi
+        .fn()
+        .mockResolvedValueOnce(okCssResponse('.katex{font:1em sans-serif;}'))
+        .mockResolvedValueOnce(okCssResponse('@font-face{font-family:KaTeX}'))
+      vi.stubGlobal('fetch', fetchSpy)
+      const { cache, jsEl, cssEl, fontsExtraEl } = setupKatexTest({
+        importer: importSpy,
+        manifestJson: FINGERPRINTED_KATEX_MANIFEST,
+      })
+      const result = await loadOnlineAssets(KATEX_TEST_MD, new URL('https://h/'), cache)
+      expect(cache.katex).toBe(true)
+      expect(result.katexLoaded).toBe(true)
+      // sentinel / CSS は exact match で「上書き or append」を区別 (assertion 強化)
+      expect(jsEl.textContent).toBe('/* runtime-loaded */')
+      expect(cssEl.textContent).toBe('.katex{font:1em sans-serif;}')
+      expect(fontsExtraEl.textContent).toBe('@font-face{font-family:KaTeX}')
+    })
+
+    it('JS import reject → canonical 成功で recovered-from-load-failure を集約', async () => {
+      const importSpy = vi.fn().mockResolvedValueOnce('TypeError: 404').mockResolvedValueOnce(null)
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (): Promise<Response> => okCssResponse('.katex{}'))
+      )
+      const { cache } = setupKatexTest({
+        importer: importSpy,
+        manifestJson: FINGERPRINTED_KATEX_MANIFEST,
+      })
+      const result = await loadOnlineAssets(KATEX_TEST_MD, new URL('https://h/'), cache)
+      expect(importSpy).toHaveBeenCalledTimes(2)
+      expect(cache.katex).toBe(true)
+      expect(result.failures).toContainEqual(
+        expect.objectContaining({
+          asset: 'katex',
+          cause: 'katex-import-reject',
+          reason: 'recovered-from-load-failure',
+        })
+      )
+    })
+
+    it('CSS fingerprinted 404 → canonical 成功で recovered-from-404 を集約', async () => {
+      const importSpy = vi.fn(async (): Promise<string | null> => null)
+      // fingerprinted CSS / fontsExtra は 404 → canonical で成功
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: unknown): Promise<Response> => {
+          if (String(input).includes('fingerprinted/')) {
+            return notFoundCssResponse()
+          }
+          return okCssResponse('.katex{}')
+        })
+      )
+      const { cache } = setupKatexTest({
+        importer: importSpy,
+        manifestJson: FINGERPRINTED_KATEX_MANIFEST,
+      })
+      const result = await loadOnlineAssets(KATEX_TEST_MD, new URL('https://h/'), cache)
+      expect(cache.katex).toBe(true)
+      const recovered = result.failures.filter(
+        (failure): boolean =>
+          failure.cause === 'katex-css-fetch-404' && failure.reason === 'recovered-from-404'
+      )
+      expect(recovered).toHaveLength(2)
+    })
+
+    it('CSS だけ全 reject で katex.loaded=false + sentinel rollback はしない (JS 成功)', async () => {
+      const importSpy = vi.fn(async (): Promise<string | null> => null)
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (): Promise<Response> => notFoundCssResponse())
+      )
+      const { cache, jsEl } = setupKatexTest({
+        importer: importSpy,
+        manifestJson: FINGERPRINTED_KATEX_MANIFEST,
+      })
+      const result = await loadOnlineAssets(KATEX_TEST_MD, new URL('https://h/'), cache)
+      expect(cache.katex).toBe(false)
+      expect(result.katexLoaded).toBe(false)
+      expect(jsEl.textContent).toContain('/* runtime-loaded */')
+    })
+
+    it('JS reject で sentinel rollback (次回 boot の 2 秒 idle timeout 回避)', async () => {
+      const importSpy = vi.fn(async (): Promise<string | null> => 'TypeError: failed')
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (): Promise<Response> => okCssResponse('.katex{}'))
+      )
+      const { cache, jsEl } = setupKatexTest({
+        importer: importSpy,
+        manifestJson: FINGERPRINTED_KATEX_MANIFEST,
+      })
+      await loadOnlineAssets(KATEX_TEST_MD, new URL('https://h/'), cache)
+      expect(cache.katex).toBe(false)
+      expect((jsEl.textContent ?? '').trim()).toBe('')
+    })
+  })
+
+  describe('loadKatexRuntime: manifest / cache / abort', () => {
+    beforeEach((): void => {
+      resetCachedManifestForTest()
+    })
+    afterEach((): void => {
+      cleanupTestNodes()
+      resetKatexImporterForTest()
+      vi.unstubAllGlobals()
+    })
+
+    it('manifest 欠落時は canonical パスで JS import + CSS fetch (重複 retry なし)', async () => {
+      const importSpy = vi.fn(async (): Promise<string | null> => null)
+      const fetchSpy = vi.fn(async (): Promise<Response> => okCssResponse('.katex{}'))
+      vi.stubGlobal('fetch', fetchSpy)
+      const { cache } = setupKatexTest({ importer: importSpy })
+      await loadOnlineAssets(KATEX_TEST_MD, new URL('https://h/'), cache)
+      expect(importSpy).toHaveBeenCalledTimes(1)
+      expect(fetchSpy).toHaveBeenCalledTimes(2)
+      expect(cache.katex).toBe(true)
+    })
+
+    it('既に cache.katex=true なら再 import / fetch しない (Open file 経路 SHOULD)', async () => {
+      const importSpy = vi.fn()
+      const fetchSpy = vi.fn()
+      vi.stubGlobal('fetch', fetchSpy)
+      const { cache } = setupKatexTest({ importer: importSpy })
+      cache.katex = true
+      const result = await loadOnlineAssets(KATEX_TEST_MD, new URL('https://h/'), cache)
+      expect(importSpy).not.toHaveBeenCalled()
+      expect(fetchSpy).not.toHaveBeenCalled()
+      expect(result.katexLoaded).toBe(true)
+    })
+
+    it('signal.aborted なら import / fetch 前に aborted-by-newer-generation を集約', async () => {
+      const importSpy = vi.fn()
+      const fetchSpy = vi.fn()
+      vi.stubGlobal('fetch', fetchSpy)
+      const { cache } = setupKatexTest({ importer: importSpy })
+      abortCacheNow(cache)
+      const result = await loadOnlineAssets(KATEX_TEST_MD, new URL('https://h/'), cache)
+      expect(importSpy).not.toHaveBeenCalled()
+      expect(fetchSpy).not.toHaveBeenCalled()
+      const causes = result.failures.map((failure): string => failure.cause)
+      expect(causes).toContain('aborted-by-newer-generation')
+    })
+  })
+
+  describe('loadKatexRuntime: shape validation / 3 ファイル独立性 / network error', () => {
+    beforeEach((): void => {
+      resetCachedManifestForTest()
+    })
+    afterEach((): void => {
+      cleanupTestNodes()
+      resetKatexImporterForTest()
+      vi.unstubAllGlobals()
+    })
+
+    it('200 OK + 空 body の CSS は loaded=false として集約 (katex-css-fetch-network)', async () => {
+      const importSpy = vi.fn(async (): Promise<string | null> => null)
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (): Promise<Response> => okCssResponse(''))
+      )
+      const { cache } = setupKatexTest({
+        importer: importSpy,
+        manifestJson: FINGERPRINTED_KATEX_MANIFEST,
+      })
+      const result = await loadOnlineAssets(KATEX_TEST_MD, new URL('https://h/'), cache)
+      expect(cache.katex).toBe(false)
+      expect(result.katexLoaded).toBe(false)
+      const networkFailures = result.failures.filter(
+        (failure): boolean => failure.cause === 'katex-css-fetch-network'
+      )
+      expect(networkFailures.length).toBeGreaterThan(0)
+    })
+
+    it('injectKatexCss は既存 textContent が非空ならスキップ (上書きしない)', async () => {
+      const importSpy = vi.fn(async (): Promise<string | null> => null)
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (): Promise<Response> => okCssResponse('.katex{new}'))
+      )
+      const { cache, cssEl } = setupKatexTest({
+        importer: importSpy,
+        manifestJson: FINGERPRINTED_KATEX_MANIFEST,
+      })
+      // 先に CSS を書き込んでおく (別経路で書き込まれた状態を再現)
+      cssEl.textContent = '.katex{prior}'
+      await loadOnlineAssets(KATEX_TEST_MD, new URL('https://h/'), cache)
+      expect(cssEl.textContent).toBe('.katex{prior}')
+    })
+
+    it('CSS injection idempotent (cache miss 経路で 2 度呼びでも append しない)', async () => {
+      const importSpy = vi.fn(async (): Promise<string | null> => null)
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (): Promise<Response> => okCssResponse('.katex{first}'))
+      )
+      const { cache, cssEl } = setupKatexTest({
+        importer: importSpy,
+        manifestJson: FINGERPRINTED_KATEX_MANIFEST,
+      })
+      await loadOnlineAssets(KATEX_TEST_MD, new URL('https://h/'), cache)
+      // 1 回目で .katex{first} が exact match で入る (toBe で exact match assertion 強化)
+      expect(cssEl.textContent).toBe('.katex{first}')
+      // 2 回目 (cache.katex=true なので skip 経路) でも textContent が append されない
+      await loadOnlineAssets(KATEX_TEST_MD, new URL('https://h/'), cache)
+      expect(cssEl.textContent).toBe('.katex{first}')
+    })
+
+    it('3 ファイル独立性 — JS canonical 救済でも CSS canonical fetch は呼ばれない', async () => {
+      const importSpy = vi.fn().mockResolvedValueOnce('TypeError: 404').mockResolvedValueOnce(null)
+      const fetchSpy = vi.fn(async (): Promise<Response> => okCssResponse('.katex{}'))
+      vi.stubGlobal('fetch', fetchSpy)
+      const { cache } = setupKatexTest({
+        importer: importSpy,
+        manifestJson: FINGERPRINTED_KATEX_MANIFEST,
+      })
+      await loadOnlineAssets(KATEX_TEST_MD, new URL('https://h/'), cache)
+      // JS は fingerprinted reject + canonical 成功で 2 回 import
+      expect(importSpy).toHaveBeenCalledTimes(2)
+      // CSS は fingerprinted 成功で canonical fetch されず 2 回のみ (CSS + fontsExtra)
+      expect(fetchSpy).toHaveBeenCalledTimes(2)
+      const fetchedUrls = (fetchSpy.mock.calls as unknown[][]).map((args): string => {
+        const [first] = args
+        return String(first)
+      })
+      expect(fetchedUrls.every((url): boolean => url.includes('fingerprinted/'))).toBe(true)
+    })
+
+    it('3 ファイル独立性 — CSS canonical 救済でも JS canonical import は呼ばれない', async () => {
+      const importSpy = vi.fn(async (): Promise<string | null> => null)
+      const fetchSpy = vi.fn(async (input: unknown): Promise<Response> => {
+        if (String(input).includes('fingerprinted/')) {
+          return notFoundCssResponse()
+        }
+        return okCssResponse('.katex{recovered}')
+      })
+      vi.stubGlobal('fetch', fetchSpy)
+      const { cache } = setupKatexTest({
+        importer: importSpy,
+        manifestJson: FINGERPRINTED_KATEX_MANIFEST,
+      })
+      await loadOnlineAssets(KATEX_TEST_MD, new URL('https://h/'), cache)
+      // JS は fingerprinted 成功で 1 回のみ (canonical import なし)
+      expect(importSpy).toHaveBeenCalledTimes(1)
+      // CSS は fingerprinted 404 → canonical 成功で 2 + 2 = 4 回 fetch
+      expect(fetchSpy).toHaveBeenCalledTimes(4)
+    })
+
+    it('CSS network error (HTTP 500) は retry なしで katex-css-fetch-network に集約', async () => {
+      const importSpy = vi.fn(async (): Promise<string | null> => null)
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (): Promise<Response> => new Response('error', { status: 500 }))
+      )
+      const { cache } = setupKatexTest({
+        importer: importSpy,
+        manifestJson: FINGERPRINTED_KATEX_MANIFEST,
+      })
+      const result = await loadOnlineAssets(KATEX_TEST_MD, new URL('https://h/'), cache)
+      expect(cache.katex).toBe(false)
+      // 404 ではないため canonical retry なし → CSS / fontsExtra で計 2 件の network failure
+      const networkFailures = result.failures.filter(
+        (failure): boolean => failure.cause === 'katex-css-fetch-network'
+      )
+      expect(networkFailures).toHaveLength(2)
+    })
+
+    it('CSS fetch が throw (TypeError) → retry なしで network failure に集約', async () => {
+      const importSpy = vi.fn(async (): Promise<string | null> => null)
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network down')))
+      const { cache } = setupKatexTest({
+        importer: importSpy,
+        manifestJson: FINGERPRINTED_KATEX_MANIFEST,
+      })
+      const result = await loadOnlineAssets(KATEX_TEST_MD, new URL('https://h/'), cache)
+      expect(cache.katex).toBe(false)
+      const networkFailures = result.failures.filter(
+        (failure): boolean => failure.cause === 'katex-css-fetch-network'
+      )
+      expect(networkFailures).toHaveLength(2)
+    })
+
+    it('katexDetail: needKatex=true で 3 フラグを露出、 needKatex=false で null', async () => {
+      const importSpy = vi.fn(async (): Promise<string | null> => null)
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (): Promise<Response> => okCssResponse('.katex{}'))
+      )
+      const { cache } = setupKatexTest({
+        importer: importSpy,
+        manifestJson: FINGERPRINTED_KATEX_MANIFEST,
+      })
+      const withMath = await loadOnlineAssets(KATEX_TEST_MD, new URL('https://h/'), cache)
+      expect(withMath.katexDetail).toEqual({
+        cssLoaded: true,
+        fontsExtraLoaded: true,
+        jsLoaded: true,
+      })
+      cache.katex = false
+      const noMath = await loadOnlineAssets('# no math\n', new URL('https://h/'), cache)
+      expect(noMath.katexDetail).toBeNull()
+    })
+  })
+
+  describe('loadKatexRuntime: CSS 注入完了後の mdxg:katex-ready 再 dispatch', () => {
+    beforeEach((): void => {
+      resetCachedManifestForTest()
+    })
+    afterEach((): void => {
+      cleanupTestNodes()
+      resetKatexImporterForTest()
+      vi.unstubAllGlobals()
+    })
+
+    it('3 ファイル全成功で CSS 注入完了後に再 dispatch (unstyled 永続化の防御)', async () => {
+      const importSpy = vi.fn(async (): Promise<string | null> => null)
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (): Promise<Response> => okCssResponse('.katex{}'))
+      )
+      const { cache } = setupKatexTest({
+        importer: importSpy,
+        manifestJson: FINGERPRINTED_KATEX_MANIFEST,
+      })
+      const eventSpy = vi.fn()
+      document.addEventListener('mdxg:katex-ready', eventSpy)
+      try {
+        await loadOnlineAssets(KATEX_TEST_MD, new URL('https://h/'), cache)
+        expect(eventSpy).toHaveBeenCalledTimes(1)
+      } finally {
+        document.removeEventListener('mdxg:katex-ready', eventSpy)
+      }
+    })
+
+    it('CSS 永続失敗時は再 dispatch しない (raw fallback 維持)', async () => {
+      const importSpy = vi.fn(async (): Promise<string | null> => null)
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (): Promise<Response> => notFoundCssResponse())
+      )
+      const { cache } = setupKatexTest({
+        importer: importSpy,
+        manifestJson: FINGERPRINTED_KATEX_MANIFEST,
+      })
+      const eventSpy = vi.fn()
+      document.addEventListener('mdxg:katex-ready', eventSpy)
+      try {
+        await loadOnlineAssets(KATEX_TEST_MD, new URL('https://h/'), cache)
+        expect(eventSpy).not.toHaveBeenCalled()
+      } finally {
+        document.removeEventListener('mdxg:katex-ready', eventSpy)
+      }
     })
   })
 }

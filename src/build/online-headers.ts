@@ -99,6 +99,9 @@ if (import.meta.vitest) {
     />
     <script type="application/json" id="embedded-shiki-langs">{"typescript":[{"name":"typescript","scopeName":"source.ts"}]}</script>
     <script type="module" id="embedded-mermaid">/* mermaid placeholder */</script>
+    <script type="module" id="embedded-katex">/* katex placeholder */</script>
+    <style id="embedded-katex-css">/* katex css placeholder */</style>
+    <style id="embedded-katex-fonts-extra-css">/* katex fonts-extra placeholder */</style>
     <title>x</title>
   </head>
   <body></body>
@@ -188,7 +191,7 @@ if (import.meta.vitest) {
     })
   })
 
-  describe('buildOnlineHeadersFile: Cache-Control の path 単位分離 (Phase A.2 §5.f / §5.i Item 1)', () => {
+  describe('buildOnlineHeadersFile: Cache-Control の path 単位分離 (§5.f / §5.i Item 1)', () => {
     it('/ に max-age=300 (HTML cache を短寿命化、immutable は付かない)', () => {
       const text = buildOnlineHeadersFile(buildSampleOnlineHtml())
       const section = extractHeadersSectionForTest(text, '/', 4)

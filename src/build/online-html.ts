@@ -1,7 +1,7 @@
 import { upsertHtmlDataAttribute } from '../core/embed/html-attribute-rewriter.ts'
 
-// standalone.html を素材にして online.html を派生させる pure 関数群。docs/feature-online-runtime-assets.md
-// Phase A.2 / Phase B (Step 5) / docs/archive/feature-online-edition.archive.md §3.1 に従い、
+// standalone.html を素材にして online.html を派生させる pure 関数群。
+// docs/feature-online-runtime-assets.md / docs/archive/feature-online-edition.archive.md §3.1 に従い、
 // 次の 6 つの mutation を行う：
 // 1. `<html>` に `data-mdxg-online="1"` 属性を upsert（boot.ts の経路分岐マーカー）
 // 2. CSP `connect-src 'none'` → `connect-src 'self' <allowlist origins joined by space>`
@@ -12,7 +12,7 @@ import { upsertHtmlDataAttribute } from '../core/embed/html-attribute-rewriter.t
 // 5. `<script id="embedded-shiki-langs">` の textContent を空 `{}` に上書き
 //    (grammar は runtime fetch するため build 時 inline を不要にし、~45 MB 削減、§3.1)
 // 6. `<script id="embedded-mermaid">` の textContent を空に上書き
-//    (Mermaid runtime は同一オリジン dynamic import するため build 時 inline を不要にし、~3 MB 削減、Phase B)
+//    (Mermaid runtime は同一オリジン dynamic import するため build 時 inline を不要にし、~3 MB 削減)
 //
 // allowlist は build/online-allowlist.ts の buildOnlineAllowlist() 戻り値 (origin 形式の string[]) を
 // 渡す。CSP / JSON 両方に同じ集合を展開するため drift が構造的に起きない (§3.3)。
@@ -141,7 +141,7 @@ const emptyShikiLangsBlock = (html: string): string => {
   return `${html.slice(0, openEnd)}{}${html.slice(closeIdx)}`
 }
 
-// `<script id="embedded-mermaid">` の textContent を空に置換する (Phase B)。standalone (素材) は
+// `<script id="embedded-mermaid">` の textContent を空に置換する。standalone (素材) は
 // Mermaid runtime (~3 MB) を inline 済みだが、online edition は asset-loader が manifest 経由で
 // dynamic import するため不要。空 textContent は asset-loader の sentinel 注入で gate 通過させる。
 //
@@ -167,6 +167,65 @@ const emptyMermaidBlock = (html: string): string => {
   return `${html.slice(0, openEnd)}${html.slice(closeIdx)}`
 }
 
+// `<script id="embedded-katex">` / `<style id="embedded-katex-css">` /
+// `<style id="embedded-katex-fonts-extra-css">` の 3 block を空に置換する。
+// standalone は KaTeX 3 ファイル inline 済みだが、 online edition は asset-loader が
+// manifest 経由で dynamic import + fetch するため不要。 Mermaid と完全に対称な fail-fast。
+const EMBEDDED_KATEX_JS_OPEN_RE =
+  /<script\b(?=[^>]*\bid="embedded-katex")(?=[^>]*\btype="module")[^>]*>/iu
+const EMBEDDED_KATEX_CSS_OPEN_RE = /<style\b(?=[^>]*\bid="embedded-katex-css")[^>]*>/iu
+const EMBEDDED_KATEX_FONTS_EXTRA_CSS_OPEN_RE =
+  /<style\b(?=[^>]*\bid="embedded-katex-fonts-extra-css")[^>]*>/iu
+
+interface EmptyBlockSpec {
+  blockId: string
+  closeTag: string
+  openRe: RegExp
+}
+
+const emptyBlockByRe = (html: string, spec: EmptyBlockSpec): string => {
+  const openMatch = spec.openRe.exec(html)
+  if (!openMatch) {
+    throw new Error(
+      `online-html: standalone.html に id="${spec.blockId}" の ${spec.closeTag.replace(/[</>]/g, '')} タグが見つかりません`
+    )
+  }
+  const openEnd = openMatch.index + openMatch[0].length
+  const closeIdx = html.indexOf(spec.closeTag, openEnd)
+  if (closeIdx === -1) {
+    throw new Error(
+      `online-html: id="${spec.blockId}" の開始タグに対応する ${spec.closeTag} が見つかりません`
+    )
+  }
+  return `${html.slice(0, openEnd)}${html.slice(closeIdx)}`
+}
+
+const emptyKatexJsBlock = (html: string): string =>
+  emptyBlockByRe(html, {
+    blockId: 'embedded-katex',
+    closeTag: '</script>',
+    openRe: EMBEDDED_KATEX_JS_OPEN_RE,
+  })
+
+const emptyKatexCssBlock = (html: string): string =>
+  emptyBlockByRe(html, {
+    blockId: 'embedded-katex-css',
+    closeTag: '</style>',
+    openRe: EMBEDDED_KATEX_CSS_OPEN_RE,
+  })
+
+const emptyKatexFontsExtraCssBlock = (html: string): string =>
+  emptyBlockByRe(html, {
+    blockId: 'embedded-katex-fonts-extra-css',
+    closeTag: '</style>',
+    openRe: EMBEDDED_KATEX_FONTS_EXTRA_CSS_OPEN_RE,
+  })
+
+// KaTeX 3 block (JS / CSS / fontsExtraCss) を 1 関数で空化する compose helper。
+// buildOnlineHtml の statement 数 (max-statements 10) を超えないため pipeline を圧縮する用途。
+const emptyAllKatexBlocks = (html: string): string =>
+  emptyKatexFontsExtraCssBlock(emptyKatexCssBlock(emptyKatexJsBlock(html)))
+
 export interface BuildOnlineHtmlOpts {
   allowlist: readonly string[]
   manifest: OnlineAssetManifestPayload
@@ -182,7 +241,8 @@ export const buildOnlineHtml = (standaloneHtml: string, opts: BuildOnlineHtmlOpt
   const withCsp = rewriteCspConnectSrc(withAttribute, opts.allowlist)
   const withEmptyShiki = emptyShikiLangsBlock(withCsp)
   const withEmptyMermaid = emptyMermaidBlock(withEmptyShiki)
-  const withAllowlist = injectAllowlistJson(withEmptyMermaid, opts.allowlist)
+  const withEmptyKatex = emptyAllKatexBlocks(withEmptyMermaid)
+  const withAllowlist = injectAllowlistJson(withEmptyKatex, opts.allowlist)
   return injectAssetManifestJson(withAllowlist, opts.manifest)
 }
 
@@ -199,6 +259,9 @@ if (import.meta.vitest) {
     />
     <script type="application/json" id="embedded-shiki-langs">{"typescript":[{"name":"typescript","scopeName":"source.ts"}]}</script>
     <script type="module" id="embedded-mermaid">/* mermaid runtime placeholder */ globalThis.__mdxgMermaid = {};</script>
+    <script type="module" id="embedded-katex">/* katex runtime placeholder */ globalThis.__mdxgKatex = {};</script>
+    <style id="embedded-katex-css">/* katex css placeholder */ .katex { font: 1em sans-serif; }</style>
+    <style id="embedded-katex-fonts-extra-css">/* katex fonts-extra placeholder */ @font-face { font-family: x; }</style>
     <title>x</title>
   </head>
   <body></body>
@@ -238,7 +301,7 @@ if (import.meta.vitest) {
   })
 
   describe('buildOnlineHtml: CSP connect-src 書き換え', () => {
-    it("connect-src 'none' を 'self' + allowlist origins に置換 (Phase A.2 §5.g)", () => {
+    it("connect-src 'none' を 'self' + allowlist origins に置換 (§5.g)", () => {
       const out = buildOnlineHtml(SAMPLE_HTML, buildOpts())
       expect(out).toContain(
         "connect-src 'self' https://raw.githubusercontent.com https://gist.githubusercontent.com"
@@ -246,7 +309,7 @@ if (import.meta.vitest) {
       expect(out).not.toContain("connect-src 'none'")
     })
 
-    it("'self' は allowlist origins の前に prepend される (Phase A.2 §5.g)", () => {
+    it("'self' は allowlist origins の前に prepend される (§5.g)", () => {
       const out = buildOnlineHtml(SAMPLE_HTML, buildOpts())
       const cspMatch = /connect-src ([^;"]*)/u.exec(out)
       expect(cspMatch).not.toBeNull()
@@ -345,6 +408,9 @@ if (import.meta.vitest) {
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'none'; script-src 'self' 'unsafe-inline'" />
     <script type="application/json" id="embedded-shiki-langs">{"typescript":[{"name":"typescript","scopeName":"source.ts"}]}</script>
     <script type="module" id="embedded-mermaid">/* mermaid placeholder */</script>
+    <script type="module" id="embedded-katex">/* katex placeholder */</script>
+    <style id="embedded-katex-css">/* katex css placeholder */</style>
+    <style id="embedded-katex-fonts-extra-css">/* katex fonts-extra placeholder */</style>
     <script id="embedded-runtime">var fakeMarker = "Tag: </head> inside string";</script>
     <title>x</title>
   </head>
@@ -367,7 +433,7 @@ if (import.meta.vitest) {
     })
   })
 
-  describe('buildOnlineHtml: <script id="online-asset-manifest"> JSON inject (Phase A.2 §3.2)', () => {
+  describe('buildOnlineHtml: <script id="online-asset-manifest"> JSON inject (§3.2)', () => {
     it('</head> 直前に <script type="application/json" id="online-asset-manifest"> を inject', () => {
       const out = buildOnlineHtml(SAMPLE_HTML, buildOpts())
       const scriptIdx = out.indexOf('<script type="application/json" id="online-asset-manifest">')
@@ -394,7 +460,7 @@ if (import.meta.vitest) {
     })
   })
 
-  describe('buildOnlineHtml: embedded-shiki-langs 空 {} 置換 (Phase A.2 §3.1)', () => {
+  describe('buildOnlineHtml: embedded-shiki-langs 空 {} 置換 (§3.1)', () => {
     it('<script id="embedded-shiki-langs"> の textContent を {} に置換する', () => {
       const out = buildOnlineHtml(SAMPLE_HTML, buildOpts())
       const match = /id="embedded-shiki-langs"[^>]*>([\s\S]*?)<\/script>/u.exec(out)
@@ -418,7 +484,7 @@ if (import.meta.vitest) {
     })
   })
 
-  describe('buildOnlineHtml: embedded-mermaid 空置換 (Phase B)', () => {
+  describe('buildOnlineHtml: embedded-mermaid 空置換', () => {
     it('<script id="embedded-mermaid"> の textContent を空に置換する', () => {
       const out = buildOnlineHtml(SAMPLE_HTML, buildOpts())
       const match = /id="embedded-mermaid"[^>]*>([\s\S]*?)<\/script>/u.exec(out)
@@ -440,6 +506,80 @@ if (import.meta.vitest) {
         ''
       )
       expect(() => buildOnlineHtml(noMermaid, buildOpts())).toThrow(/embedded-mermaid/u)
+    })
+  })
+
+  describe('buildOnlineHtml: embedded-katex 3 block 空置換', () => {
+    it('<script id="embedded-katex"> の textContent を空に置換する', () => {
+      const out = buildOnlineHtml(SAMPLE_HTML, buildOpts())
+      const match = /id="embedded-katex"[^>]*>([\s\S]*?)<\/script>/u.exec(out)
+      expect(match).not.toBeNull()
+      if (match) {
+        expect(match[1]).toBe('')
+      }
+    })
+
+    it('<style id="embedded-katex-css"> / fonts-extra-css の textContent を空に置換する', () => {
+      const out = buildOnlineHtml(SAMPLE_HTML, buildOpts())
+      const cssMatch = /id="embedded-katex-css"[^>]*>([\s\S]*?)<\/style>/u.exec(out)
+      const fontsExtraMatch = /id="embedded-katex-fonts-extra-css"[^>]*>([\s\S]*?)<\/style>/u.exec(
+        out
+      )
+      expect(cssMatch).not.toBeNull()
+      expect(fontsExtraMatch).not.toBeNull()
+      if (cssMatch) {
+        expect(cssMatch[1]).toBe('')
+      }
+      if (fontsExtraMatch) {
+        expect(fontsExtraMatch[1]).toBe('')
+      }
+    })
+
+    it('元の KaTeX runtime / CSS placeholder は残らない (size 削減効果)', () => {
+      const out = buildOnlineHtml(SAMPLE_HTML, buildOpts())
+      expect(out).not.toContain('katex runtime placeholder')
+      expect(out).not.toContain('__mdxgKatex = {}')
+      expect(out).not.toContain('katex css placeholder')
+      expect(out).not.toContain('katex fonts-extra placeholder')
+    })
+
+    it('embedded-katex JS block が無いと throw (素材契約違反の fail-fast)', () => {
+      const noKatexJs = SAMPLE_HTML.replace(
+        /<script type="module" id="embedded-katex">[\s\S]*?<\/script>/u,
+        ''
+      )
+      expect(() => buildOnlineHtml(noKatexJs, buildOpts())).toThrow(/embedded-katex/u)
+    })
+
+    it('embedded-katex-css block が無いと throw', () => {
+      const noKatexCss = SAMPLE_HTML.replace(
+        /<style id="embedded-katex-css">[\s\S]*?<\/style>/u,
+        ''
+      )
+      expect(() => buildOnlineHtml(noKatexCss, buildOpts())).toThrow(/embedded-katex-css/u)
+    })
+
+    it('embedded-katex-fonts-extra-css block が無いと throw', () => {
+      const noFontsExtra = SAMPLE_HTML.replace(
+        /<style id="embedded-katex-fonts-extra-css">[\s\S]*?<\/style>/u,
+        ''
+      )
+      expect(() => buildOnlineHtml(noFontsExtra, buildOpts())).toThrow(
+        /embedded-katex-fonts-extra-css/u
+      )
+    })
+
+    it('空化後も <script type="module" id="embedded-katex"> 開始タグ自体は残る (asset-loader sentinel 注入の前提)', () => {
+      const out = buildOnlineHtml(SAMPLE_HTML, buildOpts())
+      // sentinel 注入は document.getElementById('embedded-katex') が HTMLElement を返すことが前提のため、
+      // 開始タグが残っていなければ runtime が gate を通過できない
+      expect(out).toMatch(/<script\s[^>]*\btype="module"[^>]*\bid="embedded-katex">/u)
+    })
+
+    it('空化後も <style id="embedded-katex-css"> / fonts-extra-css 開始タグ自体は残る', () => {
+      const out = buildOnlineHtml(SAMPLE_HTML, buildOpts())
+      expect(out).toMatch(/<style\s[^>]*\bid="embedded-katex-css">/u)
+      expect(out).toMatch(/<style\s[^>]*\bid="embedded-katex-fonts-extra-css">/u)
     })
   })
 

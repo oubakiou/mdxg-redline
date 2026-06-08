@@ -463,7 +463,7 @@ DESIGN.md §3 / §9 / §11.b / §13 の path 名 (`dist/online.html` → `dist/h
 
 成果物：online.html から Mermaid が剥がれ ~3.1 MiB 削減 + 5–10 秒の遅延 load でも upgrade + deploy 世代ずれ過渡期で canonical retry が救う
 
-#### 実装サマリ (commit 予定分)
+#### 実装サマリ
 
 - `vite.config.ts`: `emitMermaidRuntimeFiles` 追加 (sha256Prefix で hash 計算 + `dist/hosting/fingerprinted/mermaid.<hash>.mjs` + `dist/hosting/canonical/mermaid.mjs` 同時 emit)、 `buildManifestPayload` の入力を `AssetEmission` に拡張して `mermaid` フィールドを埋める、 `runSplitOutputs` から `emitMermaidRuntimeFiles` 呼び出し
 - `src/build/online-html.ts`: `emptyMermaidBlock` を追加し `buildOnlineHtml` の pipeline で `<script id="embedded-mermaid">` の textContent を空に上書き (素材契約として block 不在は fail-fast、 Shiki と対称)
@@ -474,7 +474,7 @@ DESIGN.md §3 / §9 / §11.b / §13 の path 名 (`dist/online.html` → `dist/h
 - `dist/hosting/index.html` 実測: 1.01 MiB (Phase A の 4.16 MiB から **~3.1 MiB 削減**、 計画の ~3.5 MiB 想定内)、 `dist/hosting/fingerprinted/mermaid.ebf601f8.mjs` + `dist/hosting/canonical/mermaid.mjs` (各 3.14 MiB) emit 確認、 manifest に `"mermaid":"fingerprinted/mermaid.<hash>.mjs"` 注入確認、 `<script id="embedded-mermaid">` 空 textContent 確認
 - `vp check` (lint/format/type-check) 全 133 files pass、 `vp test` 全 1177 tests pass
 
-### Step 6: Phase C — KaTeX の dynamic import + 永続 listener + load failure retry (JS) / 404 retry (CSS)
+### Step 6 ✅ 完了: Phase C — KaTeX の dynamic import + 永続 listener + load failure retry (JS) / 404 retry (CSS)
 
 - `asset-loader.ts` の `loadKatexRuntime(baseUrl)` を本実装に置換
 - 手順: (1) `<script id="embedded-katex">` / `<style id="embedded-katex-css">` に sentinel 注入 → (2) `await import(new URL('fingerprinted/katex/katex.<hash>.mjs', baseUrl).href)` (manifest 経由) → entry が bridge 立て (3) `fetch('fingerprinted/katex/katex.<hash>.css').then(...style.textContent = css)`、fonts-extra も同様
@@ -488,6 +488,18 @@ DESIGN.md §3 / §9 / §11.b / §13 の path 名 (`dist/online.html` → `dist/h
 - main に push → Cloudflare Pages redeploy
 
 成果物：online.html から KaTeX も剥がれ最終形 (~300–500 KiB raw / gzip ~100–150 KiB) に到達 + 3 asset 経路すべてで canonical retry が機能
+
+#### 実装サマリ
+
+- `vite.config.ts`: `emitKatexAssetFiles` 追加 (3 ファイル sha256Prefix で hash 計算 + `dist/hosting/fingerprinted/katex/*.{<hash>.mjs,<hash>.css}` + `dist/hosting/canonical/katex/*.{mjs,css}` 同時 emit)、 `AssetEmission` に `katex` フィールド追加、 `buildManifestPayload` で katex を `{ js, css, fontsExtraCss }` で埋める、 `runSplitOutputs` で Mermaid と並行 emit
+- `src/build/online-html.ts`: `emptyKatexJsBlock` / `emptyKatexCssBlock` / `emptyKatexFontsExtraCssBlock` を追加し `emptyAllKatexBlocks` で 1 step に圧縮、 `buildOnlineHtml` pipeline に組み込み (Shiki/Mermaid と対称 fail-fast)
+- `src/app/online/asset-loader.ts`: `loadKatexRuntime` 本実装 (JS は import + canonical retry、 CSS / fontsExtraCss は fetch + 404 retry、 3 ファイル独立 retry、 全成功時のみ `cache.katex = true`、 世代 gate + JS 失敗時 sentinel rollback)、 `KatexImporter` test 注入経路、 `cache.katex` を `false` 初期化に切替、 `loadOnlineAssets` で Shiki/Mermaid/KaTeX 3 経路を Promise.all 並行
+- `src/app/renderers/katex.ts`: `attachKatexReadyListener` + `resetKatexReadyListenerForTest` + `hasKatexReadyListenerForTest` を新規追加 (Mermaid と完全対称)
+- `src/app/app-wiring.ts`: `attachOnlineRuntimeListeners` に KaTeX listener attach 追加、 online gate test に KaTeX assertion 追加、 `snapshotOnlineListenersForTest` で 3 listener 集約 verify
+- in-source test: asset-loader.ts に KaTeX 経路 9 ケース (3 ファイル独立 retry / 404 retry / sentinel rollback / cache / abort)、 katex.ts に永続 listener 4 ケース、 online-html.ts に KaTeX 3 block 空化 6 ケース
+- `dist/hosting/index.html` 実測: **402 KiB raw / 124 KiB gzip** (Phase C 想定 300-500 KiB / 100-150 KiB 内)、 KaTeX 3 ファイル合計 ~607 KiB (各 fingerprinted/canonical 同時 emit)、 manifest に `"katex":{"css":"fingerprinted/katex/katex.<hash>.css","fontsExtraCss":"...","js":"..."}` 注入確認
+- `vp check` (lint/format/type-check) 全 133 files pass、 `vp test` 全 **1201 tests** pass (Phase B 1192 → +9)
+- 累積 size 削減: Phase A 4.16 MiB → Phase B 1.01 MiB → **Phase C 0.40 MiB** (合計 ~3.76 MiB 削減)
 
 ### Step 7: DESIGN.md 反映 + 本ドキュメント archive
 

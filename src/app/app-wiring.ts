@@ -32,6 +32,11 @@ import { type DropdownLike, setupKeyboardHandlers } from './chrome/global-keyboa
 import { toggleHelpModal, wireHelpModal } from './chrome/help-modal'
 import { boot, isOnlineEdition } from './boot'
 import {
+  attachKatexReadyListener,
+  hasKatexReadyListenerForTest,
+  resetKatexReadyListenerForTest,
+} from './renderers/katex'
+import {
   attachMermaidReadyListener,
   hasMermaidReadyListenerForTest,
   resetMermaidReadyListenerForTest,
@@ -200,13 +205,15 @@ const launchBoot = (loadFromMarkdown: BootstrapDeps['loadFromMarkdown']): void =
   })
 }
 
-// online edition で asset-loader が dynamic import で立ち上げる Mermaid / Shiki bridge を
+// online edition で asset-loader が dynamic import で立ち上げる Shiki / Mermaid / KaTeX bridge を
 // 永続 listener で pickup する。 3G/4G の数秒遅延 import や複数文書連続ロードでも upgrade を
-// 取りこぼさないため (Phase B §3.3、Phase A.1 §3.3)。 standalone / embed-template では呼ばない。
+// 取りこぼさないため (docs/feature-online-runtime-assets.md §3.3)。 standalone / embed-template
+// では呼ばない (CLI 経路は runtime 既 inline で listener 不要)。
 export const attachOnlineRuntimeListeners = (): void => {
   const docEl = qs('#doc')
   attachShikiLangsReadyListener(docEl)
   attachMermaidReadyListener(docEl)
+  attachKatexReadyListener(docEl)
 }
 
 // in-source test 用 helper。 unicorn/consistent-function-scoping を満たすため module scope に置く。
@@ -221,11 +228,24 @@ const installDocElForTest = (): HTMLElement => {
 const cleanupListenersAndDocForTest = (): void => {
   resetMermaidReadyListenerForTest()
   resetShikiLangsListenerForTest()
+  resetKatexReadyListenerForTest()
   const doc = document.getElementById('doc')
   if (doc !== null) {
     doc.remove()
   }
 }
+
+interface OnlineListenerSnapshot {
+  katex: boolean
+  mermaid: boolean
+  shiki: boolean
+}
+
+const snapshotOnlineListenersForTest = (): OnlineListenerSnapshot => ({
+  katex: hasKatexReadyListenerForTest(),
+  mermaid: hasMermaidReadyListenerForTest(),
+  shiki: hasShikiLangsListenerForTest(),
+})
 
 export const bootstrapReviewApp = (deps: BootstrapDeps): void => {
   const online = isOnlineEdition()
@@ -291,31 +311,29 @@ if (import.meta.vitest) {
     })
   })
 
-  describe('attachOnlineRuntimeListeners (online edition gate, Phase B §6)', () => {
-    it('呼ぶと Mermaid / Shiki の永続 listener が両方 attach される (online 経路)', () => {
+  describe('attachOnlineRuntimeListeners (online edition gate)', () => {
+    const ALL_NOT_ATTACHED: OnlineListenerSnapshot = { katex: false, mermaid: false, shiki: false }
+    const ALL_ATTACHED: OnlineListenerSnapshot = { katex: true, mermaid: true, shiki: true }
+
+    it('呼ぶと Shiki / Mermaid / KaTeX の永続 listener が 3 つ attach される (online 経路)', () => {
+      cleanupListenersAndDocForTest()
       installDocElForTest()
-      resetMermaidReadyListenerForTest()
-      resetShikiLangsListenerForTest()
       try {
-        expect(hasMermaidReadyListenerForTest()).toBe(false)
-        expect(hasShikiLangsListenerForTest()).toBe(false)
+        expect(snapshotOnlineListenersForTest()).toEqual(ALL_NOT_ATTACHED)
         attachOnlineRuntimeListeners()
-        expect(hasMermaidReadyListenerForTest()).toBe(true)
-        expect(hasShikiLangsListenerForTest()).toBe(true)
+        expect(snapshotOnlineListenersForTest()).toEqual(ALL_ATTACHED)
       } finally {
         cleanupListenersAndDocForTest()
       }
     })
 
     it('呼ばなければ listener は attach されない (CLI / standalone 経路の no-op 検証)', () => {
+      cleanupListenersAndDocForTest()
       installDocElForTest()
-      resetMermaidReadyListenerForTest()
-      resetShikiLangsListenerForTest()
       try {
         // bootstrapReviewApp の if (online) 分岐が false 経路を踏む状態を再現
         // (attachOnlineRuntimeListeners を呼ばない)
-        expect(hasMermaidReadyListenerForTest()).toBe(false)
-        expect(hasShikiLangsListenerForTest()).toBe(false)
+        expect(snapshotOnlineListenersForTest()).toEqual(ALL_NOT_ATTACHED)
       } finally {
         cleanupListenersAndDocForTest()
       }

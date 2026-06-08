@@ -1,4 +1,4 @@
-// ブラウザ側 Mermaid upgrade。docs/mdxg-diagram-rendering.md §4 Step 5 / §5.b C 案 に従い、
+// ブラウザ側 Mermaid upgrade。docs/mdxg-diagram-rendering.md §4 / §5.b C 案 に従い、
 // 初期 render は Shiki ハイライト経路に乗せたまま `<pre data-mermaid="1">` として paint させ、
 // requestIdleCallback で paint 後に各 <pre> を SVG に upgrade する。
 //
@@ -90,7 +90,7 @@ const uniqueMermaidId = (): string => {
 const insertSvgAfterPre = (pre: HTMLElement, svg: SVGSVGElement): void => {
   pre.hidden = true
   // data-mermaid-svg は selection.ts の textSegments skip 判定に使う識別子
-  // (docs/mdxg-diagram-rendering.md §4 Step 6 案 A: ダイアグラム内文字列は検索 / コメント対象外)。
+  // (docs/mdxg-diagram-rendering.md §4 案 A: ダイアグラム内文字列は検索 / コメント対象外)。
   svg.setAttribute(MERMAID_ATTR.svg, MERMAID_ATTR_VALUE)
   wireMermaidSvgExpand(svg)
   pre.after(svg)
@@ -201,7 +201,7 @@ export const scheduleMermaidUpgrade = (docEl: HTMLElement): void => {
 // attach 済み listener function reference を保持。null = 未 attach。
 // `resetMermaidReadyListenerForTest` で `removeEventListener` するため handler 自体を持っておく。
 // shiki-upgrade.ts の `attachShikiLangsReadyListener` と対称な runtime 後追い注入用設計
-// (docs/feature-online-runtime-assets.md Phase B §3.3)。
+// (docs/feature-online-runtime-assets.md §3.3)。
 let mermaidReadyListener: (() => void) | null = null
 
 /**
@@ -469,7 +469,7 @@ if (import.meta.vitest) {
     })
   })
 
-  describe('attachMermaidReadyListener (Phase B 永続 listener)', () => {
+  describe('attachMermaidReadyListener (永続 listener)', () => {
     afterEach((): void => {
       resetMermaidReadyListenerForTest()
     })
