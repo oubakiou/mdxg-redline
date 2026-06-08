@@ -7,13 +7,15 @@
 // ページ自身の favicon 取得で再度 SPA fallback が走らないよう、 src/review.html と同じ
 // inline SVG favicon を埋め込む。
 
-// 赤背景 + 白「M」の SVG favicon。 src/review.html に inline したものと bit-identical に
-// 保つ (色 / グリフ / viewBox)。
+// 赤背景 + 白「M」+ 白い下線 (redline = 校正の比喩) の SVG favicon。 src/review.html に
+// inline したものと bit-identical に保つ (色 / グリフ / viewBox / 下線座標)。
 const FAVICON_SVG_DATA_URI =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>" +
   "<rect width='32' height='32' fill='%23d32f2f'/>" +
-  "<text x='16' y='22' font-size='20' text-anchor='middle' fill='white' " +
-  "font-family='sans-serif' font-weight='bold'>M</text></svg>"
+  "<text x='16' y='21' font-size='20' text-anchor='middle' fill='white' " +
+  "font-family='sans-serif' font-weight='bold'>M</text>" +
+  "<line x1='7' y1='26' x2='25' y2='26' stroke='white' stroke-width='2.5' " +
+  "stroke-linecap='round'/></svg>"
 
 export const buildOnline404Html = (): string => `<!doctype html>
 <html lang="ja">

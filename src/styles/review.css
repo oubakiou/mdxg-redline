@@ -778,8 +778,25 @@ body.comments-resizing * {
 }
 .app-brand {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 12px;
+}
+.app-brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  text-decoration: none;
+}
+.app-brand-link:hover .app-brand-title {
+  text-decoration: underline;
+}
+.app-brand-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  display: block;
 }
 .app-brand-title {
   font-family: var(--font-system);
@@ -788,10 +805,6 @@ body.comments-resizing * {
   font-size: 18px;
   line-height: 1;
   color: var(--ink);
-  text-decoration: none;
-}
-.app-brand-title:hover {
-  text-decoration: underline;
 }
 .toolbar-actions {
   display: flex;
