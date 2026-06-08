@@ -38,7 +38,7 @@ MDXG Redline は、LLM エージェントが人間レビュワーから「長文
 
 ブラウザで [`https://mdxg-redline.pages.dev/`](https://mdxg-redline.pages.dev/) を開き、 toolbar の「Open URL」ボタンから表示したい markdown の URL を入力する。 または `?url=<encodeURIComponent(markdown URL)>` クエリで直接起動できる。 例: [本 README を online viewer で開く](https://mdxg-redline.pages.dev/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME_ja.md#p:mdxg-redline)。
 
-対応する markdown URL の host は `raw.githubusercontent.com` / `gist.githubusercontent.com` に絞られている (CSP `connect-src` の allowlist)。 self-host して allowlist を拡張する場合は環境変数 `MDXG_ONLINE_CONNECT_SRC` で追加する (詳細は [docs/feature-online-runtime-assets.md](docs/feature-online-runtime-assets.md))。
+対応する markdown URL の host は `raw.githubusercontent.com` / `gist.githubusercontent.com` に絞られている (CSP `connect-src` の allowlist)。 self-host して allowlist を拡張する場合は環境変数 `MDXG_ONLINE_CONNECT_SRC` で追加する (詳細は [docs/DESIGN.md §11.b](docs/DESIGN.md#b-content-security-policy二重保険))。
 
 ### standalone 版
 

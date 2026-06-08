@@ -2,13 +2,24 @@ import { DEFAULT_ONLINE_ALLOWLIST, normalizeOriginForCompare } from '../core/onl
 
 // `MDXG_ONLINE_CONNECT_SRC` env var (CSV 形式の origin リスト) を読み、DEFAULT_ONLINE_ALLOWLIST
 // との和集合を正規化 + 重複排除して返す。build plugin が CSP `connect-src` ディレクティブと
-// `<script id="online-allowlist">` JSON の両方の単一情報源として使う (§3.3 / docs Step 3)。
+// `<script id="online-allowlist">` JSON の両方の単一情報源として使う (DESIGN.md §11.b)。
 //
 // 規約:
 // - env 未設定 / 空文字 → DEFAULT_ONLINE_ALLOWLIST をそのまま返す
 // - CSV の各エントリは `new URL(entry).origin` 形式 (例: `https://example.com`) でなければならない
 // - https 以外 / pathname 付き / search 付き / hash 付きは reject + warn して entry skip
 // - 出力順: DEFAULT を先頭、env からの追加を後ろに、Set で重複排除 (DEFAULT との重複は DEFAULT 側を採用)
+//
+// 追加ホスト適合性 (allowlist 拡張時の見落としやすい invariant):
+// `fetchMarkdownFromUrl` (src/core/online-url.ts) は CORS preflight を回避するため
+// simple request 条件 (GET + safelisted ヘッダのみ、Authorization / 独自 X-* 不可) で発火する。
+// したがって追加するホストは次の 2 条件を満たさなければならない:
+//   1. GET レスポンスに `Access-Control-Allow-Origin` ヘッダを返す (CORS 許可)
+//   2. simple request 経路で fetch 可能 (preflight 不要、または preflight に `204`/`200` を返す)
+// 既定の raw.githubusercontent.com / gist.githubusercontent.com は条件 1 を `*` で満たす一方、
+// `OPTIONS` preflight には `403` を返す (Step 1 PoC 実測)。本実装は simple request 厳守で
+// preflight を発火させないため運用できているが、preflight を要求するホストを追加すると
+// 403 で破綻する。新規ホスト追加時は当該ホストの GET / OPTIONS 挙動を実機確認すること。
 export const ONLINE_ALLOWLIST_ENV_VAR = 'MDXG_ONLINE_CONNECT_SRC'
 
 const tryParseUrl = (entry: string): URL | null => {

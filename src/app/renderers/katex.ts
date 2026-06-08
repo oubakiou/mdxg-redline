@@ -222,7 +222,7 @@ export const scheduleKatexUpgrade = (docEl: HTMLElement): void => {
 
 // attach 済み listener function reference を保持。null = 未 attach。
 // Mermaid / Shiki の永続 listener と完全に対称な runtime 後追い注入用設計
-// (docs/feature-online-runtime-assets.md §3.3)。
+// (docs/archive/feature-online-runtime-assets.archive.md §3.3)。
 let katexReadyListener: (() => void) | null = null
 
 /**

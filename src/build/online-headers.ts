@@ -37,7 +37,7 @@ import {
 // ケースがある。fail-fast 防御として生成時点で行長を assertion する。
 export const CLOUDFLARE_HEADER_VALUE_LIMIT = 2000
 
-// docs/feature-online-runtime-assets.md §5.f / §5.i Item 1 で確定の path 単位 Cache-Control 分離:
+// docs/archive/feature-online-runtime-assets.archive.md §5.f / §5.i Item 1 で確定の path 単位 Cache-Control 分離:
 // - `/index.html` / `/`  → max-age=300 (5 分、HTML cache は短寿命にして deploy 世代ずれ過渡期を最小化)
 // - `/fingerprinted/*`   → max-age=31536000 immutable (hash 焼き込み済み資材、永久 cache 可)
 // - `/canonical/*`       → max-age=300 (新版 deploy で内容更新される fallback、immutable は禁止)

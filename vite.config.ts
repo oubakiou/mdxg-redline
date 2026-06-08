@@ -51,8 +51,9 @@ const regenerateAliasesTs = async (): Promise<void> => {
 // (immutable cache 対象) と `dist/hosting/canonical/shiki-langs/<lang>.json` (404 retry 先 +
 // 古い HTML cache が直接 fetch する fallback) の 2 系統を必要とする。fingerprinted は content
 // hash 焼き込みで `_headers` の `immutable, max-age=31536000` 配信を可能にし、canonical は
-// `max-age=300` で deploy 直後の世代ずれ過渡期に新版を返す (docs/feature-online-runtime-assets.md
-// §5.i)。両者は Pages の Build output directory として指定する `dist/hosting/` 配下に置く
+// `max-age=300` で deploy 直後の世代ずれ過渡期に新版を返す
+// (docs/archive/feature-online-runtime-assets.archive.md §5.i)。両者は Pages の Build output directory
+// として指定する `dist/hosting/` 配下に置く
 // (詳細は resolveFinalGrammarDirs / resolveSplitOutputPaths のコメント)。
 // 加えて CLI 経路 (`npm publish` 対象の `dist/shiki-langs/`、review-request CLI が markdown scan
 // 結果に応じて inject する素材) は dist 直下の従来パスを維持する。3 セットそれぞれが独立用途で
@@ -560,7 +561,7 @@ const emitGrammarJsonFiles = async (): Promise<ShikiGrammarEmission> => {
 // 2 系統 emit する。fingerprinted (`mermaid.<hash>.mjs`) は manifest 経由で online runtime が
 // dynamic import し `Cache-Control: immutable, max-age=31536000` 対象。canonical (`mermaid.mjs`) は
 // loader の load failure retry 先 + deploy 世代ずれ過渡期に古い HTML が直接 import する fallback で
-// `Cache-Control: max-age=300` で配信される (docs/feature-online-runtime-assets.md §5.i)。
+// `Cache-Control: max-age=300` で配信される (docs/archive/feature-online-runtime-assets.archive.md §5.i)。
 //
 // `dist/mermaid.mjs` が build 時に未生成 (`vp build --config vite.mermaid.config.ts` 未実行) の場合は
 // emit を skip して null を返し、 manifest の mermaid フィールドも null になる (loader 側は manifest

@@ -201,7 +201,7 @@ export const scheduleMermaidUpgrade = (docEl: HTMLElement): void => {
 // attach 済み listener function reference を保持。null = 未 attach。
 // `resetMermaidReadyListenerForTest` で `removeEventListener` するため handler 自体を持っておく。
 // shiki-upgrade.ts の `attachShikiLangsReadyListener` と対称な runtime 後追い注入用設計
-// (docs/feature-online-runtime-assets.md §3.3)。
+// (docs/archive/feature-online-runtime-assets.archive.md §3.3)。
 let mermaidReadyListener: (() => void) | null = null
 
 /**

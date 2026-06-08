@@ -207,7 +207,7 @@ const launchBoot = (loadFromMarkdown: BootstrapDeps['loadFromMarkdown']): void =
 
 // online edition で asset-loader が dynamic import で立ち上げる Shiki / Mermaid / KaTeX bridge を
 // 永続 listener で pickup する。 3G/4G の数秒遅延 import や複数文書連続ロードでも upgrade を
-// 取りこぼさないため (docs/feature-online-runtime-assets.md §3.3)。 standalone / embed-template
+// 取りこぼさないため (docs/archive/feature-online-runtime-assets.archive.md §3.3)。 standalone / embed-template
 // では呼ばない (CLI 経路は runtime 既 inline で listener 不要)。
 export const attachOnlineRuntimeListeners = (): void => {
   const docEl = qs('#doc')

@@ -1,7 +1,7 @@
 import { upsertHtmlDataAttribute } from '../core/embed/html-attribute-rewriter.ts'
 
 // standalone.html を素材にして online.html を派生させる pure 関数群。
-// docs/feature-online-runtime-assets.md / docs/archive/feature-online-edition.archive.md §3.1 に従い、
+// docs/archive/feature-online-runtime-assets.archive.md / docs/archive/feature-online-edition.archive.md §3.1 に従い、
 // 次の 6 つの mutation を行う：
 // 1. `<html>` に `data-mdxg-online="1"` 属性を upsert（boot.ts の経路分岐マーカー）
 // 2. CSP `connect-src 'none'` → `connect-src 'self' <allowlist origins joined by space>`
@@ -67,8 +67,9 @@ const rewriteCspConnectSrc = (html: string, allowlist: readonly string[]): strin
   const { match, content } = findCspContent(html)
   const [fullTag] = match
   // 'self' は同一オリジン同梱資材 (fingerprinted/* / canonical/*) への runtime fetch 用。
-  // CSP Level 3 仕様で `connect-src` は `fetch()` を評価対象とする。docs/feature-online-runtime-assets.md
-  // §5.g で確定: allowlist origins の前に prepend し、_headers / meta の single source of truth を維持。
+  // CSP Level 3 仕様で `connect-src` は `fetch()` を評価対象とする。
+  // docs/archive/feature-online-runtime-assets.archive.md §5.g で確定:
+  // allowlist origins の前に prepend し、_headers / meta の single source of truth を維持。
   const newConnectSrc = `connect-src 'self' ${allowlist.join(' ')}`
   const newContent = content.replace(CONNECT_SRC_NONE, newConnectSrc)
   const newTag = fullTag.replace(content, newContent)
