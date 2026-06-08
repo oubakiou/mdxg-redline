@@ -1,5 +1,7 @@
 # {タスク名} 設計・実装計画
 
+[![MKDN](https://img.shields.io/badge/MKDN-review-red?style=for-the-badge)](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2Fdocs%2Ffeature-plan-template.md#p:page-1)
+
 > **このファイルは設計ドキュメントのテンプレートです**。新しい設計プランを起こす際は本ファイルをコピーし、`{プレースホルダ}` を埋める / 引用ブロック内のガイドを削除する形で使う。完了したプランは `docs/<topic>.archive.md` にリネームしてアーカイブする（例: `docs/archive/mdxg-rendering-code-block.archive.md`）。
 
 > **書き方の原則**：

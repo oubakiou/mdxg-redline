@@ -1,5 +1,7 @@
 # [BUG] {問題を 1 行で要約 — 重大さ / 影響範囲が伝わる粒度で}
 
+[![MKDN](https://img.shields.io/badge/MKDN-review-red?style=for-the-badge)](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2Fdocs%2Fbug-template.md#p:bug-1)
+
 > **このファイルはバグ修正プランのテンプレートです**。新しいバグを起票する際は本ファイルをコピーして `docs/bug-<topic>.md` として配置し、`{プレースホルダ}` を埋める / 引用ブロック内のガイドを削除する形で使う。完了したバグ修正は `docs/archive/bug-<topic>.archive.md` にリネームしてアーカイブする（例: `docs/archive/bug-csp-font-src-missing.archive.md`）。
 >
 > 設計プラン用テンプレートは `docs/feature-plan-template.md`、リファクタリング用テンプレートは `docs/refactoring-plan-template.md` を参照。本テンプレートは「既知の不具合 / 設計と実装の乖離 / spec violation / regression」を起票して fix プランを引くための骨格を提供する。

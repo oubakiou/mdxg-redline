@@ -1,6 +1,6 @@
 # MDXG Redline
 
-[![MKDN](https://img.shields.io/badge/MKDN-view-red?style=for-the-badge)](https://mdxg-redline.pages.dev/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME_ja.md#p:mdxg-redline)
+[![MKDN](https://img.shields.io/badge/MKDN-review-red?style=for-the-badge)](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME_ja.md#p:mdxg-redline)
 [![npm](https://img.shields.io/npm/v/mdxg-redline.svg?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/mdxg-redline)
 
 [![English](https://img.shields.io/badge/Language-English-lightgrey?style=for-the-badge)](./README.md)
@@ -36,7 +36,7 @@ MDXG Redline は、LLM エージェントが人間レビュワーから「長文
 
 ### オンライン版
 
-ブラウザで [`https://mdxg-redline.pages.dev/`](https://mdxg-redline.pages.dev/) を開き、 toolbar の「Open URL」ボタンから表示したい markdown の URL を入力する。 または `?url=<encodeURIComponent(markdown URL)>` クエリで直接起動できる。 例: [本 README を online viewer で開く](https://mdxg-redline.pages.dev/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME_ja.md#p:mdxg-redline)。
+ブラウザで [`https://mkdn.review/`](https://mkdn.review/) を開き、 toolbar の「Open URL」ボタンから表示したい markdown の URL を入力する。 または `?url=<encodeURIComponent(markdown URL)>` クエリで直接起動できる。 例: [本 README を online viewer で開く](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME_ja.md#p:mdxg-redline)。
 
 対応する markdown URL の host は `raw.githubusercontent.com` / `gist.githubusercontent.com` に絞られている (CSP `connect-src` の allowlist)。 self-host して allowlist を拡張する場合は環境変数 `MDXG_ONLINE_CONNECT_SRC` で追加する (詳細は [docs/DESIGN.md §11.b](docs/DESIGN.md#b-content-security-policy二重保険))。
 
