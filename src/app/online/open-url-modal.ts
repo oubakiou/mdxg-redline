@@ -6,6 +6,8 @@
 
 import { createStaticModalController, type StaticModalController } from '../dom/static-modal'
 import { qs, qsInput } from '../dom/dom-utils'
+import { resolveOnlineAllowlistFromJson } from '../../core/online-allowlist-config'
+import { REWRITTEN_INPUT_HOSTS } from '../../core/online-url-normalize'
 
 const OPEN_URL_MODAL_BACKDROP_ID = 'open-url-modal-backdrop'
 const OPEN_URL_MODAL_CANCEL_ID = 'open-url-modal-cancel'
@@ -13,6 +15,8 @@ const OPEN_URL_FORM_ID = 'open-url-form'
 const OPEN_URL_INPUT_ID = 'open-url-input'
 const OPEN_URL_ERROR_ID = 'open-url-error'
 const OPEN_URL_BUTTON_ID = 'btn-open-url'
+const OPEN_URL_HELP_ALLOWLIST_ID = 'open-url-help-allowlist'
+const ONLINE_ALLOWLIST_SCRIPT_ID = 'online-allowlist'
 
 let modalController: StaticModalController | null = null
 let wired = false
@@ -113,6 +117,68 @@ const wireFormListeners = (): void => {
   }
 }
 
+const readAllowlistJsonText = (): string => {
+  const el = document.getElementById(ONLINE_ALLOWLIST_SCRIPT_ID)
+  if (el === null) {
+    return ''
+  }
+  return el.textContent ?? ''
+}
+
+/**
+ * allowlist origin (`https://host[:port]`) を modal の説明文に出すための表示用形式に整える。
+ * scheme は固定 (`https only`) が既に lead 文に明示されているため、host[:port] だけに落とす。
+ * 不正な origin (`new URL` 失敗) は最小 fallback として文字列のまま通す。
+ */
+export const formatAllowlistEntriesForHelp = (allowlist: readonly string[]): readonly string[] =>
+  allowlist.map((origin): string => {
+    try {
+      const parsed = new URL(origin)
+      if (parsed.port === '') {
+        return parsed.hostname
+      }
+      return `${parsed.hostname}:${parsed.port}`
+    } catch {
+      return origin
+    }
+  })
+
+const formatRewrittenInputHostEntries = (): readonly string[] =>
+  REWRITTEN_INPUT_HOSTS.map(({ input, target }): string => `${input} (rewritten to ${target})`)
+
+/**
+ * `<script id="online-allowlist">` JSON を読んで、Open URL modal の help block に並べる
+ * 表示行を組み立てる pure 関数。実 allowlist (build 時 `MDXG_ONLINE_CONNECT_SRC` で拡張可、
+ * §11.b) を head に、`REWRITTEN_INPUT_HOSTS` (`online-url-normalize.ts` の single source) を
+ * tail に並べる。fail-safe は `resolveOnlineAllowlistFromJson` が DEFAULT を返す経路で吸収。
+ */
+export const buildHelpEntriesFromAllowlistJson = (jsonText: string): readonly string[] => [
+  ...formatAllowlistEntriesForHelp(resolveOnlineAllowlistFromJson(jsonText)),
+  ...formatRewrittenInputHostEntries(),
+]
+
+const injectAllowlistIntoHelp = (): void => {
+  const list = document.getElementById(OPEN_URL_HELP_ALLOWLIST_ID)
+  if (!(list instanceof HTMLUListElement)) {
+    return
+  }
+  const entries = buildHelpEntriesFromAllowlistJson(readAllowlistJsonText())
+  list.replaceChildren(
+    ...entries.map((entry): HTMLLIElement => {
+      const li = document.createElement('li')
+      li.textContent = entry
+      return li
+    })
+  )
+}
+
+const wireOpenButton = (controller: StaticModalController): void => {
+  const btn = qs(`#${OPEN_URL_BUTTON_ID}`)
+  btn.addEventListener('click', (): void => {
+    controller.open()
+  })
+}
+
 export const wireOpenUrlModal = (): void => {
   if (document.documentElement.dataset.mdxgOnline !== '1') {
     return
@@ -125,11 +191,9 @@ export const wireOpenUrlModal = (): void => {
   wired = true
   const controller = getController()
   controller.wire()
-  const btn = qs(`#${OPEN_URL_BUTTON_ID}`)
-  btn.addEventListener('click', (): void => {
-    controller.open()
-  })
+  wireOpenButton(controller)
   wireFormListeners()
+  injectAllowlistIntoHelp()
 }
 
 if (import.meta.vitest) {
@@ -174,6 +238,66 @@ if (import.meta.vitest) {
       expect(buildReloadHref('https://x', '/foo/bar.html', 'https://y/z')).toBe(
         'https://x/foo/bar.html?url=https%3A%2F%2Fy%2Fz'
       )
+    })
+  })
+
+  describe('buildHelpEntriesFromAllowlistJson', () => {
+    it('既定 allowlist + REWRITTEN_INPUT_HOSTS の順で並ぶ', () => {
+      const json = '["https://raw.githubusercontent.com","https://gist.githubusercontent.com"]'
+      expect([...buildHelpEntriesFromAllowlistJson(json)]).toEqual([
+        'raw.githubusercontent.com',
+        'gist.githubusercontent.com',
+        'github.com (rewritten to raw.githubusercontent.com)',
+        'gist.github.com (rewritten to gist.githubusercontent.com)',
+      ])
+    })
+
+    it('env で拡張された allowlist host が head に追加され、rewritten host は常に tail に並ぶ', () => {
+      const json =
+        '["https://raw.githubusercontent.com","https://gist.githubusercontent.com","https://wiki.internal"]'
+      expect([...buildHelpEntriesFromAllowlistJson(json)]).toEqual([
+        'raw.githubusercontent.com',
+        'gist.githubusercontent.com',
+        'wiki.internal',
+        'github.com (rewritten to raw.githubusercontent.com)',
+        'gist.github.com (rewritten to gist.githubusercontent.com)',
+      ])
+    })
+
+    it('JSON 壊れは DEFAULT allowlist に fail-safe で倒れ、rewritten host は引き続き表示', () => {
+      expect([...buildHelpEntriesFromAllowlistJson('not json')]).toEqual([
+        'raw.githubusercontent.com',
+        'gist.githubusercontent.com',
+        'github.com (rewritten to raw.githubusercontent.com)',
+        'gist.github.com (rewritten to gist.githubusercontent.com)',
+      ])
+    })
+  })
+
+  describe('formatAllowlistEntriesForHelp', () => {
+    it('既定 origin から host だけ取り出す (scheme 重複表示を避ける)', () => {
+      expect(
+        formatAllowlistEntriesForHelp([
+          'https://raw.githubusercontent.com',
+          'https://gist.githubusercontent.com',
+        ])
+      ).toEqual(['raw.githubusercontent.com', 'gist.githubusercontent.com'])
+    })
+
+    it('non-default port は host:port で残す (自前ホスティング向け)', () => {
+      expect(formatAllowlistEntriesForHelp(['https://wiki.internal:8443'])).toEqual([
+        'wiki.internal:8443',
+      ])
+    })
+
+    it('parse 不能な origin はそのまま fallback で通す', () => {
+      expect(formatAllowlistEntriesForHelp(['not a url'])).toEqual(['not a url'])
+    })
+
+    it('大文字 host は URL 正規化で lowercase になる', () => {
+      expect(formatAllowlistEntriesForHelp(['https://RAW.GitHubUserContent.com'])).toEqual([
+        'raw.githubusercontent.com',
+      ])
     })
   })
 }

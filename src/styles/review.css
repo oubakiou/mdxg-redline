@@ -1483,6 +1483,66 @@ mark.search-hl.search-hl-current {
 .modal-compact {
   width: min(400px, 92vw);
 }
+
+/* Open URL modal は modal-compact の 400px だと長い raw URL が入力欄からはみ出して読みづらく
+   なるため、URL 全体が一目で確認できる横幅まで広げる (典型的な raw.githubusercontent.com
+   URL の 80-100 文字を折返しなしで収める)。説明文ブロックも下に並ぶので縦幅は伸びる。 */
+.modal.modal-open-url {
+  padding: 0;
+  width: min(640px, 92vw);
+}
+.modal-open-url .open-url-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--paper);
+  padding: 8px 12px;
+  font-family: var(--font-system);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.modal-open-url .open-url-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.3);
+}
+.modal-open-url .open-url-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.modal-open-url .open-url-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--accent-danger, #cf222e);
+}
+.open-url-help {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--paper-soft, rgba(0, 0, 0, 0.03));
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+.open-url-help-lead {
+  margin: 0 0 6px;
+}
+.open-url-help-allowlist {
+  margin: 0;
+  padding-left: 20px;
+}
+.open-url-help-allowlist li {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  /* host 名 + (rewritten to ...) が単語境界の少ない長文字列のため、狭幅ビューポートでも
+     はみ出さないよう anywhere で強制折返しする。 */
+  overflow-wrap: anywhere;
+}
 .modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -1560,7 +1620,8 @@ mark.search-hl.search-hl-current {
 /* dialog の footer は modal 全体の padding を持たない (modal-compact) 構造のため、
    セクション自前で padding を持つ。Primer Dialog に倣い body との境界は divider ではなく
    whitespace のみで示す（header は title を強調するため border-bottom を残す）。 */
-.modal.modal-compact > .modal-actions {
+.modal.modal-compact > .modal-actions,
+.modal.modal-open-url > .modal-actions {
   margin-top: 0;
   padding: 12px 16px;
 }

@@ -30,6 +30,21 @@
 const GITHUB_BLOB_OR_RAW_PATH_MIN_SEGMENTS = 4
 const GIST_MAIN_PAGE_SEGMENTS = 2
 
+/**
+ * 入力 UX として受理し、fetch 直前に raw 配信 host に書き換える対象の一覧。
+ * UI (Open URL modal の help block) や docs で同じ情報を引くため、normalize 対応 host を
+ * 単一情報源として export する (rewriteByHost の hardcoded 分岐と並列に持つが、
+ * 整合は in-source test の振る舞い test と本配列の固定 test の両方で担保する)。
+ */
+export interface RewrittenInputHost {
+  readonly input: string
+  readonly target: string
+}
+export const REWRITTEN_INPUT_HOSTS: readonly RewrittenInputHost[] = Object.freeze([
+  Object.freeze({ input: 'github.com', target: 'raw.githubusercontent.com' }),
+  Object.freeze({ input: 'gist.github.com', target: 'gist.githubusercontent.com' }),
+])
+
 const tryParseUrl = (input: string): URL | null => {
   try {
     return new URL(input)
@@ -294,6 +309,15 @@ if (import.meta.vitest) {
       expect(
         normalizeGithubViewUrl('https://user:pass@github.com/owner/repo/blob/main/file.md')
       ).toBe('https://raw.githubusercontent.com/owner/repo/main/file.md')
+    })
+  })
+
+  describe('REWRITTEN_INPUT_HOSTS: UI / docs 向けの単一情報源', () => {
+    it('rewriteByHost の分岐と一致する 2 entry (github.com → raw, gist.github.com → gist raw)', () => {
+      expect([...REWRITTEN_INPUT_HOSTS]).toEqual([
+        { input: 'github.com', target: 'raw.githubusercontent.com' },
+        { input: 'gist.github.com', target: 'gist.githubusercontent.com' },
+      ])
     })
   })
 }

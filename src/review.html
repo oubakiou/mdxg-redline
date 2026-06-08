@@ -528,7 +528,7 @@
          なしで完全 hidden (§3.1 二層 gating)。 -->
     <div class="modal-backdrop open-url-modal-backdrop" id="open-url-modal-backdrop">
       <div
-        class="modal modal-compact"
+        class="modal modal-open-url"
         role="dialog"
         aria-modal="true"
         aria-labelledby="open-url-modal-title"
@@ -545,10 +545,16 @@
             inputmode="url"
             autocomplete="off"
             spellcheck="false"
-            placeholder="https://raw.githubusercontent.com/owner/repo/main/README.md"
+            placeholder="https://github.com/oubakiou/mdxg-redline/blob/main/README.md"
             required
           />
           <p id="open-url-error" class="open-url-error" role="alert" hidden></p>
+          <!-- allowlist の <ul> は wireOpenUrlModal が <script id="online-allowlist"> から
+               読んで動的注入する。プレースホルダの placeholder text は注入失敗時の最小 fallback。 -->
+          <section class="open-url-help" id="open-url-help">
+            <p class="open-url-help-lead">Accepted hosts (https only):</p>
+            <ul class="open-url-help-allowlist" id="open-url-help-allowlist"></ul>
+          </section>
         </form>
         <footer class="modal-actions">
           <button type="button" class="btn" id="open-url-modal-cancel">Cancel</button>
