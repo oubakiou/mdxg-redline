@@ -13,6 +13,7 @@ import { renderComments } from './comments/comments'
 import { showOnlineError } from './online/error-display'
 import { showOnlineSource } from './online/source-display'
 import { resolveOnlineAllowlistFromJson } from '../core/online-allowlist-config'
+import { normalizeGithubViewUrl } from '../core/online-url-normalize'
 import { restoreWorkspaceHandle } from './workspace/workspace'
 
 interface BootRuntime {
@@ -180,14 +181,24 @@ const readUrlQuery = (): string | null => {
  */
 const tryFetchAndLoad = async (url: string, runtime: BootRuntime): Promise<boolean> => {
   const allowlist = readOnlineAllowlistFromDom()
-  const result = await fetchMarkdownFromUrl(url, DEFAULT_FETCH_OPTS, allowlist)
+  // 人間が普段ブラウザで開く github.com/blob / gist.github.com の URL を allowlist 内 origin
+  // (raw / gist raw) に書き換えてから fetchMarkdownFromUrl に渡す。?url= クエリと
+  // Open URL modal の入力は元 URL のまま保持する (URL バーは入力 URL のまま、§3.4 入力 UX)。
+  const normalizedUrl = normalizeGithubViewUrl(url)
+  const result = await fetchMarkdownFromUrl(normalizedUrl, DEFAULT_FETCH_OPTS, allowlist)
   if (!result.ok) {
     showOnlineError(formatFetchFailureMessage(result))
     return false
   }
   document.documentElement.classList.add('has-embedded-md')
   showOnlineSource(result.finalUrl)
-  await runtime.loadFromMarkdown(deriveDocNameFromUrl(url), result.text)
+  // docName は redirect 後の finalUrl から derive する。gist メインページ URL
+  // (gist.github.com/<user>/<id>) は normalize で末尾 `/raw` が補完されるため、normalizedUrl
+  // ベースだと docName が "raw" になり export ファイル名が `raw-<hash>-feedback.json` 等に
+  // 退化する。raw 配信側は `<commit_sha>/<filename>` 形式に redirect するため、finalUrl 末尾を
+  // 取れば実ファイル名が拾える (test 環境では Response.url 空 → requestedUrl=normalizedUrl に
+  // fallback、§online-url.ts readBodyWithLimit)。
+  await runtime.loadFromMarkdown(deriveDocNameFromUrl(result.finalUrl), result.text)
   return true
 }
 
@@ -444,7 +455,8 @@ if (import.meta.vitest) {
   })
 
   describe('loadFromOnlineUrlQuery: 成功 / fetch 失敗', () => {
-    const ALLOWLIST_JSON = '["https://raw.githubusercontent.com"]'
+    const ALLOWLIST_JSON =
+      '["https://raw.githubusercontent.com","https://gist.githubusercontent.com"]'
     const originalFetch = globalThis.fetch
 
     beforeEach(() => {
@@ -487,6 +499,26 @@ if (import.meta.vitest) {
       })
       expect(await loadFromOnlineUrlQuery({ loadFromMarkdown: spy })).toBe(true)
       expect(spy).toHaveBeenCalledWith('README.md', '# hello')
+    })
+
+    it('gist メインページ URL は redirect 後の finalUrl 末尾から docName を拾う', async () => {
+      vi.stubGlobal('location', {
+        protocol: 'https:',
+        search: '?url=https://gist.github.com/user/abc123',
+      })
+      const finalUrl =
+        'https://gist.githubusercontent.com/user/abc123/raw/abcdef1234567890/hello.md'
+      const res = new Response('# hello', {
+        headers: { 'content-type': 'text/plain' },
+        status: 200,
+      })
+      Object.defineProperty(res, 'url', { value: finalUrl })
+      globalThis.fetch = vi.fn().mockResolvedValue(res)
+      const spy = vi.fn(async (): Promise<void> => {
+        /* noop test stub */
+      })
+      expect(await loadFromOnlineUrlQuery({ loadFromMarkdown: spy })).toBe(true)
+      expect(spy).toHaveBeenCalledWith('hello.md', '# hello')
     })
 
     it('fetch が 404 を返すと false + loadFromMarkdown 呼ばれない', async () => {
