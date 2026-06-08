@@ -1,7 +1,8 @@
 import { upsertHtmlDataAttribute } from '../core/embed/html-attribute-rewriter.ts'
 
 // standalone.html を素材にして online.html を派生させる pure 関数群。docs/feature-online-runtime-assets.md
-// Phase A.2 / docs/archive/feature-online-edition.archive.md §3.1 に従い、次の 5 つの mutation を行う：
+// Phase A.2 / Phase B (Step 5) / docs/archive/feature-online-edition.archive.md §3.1 に従い、
+// 次の 6 つの mutation を行う：
 // 1. `<html>` に `data-mdxg-online="1"` 属性を upsert（boot.ts の経路分岐マーカー）
 // 2. CSP `connect-src 'none'` → `connect-src 'self' <allowlist origins joined by space>`
 //    ('self' は同一オリジン同梱資材 (fingerprinted/* / canonical/*) への runtime fetch 用、§3.4 / §5.g)
@@ -10,6 +11,8 @@ import { upsertHtmlDataAttribute } from '../core/embed/html-attribute-rewriter.t
 //    (asset-loader が起動時 1 度 parse して fingerprinted パスを解決、§3.2)
 // 5. `<script id="embedded-shiki-langs">` の textContent を空 `{}` に上書き
 //    (grammar は runtime fetch するため build 時 inline を不要にし、~45 MB 削減、§3.1)
+// 6. `<script id="embedded-mermaid">` の textContent を空に上書き
+//    (Mermaid runtime は同一オリジン dynamic import するため build 時 inline を不要にし、~3 MB 削減、Phase B)
 //
 // allowlist は build/online-allowlist.ts の buildOnlineAllowlist() 戻り値 (origin 形式の string[]) を
 // 渡す。CSP / JSON 両方に同じ集合を展開するため drift が構造的に起きない (§3.3)。
@@ -138,6 +141,32 @@ const emptyShikiLangsBlock = (html: string): string => {
   return `${html.slice(0, openEnd)}{}${html.slice(closeIdx)}`
 }
 
+// `<script id="embedded-mermaid">` の textContent を空に置換する (Phase B)。standalone (素材) は
+// Mermaid runtime (~3 MB) を inline 済みだが、online edition は asset-loader が manifest 経由で
+// dynamic import するため不要。空 textContent は asset-loader の sentinel 注入で gate 通過させる。
+//
+// `dist/mermaid.mjs` が build 時に未生成だと standalone にも Mermaid block が空のまま残るため、
+// open tag は素材契約として常に存在することを要求し fail-fast する (Shiki と対称)。
+const EMBEDDED_MERMAID_OPEN_RE =
+  /<script\b(?=[^>]*\bid="embedded-mermaid")(?=[^>]*\btype="module")[^>]*>/iu
+
+const emptyMermaidBlock = (html: string): string => {
+  const openMatch = EMBEDDED_MERMAID_OPEN_RE.exec(html)
+  if (!openMatch) {
+    throw new Error(
+      'online-html: standalone.html に id="embedded-mermaid" の <script> タグが見つかりません'
+    )
+  }
+  const openEnd = openMatch.index + openMatch[0].length
+  const closeIdx = html.indexOf('</script>', openEnd)
+  if (closeIdx === -1) {
+    throw new Error(
+      'online-html: id="embedded-mermaid" の <script> 開始タグに対応する </script> が見つかりません'
+    )
+  }
+  return `${html.slice(0, openEnd)}${html.slice(closeIdx)}`
+}
+
 export interface BuildOnlineHtmlOpts {
   allowlist: readonly string[]
   manifest: OnlineAssetManifestPayload
@@ -152,7 +181,8 @@ export const buildOnlineHtml = (standaloneHtml: string, opts: BuildOnlineHtmlOpt
   const withAttribute = upsertHtmlDataAttribute(standaloneHtml, 'data-mdxg-online', '1')
   const withCsp = rewriteCspConnectSrc(withAttribute, opts.allowlist)
   const withEmptyShiki = emptyShikiLangsBlock(withCsp)
-  const withAllowlist = injectAllowlistJson(withEmptyShiki, opts.allowlist)
+  const withEmptyMermaid = emptyMermaidBlock(withEmptyShiki)
+  const withAllowlist = injectAllowlistJson(withEmptyMermaid, opts.allowlist)
   return injectAssetManifestJson(withAllowlist, opts.manifest)
 }
 
@@ -168,6 +198,7 @@ if (import.meta.vitest) {
       content="default-src 'none'; connect-src 'none'; script-src 'self' 'unsafe-inline'"
     />
     <script type="application/json" id="embedded-shiki-langs">{"typescript":[{"name":"typescript","scopeName":"source.ts"}]}</script>
+    <script type="module" id="embedded-mermaid">/* mermaid runtime placeholder */ globalThis.__mdxgMermaid = {};</script>
     <title>x</title>
   </head>
   <body></body>
@@ -313,6 +344,7 @@ if (import.meta.vitest) {
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'none'; script-src 'self' 'unsafe-inline'" />
     <script type="application/json" id="embedded-shiki-langs">{"typescript":[{"name":"typescript","scopeName":"source.ts"}]}</script>
+    <script type="module" id="embedded-mermaid">/* mermaid placeholder */</script>
     <script id="embedded-runtime">var fakeMarker = "Tag: </head> inside string";</script>
     <title>x</title>
   </head>
@@ -383,6 +415,31 @@ if (import.meta.vitest) {
         ''
       )
       expect(() => buildOnlineHtml(noShiki, buildOpts())).toThrow(/embedded-shiki-langs/u)
+    })
+  })
+
+  describe('buildOnlineHtml: embedded-mermaid 空置換 (Phase B)', () => {
+    it('<script id="embedded-mermaid"> の textContent を空に置換する', () => {
+      const out = buildOnlineHtml(SAMPLE_HTML, buildOpts())
+      const match = /id="embedded-mermaid"[^>]*>([\s\S]*?)<\/script>/u.exec(out)
+      expect(match).not.toBeNull()
+      if (match) {
+        expect(match[1]).toBe('')
+      }
+    })
+
+    it('元の Mermaid runtime placeholder は残らない (size 削減効果の verify)', () => {
+      const out = buildOnlineHtml(SAMPLE_HTML, buildOpts())
+      expect(out).not.toContain('mermaid runtime placeholder')
+      expect(out).not.toContain('__mdxgMermaid = {}')
+    })
+
+    it('embedded-mermaid block が無いと throw (素材契約違反の fail-fast)', () => {
+      const noMermaid = SAMPLE_HTML.replace(
+        /<script type="module" id="embedded-mermaid">[\s\S]*?<\/script>/u,
+        ''
+      )
+      expect(() => buildOnlineHtml(noMermaid, buildOpts())).toThrow(/embedded-mermaid/u)
     })
   })
 

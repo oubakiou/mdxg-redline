@@ -198,6 +198,60 @@ export const scheduleMermaidUpgrade = (docEl: HTMLElement): void => {
   })
 }
 
+// attach 済み listener function reference を保持。null = 未 attach。
+// `resetMermaidReadyListenerForTest` で `removeEventListener` するため handler 自体を持っておく。
+// shiki-upgrade.ts の `attachShikiLangsReadyListener` と対称な runtime 後追い注入用設計
+// (docs/feature-online-runtime-assets.md Phase B §3.3)。
+let mermaidReadyListener: (() => void) | null = null
+
+/**
+ * `mdxg:mermaid-ready` を永続 listen して受け取るたび `upgrade(doc)` を再走させる。
+ * online edition で asset-loader が dynamic import で Mermaid runtime を後追い注入する経路で
+ * 必要。`waitForRuntime` の 2 秒 timeout を超える 3G/4G の遅延 import でも event を取りこぼさない。
+ *
+ * 重複 attach は module-level reference (`mermaidReadyListener`) のガードで idempotent。
+ * `upgrade` は dependency injection 用の optional 引数で、 default は本 module の
+ * `scheduleMermaidUpgrade`。listener の発火を test から直接 verify するためにある。
+ *
+ * CLI 経路 (`<script id="embedded-mermaid">` に runtime 既 inline) では mermaid-entry.ts が
+ * 1 度だけ event を dispatch するが、 boot 直後の waitForRuntime が既に bridge を取得済みなので
+ * 永続 listener が拾っても scheduleMermaidUpgrade 自体が idempotent (`data-mermaid-applied`)
+ * で no-op になる (CLI 影響なし)。
+ */
+export const attachMermaidReadyListener = (
+  doc: HTMLElement,
+  upgrade: (doc: HTMLElement) => void = scheduleMermaidUpgrade
+): void => {
+  if (mermaidReadyListener !== null) {
+    return
+  }
+  if (typeof document === 'undefined') {
+    return
+  }
+  const listener = (): void => {
+    upgrade(doc)
+  }
+  mermaidReadyListener = listener
+  document.addEventListener('mdxg:mermaid-ready', listener)
+}
+
+/**
+ * 永続 listener を実際に `removeEventListener` で外し、 reference を null に戻す test 専用 helper。
+ * 本番経路では呼ばない (page reload で破棄される設計)。
+ */
+export const resetMermaidReadyListenerForTest = (): void => {
+  if (mermaidReadyListener !== null && typeof document !== 'undefined') {
+    document.removeEventListener('mdxg:mermaid-ready', mermaidReadyListener)
+  }
+  mermaidReadyListener = null
+}
+
+/**
+ * 永続 listener が attach されているかを返す test 専用 helper。 app-wiring の online gate test で
+ * 「online=true なら attach される / online=false (CLI) なら attach されない」を verify する用途。
+ */
+export const hasMermaidReadyListenerForTest = (): boolean => mermaidReadyListener !== null
+
 const resetMermaidPre = (pre: HTMLElement): void => {
   pre.hidden = false
   delete pre.dataset.mermaidApplied
@@ -257,8 +311,55 @@ const noopVoid = (): void => {
   /* noop */
 }
 
+const createTestDocEl = (id: string): HTMLElement => {
+  const doc = document.createElement('div')
+  doc.id = id
+  document.body.appendChild(doc)
+  return doc
+}
+
+const dispatchMermaidReady = (times: number): void => {
+  for (let count = 0; count < times; count += 1) {
+    document.dispatchEvent(new Event('mdxg:mermaid-ready'))
+  }
+}
+
+const attachWithEphemeralDoc = (
+  id: string,
+  upgrade: (doc: HTMLElement) => void
+): { remove: () => void } => {
+  const doc = createTestDocEl(id)
+  attachMermaidReadyListener(doc, upgrade)
+  return { remove: (): void => doc.remove() }
+}
+
+interface ResetIsolationCallCounts {
+  newCount: number
+  oldCount: number
+}
+
+interface MockFnLike {
+  (...args: unknown[]): unknown
+  mock: { calls: unknown[][] }
+}
+
+const runResetIsolationScenario = (makeFn: () => MockFnLike): ResetIsolationCallCounts => {
+  const oldUpgrade = makeFn()
+  const newUpgrade = makeFn()
+  const first = attachWithEphemeralDoc('doc-mermaid-test-reset-old', oldUpgrade)
+  first.remove()
+  resetMermaidReadyListenerForTest()
+  const second = attachWithEphemeralDoc('doc-mermaid-test-reset-new', newUpgrade)
+  try {
+    dispatchMermaidReady(1)
+    return { newCount: newUpgrade.mock.calls.length, oldCount: oldUpgrade.mock.calls.length }
+  } finally {
+    second.remove()
+  }
+}
+
 if (import.meta.vitest) {
-  const { describe, expect, it } = import.meta.vitest
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest
 
   describe('isMermaidLike type guard', () => {
     it('initialize / render を関数として持つオブジェクトは true', () => {
@@ -365,6 +466,57 @@ if (import.meta.vitest) {
       state.blockOriginalHTML.delete('b-untouched')
       refreshAppliedBlocksOriginalHTML(root, MERMAID_APPLIED_SELECTOR)
       expect(state.blockOriginalHTML.has('b-untouched')).toBe(false)
+    })
+  })
+
+  describe('attachMermaidReadyListener (Phase B 永続 listener)', () => {
+    afterEach((): void => {
+      resetMermaidReadyListenerForTest()
+    })
+
+    it('event 発火で upgrade が doc を引数に呼ばれる', () => {
+      const doc = createTestDocEl('doc-mermaid-test-1')
+      const upgrade = vi.fn()
+      try {
+        attachMermaidReadyListener(doc, upgrade)
+        dispatchMermaidReady(1)
+        expect(upgrade).toHaveBeenCalledTimes(1)
+        expect(upgrade).toHaveBeenCalledWith(doc)
+      } finally {
+        doc.remove()
+      }
+    })
+
+    it('2 回呼んでも listener は 1 度しか attach されない (idempotent)', () => {
+      const doc = createTestDocEl('doc-mermaid-test-2')
+      const upgrade = vi.fn()
+      try {
+        attachMermaidReadyListener(doc, upgrade)
+        attachMermaidReadyListener(doc, upgrade)
+        dispatchMermaidReady(1)
+        expect(upgrade).toHaveBeenCalledTimes(1)
+      } finally {
+        doc.remove()
+      }
+    })
+
+    it('永続 listener なので複数回 event 発火しても都度 upgrade が走る (waitForRuntime 2秒 timeout の補完)', () => {
+      const doc = createTestDocEl('doc-mermaid-test-3')
+      const upgrade = vi.fn()
+      try {
+        attachMermaidReadyListener(doc, upgrade)
+        dispatchMermaidReady(3)
+        expect(upgrade).toHaveBeenCalledTimes(3)
+      } finally {
+        doc.remove()
+      }
+    })
+
+    it('reset 後は古い listener が累積せず、新しい upgrade だけが呼ばれる', () => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const counts = runResetIsolationScenario((): MockFnLike => vi.fn() as unknown as MockFnLike)
+      expect(counts.newCount).toBe(1)
+      expect(counts.oldCount).toBe(0)
     })
   })
 }

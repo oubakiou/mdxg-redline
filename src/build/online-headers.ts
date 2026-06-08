@@ -98,6 +98,7 @@ if (import.meta.vitest) {
       content="default-src 'none'; connect-src 'none'; script-src 'self' 'unsafe-inline'"
     />
     <script type="application/json" id="embedded-shiki-langs">{"typescript":[{"name":"typescript","scopeName":"source.ts"}]}</script>
+    <script type="module" id="embedded-mermaid">/* mermaid placeholder */</script>
     <title>x</title>
   </head>
   <body></body>

@@ -555,12 +555,87 @@ const emitGrammarJsonFiles = async (): Promise<ShikiGrammarEmission> => {
   }
 }
 
-const buildManifestPayload = (grammar: ShikiGrammarEmission): OnlineAssetManifestPayload => {
+interface MermaidRuntimeEmission {
+  fingerprintedPath: string
+}
+
+interface AssetEmission {
+  mermaid: MermaidRuntimeEmission | null
+  shiki: ShikiGrammarEmission
+}
+
+const resolveMermaidManifestPath = (mermaid: MermaidRuntimeEmission | null): string | null => {
+  if (mermaid === null) {
+    return null
+  }
+  return mermaid.fingerprintedPath
+}
+
+const buildManifestPayload = (emission: AssetEmission): OnlineAssetManifestPayload => {
   const shikiLangs: Record<string, string> = {}
-  for (const [lang, entry] of Object.entries(grammar.manifest)) {
+  for (const [lang, entry] of Object.entries(emission.shiki.manifest)) {
     shikiLangs[lang] = entry.fingerprintedPath
   }
-  return { katex: null, mermaid: null, shikiLangs }
+  return {
+    katex: null,
+    mermaid: resolveMermaidManifestPath(emission.mermaid),
+    shikiLangs,
+  }
+}
+
+// Phase B: Mermaid runtime (`dist/mermaid.mjs`) を `dist/hosting/{fingerprinted,canonical}/` に
+// 2 系統 emit する。fingerprinted (`mermaid.<hash>.mjs`) は manifest 経由で online runtime が
+// dynamic import し `Cache-Control: immutable, max-age=31536000` 対象。canonical (`mermaid.mjs`) は
+// loader の load failure retry 先 + deploy 世代ずれ過渡期に古い HTML が直接 import する fallback で
+// `Cache-Control: max-age=300` で配信される (docs/feature-online-runtime-assets.md §5.i)。
+//
+// `dist/mermaid.mjs` が build 時に未生成 (`vp build --config vite.mermaid.config.ts` 未実行) の場合は
+// emit を skip して null を返し、 manifest の mermaid フィールドも null になる (loader 側は manifest
+// 欠落 fail-safe で canonical パスを fetch しに行くが、 canonical も無いので import reject し
+// `mermaid-import-reject` を failures に集約する。 standalone は Mermaid inline 維持なので影響なし)。
+const readMermaidRuntimeForHosting = async (distDir: string): Promise<string | null> => {
+  try {
+    return await readFile(resolve(distDir, 'mermaid.mjs'), 'utf8')
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      console.warn(
+        '[mdxg-split-outputs] dist/mermaid.mjs が見つからないため dist/hosting/ への Mermaid emit を skip しました。 `vp build --config vite.mermaid.config.ts` を先に実行してください。'
+      )
+      return null
+    }
+    throw error
+  }
+}
+
+const writeMermaidRuntimePair = async (
+  hostingDir: string,
+  fingerprintedName: string,
+  content: string
+): Promise<void> => {
+  const fingerprintedDir = resolve(hostingDir, 'fingerprinted')
+  const canonicalDir = resolve(hostingDir, 'canonical')
+  await Promise.all([
+    mkdir(fingerprintedDir, { recursive: true }),
+    mkdir(canonicalDir, { recursive: true }),
+  ])
+  await Promise.all([
+    writeFile(resolve(fingerprintedDir, fingerprintedName), content, 'utf8'),
+    writeFile(resolve(canonicalDir, 'mermaid.mjs'), content, 'utf8'),
+  ])
+}
+
+const emitMermaidRuntimeFiles = async (
+  distDir: string,
+  hostingDir: string
+): Promise<MermaidRuntimeEmission | null> => {
+  const content = await readMermaidRuntimeForHosting(distDir)
+  if (content === null) {
+    return null
+  }
+  const hash = sha256Prefix(content)
+  const fingerprintedName = `mermaid.${hash}.mjs`
+  await writeMermaidRuntimePair(hostingDir, fingerprintedName, content)
+  return { fingerprintedPath: `fingerprinted/${fingerprintedName}` }
 }
 
 // Shiki 同梱言語のメタを `src/core/shiki-aliases.generated.ts` に再生成する buildStart 専任 plugin。
@@ -877,12 +952,16 @@ const runSplitOutputs = async (): Promise<void> => {
   const grammarEmission = await emitGrammarJsonFiles()
   const html = await readFile(paths.intermediatePath, 'utf8')
   const standaloneHtml = await buildStandaloneHtml(paths.distDir, html)
-  const manifest = buildManifestPayload(grammarEmission)
-  const onlineHtml = buildOnlineHtmlFromStandalone(standaloneHtml, manifest)
   // emitGrammarJsonFiles が dist/hosting/{canonical,fingerprinted}/shiki-langs を rename で
   // 作るため hostingDir 自体は既に存在するが、 初回 build や grammar 経路の swap 後で消えている
   // 経路を防御するため明示 mkdir する。 recursive で idempotent。
   await mkdir(paths.hostingDir, { recursive: true })
+  // Phase B: Mermaid runtime を dist/hosting/{fingerprinted,canonical}/ に emit してから
+  // manifest を組み立てる。emit が skip された場合 (dist/mermaid.mjs 不在) は manifest の
+  // mermaid フィールドが null になり、 loader 側は canonical fail-safe → 失敗集約に倒れる。
+  const mermaidEmission = await emitMermaidRuntimeFiles(paths.distDir, paths.hostingDir)
+  const manifest = buildManifestPayload({ mermaid: mermaidEmission, shiki: grammarEmission })
+  const onlineHtml = buildOnlineHtmlFromStandalone(standaloneHtml, manifest)
   await Promise.all([
     writeFile(paths.standalonePath, standaloneHtml, 'utf8'),
     writeFile(paths.onlinePath, onlineHtml, 'utf8'),

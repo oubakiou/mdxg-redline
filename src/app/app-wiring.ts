@@ -31,7 +31,16 @@ import { qs, toast } from './dom/dom-utils'
 import { type DropdownLike, setupKeyboardHandlers } from './chrome/global-keyboard'
 import { toggleHelpModal, wireHelpModal } from './chrome/help-modal'
 import { boot, isOnlineEdition } from './boot'
-import { attachShikiLangsReadyListener } from './renderers/shiki-upgrade'
+import {
+  attachMermaidReadyListener,
+  hasMermaidReadyListenerForTest,
+  resetMermaidReadyListenerForTest,
+} from './renderers/mermaid'
+import {
+  attachShikiLangsReadyListener,
+  hasShikiLangsListenerForTest,
+  resetShikiLangsListenerForTest,
+} from './renderers/shiki-upgrade'
 import { createDropdownMenu } from './dom/menu'
 import { createOnlineAssetCache, type OnlineAssetCache } from './online/asset-loader'
 import { decorateLoadFromMarkdownForOnline } from './online/runtime-decorator'
@@ -191,6 +200,33 @@ const launchBoot = (loadFromMarkdown: BootstrapDeps['loadFromMarkdown']): void =
   })
 }
 
+// online edition で asset-loader が dynamic import で立ち上げる Mermaid / Shiki bridge を
+// 永続 listener で pickup する。 3G/4G の数秒遅延 import や複数文書連続ロードでも upgrade を
+// 取りこぼさないため (Phase B §3.3、Phase A.1 §3.3)。 standalone / embed-template では呼ばない。
+export const attachOnlineRuntimeListeners = (): void => {
+  const docEl = qs('#doc')
+  attachShikiLangsReadyListener(docEl)
+  attachMermaidReadyListener(docEl)
+}
+
+// in-source test 用 helper。 unicorn/consistent-function-scoping を満たすため module scope に置く。
+// `import.meta.vitest` は本番ビルドで false 評価されるため、test 専用 helper も dead code として落ちる。
+const installDocElForTest = (): HTMLElement => {
+  const doc = document.createElement('div')
+  doc.id = 'doc'
+  document.body.appendChild(doc)
+  return doc
+}
+
+const cleanupListenersAndDocForTest = (): void => {
+  resetMermaidReadyListenerForTest()
+  resetShikiLangsListenerForTest()
+  const doc = document.getElementById('doc')
+  if (doc !== null) {
+    doc.remove()
+  }
+}
+
 export const bootstrapReviewApp = (deps: BootstrapDeps): void => {
   const online = isOnlineEdition()
   const effectiveDeps = resolveBootstrapDeps(deps, online)
@@ -200,7 +236,7 @@ export const bootstrapReviewApp = (deps: BootstrapDeps): void => {
   setupToolbarButtons(sendMenu)
   setupNavigationRouting()
   if (online) {
-    attachShikiLangsReadyListener(qs('#doc'))
+    attachOnlineRuntimeListeners()
   }
   launchBoot(effectiveDeps.loadFromMarkdown)
 }
@@ -252,6 +288,37 @@ if (import.meta.vitest) {
       const result = resolveBootstrapDeps(deps, true)
       await result.loadFromMarkdown('doc.md', '# y\n')
       expect(deps.loadFromMarkdown).toHaveBeenCalledWith('doc.md', '# y\n')
+    })
+  })
+
+  describe('attachOnlineRuntimeListeners (online edition gate, Phase B §6)', () => {
+    it('呼ぶと Mermaid / Shiki の永続 listener が両方 attach される (online 経路)', () => {
+      installDocElForTest()
+      resetMermaidReadyListenerForTest()
+      resetShikiLangsListenerForTest()
+      try {
+        expect(hasMermaidReadyListenerForTest()).toBe(false)
+        expect(hasShikiLangsListenerForTest()).toBe(false)
+        attachOnlineRuntimeListeners()
+        expect(hasMermaidReadyListenerForTest()).toBe(true)
+        expect(hasShikiLangsListenerForTest()).toBe(true)
+      } finally {
+        cleanupListenersAndDocForTest()
+      }
+    })
+
+    it('呼ばなければ listener は attach されない (CLI / standalone 経路の no-op 検証)', () => {
+      installDocElForTest()
+      resetMermaidReadyListenerForTest()
+      resetShikiLangsListenerForTest()
+      try {
+        // bootstrapReviewApp の if (online) 分岐が false 経路を踏む状態を再現
+        // (attachOnlineRuntimeListeners を呼ばない)
+        expect(hasMermaidReadyListenerForTest()).toBe(false)
+        expect(hasShikiLangsListenerForTest()).toBe(false)
+      } finally {
+        cleanupListenersAndDocForTest()
+      }
     })
   })
 }

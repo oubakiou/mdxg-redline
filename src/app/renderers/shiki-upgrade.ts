@@ -168,6 +168,12 @@ export const resetShikiLangsListenerForTest = (): void => {
   shikiLangsListener = null
 }
 
+/**
+ * 永続 listener が attach されているかを返す test 専用 helper。 app-wiring の online gate test で
+ * 「online=true なら attach される / online=false (CLI) なら attach されない」を verify する用途。
+ */
+export const hasShikiLangsListenerForTest = (): boolean => shikiLangsListener !== null
+
 const createTestDocEl = (id: string): HTMLElement => {
   const doc = document.createElement('div')
   doc.id = id
