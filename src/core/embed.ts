@@ -23,6 +23,7 @@ export {
   upsertHtmlDataPageNavWidth,
   upsertHtmlDataTheme,
   upsertHtmlDataToolbarOpenFile,
+  upsertHtmlDataToolbarPasteMarkdown,
 } from './embed/html-rewrite'
 export {
   type KatexRuntimeAssets,

@@ -5,6 +5,7 @@ import { closeCommentModal } from '../comments/comment-modal'
 import { closeHelpModal, openHelpModal } from './help-modal'
 import { closeMermaidModal } from '../renderers/mermaid-modal'
 import { closeOpenUrlModal } from '../online/open-url-modal'
+import { closePasteMarkdownModal } from './paste-markdown-modal'
 import { closeSearch, isSearchOpen, openSearch } from '../search/search'
 import { qs } from '../dom/dom-utils'
 import {
@@ -24,17 +25,24 @@ export interface DropdownLike {
 /**
  * グローバル keydown を 1 経路に集約する。Escape (modal/menu 閉じ) → Cmd/Ctrl+Enter
  * (modal save) → WASD affordance の 3 段で dispatch する。
- * commentsMenu / sendMenu は createDropdownMenu の戻り値で、Escape 時に同時に閉じる必要があるため
- * 引数として渡す (DOM ID 経由で再取得しても良いが、close handle を直接持つ方が破綻に強い)。
+ * commentsMenu / sendMenu / openMenu は createDropdownMenu の戻り値で、Escape 時に同時に
+ * 閉じる必要があるため引数として渡す (DOM ID 経由で再取得しても良いが、close handle を直接
+ * 持つ方が破綻に強い)。
  */
-export const setupKeyboardHandlers = (commentsMenu: DropdownLike, sendMenu: DropdownLike): void => {
+export const setupKeyboardHandlers = (
+  commentsMenu: DropdownLike,
+  sendMenu: DropdownLike,
+  openMenu: DropdownLike
+): void => {
   const handleEscapeKey = (): void => {
     closeCommentModal()
     closeHelpModal()
     closeMermaidModal()
     closeOpenUrlModal()
+    closePasteMarkdownModal()
     commentsMenu.close()
     sendMenu.close()
+    openMenu.close()
     if (isSearchOpen()) {
       closeSearch()
     }

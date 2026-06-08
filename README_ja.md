@@ -36,7 +36,7 @@ MDXG Redline は、LLM エージェントが人間レビュワーから「長文
 
 ### オンライン版
 
-ブラウザで [`https://mkdn.review/`](https://mkdn.review/) を開き、 toolbar の「Open URL」ボタンから表示したい markdown の URL を入力する。 または `?url=<encodeURIComponent(markdown URL)>` クエリで直接起動できる。 例: [本 README を online viewer で開く](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME_ja.md#p:mdxg-redline)。
+ブラウザで [`https://mkdn.review/`](https://mkdn.review/) を開き、 toolbar の `Open ▾ → Open URL…` メニューから表示したい markdown の URL を入力する。 または `?url=<encodeURIComponent(markdown URL)>` クエリで直接起動できる。 例: [本 README を online viewer で開く](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME_ja.md#p:mdxg-redline)。
 
 対応する markdown URL の host は `raw.githubusercontent.com` / `gist.githubusercontent.com` に絞られている (CSP `connect-src` の allowlist)。 self-host して allowlist を拡張する場合は環境変数 `MDXG_ONLINE_CONNECT_SRC` で追加する (詳細は [docs/DESIGN.md §11.b](docs/DESIGN.md#b-content-security-policy二重保険))。
 
@@ -84,7 +84,8 @@ flowchart LR
 | オプション                               | 説明                                                                                                                                                                                                           | 既定値                  |
 | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
 | `--no-open`                              | ブラウザの自動起動を抑止（出力パスは常に stdout に出るので CI / エージェントから拾える）                                                                                                                       | （起動する）            |
-| `--show-open-file`                       | 生成 HTML のヘッダに `Open file` ボタンを残す。既定は hidden（別 MD を誤読み込みして現在のコメントが破棄される事故を防ぐため）                                                                                 | hidden                  |
+| `--show-open-file`                       | 生成 HTML の `Open ▾` メニューに `Open file` 項目を残す。既定は hidden（別 MD を誤読み込みして現在のコメントが破棄される事故を防ぐため）                                                                       | hidden                  |
+| `--show-paste-markdown`                  | 生成 HTML の `Open ▾` メニューに `Paste markdown…` 項目を残す。既定は hidden（`--show-open-file` と同じく現在のコメントが破棄される事故を防ぐため）                                                            | hidden                  |
 | `--document-name <name>`                 | docName（`data-name` 属性 / 出力ファイル名 prefix）を上書き。stdin 入力時に意味のあるファイル名を付けたい場合に推奨                                                                                            | 入力 MD の basename     |
 | `--theme <system\|light\|dark>`          | 配布 HTML 初回起動時のテーマヒント（`<html data-theme>`）                                                                                                                                                      | 未指定                  |
 | `--comments-width <0\|280-640>`          | コメントパネルの初期幅 (px)。`0` は closed 起動（画面右端の縦タブのみ表示）                                                                                                                                    | `360` / open            |

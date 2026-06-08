@@ -761,6 +761,7 @@ var INITIAL_PARTITION_STATE = {
 	positional: [],
 	shikiLangs: null,
 	showOpenFile: false,
+	showPasteMarkdown: false,
 	themeHint: null,
 	valid: true
 };
@@ -881,6 +882,10 @@ var consumeStandaloneFlag = (acc, token) => {
 	if (token === "--show-open-file") return {
 		...acc,
 		showOpenFile: true
+	};
+	if (token === "--show-paste-markdown") return {
+		...acc,
+		showPasteMarkdown: true
 	};
 	return null;
 };
@@ -1078,6 +1083,7 @@ var partitionArgs = (argv) => {
 		open: state.open,
 		positional: state.positional,
 		showOpenFile: state.showOpenFile,
+		showPasteMarkdown: state.showPasteMarkdown,
 		valid: isPartitionValid(state)
 	};
 	if (state.error !== null) result.error = state.error;
@@ -1104,6 +1110,7 @@ var buildRunArgs = (parts) => {
 		open: parts.open
 	};
 	if (parts.showOpenFile) result.showOpenFile = true;
+	if (parts.showPasteMarkdown) result.showPasteMarkdown = true;
 	attachRunOptionals(result, parts);
 	return result;
 };
@@ -1213,12 +1220,18 @@ Options:
                          affected. Useful for distributing review HTML with a
                          custom typographic theme.
   --no-open              Generate the HTML but do not launch a browser.
-  --show-open-file       Keep the "Open file" button visible in the generated
-                         HTML's header. By default (without this flag), CLI
-                         output hides the button to prevent accidentally
+  --show-open-file       Keep the "Open file" item visible in the generated
+                         HTML's Open ▾ menu. By default (without this flag),
+                         CLI output hides the item to prevent accidentally
                          loading a different markdown (which would discard the
                          current comments). The standalone HTML — opened
-                         directly without the CLI — always shows the button.
+                         directly without the CLI — always shows the item.
+  --show-paste-markdown  Keep the "Paste markdown" item visible in the
+                         generated HTML's Open ▾ menu. By default (without
+                         this flag), CLI output hides the item for the same
+                         reason as --show-open-file (paste also replaces the
+                         currently loaded markdown and discards comments).
+                         The standalone HTML always shows the item.
   -h, --help             Print this help and exit. Takes precedence over all
                          other arguments and flags when present.
 
@@ -1451,6 +1464,13 @@ var upsertHtmlDataPageNavWidth = (reviewHtml, value) => upsertHtmlDataAttribute(
 * を CLI 経路で構造的に塞ぐ意図)。値は `'off'` のみで運用するため型でも literal に絞る。
 */
 var upsertHtmlDataToolbarOpenFile = (reviewHtml, value) => upsertHtmlDataAttribute(reviewHtml, "data-toolbar-open-file", value);
+/**
+* `<html>` 開きタグに `data-toolbar-paste-markdown="off"` を挿入する (idempotent)。
+* CLI が --show-paste-markdown を指定していない時にだけ呼び、ブラウザ側
+* paste-markdown-modal.ts はこの属性で Paste markdown menu-item と modal backdrop を
+* 起動時に DOM から削除する (DESIGN.md §3 入力 1 と同じフットガンを paste 経路にも適用)。
+*/
+var upsertHtmlDataToolbarPasteMarkdown = (reviewHtml, value) => upsertHtmlDataAttribute(reviewHtml, "data-toolbar-paste-markdown", value);
 /**
 * `<title>` の中身を書き換える (idempotent)。ブラウザタブ・ファイル共有先で配布物を識別できるよう、
 * CLI 経路では `"MDXG Redline — <docName>"` 形式で上書きする (DESIGN.md §5.e)。
@@ -2103,13 +2123,20 @@ var applyToolbarOpenFileHint = (html, showOpenFile) => {
 	if (showOpenFile === true) return html;
 	return upsertHtmlDataToolbarOpenFile(html, "off");
 };
+var applyToolbarPasteMarkdownHint = (html, showPasteMarkdown) => {
+	if (showPasteMarkdown === true) return html;
+	return upsertHtmlDataToolbarPasteMarkdown(html, "off");
+};
 var applyTitleRewrite = (html, docName) => rewriteTitle(html, `MDXG Redline — ${docName}`);
 var applyMarkdownCss = async (html, args) => {
 	if (typeof args.markdownCssPath !== "string") return html;
 	return rewriteEmbeddedMarkdownCss(html, await readFile(args.markdownCssPath, "utf8"));
 };
+var applyToolbarHints = (html, args) => {
+	return applyToolbarPasteMarkdownHint(applyToolbarOpenFileHint(html, args.showOpenFile), args.showPasteMarkdown);
+};
 var applyHintRewrites = (args, ctx) => {
-	return applyTitleRewrite(applyToolbarOpenFileHint(applyPageNavWidthHint(applyCommentsWidthHint(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args.commentsWidth), args.pageNavWidth), args.showOpenFile), ctx.docName);
+	return applyTitleRewrite(applyToolbarHints(applyPageNavWidthHint(applyCommentsWidthHint(applyThemeHint(rewriteReviewHtml(ctx.reviewHtml, ctx.markdown, ctx.docName), args.themeHint), args.commentsWidth), args.pageNavWidth), args), ctx.docName);
 };
 var composeReviewHtml = async (args, ctx) => {
 	return upsertEmbeddedMdMeta(rewriteInitialStatus(await applyMarkdownCss(await applyResumeFeedback(await applyKatex(await applyMermaid(await applyShikiLangs(applyHintRewrites(args, ctx), args, ctx), args, ctx), args, ctx), args, ctx), args), formatLoadedStatus(ctx.docName, ctx.docHash)));

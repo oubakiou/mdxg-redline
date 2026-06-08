@@ -89,12 +89,18 @@ Options:
                          affected. Useful for distributing review HTML with a
                          custom typographic theme.
   --no-open              Generate the HTML but do not launch a browser.
-  --show-open-file       Keep the "Open file" button visible in the generated
-                         HTML's header. By default (without this flag), CLI
-                         output hides the button to prevent accidentally
+  --show-open-file       Keep the "Open file" item visible in the generated
+                         HTML's Open ▾ menu. By default (without this flag),
+                         CLI output hides the item to prevent accidentally
                          loading a different markdown (which would discard the
                          current comments). The standalone HTML — opened
-                         directly without the CLI — always shows the button.
+                         directly without the CLI — always shows the item.
+  --show-paste-markdown  Keep the "Paste markdown" item visible in the
+                         generated HTML's Open ▾ menu. By default (without
+                         this flag), CLI output hides the item for the same
+                         reason as --show-open-file (paste also replaces the
+                         currently loaded markdown and discards comments).
+                         The standalone HTML always shows the item.
   -h, --help             Print this help and exit. Takes precedence over all
                          other arguments and flags when present.
 

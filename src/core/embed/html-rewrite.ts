@@ -124,6 +124,15 @@ export const upsertHtmlDataToolbarOpenFile = (reviewHtml: string, value: 'off'):
   upsertHtmlDataAttribute(reviewHtml, 'data-toolbar-open-file', value)
 
 /**
+ * `<html>` 開きタグに `data-toolbar-paste-markdown="off"` を挿入する (idempotent)。
+ * CLI が --show-paste-markdown を指定していない時にだけ呼び、ブラウザ側
+ * paste-markdown-modal.ts はこの属性で Paste markdown menu-item と modal backdrop を
+ * 起動時に DOM から削除する (DESIGN.md §3 入力 1 と同じフットガンを paste 経路にも適用)。
+ */
+export const upsertHtmlDataToolbarPasteMarkdown = (reviewHtml: string, value: 'off'): string =>
+  upsertHtmlDataAttribute(reviewHtml, 'data-toolbar-paste-markdown', value)
+
+/**
  * `<title>` の中身を書き換える (idempotent)。ブラウザタブ・ファイル共有先で配布物を識別できるよう、
  * CLI 経路では `"MDXG Redline — <docName>"` 形式で上書きする (DESIGN.md §5.e)。
  * <title> タグが見つからない場合は no-op (フェイタルではなく warning 相当)。
@@ -512,6 +521,32 @@ if (import.meta.vitest) {
     it('元文字列を破壊しない', () => {
       const html = '<html><body></body></html>'
       upsertHtmlDataToolbarOpenFile(html, 'off')
+      expect(html).toBe('<html><body></body></html>')
+    })
+  })
+
+  describe('upsertHtmlDataToolbarPasteMarkdown', () => {
+    it('data-toolbar-paste-markdown="off" を <html> タグに挿入する', () => {
+      const html = '<html lang="ja"><body></body></html>'
+      const out = upsertHtmlDataToolbarPasteMarkdown(html, 'off')
+      expect(out).toContain('<html lang="ja" data-toolbar-paste-markdown="off">')
+    })
+
+    it('既存の data-toolbar-paste-markdown 属性を上書きする (idempotent)', () => {
+      const html = '<html lang="ja" data-toolbar-paste-markdown="off"><body></body></html>'
+      const out = upsertHtmlDataToolbarPasteMarkdown(html, 'off')
+      const matches = out.match(/data-toolbar-paste-markdown/g) ?? []
+      expect(matches.length).toBe(1)
+      expect(out).toContain('data-toolbar-paste-markdown="off"')
+    })
+
+    it('<html> タグが無いと Error を投げる', () => {
+      expect(() => upsertHtmlDataToolbarPasteMarkdown('<body></body>', 'off')).toThrow(/<html>/)
+    })
+
+    it('元文字列を破壊しない', () => {
+      const html = '<html><body></body></html>'
+      upsertHtmlDataToolbarPasteMarkdown(html, 'off')
       expect(html).toBe('<html><body></body></html>')
     })
   })

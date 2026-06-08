@@ -25,6 +25,7 @@ import {
   SHIKI_LANGS_FLAG,
   SHIKI_LANGS_VALUE_HELP,
   SHOW_OPEN_FILE_FLAG,
+  SHOW_PASTE_MARKDOWN_FLAG,
   type ShikiLangsMode,
   THEME_FLAG,
   THEME_VALUE_HELP,
@@ -65,6 +66,7 @@ export interface PartitionState {
   commentsWidth: number | null
   themeHint: ThemeHint | null
   showOpenFile: boolean
+  showPasteMarkdown: boolean
   valid: boolean
 }
 
@@ -82,6 +84,7 @@ export const INITIAL_PARTITION_STATE: PartitionState = {
   positional: [],
   shikiLangs: null,
   showOpenFile: false,
+  showPasteMarkdown: false,
   themeHint: null,
   valid: true,
 }
@@ -213,6 +216,9 @@ const consumeStandaloneFlag = (acc: PartitionState, token: string): PartitionSta
   }
   if (token === SHOW_OPEN_FILE_FLAG) {
     return { ...acc, showOpenFile: true }
+  }
+  if (token === SHOW_PASTE_MARKDOWN_FLAG) {
+    return { ...acc, showPasteMarkdown: true }
   }
   return null
 }

@@ -116,14 +116,17 @@
         if (ivh > 0)
           document.documentElement.style.setProperty('--initial-viewport-height', ivh + 'px')
       } catch (e) {}
-      // --- Open file ボタンの paint 前抑制 (DESIGN.md §5.g) ---
-      // CLI 経路 (review-request) は `<html data-toolbar-open-file="off">` を埋め込んで
-      // ボタン表示を抑止する。CSS でも `html[data-toolbar-open-file="off"] #btn-load` を
-      // display:none にしているため stylesheet 適用後は隠れるが、念のため stylesheet 解析前に
-      // .toolbar-open-file-off class を <html> に付けて視覚抑制の起点を前倒しする。
+      // --- Open file / Paste markdown menu-item の paint 前抑制 (DESIGN.md §3 入力) ---
+      // CLI 経路 (review-request) は `<html data-toolbar-open-file="off">` /
+      // `<html data-toolbar-paste-markdown="off">` を埋め込んで menu-item 表示を抑止する。
+      // CSS でも該当 selector を display:none にしているため stylesheet 適用後は隠れるが、
+      // 念のため stylesheet 解析前に対応 class を <html> に付けて視覚抑制の起点を前倒しする。
       try {
         if (document.documentElement.getAttribute('data-toolbar-open-file') === 'off') {
           document.documentElement.classList.add('toolbar-open-file-off')
+        }
+        if (document.documentElement.getAttribute('data-toolbar-paste-markdown') === 'off') {
+          document.documentElement.classList.add('toolbar-paste-markdown-off')
         }
       } catch (e) {}
     </script>
@@ -224,10 +227,39 @@
         <span id="status" class="label toolbar-status">No file</span>
         <!-- online edition 専用 source indicator。data-mdxg-online ガード下のみ visible (CSS) -->
         <span id="online-source" class="label toolbar-source" hidden></span>
-        <button class="btn" id="btn-load">Open file</button>
-        <!-- online edition 専用 Open URL ボタン。data-mdxg-online ガード下のみ visible (CSS),
-             event handler の attach も同条件で gate (JS) する (§3.1 二層 gating)。 -->
-        <button class="btn toolbar-open-url" id="btn-open-url">Open URL</button>
+        <!-- 入力経路 (Open file / Open URL / Paste markdown) を 1 つの dropdown に集約する。
+             個別 menu-item の表示制御は以下の二層 gating + CLI 経路の hide で吸収する:
+             - Open file: 既定 visible / CLI 既定で hide (data-toolbar-open-file="off")
+             - Open URL: 既定 hidden / online edition のみ visible (data-mdxg-online="1")
+             - Paste markdown: 既定 visible / CLI 既定で hide (data-toolbar-paste-markdown="off")
+             全 menu-item が hide のとき、CLI 経路 (online でない) では wrap 自体も hide する
+             (toolbar-open-wrap の display:none 規則を CSS で適用)。 -->
+        <div class="menu-wrap toolbar-open-wrap">
+          <button
+            class="btn tooltipped"
+            id="btn-open-menu"
+            aria-haspopup="true"
+            aria-expanded="false"
+            data-tooltip="Open a markdown source"
+          >
+            Open <span class="menu-caret" aria-hidden="true">▾</span>
+          </button>
+          <div class="menu" id="menu-open" role="menu">
+            <button class="menu-item toolbar-open-file" id="btn-load" role="menuitem">
+              Open file…
+            </button>
+            <button class="menu-item toolbar-open-url" id="btn-open-url" role="menuitem">
+              Open URL…
+            </button>
+            <button
+              class="menu-item toolbar-paste-markdown"
+              id="btn-paste-markdown"
+              role="menuitem"
+            >
+              Paste markdown…
+            </button>
+          </div>
+        </div>
         <button
           class="btn btn-ghost tooltipped"
           id="btn-search"
@@ -589,6 +621,56 @@
             class="btn btn-primary"
             id="open-url-modal-submit"
             form="open-url-form"
+          >
+            Open
+          </button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Paste markdown modal。online / standalone 両配布物で常に DOM 上は存在し、
+         CLI 経路 (review-request) のみ `data-toolbar-paste-markdown="off"` で wire 時に
+         button + backdrop を DOM 削除する (DESIGN.md §3 入力 4)。 -->
+    <div class="modal-backdrop paste-markdown-modal-backdrop" id="paste-markdown-modal-backdrop">
+      <div
+        class="modal modal-paste-markdown"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="paste-markdown-modal-title"
+      >
+        <header class="modal-header">
+          <h2 class="modal-title" id="paste-markdown-modal-title">Paste markdown</h2>
+        </header>
+        <form id="paste-markdown-form" class="modal-body" novalidate>
+          <label for="paste-markdown-name" class="paste-markdown-label"> Document name </label>
+          <input
+            type="text"
+            id="paste-markdown-name"
+            class="paste-markdown-name"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="pasted.md"
+          />
+          <label for="paste-markdown-input" class="paste-markdown-label paste-markdown-body-label">
+            Markdown source
+          </label>
+          <textarea
+            id="paste-markdown-input"
+            class="paste-markdown-input"
+            rows="14"
+            placeholder="# Heading&#10;&#10;Paste or type markdown here."
+            spellcheck="false"
+            required
+          ></textarea>
+          <p id="paste-markdown-error" class="paste-markdown-error" role="alert" hidden></p>
+        </form>
+        <footer class="modal-actions">
+          <button type="button" class="btn" id="paste-markdown-modal-cancel">Cancel</button>
+          <button
+            type="submit"
+            class="btn btn-primary"
+            id="paste-markdown-modal-submit"
+            form="paste-markdown-form"
           >
             Open
           </button>

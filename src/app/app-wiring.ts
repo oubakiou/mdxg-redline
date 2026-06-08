@@ -49,6 +49,7 @@ import {
 import { createDropdownMenu } from './dom/menu'
 import { createOnlineAssetCache, type OnlineAssetCache } from './online/asset-loader'
 import { decorateLoadFromMarkdownForOnline } from './online/runtime-decorator'
+import { wirePasteMarkdownModal } from './chrome/paste-markdown-modal'
 import { initCommentsResize } from './comments/comments-resize'
 import { initPageNavResize } from './navigation/page-nav-resize'
 import { registerPostMarksReapplied } from './comments/mark-engine'
@@ -130,8 +131,8 @@ const wireMarkClickDelegate = (): void => {
   })
 }
 
-// dropdown menu 2 個と keyboard / mark-click / toolbar の wiring をまとめる。
-// `commentsMenu` は setupKeyboardHandlers が Escape で閉じるためだけに参照し、
+// dropdown menu 3 個と keyboard / mark-click / toolbar の wiring をまとめる。
+// `commentsMenu` / `openMenu` は setupKeyboardHandlers が Escape で閉じるためだけに参照し、
 // 後段からは触らないので戻り値には含めない。`sendMenu` は setupToolbarButtons が
 // `--change-output` クリック時に明示的に close() する必要があるため返す。
 const setupDropdownsAndKeyboard = (deps: BootstrapDeps): DropdownLike => {
@@ -143,13 +144,18 @@ const setupDropdownsAndKeyboard = (deps: BootstrapDeps): DropdownLike => {
     buttonId: '#btn-send-menu',
     menuId: '#menu-send',
   })
-  setupKeyboardHandlers(commentsMenu, sendMenu)
+  const openMenu = createDropdownMenu({
+    buttonId: '#btn-open-menu',
+    menuId: '#menu-open',
+  })
+  setupKeyboardHandlers(commentsMenu, sendMenu, openMenu)
   wireMarkClickDelegate()
   wireToolbar({
     buildExportPayload: deps.buildExportPayload,
     commentCountLabel: deps.commentCountLabel,
     loadFromMarkdown: deps.loadFromMarkdown,
   })
+  wirePasteMarkdownModal({ loadFromMarkdown: deps.loadFromMarkdown })
   return sendMenu
 }
 

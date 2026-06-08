@@ -816,29 +816,46 @@ body.comments-resizing * {
   margin-right: 8px;
 }
 /* CLI 経路 (review-request) が <html data-toolbar-open-file="off"> を注入した時に
-   Open file ボタンを paint 直後から隠す。toolbar.ts も後段で remove() するが、
+   Open file menu-item を paint 直後から隠す。toolbar.ts も後段で remove() するが、
    CSS でまず非表示にしてから DOM 削除する 2 段構えで FOUC を防ぐ。DESIGN.md §5.g。 */
-html[data-toolbar-open-file='off'] #btn-load,
-html.toolbar-open-file-off #btn-load {
+html[data-toolbar-open-file='off'] .toolbar-open-file,
+html.toolbar-open-file-off .toolbar-open-file {
   display: none;
 }
 
-/* online edition 専用 UI (Open URL ボタン / Source 表示 / Open URL modal)。
-   `.toolbar-open-url` / `.toolbar-source` / `.open-url-modal-backdrop` はデフォルト非表示で、
+/* Paste markdown も Open file と対称。CLI 経路は既定で hide
+   (data-toolbar-paste-markdown="off")、--show-paste-markdown 明示時のみ visible。
+   FOUC inline script 側でも `.toolbar-paste-markdown-off` class を前倒し付与する。 */
+html[data-toolbar-paste-markdown='off'] .toolbar-paste-markdown,
+html.toolbar-paste-markdown-off .toolbar-paste-markdown {
+  display: none;
+}
+
+/* online edition 専用 UI (Open URL menu-item / Source 表示 / Open URL modal)。
    data-mdxg-online="1" の時のみ visible になる。CSS gating で FOUC / 視覚的混入を防ぎ、
    JS gating (src/app/online/open-url-modal.ts の attach) と二層で防御する (§3.1)。
-   `.toolbar-source` は JS が source URL を持った時点で `hidden` 属性を外して visible にする。 */
-.toolbar-open-url,
+   `.toolbar-source` は JS が source URL を持った時点で `hidden` 属性を外して visible にする。
+   `.toolbar-open-url` は menu-item として配置されているため、後段で定義される
+   `.menu-item { display: block }` (同 specificity) に上書きされない属性 selector で hide する。
+   online でないとき Open URL を機能しないままメニューに並べると、押しても無反応で UX が壊れる。 */
 .toolbar-source {
   display: none;
 }
-html[data-mdxg-online='1'] .toolbar-open-url {
-  display: inline-flex;
+html:not([data-mdxg-online='1']) .toolbar-open-url {
+  display: none;
 }
 html[data-mdxg-online='1'] .toolbar-source:not([hidden]) {
   display: inline-flex;
   gap: 4px;
   margin-right: 8px;
+}
+
+/* Open ▾ wrap は menu-item が 1 つでも visible なら表示する。
+   CLI 経路で Open file + Paste markdown の両方が hide で、かつ online でないとき (Open URL も hide)
+   のみ wrap 自体を hide する。standalone (data-toolbar-* 不在) では常に visible。 */
+html[data-toolbar-open-file='off'][data-toolbar-paste-markdown='off']:not([data-mdxg-online='1'])
+  .toolbar-open-wrap {
+  display: none;
 }
 .btn {
   font-family: var(--font-system);
@@ -1555,6 +1572,64 @@ mark.search-hl.search-hl-current {
   /* host 名 + (rewritten to ...) が単語境界の少ない長文字列のため、狭幅ビューポートでも
      はみ出さないよう anywhere で強制折返しする。 */
   overflow-wrap: anywhere;
+}
+
+/* Paste markdown modal は long markdown を視認できるよう Open URL より広めに取り、
+   textarea で本文を多行貼り付けできる。input (docName) + textarea (markdown) + error
+   の縦並びレイアウト。 */
+.modal.modal-paste-markdown {
+  padding: 0;
+  width: min(720px, 92vw);
+}
+.modal-paste-markdown .paste-markdown-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.modal-paste-markdown .paste-markdown-body-label {
+  margin-top: 16px;
+}
+.modal-paste-markdown .paste-markdown-name {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--paper);
+  padding: 8px 12px;
+  font-family: var(--font-system);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.modal-paste-markdown .paste-markdown-name:focus,
+.modal-paste-markdown .paste-markdown-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.3);
+}
+.modal-paste-markdown .paste-markdown-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--paper);
+  padding: 8px 12px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+  resize: vertical;
+  min-height: 200px;
+}
+.modal-paste-markdown .paste-markdown-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--accent-danger, #cf222e);
+}
+.modal.modal-paste-markdown > .modal-actions {
+  margin-top: 0;
+  padding: 12px 16px;
 }
 .modal-actions {
   display: flex;

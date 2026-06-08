@@ -21,6 +21,7 @@ import {
   upsertHtmlDataPageNavWidth,
   upsertHtmlDataTheme,
   upsertHtmlDataToolbarOpenFile,
+  upsertHtmlDataToolbarPasteMarkdown,
 } from '../core/embed'
 import { dirname, resolve } from 'node:path'
 import type { EmbedContext } from './embed-context'
@@ -104,6 +105,20 @@ const applyToolbarOpenFileHint = (html: string, showOpenFile: RunArgs['showOpenF
   return upsertHtmlDataToolbarOpenFile(html, 'off')
 }
 
+// --show-paste-markdown 未指定時は <html data-toolbar-paste-markdown="off"> を注入し、
+// ブラウザ側 paste-markdown-modal.ts が #btn-paste-markdown / modal backdrop を起動時に
+// DOM から削除する。Open file と同じく「特定 MD のレビュー固定文脈」を維持するための
+// フットガン (DESIGN.md §3 入力 4)。
+const applyToolbarPasteMarkdownHint = (
+  html: string,
+  showPasteMarkdown: RunArgs['showPasteMarkdown']
+): string => {
+  if (showPasteMarkdown === true) {
+    return html
+  }
+  return upsertHtmlDataToolbarPasteMarkdown(html, 'off')
+}
+
 // CLI 出力 HTML の <title> を `MDXG Redline — <docName>` に書き換える。ブラウザタブ /
 // ファイル共有先で配布物を識別しやすくするためで、standalone HTML (CLI 非経由) は元のまま。
 const applyTitleRewrite = (html: string, docName: string): string =>
@@ -121,6 +136,13 @@ const applyMarkdownCss = async (html: string, args: RunArgs): Promise<string> =>
   return rewriteEmbeddedMarkdownCss(html, css)
 }
 
+// toolbar 系 hint (Open file / Paste markdown menu-item の hide ガード) をまとめる
+// orchestrator。CLI 既定で両方 hide とする対称設計 (DESIGN.md §3 入力 1 / §3 入力 4)。
+const applyToolbarHints = (html: string, args: RunArgs): string => {
+  const withOpenFile = applyToolbarOpenFileHint(html, args.showOpenFile)
+  return applyToolbarPasteMarkdownHint(withOpenFile, args.showPasteMarkdown)
+}
+
 // HTML 属性 hint 系の rewrite を先にまとめて適用する pure 部分 (Mermaid / Shiki 等の
 // 重い async 注入と分離して max-statements を満たす)。
 const applyHintRewrites = (args: RunArgs, ctx: EmbedContext): string => {
@@ -128,7 +150,7 @@ const applyHintRewrites = (args: RunArgs, ctx: EmbedContext): string => {
   const withTheme = applyThemeHint(embedded, args.themeHint)
   const withComments = applyCommentsWidthHint(withTheme, args.commentsWidth)
   const withPageNav = applyPageNavWidthHint(withComments, args.pageNavWidth)
-  const withToolbar = applyToolbarOpenFileHint(withPageNav, args.showOpenFile)
+  const withToolbar = applyToolbarHints(withPageNav, args)
   return applyTitleRewrite(withToolbar, ctx.docName)
 }
 

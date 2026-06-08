@@ -34,6 +34,7 @@ interface PartitionedArgs {
   commentsWidth?: number
   themeHint?: ThemeHint
   showOpenFile: boolean
+  showPasteMarkdown: boolean
   valid: boolean
 }
 
@@ -70,6 +71,7 @@ const partitionArgs = (argv: readonly string[]): PartitionedArgs => {
     open: state.open,
     positional: state.positional,
     showOpenFile: state.showOpenFile,
+    showPasteMarkdown: state.showPasteMarkdown,
     valid: isPartitionValid(state),
   }
   if (state.error !== null) {
@@ -101,6 +103,9 @@ const buildRunArgs = (parts: PartitionedArgs): { mode: 'run' } & RunArgs => {
   }
   if (parts.showOpenFile) {
     result.showOpenFile = true
+  }
+  if (parts.showPasteMarkdown) {
+    result.showPasteMarkdown = true
   }
   attachRunOptionals(result, parts)
   return result
@@ -251,6 +256,35 @@ if (import.meta.vitest) {
         open: false,
         outputDir: '/tmp/out',
         showOpenFile: true,
+      })
+    })
+  })
+
+  describe('parseRunArgs: --show-paste-markdown', () => {
+    it('--show-paste-markdown 指定で showPasteMarkdown=true を返す', () => {
+      expect(parseRunArgs(['--show-paste-markdown', 'spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        mode: 'run',
+        open: true,
+        showPasteMarkdown: true,
+      })
+    })
+
+    it('--show-paste-markdown 未指定では showPasteMarkdown を含まない (= 既定 hidden)', () => {
+      const result = parseRunArgs(['spec.md'])
+      expect(result).toEqual({ inputPath: 'spec.md', mode: 'run', open: true })
+      if (result.mode === 'run') {
+        expect(result.showPasteMarkdown).toBeUndefined()
+      }
+    })
+
+    it('--show-open-file と --show-paste-markdown は同時指定できる', () => {
+      expect(parseRunArgs(['--show-open-file', '--show-paste-markdown', 'spec.md'])).toEqual({
+        inputPath: 'spec.md',
+        mode: 'run',
+        open: true,
+        showOpenFile: true,
+        showPasteMarkdown: true,
       })
     })
   })

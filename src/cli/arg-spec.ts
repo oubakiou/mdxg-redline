@@ -16,6 +16,7 @@ export const SHIKI_LANGS_FLAG = '--shiki-langs'
 export const COMMENTS_WIDTH_FLAG = '--comments-width'
 export const PAGE_NAV_WIDTH_FLAG = '--page-nav-width'
 export const SHOW_OPEN_FILE_FLAG = '--show-open-file'
+export const SHOW_PASTE_MARKDOWN_FLAG = '--show-paste-markdown'
 export const MERMAID_FLAG = '--mermaid'
 export const MATH_FLAG = '--math'
 export const MATH_FONTS_FLAG = '--math-fonts'
@@ -230,6 +231,13 @@ export interface RunArgs {
    * #btn-load / #file-md を DOM から削除する (DESIGN.md §5.g)。
    */
   showOpenFile?: boolean
+  /**
+   * --show-paste-markdown が明示指定された場合のみ true。CLI 既定は不在 (= hidden 扱い)。
+   * 不在 / false の時に <html data-toolbar-paste-markdown="off"> が注入され、ブラウザ側
+   * paste-markdown-modal.ts が #btn-paste-markdown / modal backdrop を DOM から削除する
+   * (DESIGN.md §3 入力 4)。
+   */
+  showPasteMarkdown?: boolean
   /**
    * `--markdown-css <path>` で指定された CSS ファイルパス。指定時は CLI が中身を読み、
    * 配布 HTML の `<style id="markdown-css">` をユーザー指定の CSS で差し替える
