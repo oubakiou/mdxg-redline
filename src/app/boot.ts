@@ -173,11 +173,100 @@ const readUrlQuery = (): string | null => {
 }
 
 /**
+ * fetch 中の Loading 表示を出すまでの遅延 (ms)。 高速回線 / キャッシュヒットで 150ms 未満に
+ * fetch が終わるケースでは spinner を一切表示せず flicker を防ぐ。 既存の embedded-md
+ * 経路で使っている `.has-embedded-md .doc-pane::before/::after` spinner をそのまま流用し、
+ * 「fetch → rendering」が継ぎ目なく繋がる UX にする (§5.d / DESIGN.md §3.4)。
+ */
+const ONLINE_FETCH_LOADING_DELAY_MS = 150
+
+type FetchSuccess = Extract<FetchResult, { ok: true }>
+
+const scheduleFetchLoadingSpinner = (): ReturnType<typeof setTimeout> =>
+  globalThis.setTimeout((): void => {
+    document.documentElement.classList.add('has-embedded-md')
+  }, ONLINE_FETCH_LOADING_DELAY_MS)
+
+/** fetch 失敗時: spinner class を剥がしてから empty-state-online-error を露出させる */
+const handleFetchFailure = (failure: FetchFailure): false => {
+  document.documentElement.classList.remove('has-embedded-md')
+  showOnlineError(formatFetchFailureMessage(failure))
+  return false
+}
+
+/**
+ * fetch 成功時: spinner class はそのまま維持して rendering 経路に繋ぐ。 docName は redirect 後の
+ * finalUrl から derive する。 gist メインページ URL (gist.github.com/<user>/<id>) は normalize
+ * で末尾 `/raw` が補完されるため、 normalizedUrl ベースだと docName が "raw" になり export
+ * ファイル名が `raw-<hash>-feedback.json` 等に退化する。 raw 配信側は
+ * `<commit_sha>/<filename>` 形式に redirect するため finalUrl 末尾を取れば実ファイル名が拾える
+ * (test 環境では Response.url 空 → requestedUrl=normalizedUrl に fallback、
+ * §online-url.ts readBodyWithLimit)。
+ */
+const handleFetchSuccess = async (result: FetchSuccess, runtime: BootRuntime): Promise<true> => {
+  // 冒頭の classList.add は idempotent な保険。 fetch が 150ms 未満で完了した場合は spinner timer
+  // が一度も fire していないため、 ここで初めて class が立つ。 150ms 超で完了した場合は既に立って
+  // いるので no-op。 caller 側 (tryFetchAndLoad) で `clearTimeout` 後に走ることが保証されるため、
+  // タイマー callback と race して二重 add される懸念はない。
+  document.documentElement.classList.add('has-embedded-md')
+  showOnlineSource(result.finalUrl)
+  await runtime.loadFromMarkdown(deriveDocNameFromUrl(result.finalUrl), result.text)
+  return true
+}
+
+/**
+ * `fetchMarkdownFromUrl` の想定外 throw (jsdom / 環境固有 / import エラー等) を `network_error`
+ * の graceful な `FetchResult` に正規化する。 通常経路では網羅的 try/catch 済みで throw しない
+ * 不変だが、 二重保険として置く。 fetch だけを catch 対象にし、 描画系 (`loadFromMarkdown`) の
+ * 例外は意図的に伝播させて boot.catch の `Startup failed` 経路で扱う (誤分類防止)。
+ */
+const fetchOrFallbackFailure = async (
+  normalizedUrl: string,
+  allowlist: readonly string[]
+): Promise<FetchResult> => {
+  try {
+    return await fetchMarkdownFromUrl(normalizedUrl, DEFAULT_FETCH_OPTS, allowlist)
+  } catch (error) {
+    return { error: 'network_error', message: String(error), ok: false }
+  }
+}
+
+/**
+ * fetch を `scheduleFetchLoadingSpinner` の timer 監視下で実行し、 fetch 完了 (graceful な
+ * `FetchResult` で必ず終了) を待ってから `finally` で必ず `clearTimeout` する。 描画段階を
+ * 含めずに timer 管理 scope を切ることで、 後続の `loadFromMarkdown` 例外が catch されず
+ * 正常に上位 (boot.catch) に伝播する経路を確保する。
+ */
+const fetchWithSpinnerCleanup = async (
+  normalizedUrl: string,
+  allowlist: readonly string[]
+): Promise<FetchResult> => {
+  const loadingTimer = scheduleFetchLoadingSpinner()
+  try {
+    return await fetchOrFallbackFailure(normalizedUrl, allowlist)
+  } finally {
+    globalThis.clearTimeout(loadingTimer)
+  }
+}
+
+/**
  * allowlist 検証込みで fetch して、成功すれば loadFromMarkdown に渡す。
  * 成功時は Source link を status bar に表示 (§5.f Referer leak 防止 3 属性付き)、
  * `#empty-state-default` を `has-embedded-md` class 追加で隠す (online edition は CLI rewrite を
  * 経由しないため `<meta name="mdxg-redline:embedded-md">` がなく、boot 時に class が立たない)。
  * 失敗時は §5.d カテゴリ別メッセージを inline error UI に表示 + 「別 URL を試す」ボタン (Step 5)。
+ *
+ * fetch が `ONLINE_FETCH_LOADING_DELAY_MS` を超えた時点で `has-embedded-md` を前倒し付与し、
+ * 既存の spinner pattern を Loading 表示として再利用する。 fetch 失敗時は class を剥がして
+ * empty-state-online-error を露出させる経路に戻す (class が残ると `#doc-wrap { display: none }`
+ * で error UI まで隠れる)。
+ *
+ * 描画 (handleFetchSuccess 内の `runtime.loadFromMarkdown`) の例外は **意図的に** 上位に
+ * 伝播させる。 spinner timer 管理は `fetchWithSpinnerCleanup` の finally で fetch 完了時点に
+ * 限定して閉じることで、 描画段階の throw が `network_error` に誤分類される設計事故 (Shiki
+ * 注入失敗 / docHash 計算エラー等が「URL fetch 失敗」UI で表示されてしまう) を構造的に防ぐ。
+ * 結果として描画 throw は app-wiring の boot.catch (`Startup failed` toast + `has-embedded-md`
+ * 剥がし) に倒れる。
  */
 const tryFetchAndLoad = async (url: string, runtime: BootRuntime): Promise<boolean> => {
   const allowlist = readOnlineAllowlistFromDom()
@@ -185,21 +274,11 @@ const tryFetchAndLoad = async (url: string, runtime: BootRuntime): Promise<boole
   // (raw / gist raw) に書き換えてから fetchMarkdownFromUrl に渡す。?url= クエリと
   // Open URL modal の入力は元 URL のまま保持する (URL バーは入力 URL のまま、§3.4 入力 UX)。
   const normalizedUrl = normalizeGithubViewUrl(url)
-  const result = await fetchMarkdownFromUrl(normalizedUrl, DEFAULT_FETCH_OPTS, allowlist)
+  const result = await fetchWithSpinnerCleanup(normalizedUrl, allowlist)
   if (!result.ok) {
-    showOnlineError(formatFetchFailureMessage(result))
-    return false
+    return handleFetchFailure(result)
   }
-  document.documentElement.classList.add('has-embedded-md')
-  showOnlineSource(result.finalUrl)
-  // docName は redirect 後の finalUrl から derive する。gist メインページ URL
-  // (gist.github.com/<user>/<id>) は normalize で末尾 `/raw` が補完されるため、normalizedUrl
-  // ベースだと docName が "raw" になり export ファイル名が `raw-<hash>-feedback.json` 等に
-  // 退化する。raw 配信側は `<commit_sha>/<filename>` 形式に redirect するため、finalUrl 末尾を
-  // 取れば実ファイル名が拾える (test 環境では Response.url 空 → requestedUrl=normalizedUrl に
-  // fallback、§online-url.ts readBodyWithLimit)。
-  await runtime.loadFromMarkdown(deriveDocNameFromUrl(result.finalUrl), result.text)
-  return true
+  return handleFetchSuccess(result, runtime)
 }
 
 /**
@@ -532,6 +611,188 @@ if (import.meta.vitest) {
       })
       expect(await loadFromOnlineUrlQuery({ loadFromMarkdown: spy })).toBe(false)
       expect(spy).not.toHaveBeenCalled()
+    })
+  })
+
+  // `unicorn/consistent-function-scoping` の disable は appendScript / appendEmptyStateError /
+  // appendLoadingTestDom / delayedResponse の 4 helper に共通。 これらは outer scope の `vi` /
+  // `expect` を closure capture しない DOM / 標準 API 経由だが、 `import.meta.vitest` ガード内に
+  // 閉じ込めて production bundle から落とすため module 外には出さない方針を優先する
+  // (`src/app/online/error-display.ts:72-74` と同じ reasoning)。
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  const appendScript = (id: string, type: string, content: string): void => {
+    const el = document.createElement('script')
+    el.id = id
+    el.type = type
+    el.textContent = content
+    document.head.append(el)
+  }
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  const appendEmptyStateError = (): void => {
+    const errorEl = document.createElement('div')
+    errorEl.id = 'empty-state-online-error'
+    errorEl.hidden = true
+    const errorMsg = document.createElement('div')
+    errorMsg.id = 'online-error-message'
+    errorEl.append(errorMsg)
+    document.body.append(errorEl)
+  }
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  const appendLoadingTestDom = (): void => {
+    const toastDiv = document.createElement('div')
+    toastDiv.id = 'toast'
+    document.body.append(toastDiv)
+    const defaultEl = document.createElement('div')
+    defaultEl.id = 'empty-state-default'
+    document.body.append(defaultEl)
+  }
+  const ALLOWLIST_JSON =
+    '["https://raw.githubusercontent.com","https://gist.githubusercontent.com"]'
+  const stubOnlineUrl = (): void => {
+    vi.stubGlobal('location', {
+      protocol: 'https:',
+      search: '?url=https://raw.githubusercontent.com/x/README.md',
+    })
+  }
+  const noopRuntime = (): BootRuntime => ({
+    loadFromMarkdown: vi.fn(async (): Promise<void> => {
+      /* noop */
+    }),
+  })
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  const delayedResponse = async (status: number, delayMs: number, body = ''): Promise<Response> =>
+    new Promise((resolve): void => {
+      globalThis.setTimeout((): void => {
+        resolve(new Response(body, { status }))
+      }, delayMs)
+    })
+  const expectErrorVisible = (): void => {
+    const errorEl = document.getElementById('empty-state-online-error')
+    expect(errorEl instanceof HTMLElement && errorEl.hidden).toBe(false)
+  }
+  const expectErrorHidden = (): void => {
+    const errorEl = document.getElementById('empty-state-online-error')
+    expect(errorEl instanceof HTMLElement && errorEl.hidden).toBe(true)
+  }
+  const throwingRuntime = (error: Error): BootRuntime => ({
+    loadFromMarkdown: vi.fn(async (): Promise<void> => {
+      throw error
+    }),
+  })
+
+  describe('loadFromOnlineUrlQuery: Loading spinner (has-embedded-md) の遅延付与', () => {
+    const originalFetch = globalThis.fetch
+
+    beforeEach(() => {
+      appendScript('online-allowlist', 'application/json', ALLOWLIST_JSON)
+      appendLoadingTestDom()
+      appendEmptyStateError()
+      document.documentElement.dataset.mdxgOnline = '1'
+      document.documentElement.classList.remove('has-embedded-md')
+    })
+
+    afterEach(() => {
+      for (const id of [
+        'online-allowlist',
+        'toast',
+        'empty-state-online-error',
+        'empty-state-default',
+      ]) {
+        const el = document.getElementById(id)
+        if (el !== null) {
+          el.remove()
+        }
+      }
+      globalThis.fetch = originalFetch
+      document.documentElement.classList.remove('has-embedded-md')
+      delete document.documentElement.dataset.mdxgOnline
+      vi.useRealTimers()
+      vi.unstubAllGlobals()
+    })
+
+    it('fetch が 150ms 未満で成功する場合は spinner timer が fire する前に clear される (flicker 回避)', async () => {
+      vi.useFakeTimers()
+      stubOnlineUrl()
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response('# fast', {
+          headers: { 'content-type': 'text/plain' },
+          status: 200,
+        })
+      )
+      const promise = loadFromOnlineUrlQuery(noopRuntime())
+      // fetch は mockResolvedValue で同期解決するが、 fetchMarkdownFromUrl の `await fetch(...)` や
+      // body read の micro-task chain を flush するため fake timer を 50ms 進める (50ms 自体に
+      // 意味はなく、 spinner timer の閾値 150ms 未満であれば何でもよい)。
+      await vi.advanceTimersByTimeAsync(50)
+      expect(await promise).toBe(true)
+      // 成功経路の handleFetchSuccess で改めて has-embedded-md が付与される (rendering spinner として継続)
+      expect(document.documentElement.classList.contains('has-embedded-md')).toBe(true)
+    })
+
+    it('fetch 失敗時は spinner timer が fire していても has-embedded-md が剥がされる (error UI 露出)', async () => {
+      vi.useFakeTimers()
+      stubOnlineUrl()
+      // delayedResponse(404, 200) は 200ms 後に status=404 で resolve するため fetchMarkdownFromUrl
+      // 内では `http_error` の failure 戻り値になり、 throw 経路ではなく `!result.ok` 経路を通る。
+      globalThis.fetch = vi
+        .fn()
+        .mockImplementation(async (): Promise<Response> => delayedResponse(404, 200))
+      const promise = loadFromOnlineUrlQuery(noopRuntime())
+      await vi.advanceTimersByTimeAsync(150)
+      expect(document.documentElement.classList.contains('has-embedded-md')).toBe(true)
+      await vi.advanceTimersByTimeAsync(50)
+      expect(await promise).toBe(false)
+      expect(document.documentElement.classList.contains('has-embedded-md')).toBe(false)
+      expectErrorVisible()
+    })
+
+    it('fetch が想定外に throw した場合も finally で timer が clear され has-embedded-md がリークしない', async () => {
+      vi.useFakeTimers()
+      stubOnlineUrl()
+      // `fetchMarkdownFromUrl` 内部は通常 graceful な FetchResult を返すが、 二重保険として
+      // `globalThis.fetch` 自身が同期 throw する想定外ケースを再現。 fetchOrFallbackFailure の
+      // catch で `network_error` に正規化され、 finally で clearTimeout される。
+      globalThis.fetch = vi.fn().mockImplementation((): never => {
+        throw new Error('synthetic boom')
+      })
+      const promise = loadFromOnlineUrlQuery(noopRuntime())
+      // throw は同期だが await 解決の micro-task を flush
+      await vi.advanceTimersByTimeAsync(0)
+      expect(await promise).toBe(false)
+      // 150ms 以上進めても spinner timer が立ち上がってこないこと (clearTimeout 済み)
+      await vi.advanceTimersByTimeAsync(200)
+      expect(document.documentElement.classList.contains('has-embedded-md')).toBe(false)
+      expectErrorVisible()
+    })
+
+    it('fetch 成功後の loadFromMarkdown reject は catch せず上位 (boot.catch) に伝播する', async () => {
+      vi.useFakeTimers()
+      stubOnlineUrl()
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response('# hello', {
+          headers: { 'content-type': 'text/plain' },
+          status: 200,
+        })
+      )
+      // 描画段階の例外 (Shiki 注入失敗 / docHash 計算エラー等を想定) は意図的に伝播させる経路で、
+      // fetch エラーと混同して empty-state-online-error に倒さないこと、 spinner timer は fetch
+      // 完了時点で clear 済みでリークしないことを確認する。 advanceTimersByTimeAsync より先に
+      // rejection handler を attach しないと Node が unhandled rejection として警告するため、
+      // promise 作成直後に no-op catch を仕込んでから assertion 用に再度 await する。
+      const promise = loadFromOnlineUrlQuery(throwingRuntime(new Error('render boom')))
+      promise.catch((): void => {
+        /* swallow to suppress unhandled rejection; assertion uses expect(promise).rejects below */
+      })
+      await vi.advanceTimersByTimeAsync(50)
+      await expect(promise).rejects.toThrow('render boom')
+      // fetch エラー UI には倒れていないこと (empty-state-online-error は hidden のまま)
+      expectErrorHidden()
+      // 描画 throw 後は handleFetchSuccess の classList.add で has-embedded-md が立った状態で残るが、
+      // これは app-wiring の boot.catch (`Startup failed` toast + `classList.remove('has-embedded-md')`)
+      // で responsibly に剥がされる責務分離。 boot.ts 単体では timer リークしていないことだけ確認する
+      // (timer は fetch 完了時に clear 済みのため、 ここから 200ms 進めても新規 add は起きない)。
+      await vi.advanceTimersByTimeAsync(200)
+      expect(document.documentElement.classList.contains('has-embedded-md')).toBe(true)
     })
   })
 }
