@@ -12,6 +12,8 @@
 
 https://github.com/user-attachments/assets/d40ccab2-c7fd-4321-aefc-3e42cc5df9af
 
+Introduction article: [Accelerating Document Reviews: Introducing MDXG Redline, a High-Speed Markdown Review Tool](https://zenn.dev/oubakiou/articles/764d92a5018e94?locale=en)
+
 MDXG Redline is a browser tool that lets an LLM agent receive feedback on long-form markdown from a human reviewer as **location-aware structured JSON instead of free-form prose**. Sitting between LLM agents and human reviewers, it replaces the ambiguous "paste markdown, receive prose feedback" loop with a **machine-readable feedback artifact**.
 
 End users only need a **single HTML file** (`standalone.html`). No server, no extra installation, zero outbound traffic from LLM content by default.
