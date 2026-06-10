@@ -304,6 +304,17 @@ if (import.meta.vitest) {
     return el
   }
 
+  // 既存設計との共存 regression で使う #doc fixture builder。同じ理由で test gate 内に閉じる。
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  const setupDocFixture = (innerHtml: string): HTMLElement => {
+    document.body.innerHTML = `<div id="doc">${innerHtml}</div>`
+    const docEl = document.getElementById('doc')
+    if (!docEl) {
+      throw new Error('#doc fixture missing')
+    }
+    return docEl
+  }
+
   beforeEach(resetState)
   afterEach(resetState)
 
@@ -522,6 +533,84 @@ if (import.meta.vitest) {
       expect(translatePlural({ baseKey: 'comments.count_label', count: 3 })).toBe('3 comments')
       setLang('ja')
       expect(translatePlural({ baseKey: 'comments.count_label', count: 1 })).toBe('1 件のコメント')
+    })
+  })
+
+  // DESIGN.md §6 アンカリング / §10 検索 / §1 Theming との共存不変条件を固定する regression test。
+  // applyI18nDataset と subscribeLangChange が `#doc` 配下に副作用を持たないこと、theme と独立に
+  // 動くことを構造的に保証する。
+  describe('既存設計との共存 regression', () => {
+    // test 3 で `<html>.dark` を toggle するため、cross-test 干渉を防ぐ。lang / style /
+    // body は外側 resetState で巻き戻されるが class は対象外なのでここで補う。
+    afterEach((): void => {
+      document.documentElement.classList.remove('dark')
+    })
+
+    it('lang toggle で #doc 外側の data-i18n は翻訳され #doc 配下は完全に不変', () => {
+      // chrome 側 (`#doc` 外側) と `#doc` 配下に data-i18n を混在させて、
+      // `applyToElement` の `closest('#doc')` ガードが実際に発火する経路を踏む。
+      // `#doc` 配下に誤って `data-i18n` が付いた場合でも textContent / attribute が
+      // 不変であることを示し、アンカリングの textContent 計算 (DESIGN.md §6) を担保する。
+      document.body.innerHTML =
+        '<span id="chrome-label" data-i18n="toolbar.open">Open</span>' +
+        '<div id="doc">' +
+        '<p data-block-id="b1">Hello <mark class="cmt" data-comment-id="c1">world</mark></p>' +
+        '<p data-block-id="b2" data-i18n="toolbar.open" data-i18n-aria-label="toolbar.open_menu_tooltip">Second block</p>' +
+        '</div>'
+      const docEl = document.getElementById('doc')
+      const chromeEl = document.getElementById('chrome-label')
+      if (!docEl || !chromeEl) {
+        throw new Error('fixture missing')
+      }
+      const beforeDocHtml = docEl.innerHTML
+      setLang('ja')
+      expect(chromeEl.textContent).toBe('開く')
+      expect(docEl.innerHTML).toBe(beforeDocHtml)
+    })
+
+    it('lang toggle で search-hl-current の class / data-search-index が保持される (DESIGN.md §10 current match)', () => {
+      // 現在マッチ (`.search-hl-current`) は「次へ移動」のターゲット。i18n 経路が #doc 配下の
+      // class や dataset を剥がすと検索 UX が破綻する。textContent 不変だけでなく、検索固有の
+      // class + dataset の保持を独立に固定する (test 1 の DOM 構造一致では拾い切れない次元)。
+      const docEl = setupDocFixture(
+        '<p data-block-id="b1">Find <mark class="search-hl search-hl-current" data-search-index="2">target</mark> here</p>'
+      )
+      setLang('ja')
+      const mark = docEl.querySelector<HTMLElement>('mark.search-hl-current')
+      if (!mark) {
+        throw new Error('current mark missing after toggle')
+      }
+      expect([mark.dataset.searchIndex, mark.className]).toEqual([
+        '2',
+        'search-hl search-hl-current',
+      ])
+    })
+
+    it('setLang と applyAppliedTheme が双方向に独立 (本番 theme 経路 .dark class を通る)', async () => {
+      // 本番 theme toggle 経路は theme.ts の applyAppliedTheme (`<html>.dark` class 更新)。
+      // dataset.theme 直接代入では theme.ts の経路を通らないため、実モジュールを動的 import で
+      // 引き込んで「theme→lang」「lang→theme」両方向で互いを変更しないことを固定する。
+      const { applyAppliedTheme } = await import('../chrome/theme')
+      setLang('ja')
+      applyAppliedTheme('dark')
+      // theme を dark に切替えても lang は ja のまま。
+      expect([
+        document.documentElement.lang,
+        document.documentElement.classList.contains('dark'),
+      ]).toEqual(['ja', true])
+      applyAppliedTheme('light')
+      // theme を light に戻しても lang は ja のまま、.dark class は剥がれる。
+      expect([
+        document.documentElement.lang,
+        document.documentElement.classList.contains('dark'),
+      ]).toEqual(['ja', false])
+      applyAppliedTheme('dark')
+      setLang('en')
+      // 逆方向: setLang で lang を切替えても .dark class は維持される。
+      expect([
+        document.documentElement.lang,
+        document.documentElement.classList.contains('dark'),
+      ]).toEqual(['en', true])
     })
   })
 }
