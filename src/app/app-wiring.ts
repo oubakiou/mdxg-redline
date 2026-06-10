@@ -31,6 +31,7 @@ import { openEditCommentModal, wireCommentModal } from './comments/comment-modal
 import { qs, toast } from './dom/dom-utils'
 import { type DropdownLike, setupKeyboardHandlers } from './chrome/global-keyboard'
 import { toggleHelpModal, wireHelpModal } from './chrome/help-modal'
+import { wireSettingsModal } from './chrome/settings-modal'
 import { boot, isOnlineEdition } from './boot'
 import {
   attachKatexReadyListener,
@@ -128,6 +129,7 @@ const wireCoreModals = (): void => {
   wireFloater()
   wireCommentModal()
   wireHelpModal()
+  wireSettingsModal()
   wireMermaidModal()
   wireFootnoteTooltip()
 }

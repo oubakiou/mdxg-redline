@@ -125,6 +125,94 @@ export const createStaticModalController = (config: StaticModalConfig): StaticMo
   return { close, isOpen, open, wire }
 }
 
+// aria-modal="true" の semantic を満たすための focus trap helper。
+// 配線 (どの keydown で呼ぶか) は global-keyboard.ts 側に集約し、本ファイルは
+// 「現在 open の modal 内で tabbable を循環させる」純粋ロジックだけ持つ。
+// disabled / tabindex="-1" は除外する。:not(:hidden) を入れていないのは happy-dom が
+// `offsetParent` を実装していない問題と、実 modal の tabbable は visible 前提なため。
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',')
+
+const queryTabbablesInside = (root: HTMLElement): HTMLElement[] => [
+  ...root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+]
+
+interface TabContext {
+  first: HTMLElement
+  last: HTMLElement
+  activeElement: Element | null
+  outsideBackdrop: boolean
+  goingBackward: boolean
+}
+
+const buildTabContext = (
+  backdrop: HTMLElement,
+  tabbables: HTMLElement[],
+  goingBackward: boolean
+): TabContext | null => {
+  const [first] = tabbables
+  const last = tabbables.at(-1)
+  if (!first || !last) {
+    return null
+  }
+  const { activeElement } = document
+  return {
+    activeElement,
+    first,
+    goingBackward,
+    last,
+    outsideBackdrop: !backdrop.contains(activeElement),
+  }
+}
+
+// Tab 押下時に focus を循環/救出する先を決める。null は『何もしない (通常 Tab を許可)』。
+const pickFocusTargetForTab = (ctx: TabContext): HTMLElement | null => {
+  if (ctx.goingBackward) {
+    if (ctx.activeElement === ctx.first || ctx.outsideBackdrop) {
+      return ctx.last
+    }
+    return null
+  }
+  if (ctx.activeElement === ctx.last || ctx.outsideBackdrop) {
+    return ctx.first
+  }
+  return null
+}
+
+const applyTabFocusWrap = (event: KeyboardEvent, next: HTMLElement | null): void => {
+  if (next === null) {
+    return
+  }
+  event.preventDefault()
+  next.focus()
+}
+
+/**
+ * Tab / Shift+Tab を modal 内で循環させ、背面 UI へフォーカスが抜けるのを防ぐ。
+ * - Tab: 末尾 tabbable で押すと先頭へ wrap。modal 外に focus がある場合も先頭へ救出。
+ * - Shift+Tab: 先頭で押すと末尾へ wrap。modal 外なら末尾へ救出。
+ * - tabbable が 0 件: native Tab を抑止するだけ (focus 移動しない)。
+ * いずれの再 focus も `preventDefault` を伴う。
+ */
+export const trapTabInModal = (backdrop: HTMLElement, event: KeyboardEvent): void => {
+  const tabbables = queryTabbablesInside(backdrop)
+  if (tabbables.length === 0) {
+    event.preventDefault()
+    return
+  }
+  const ctx = buildTabContext(backdrop, tabbables, event.shiftKey)
+  if (ctx === null) {
+    return
+  }
+  applyTabFocusWrap(event, pickFocusTargetForTab(ctx))
+}
+
 const setupModalFixtureForTest = (): { backdrop: HTMLElement; closeBtn: HTMLElement } => {
   document.body.innerHTML = ''
   const backdrop = document.createElement('div')
@@ -142,6 +230,53 @@ const activeElementIdForTest = (): string => {
     return active.id
   }
   return ''
+}
+
+const setupBackdropWithButtonsForTest = (
+  count: number
+): { backdrop: HTMLElement; buttons: HTMLElement[] } => {
+  document.body.innerHTML = ''
+  const backdrop = document.createElement('div')
+  backdrop.id = 'trap-test-backdrop'
+  backdrop.className = 'modal-backdrop open'
+  const buttons = Array.from({ length: count }, (_unused, idx) => {
+    const btn = document.createElement('button')
+    btn.id = `tab-btn-${idx}`
+    backdrop.appendChild(btn)
+    return btn
+  })
+  document.body.appendChild(backdrop)
+  return { backdrop, buttons }
+}
+
+const newTabKeydownForTest = (shift: boolean): KeyboardEvent =>
+  new KeyboardEvent('keydown', {
+    bubbles: true,
+    cancelable: true,
+    key: 'Tab',
+    shiftKey: shift,
+  })
+
+const appendOutsiderButtonForTest = (id: string): HTMLElement => {
+  const btn = document.createElement('button')
+  btn.id = id
+  document.body.appendChild(btn)
+  return btn
+}
+
+const setupEmptyBackdropAndOutsiderForTest = (): {
+  backdrop: HTMLElement
+  outsider: HTMLElement
+} => {
+  document.body.innerHTML = ''
+  const backdrop = document.createElement('div')
+  backdrop.id = 'empty-backdrop'
+  backdrop.className = 'modal-backdrop open'
+  document.body.appendChild(backdrop)
+  const outsider = document.createElement('button')
+  outsider.id = 'lonely-btn'
+  document.body.appendChild(outsider)
+  return { backdrop, outsider }
 }
 
 if (import.meta.vitest) {
@@ -292,6 +427,57 @@ if (import.meta.vitest) {
         ctl.wire()
       }).not.toThrow()
       expect(ctl.isOpen()).toBe(false)
+    })
+  })
+
+  describe('trapTabInModal', () => {
+    it('末尾 tabbable で Tab を押すと先頭へ wrap する (preventDefault も伴う)', () => {
+      const { backdrop, buttons } = setupBackdropWithButtonsForTest(3)
+      const [first, , last] = buttons
+      if (!first || !last) {
+        throw new Error('fixture missing buttons')
+      }
+      last.focus()
+      const event = newTabKeydownForTest(false)
+      trapTabInModal(backdrop, event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(activeElementIdForTest()).toBe(first.id)
+    })
+
+    it('先頭 tabbable で Shift+Tab を押すと末尾へ wrap する', () => {
+      const { backdrop, buttons } = setupBackdropWithButtonsForTest(3)
+      const [first, , last] = buttons
+      if (!first || !last) {
+        throw new Error('fixture missing buttons')
+      }
+      first.focus()
+      const event = newTabKeydownForTest(true)
+      trapTabInModal(backdrop, event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(activeElementIdForTest()).toBe(last.id)
+    })
+
+    it('modal 外に focus がある状態で Tab を押すと先頭 tabbable へ救出される', () => {
+      const { backdrop, buttons } = setupBackdropWithButtonsForTest(2)
+      const [first] = buttons
+      if (!first) {
+        throw new Error('fixture missing buttons')
+      }
+      appendOutsiderButtonForTest('outside-btn').focus()
+      const event = newTabKeydownForTest(false)
+      trapTabInModal(backdrop, event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(activeElementIdForTest()).toBe(first.id)
+    })
+
+    it('tabbable が 0 件のときは preventDefault のみで focus 移動しない', () => {
+      const { backdrop, outsider } = setupEmptyBackdropAndOutsiderForTest()
+      outsider.focus()
+      const event = newTabKeydownForTest(false)
+      trapTabInModal(backdrop, event)
+      expect(event.defaultPrevented).toBe(true)
+      // focus は modal 外のまま (救出先が無いため移動しない)
+      expect(activeElementIdForTest()).toBe(outsider.id)
     })
   })
 }

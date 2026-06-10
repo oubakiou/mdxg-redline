@@ -40,7 +40,7 @@ MDXG Redline は、LLM エージェントが人間レビュワーから「長文
 
 対応する markdown URL の host は `raw.githubusercontent.com` / `gist.githubusercontent.com` に絞られている (CSP `connect-src` の allowlist)。 self-host して allowlist を拡張する場合は環境変数 `MDXG_ONLINE_CONNECT_SRC` で追加する (詳細は [docs/DESIGN.md §11.b](docs/DESIGN.md#b-content-security-policy二重保険))。
 
-UI の表示言語は **`localStorage('mdxg-redline.lang') > navigator.language > 'en'`** の優先順位で自動決定する (詳細は [docs/DESIGN.md §14](docs/DESIGN.md#14-ui-国際化))。日本語ロケールのブラウザでは初回起動で日本語表示、それ以外では英語表示になる。toolbar 右上の `EN` / `JA` ボタンで toggle すると `localStorage` に保存され、次回起動時はその選択が最優先される。
+UI の表示言語は **`localStorage('mdxg-redline.lang') > navigator.language > 'en'`** の優先順位で自動決定する (詳細は [docs/DESIGN.md §14](docs/DESIGN.md#14-ui-国際化))。日本語ロケールのブラウザでは初回起動で日本語表示、それ以外では英語表示になる。toolbar 右上の歯車ボタン (⚙) から設定モーダルを開き、`Language` の select box で切り替えると `localStorage` に保存され、次回起動時はその選択が最優先される。テーマ (system / light / dark) も同じモーダル内の `Theme` select box で切り替える。
 
 ### standalone 版
 

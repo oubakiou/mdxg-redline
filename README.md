@@ -40,7 +40,7 @@ Open [`https://mkdn.review/`](https://mkdn.review/) in your browser and enter th
 
 Allowed fetch hosts are restricted to `raw.githubusercontent.com` and `gist.githubusercontent.com` (CSP `connect-src` allowlist). If you self-host, extend the allowlist via the `MDXG_ONLINE_CONNECT_SRC` environment variable (see [docs/DESIGN.md §11.b](docs/DESIGN.md#b-content-security-policy二重保険)).
 
-The UI language is auto-detected with the priority **`localStorage('mdxg-redline.lang') > navigator.language > 'en'`** (see [docs/DESIGN.md §14](docs/DESIGN.md#14-ui-国際化)). Japanese-locale browsers see Japanese UI on first launch; others see English. The `EN` / `JA` toggle in the toolbar persists the selection to `localStorage`, which takes top priority on the next launch.
+The UI language is auto-detected with the priority **`localStorage('mdxg-redline.lang') > navigator.language > 'en'`** (see [docs/DESIGN.md §14](docs/DESIGN.md#14-ui-国際化)). Japanese-locale browsers see Japanese UI on first launch; others see English. Open the settings modal from the gear button (⚙) in the top-right of the toolbar and switch via the `Language` select; the choice is persisted to `localStorage` and takes top priority on the next launch. The theme (system / light / dark) is switched via the `Theme` select in the same modal.
 
 ### Standalone build
 

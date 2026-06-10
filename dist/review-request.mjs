@@ -746,7 +746,7 @@ var MARKDOWN_CSS_VALUE_HELP = "a file path (cannot be `-`)";
 var DOCUMENT_NAME_VALUE_HELP = "a non-empty file name";
 var KEEP_VALUE_HELP = "a 16-character hex docHash (0-9, a-f)";
 //#endregion
-//#region src/app/i18n/i18n-core.ts
+//#region src/core/i18n/i18n-core.ts
 var ENV_PRECEDENCE = [
 	"LC_ALL",
 	"LC_MESSAGES",

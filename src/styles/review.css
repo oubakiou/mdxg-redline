@@ -1514,6 +1514,45 @@ mark.search-hl.search-hl-current {
   width: min(400px, 92vw);
 }
 
+/* Settings modal: テーマ / 言語の select box を縦 1 列に並べる。modal-compact (400px) ベースで
+   label と select を grid で左右に並べ、label を flex-shrink:0 / select を 1fr で伸縮させる。
+   help-modal と同じ modal-header / modal-actions のレイアウトを共有する。 */
+.modal.modal-settings {
+  width: min(420px, 92vw);
+}
+.modal-settings .settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.modal-settings .settings-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  align-items: center;
+  gap: 12px;
+}
+.modal-settings .settings-label {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.modal-settings .settings-select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--paper);
+  padding: 6px 10px;
+  font-family: var(--font-system);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.modal-settings .settings-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.3);
+}
+
 /* Open URL modal は modal-compact の 400px だと長い raw URL が入力欄からはみ出して読みづらく
    なるため、URL 全体が一目で確認できる横幅まで広げる (典型的な raw.githubusercontent.com
    URL の 80-100 文字を折返しなしで収める)。説明文ブロックも下に並ぶので縦幅は伸びる。 */

@@ -16,6 +16,7 @@ import { state } from '../state/app-state'
 
 // `?` キー (Shift+/) や `f` / `g` などのグローバルショートカットは、textarea / input / contentEditable
 // 配下にフォーカスがある間はそちらの文字入力を妨げないようスキップしたい。判定を一箇所にまとめる。
+// SELECT も含めるのは <select> の typeahead (option の先頭文字を押して候補絞り込み) を奪わないため。
 const isEditableTarget = (target: EventTarget | null): boolean => {
   if (!(target instanceof HTMLElement)) {
     return false
@@ -23,7 +24,7 @@ const isEditableTarget = (target: EventTarget | null): boolean => {
   if (target.isContentEditable) {
     return true
   }
-  return target.tagName === 'TEXTAREA' || target.tagName === 'INPUT'
+  return target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.tagName === 'SELECT'
 }
 
 export const hasNoModifier = (event: KeyboardEvent): boolean =>
@@ -201,8 +202,42 @@ const activeElementHasClass = (className: string): boolean => {
   return active instanceof HTMLElement && active.classList.contains(className)
 }
 
+// event.target は readonly のため、テストで KeyboardEvent に target を埋め込むには defineProperty が要る。
+const keydownOnTarget = (target: EventTarget, repeat = false): KeyboardEvent => {
+  const event = new KeyboardEvent('keydown', { key: 'd', repeat })
+  Object.defineProperty(event, 'target', { configurable: true, value: target })
+  return event
+}
+
 if (import.meta.vitest) {
   const { beforeEach, describe, expect, it } = import.meta.vitest
+
+  describe('shouldSkipAffordanceKey: 編集中要素ガード', () => {
+    it('TEXTAREA / INPUT / SELECT 上では true (native typeahead や文字入力を奪わない)', () => {
+      const textarea = document.createElement('textarea')
+      const input = document.createElement('input')
+      const select = document.createElement('select')
+      expect(shouldSkipAffordanceKey(keydownOnTarget(textarea))).toBe(true)
+      expect(shouldSkipAffordanceKey(keydownOnTarget(input))).toBe(true)
+      expect(shouldSkipAffordanceKey(keydownOnTarget(select))).toBe(true)
+    })
+
+    it('contentEditable 上では true', () => {
+      const div = document.createElement('div')
+      div.contentEditable = 'true'
+      expect(shouldSkipAffordanceKey(keydownOnTarget(div))).toBe(true)
+    })
+
+    it('通常の button では false', () => {
+      const button = document.createElement('button')
+      expect(shouldSkipAffordanceKey(keydownOnTarget(button))).toBe(false)
+    })
+
+    it('event.repeat=true なら editable でなくとも true (押しっぱなし対策)', () => {
+      const button = document.createElement('button')
+      expect(shouldSkipAffordanceKey(keydownOnTarget(button, true))).toBe(true)
+    })
+  })
 
   describe('focusTocPane', () => {
     beforeEach(() => {
