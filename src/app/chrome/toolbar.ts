@@ -11,6 +11,7 @@ import {
 } from './theme'
 import { qs, qsInput, toast } from '../dom/dom-utils'
 import type { ExportPayload } from '../../core/types'
+import type { Lang } from '../i18n/i18n-core'
 import type { MessageKey } from '../i18n/messages.en'
 import { confirmDialog } from '../dom/dialog'
 import { exportBaseName } from '../../core/review-export'
@@ -18,7 +19,14 @@ import { reapplyAllMarks } from '../comments/mark-engine'
 import { redrawMermaidForTheme } from '../renderers/mermaid'
 import { renderComments } from '../comments/comments'
 import { replaceComments, state } from '../state/app-state'
-import { translate, translatePlural } from '../i18n/i18n-browser'
+import {
+  getLang,
+  nextStoredLang,
+  setLang,
+  subscribeLangChange,
+  translate,
+  translatePlural,
+} from '../i18n/i18n-browser'
 
 /** loadFromMarkdown のみ循環を避けるため runtime 経由で受け取る */
 export interface ToolbarRuntime {
@@ -279,6 +287,36 @@ const wireClear = (): void => {
   })
 }
 
+// EN / JA 2 state toggle (docs/feature-ui-i18n.md §3.5 / Step 5)。
+// theme と違って applied state ↔ stored state の差が無く ('en' / 'ja' のみ)、循環順序も
+// `nextStoredLang` の単純な 2 state 反転。textContent は lang コード ('EN' / 'JA') を
+// machine contract として翻訳せずに表示し、aria-label / data-tooltip だけ翻訳に追従する。
+const LANG_LABEL: Readonly<Record<Lang, string>> = {
+  en: 'EN',
+  ja: 'JA',
+}
+
+const renderLangButton = (button: HTMLElement, lang: Lang): void => {
+  button.textContent = LANG_LABEL[lang]
+}
+
+const wireLangToggle = (): void => {
+  const button = qs('#btn-lang')
+  renderLangButton(button, getLang())
+  // subscribeLangChange listener は本関数末尾で wireLangToggle 同期内に登録済みのため、
+  // click → setLang → applyI18nDataset → 通知 → renderLangButton の経路だけで button
+  // textContent / aria-label / data-tooltip がすべて更新される (data-i18n-* は applyI18nDataset、
+  // textContent は subscriber 経由)。click handler 内に明示 renderLangButton を置かないのは、
+  // 重複呼び出しを避けるため。
+  button.addEventListener('click', (): void => {
+    const next = nextStoredLang(getLang())
+    setLang(next)
+  })
+  // 他経路 (将来の URL クエリ初期化 / プログラム的 setLang 呼び出し) で lang が変わった場合も
+  // button textContent を追従させる。
+  subscribeLangChange((lang): void => renderLangButton(button, lang))
+}
+
 /** toolbar 上の全ボタンを一括配線する entry point */
 export const wireToolbar = (runtime: ToolbarRuntime): void => {
   wireMarkdownLoad(runtime)
@@ -286,6 +324,7 @@ export const wireToolbar = (runtime: ToolbarRuntime): void => {
   wireCopy(runtime)
   wireClear()
   wireThemeToggle()
+  wireLangToggle()
 }
 
 if (import.meta.vitest) {
@@ -300,6 +339,19 @@ if (import.meta.vitest) {
     it('空なら null', () => {
       expect(firstFileFromList([])).toBeNull()
       expect(firstFileFromList(null)).toBeNull()
+    })
+  })
+
+  describe('renderLangButton: machine contract (EN / JA)', () => {
+    // 'EN' / 'JA' は lang コード (machine contract) なので翻訳しない。本 test は
+    // LANG_LABEL テーブルが en / ja の両方で正しい大文字 2 文字を返す不変条件を固定する。
+    // 規約が変わると (例: textContent を翻訳語に変更) この test が落ちる。
+    it('lang に応じて "EN" / "JA" を textContent に設定', () => {
+      const button = document.createElement('button')
+      renderLangButton(button, 'en')
+      expect(button.textContent).toBe('EN')
+      renderLangButton(button, 'ja')
+      expect(button.textContent).toBe('JA')
     })
   })
 }

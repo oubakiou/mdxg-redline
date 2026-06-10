@@ -25,6 +25,11 @@ export const SKIP_RULES: readonly SkipRule[] = [
   },
   {
     reason:
+      'toolbar の lang toggle button。textContent (EN / JA) が言語切替で動的更新されるため、万が一 #doc 配下に紛れ込んだ場合のアンカリング不変条件保護として skip 対象に含める',
+    selector: '.lang-toggle',
+  },
+  {
+    reason:
       'marked-footnote 1.4.0 が <section.footnotes> 冒頭に強制挿入する a11y 用 visible-hidden <h2> を除外する footnote 専用クラス',
     selector: '.sr-only',
   },
@@ -109,6 +114,15 @@ if (import.meta.vitest) {
   describe('SKIP_RULES (sr-only 連動契約)', () => {
     it("'.sr-only' を skip 対象として含む", () => {
       expect(hasRule('.sr-only')).toBe(true)
+    })
+  })
+
+  // toolbar の lang toggle button (textContent が言語切替で 'EN' / 'JA' に動的更新される)。
+  // 通常は #doc 配下に出現しないが、万が一 markdown 内に同名 class が混入したケースの
+  // アンカリング不変条件保護として、宣言テーブルに含まれていることを契約として固定する。
+  describe('SKIP_RULES (lang-toggle 連動契約)', () => {
+    it("'.lang-toggle' を skip 対象として含む", () => {
+      expect(hasRule('.lang-toggle')).toBe(true)
     })
   })
 }

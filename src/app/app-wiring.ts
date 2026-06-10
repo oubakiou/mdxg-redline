@@ -49,7 +49,12 @@ import {
 import { createDropdownMenu } from './dom/menu'
 import { createOnlineAssetCache, type OnlineAssetCache } from './online/asset-loader'
 import { decorateLoadFromMarkdownForOnline } from './online/runtime-decorator'
-import { translate } from './i18n/i18n-browser'
+import {
+  I18N_PENDING_CLASS,
+  applyI18nDataset,
+  initLangFromBrowser,
+  translate,
+} from './i18n/i18n-browser'
 import { wirePasteMarkdownModal } from './chrome/paste-markdown-modal'
 import { initCommentsResize } from './comments/comments-resize'
 import { initPageNavResize } from './navigation/page-nav-resize'
@@ -254,14 +259,39 @@ const snapshotOnlineListenersForTest = (): OnlineListenerSnapshot => ({
   shiki: hasShikiLangsListenerForTest(),
 })
 
-export const bootstrapReviewApp = (deps: BootstrapDeps): void => {
-  const online = isOnlineEdition()
-  const effectiveDeps = resolveBootstrapDeps(deps, online)
+/**
+ * i18n の paint 後 bootstrap (docs/feature-ui-i18n.md §3.5 / Step 5)。
+ *   1. head inline script で立てた lang / `<html lang>` を module-local state に再同期する
+ *      (initLangFromBrowser)。head 側は <html lang> しか触らないため、ここで currentLang を確定。
+ *   2. (Step 6) 動的 UI モジュールの setupXxxI18n() を 1 回ずつ呼んで subscribeLangChange を登録。
+ *   3. applyI18nDataset(document) で静的 markup の textContent / 属性 / CSS custom property を翻訳。
+ *   4. i18n-pending class を解除して body の visibility を戻す (head の 3 秒タイムアウト fallback
+ *      よりも早く外れるのが正常経路)。
+ *
+ * 例外が出ても残りの bootstrap (modal / boot 等) が走るよう、launchBoot より先に同期完了させる。
+ */
+export const bootstrapI18n = (): void => {
+  initLangFromBrowser()
+  applyI18nDataset(document)
+  document.documentElement.classList.remove(I18N_PENDING_CLASS)
+}
+
+// modal / panel / dropdown / search / toolbar / navigation の wiring を集約する。
+// bootstrapReviewApp の max-statements (10) 制約を満たすために 1 関数にまとめている。
+// 順序は dropdown / search / toolbar / navigation の依存関係 (sendMenu 受け渡し) を維持。
+const setupChromeAndNavigation = (deps: BootstrapDeps): void => {
   setupModalsAndPanels()
-  const sendMenu = setupDropdownsAndKeyboard(effectiveDeps)
+  const sendMenu = setupDropdownsAndKeyboard(deps)
   setupSearchWiring()
   setupToolbarButtons(sendMenu)
   setupNavigationRouting()
+}
+
+export const bootstrapReviewApp = (deps: BootstrapDeps): void => {
+  bootstrapI18n()
+  const online = isOnlineEdition()
+  const effectiveDeps = resolveBootstrapDeps(deps, online)
+  setupChromeAndNavigation(effectiveDeps)
   if (online) {
     attachOnlineRuntimeListeners()
   }
@@ -269,7 +299,7 @@ export const bootstrapReviewApp = (deps: BootstrapDeps): void => {
 }
 
 if (import.meta.vitest) {
-  const { describe, expect, it, vi } = import.meta.vitest
+  const { afterEach, beforeEach, describe, expect, it, vi } = import.meta.vitest
 
   const makeDeps = (): BootstrapDeps => ({
     buildExportPayload: vi.fn(),
@@ -277,6 +307,56 @@ if (import.meta.vitest) {
     loadFromMarkdown: vi.fn(async (): Promise<void> => {
       // no-op
     }),
+  })
+
+  describe('bootstrapI18n', () => {
+    // bootstrapI18n は launchBoot より先に同期完了する必要がある (paint 後 FOUC 解除の責任を持つ)。
+    // 本 test は (1) i18n-pending class が必ず外れる (2) data-i18n 要素が翻訳される
+    // (3) 連続呼び出しで例外を投げない (idempotent) の 3 不変条件を固定する。
+    // bootstrapI18n は i18n-browser.ts の module-local currentLang と document の lang / class /
+    // style / body innerHTML を mutate する。test 間で state がリークしないよう before/after で
+    // 明示 reset する (vitest の file isolation は cross-test mutation を防がないため)。
+    const resetBootstrapI18nState = (): void => {
+      try {
+        localStorage.removeItem('mdxg-redline.lang')
+      } catch {
+        // ignore (private mode 等)
+      }
+      document.documentElement.classList.remove(I18N_PENDING_CLASS)
+      document.documentElement.removeAttribute('lang')
+      document.documentElement.style.removeProperty('--ui-loading-text')
+      document.body.innerHTML = ''
+    }
+
+    beforeEach(resetBootstrapI18nState)
+    afterEach(resetBootstrapI18nState)
+
+    it('i18n-pending class を解除する', () => {
+      document.documentElement.classList.add(I18N_PENDING_CLASS)
+      bootstrapI18n()
+      expect(document.documentElement.classList.contains(I18N_PENDING_CLASS)).toBe(false)
+    })
+
+    it('static markup の data-i18n を翻訳する', () => {
+      document.body.innerHTML = '<span data-i18n="toolbar.open"></span>'
+      bootstrapI18n()
+      // happy-dom の navigator.language は 'en-US' なので en 辞書が引かれる。
+      const span = document.querySelector('span')
+      if (!span) {
+        throw new Error('span fixture missing')
+      }
+      expect(span.textContent).toBe('Open')
+    })
+
+    it('2 回呼んでも例外を投げない (idempotent)', () => {
+      document.documentElement.classList.add(I18N_PENDING_CLASS)
+      bootstrapI18n()
+      expect(document.documentElement.classList.contains(I18N_PENDING_CLASS)).toBe(false)
+      // 2 回目: 既に解除済みでも no-op で throw しない。再度 class を立てた状態でも解除される。
+      document.documentElement.classList.add(I18N_PENDING_CLASS)
+      expect((): void => bootstrapI18n()).not.toThrow()
+      expect(document.documentElement.classList.contains(I18N_PENDING_CLASS)).toBe(false)
+    })
   })
 
   describe('resolveBootstrapDeps', () => {

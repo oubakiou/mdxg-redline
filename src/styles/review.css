@@ -1752,7 +1752,10 @@ mark.search-hl.search-hl-current {
   animation: doc-loading-spin 0.8s linear infinite;
 }
 :root.has-embedded-md .doc-pane::after {
-  content: 'Loading…';
+  /* CSS 疑似要素の content は DOM ノードでないため data-i18n 経路では翻訳できない。
+     i18n-browser.ts の applyCssPseudoBindings が --ui-loading-text を `'Loading…'` 形式の
+     CSS string リテラルとして setProperty する。fallback 値は JS 失敗時の保険。 */
+  content: var(--ui-loading-text, 'Loading…');
   top: calc(50% + 14px);
   transform: translateX(-50%);
   color: var(--ink-soft);

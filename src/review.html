@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -129,7 +129,56 @@
           document.documentElement.classList.add('toolbar-paste-markdown-off')
         }
       } catch (e) {}
+      // --- i18n 初期言語の paint 前解決 + FOUC 回避 (docs/feature-ui-i18n.md §3.2 / Step 5) ---
+      // 優先順位 P1: localStorage('mdxg-redline.lang') > navigator.language(^ja) > 'en'。
+      // localStorage / navigator / DOM 反映の 3 段を独立 try/catch で分離する。Private モード
+      // 等で localStorage 失敗時に navigator fallback が走るようにするため、theme の 1 段
+      // try/catch とは形が異なる。
+      var stored = null
+      try {
+        var rawLang = localStorage.getItem('mdxg-redline.lang')
+        if (rawLang === 'en' || rawLang === 'ja') stored = rawLang
+      } catch (e) {}
+      var navLang = 'en'
+      try {
+        if (navigator.language && /^ja(_|-|$)/i.test(navigator.language)) {
+          navLang = 'ja'
+        }
+      } catch (e) {}
+      var lang = stored || navLang
+      // module 失敗時 (CSP block / 404 / parse error) の保険として 3 秒で i18n-pending を強制
+      // 解除する。正常時は applyI18nDataset 完了で先に外れているため if で skip される。
+      // i18n-pending がまだ立っているケースは静的 HTML (en 固定) が出るので <html lang> も
+      // 'en' に戻し、AT 読み上げ言語と表示言語の整合を取る (日本語 UI への誤期待を防ぐ)。
+      try {
+        document.documentElement.lang = lang
+        document.documentElement.classList.add('i18n-pending')
+        setTimeout(function () {
+          if (document.documentElement.classList.contains('i18n-pending')) {
+            document.documentElement.lang = 'en'
+            document.documentElement.classList.remove('i18n-pending')
+          }
+        }, 3000)
+      } catch (e) {}
     </script>
+    <!-- i18n-pending の間 body を隠して英→日のチラつきを抑制する。stylesheet 適用前に inline
+         で書くことで paint 初回から visibility:hidden が効く。.dark / .has-embedded-md と
+         衝突しないよう selector を絞っている。 -->
+    <style id="i18n-pending-style">
+      html.i18n-pending body {
+        visibility: hidden;
+      }
+    </style>
+    <!-- JS 無効時は visibility:hidden を打ち消して英語 UI を静的表示する (i18n は効かない)。
+         CSS specificity 同等なら後勝ちで noscript 側が勝つが、明示的に !important を付けて
+         他 CSS の影響を受けないようにする。 -->
+    <noscript>
+      <style>
+        html.i18n-pending body {
+          visibility: visible !important;
+        }
+      </style>
+    </noscript>
     <link rel="stylesheet" href="./styles/review.css" />
     <!-- 直下の style ブロックは build / dev とも transformIndexHtml plugin が中身を埋める。
          CLI (review-request --markdown-css <path>) でユーザー指定 CSS に差し替え可能
@@ -311,6 +360,20 @@
           data-tooltip="Switch to light"
         >
           ◐
+        </button>
+        <!-- EN/JA 2 state lang toggle (docs/feature-ui-i18n.md §3.5 / Step 5)。
+             textContent (EN / JA) は machine contract で翻訳しない (lang コード)。
+             toolbar.ts:wireLangToggle が現在の lang に応じて textContent を書き換える。
+             aria-label / data-tooltip は data-i18n-* で applyI18nDataset 経由で翻訳される。 -->
+        <button
+          class="btn btn-ghost tooltipped lang-toggle"
+          id="btn-lang"
+          aria-label="Switch UI language"
+          data-tooltip="Switch language"
+          data-i18n-aria-label="toolbar.lang_toggle_aria"
+          data-i18n-data-tooltip="toolbar.lang_toggle_tooltip"
+        >
+          EN
         </button>
       </div>
     </header>
