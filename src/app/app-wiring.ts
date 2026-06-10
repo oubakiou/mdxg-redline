@@ -18,9 +18,10 @@ import {
   toggleSearch,
   wireSearchBar,
 } from './search/search'
+import { setupSearchI18n } from './search/search-dom'
 import { wirePageNavigation } from './navigation/page-navigation'
 import { focusNavigatedLink } from './navigation/page-navigation-keyboard'
-import { renderPageNavigation } from './navigation/page-navigation-render'
+import { renderPageNavigation, setupPageNavI18n } from './navigation/page-navigation-render'
 import {
   navigateToComment,
   navigateToTarget,
@@ -48,6 +49,7 @@ import {
 } from './renderers/shiki-upgrade'
 import { createDropdownMenu } from './dom/menu'
 import { createOnlineAssetCache, type OnlineAssetCache } from './online/asset-loader'
+import { createDocumentLoader, type DocumentLoader } from './document/load-document'
 import { decorateLoadFromMarkdownForOnline } from './online/runtime-decorator'
 import {
   I18N_PENDING_CLASS,
@@ -55,7 +57,7 @@ import {
   initLangFromBrowser,
   translate,
 } from './i18n/i18n-browser'
-import { wirePasteMarkdownModal } from './chrome/paste-markdown-modal'
+import { setupPasteMarkdownModalI18n, wirePasteMarkdownModal } from './chrome/paste-markdown-modal'
 import { initCommentsResize } from './comments/comments-resize'
 import { initPageNavResize } from './navigation/page-nav-resize'
 import { registerPostMarksReapplied } from './comments/mark-engine'
@@ -65,7 +67,8 @@ import { state } from './state/app-state'
 import { wireFloater } from './comments/floater'
 import { wireFootnoteTooltip } from './document/footnote-tooltip'
 import { wireMermaidModal } from './renderers/mermaid-modal'
-import { wireOnlineErrorRetry } from './online/error-display'
+import { setupOnlineSourceI18n } from './online/source-display'
+import { setupOnlineErrorI18n, wireOnlineErrorRetry } from './online/error-display'
 import { wireOpenUrlModal } from './online/open-url-modal'
 import { wireToolbar } from './chrome/toolbar'
 
@@ -76,31 +79,49 @@ interface BootstrapDeps {
 }
 
 /**
+ * `loadFromMarkdown` (online decorator 適用済み) を `createDocumentLoader` で wrap した
+ * `documentLoader` を伴う deps。各 callsite (boot / paste / Open file) は
+ * `documentLoader.loadDocument({kind, ...})` 経由で文書をロードし、`registerOnDocumentLoad`
+ * 経由で登録された hook (source 表示の切替等) が自動発火する (DESIGN.md §3.5 文書ライフサイクル hook)。
+ */
+export interface ResolvedBootstrapDeps extends BootstrapDeps {
+  documentLoader: DocumentLoader
+}
+
+/**
  * online edition では `loadFromMarkdown` を decorator で装飾し、toolbar (Open file) /
  * boot (?url=) / Open URL modal (reload 経由 boot) の全入力経路で同じ装飾関数を経由させる。
  * decorator が cache の世代 / AbortController を進めて asset-loader を fire-and-forget で発火する。
  * standalone / embed-template (online edition でない) では base をそのまま透過する。
+ * 装飾後の loadFromMarkdown を `createDocumentLoader` で wrap し、hook 経路を一緒に組み立てる。
  */
 export const resolveBootstrapDeps = (
   deps: BootstrapDeps,
   online: boolean,
   cache?: OnlineAssetCache
-): BootstrapDeps => {
-  if (!online) {
-    return deps
+): ResolvedBootstrapDeps => {
+  let { loadFromMarkdown } = deps
+  if (online) {
+    const assetCache = cache ?? createOnlineAssetCache()
+    loadFromMarkdown = decorateLoadFromMarkdownForOnline(deps.loadFromMarkdown, assetCache)
   }
-  const assetCache = cache ?? createOnlineAssetCache()
   return {
     ...deps,
-    loadFromMarkdown: decorateLoadFromMarkdownForOnline(deps.loadFromMarkdown, assetCache),
+    documentLoader: createDocumentLoader(loadFromMarkdown),
+    loadFromMarkdown,
   }
 }
 
 // online edition (data-mdxg-online ガード) でのみ wire される。standalone / embed-template
 // では各関数が冒頭で no-op return するため副作用ゼロ (§3.1 二層 gating)。
-const setupOnlineEditionUi = (): void => {
+// setupOnlineSourceI18n は data-mdxg-online ガードを内部 show 経路に持たせており、setup 自体は
+// 副作用ゼロ。standalone / embed では loadDocument({kind:'local'}) のみ流れるので clearOnlineSource
+// 経路に倒れ、`#online-source` は標準で非表示のまま。
+const setupOnlineEditionUi = (deps: ResolvedBootstrapDeps): void => {
   wireOpenUrlModal()
   wireOnlineErrorRetry()
+  setupOnlineSourceI18n({ registerOnDocumentLoad: deps.documentLoader.registerOnDocumentLoad })
+  setupOnlineErrorI18n()
 }
 
 const wireCoreModals = (): void => {
@@ -111,11 +132,12 @@ const wireCoreModals = (): void => {
   wireFootnoteTooltip()
 }
 
-const setupModalsAndPanels = (): void => {
+const setupModalsAndPanels = (deps: ResolvedBootstrapDeps): void => {
   initCommentsResize()
   initPageNavResize()
   wireCoreModals()
-  setupOnlineEditionUi()
+  setupOnlineEditionUi(deps)
+  setupPageNavI18n()
   setOnCommentNavigate(navigateToComment)
   setOnCommentEdit(openEditCommentModal)
   // page scroll-spy が activePageIndex を更新した直後の TOC active 表示更新。
@@ -141,7 +163,7 @@ const wireMarkClickDelegate = (): void => {
 // `commentsMenu` / `openMenu` は setupKeyboardHandlers が Escape で閉じるためだけに参照し、
 // 後段からは触らないので戻り値には含めない。`sendMenu` は setupToolbarButtons が
 // `--change-output` クリック時に明示的に close() する必要があるため返す。
-const setupDropdownsAndKeyboard = (deps: BootstrapDeps): DropdownLike => {
+const setupDropdownsAndKeyboard = (deps: ResolvedBootstrapDeps): DropdownLike => {
   const commentsMenu = createDropdownMenu({
     buttonId: '#btn-comments-menu',
     menuId: '#menu-comments',
@@ -159,9 +181,14 @@ const setupDropdownsAndKeyboard = (deps: BootstrapDeps): DropdownLike => {
   wireToolbar({
     buildExportPayload: deps.buildExportPayload,
     commentCountLabel: deps.commentCountLabel,
-    loadFromMarkdown: deps.loadFromMarkdown,
+    documentLoader: deps.documentLoader,
   })
-  wirePasteMarkdownModal({ loadFromMarkdown: deps.loadFromMarkdown })
+  wirePasteMarkdownModal({ documentLoader: deps.documentLoader })
+  // setup の bootstrap 順序は他 4 モジュール (setupOnlineSourceI18n / setupOnlineErrorI18n /
+  // setupPageNavI18n / setupSearchI18n) と同じく app-wiring.ts 側で直接呼び、grep 可読性を揃える。
+  // paste-markdown が CLI から抑制された場合でも、setup は subscribeLangChange 1 件のみで
+  // renderCurrentError は要素不在に fail-soft (currentErrorKey === null で no-op) のため無害。
+  setupPasteMarkdownModalI18n()
   return sendMenu
 }
 
@@ -175,6 +202,7 @@ const setupSearchWiring = (): void => {
     navigateToTarget({ headingSlug: null, pageIndex }, false)
   })
   wireSearchBar()
+  setupSearchI18n()
   qs('#btn-search').addEventListener('click', toggleSearch)
 }
 
@@ -206,9 +234,9 @@ const setupNavigationRouting = (): void => {
   setupHashNavigation()
 }
 
-const launchBoot = (loadFromMarkdown: BootstrapDeps['loadFromMarkdown']): void => {
+const launchBoot = (documentLoader: DocumentLoader): void => {
   boot({
-    loadFromMarkdown,
+    documentLoader,
   }).catch((): void => {
     toast(translate('toast.startup_failed'))
     // paint 前ガード (#doc-wrap / .doc-pane を隠す class) を解除し、空状態を見せる
@@ -260,13 +288,16 @@ const snapshotOnlineListenersForTest = (): OnlineListenerSnapshot => ({
 })
 
 /**
- * i18n の paint 後 bootstrap (docs/feature-ui-i18n.md §3.5 / Step 5)。
+ * i18n の paint 後 bootstrap (DESIGN.md §3.5)。
  *   1. head inline script で立てた lang / `<html lang>` を module-local state に再同期する
  *      (initLangFromBrowser)。head 側は <html lang> しか触らないため、ここで currentLang を確定。
- *   2. (Step 6) 動的 UI モジュールの setupXxxI18n() を 1 回ずつ呼んで subscribeLangChange を登録。
- *   3. applyI18nDataset(document) で静的 markup の textContent / 属性 / CSS custom property を翻訳。
- *   4. i18n-pending class を解除して body の visibility を戻す (head の 3 秒タイムアウト fallback
+ *   2. applyI18nDataset(document) で静的 markup の textContent / 属性 / CSS custom property を翻訳。
+ *   3. i18n-pending class を解除して body の visibility を戻す (head の 3 秒タイムアウト fallback
  *      よりも早く外れるのが正常経路)。
+ *
+ * 動的 UI モジュールの setupXxxI18n() (`subscribeLangChange` 登録) は setupChromeAndNavigation
+ * 経由で別途呼び出される。順序として initLangFromBrowser で currentLang を確定してから setup が
+ * 走るよう、bootstrapReviewApp の中で bootstrapI18n → setupChromeAndNavigation の順を維持する。
  *
  * 例外が出ても残りの bootstrap (modal / boot 等) が走るよう、launchBoot より先に同期完了させる。
  */
@@ -279,8 +310,8 @@ export const bootstrapI18n = (): void => {
 // modal / panel / dropdown / search / toolbar / navigation の wiring を集約する。
 // bootstrapReviewApp の max-statements (10) 制約を満たすために 1 関数にまとめている。
 // 順序は dropdown / search / toolbar / navigation の依存関係 (sendMenu 受け渡し) を維持。
-const setupChromeAndNavigation = (deps: BootstrapDeps): void => {
-  setupModalsAndPanels()
+const setupChromeAndNavigation = (deps: ResolvedBootstrapDeps): void => {
+  setupModalsAndPanels(deps)
   const sendMenu = setupDropdownsAndKeyboard(deps)
   setupSearchWiring()
   setupToolbarButtons(sendMenu)
@@ -295,7 +326,7 @@ export const bootstrapReviewApp = (deps: BootstrapDeps): void => {
   if (online) {
     attachOnlineRuntimeListeners()
   }
-  launchBoot(effectiveDeps.loadFromMarkdown)
+  launchBoot(effectiveDeps.documentLoader)
 }
 
 if (import.meta.vitest) {
@@ -360,11 +391,11 @@ if (import.meta.vitest) {
   })
 
   describe('resolveBootstrapDeps', () => {
-    it('online=false なら deps をそのまま返す (standalone / embed への副作用ゼロ)', () => {
+    it('online=false なら loadFromMarkdown は装飾されず透過する (standalone / embed への副作用ゼロ)', () => {
       const deps = makeDeps()
       const result = resolveBootstrapDeps(deps, false)
-      expect(result).toBe(deps)
       expect(result.loadFromMarkdown).toBe(deps.loadFromMarkdown)
+      expect(result.documentLoader).toBeDefined()
     })
 
     it('online=true で loadFromMarkdown が装飾され base と別関数になる', () => {

@@ -1,6 +1,5 @@
 // 検索件数表示の文字列生成。HTML bundle 専用 (CLI bundle には含めない)。
 // `search.no_results` / `search.count_one|other` / `search.current_match` の 3 形式を切り替える。
-// 詳細は docs/feature-ui-i18n.md §3.4 / Step 6 を参照。
 
 import { translate, translatePlural } from '../i18n/i18n-browser'
 

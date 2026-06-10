@@ -3,6 +3,7 @@
 // state singleton は search-state.ts に分離されており、本ファイルは「state を読んで DOM に流す」
 // 方向の関数を提供する。
 
+import type { Unsubscribe } from '../document/load-document'
 import { type MatchRange, findMatchesInText } from '../../core/search'
 import { formatMatchCount } from './format-match-count'
 import {
@@ -13,6 +14,7 @@ import {
 } from '../dom/text-range'
 import { type SearchMatch, searchState } from './search-state'
 import { qs } from '../dom/dom-utils'
+import { subscribeLangChange } from '../i18n/i18n-browser'
 
 export const SEARCH_BAR_ID = 'search-bar'
 export const SEARCH_INPUT_ID = 'search-input'
@@ -193,6 +195,29 @@ export const updateCountDisplay = (): void => {
   const countEl = document.getElementById(SEARCH_COUNT_ID)
   if (countEl) {
     countEl.textContent = formatMatchCount(searchState.currentIndex, searchState.matches.length)
+  }
+}
+
+// lang toggle 時に件数表示文言 (search.no_results / search.count_one|other / search.current_match)
+// を再描画するため、`subscribeLangChange` で `updateCountDisplay` を呼び直す。searchState は
+// module-local singleton なので state の二重保持は不要。
+let langSubscription: Unsubscribe | null = null
+
+/** bootstrap で 1 回だけ呼ぶ。`subscribeLangChange` で lang toggle に追従 (idempotent)。 */
+export const setupSearchI18n = (): void => {
+  if (langSubscription !== null) {
+    return
+  }
+  langSubscription = subscribeLangChange((): void => {
+    updateCountDisplay()
+  })
+}
+
+/** test fixture / HMR で listener leak を防ぐ。2 回連続で呼んでも例外を投げない。 */
+export const teardownSearchI18n = (): void => {
+  if (langSubscription !== null) {
+    langSubscription()
+    langSubscription = null
   }
 }
 

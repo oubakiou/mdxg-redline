@@ -10,6 +10,7 @@ import {
   writeStoredTheme,
 } from './theme'
 import { qs, qsInput, toast } from '../dom/dom-utils'
+import type { DocumentLoader } from '../document/load-document'
 import type { ExportPayload } from '../../core/types'
 import type { Lang } from '../i18n/i18n-core'
 import type { MessageKey } from '../i18n/messages.en'
@@ -28,11 +29,11 @@ import {
   translatePlural,
 } from '../i18n/i18n-browser'
 
-/** loadFromMarkdown のみ循環を避けるため runtime 経由で受け取る */
+/** documentLoader のみ循環を避けるため runtime 経由で受け取る (Open file 経路で kind='local' を流す) */
 export interface ToolbarRuntime {
   buildExportPayload: () => ExportPayload
   commentCountLabel: () => string
-  loadFromMarkdown: (name: string, text: string) => Promise<void>
+  documentLoader: DocumentLoader
 }
 
 /** FileList は配列ではないため、テストしやすい ArrayLike 境界で先頭 File だけ取り出す */
@@ -232,7 +233,7 @@ const wireMarkdownLoad = (runtime: ToolbarRuntime): void => {
       return
     }
     const text = await file.text()
-    await runtime.loadFromMarkdown(file.name, text)
+    await runtime.documentLoader.loadDocument({ body: text, docName: file.name, kind: 'local' })
     clearFileInput(event)
   })
 }
@@ -287,7 +288,7 @@ const wireClear = (): void => {
   })
 }
 
-// EN / JA 2 state toggle (docs/feature-ui-i18n.md §3.5 / Step 5)。
+// EN / JA 2 state toggle (DESIGN.md §3.5)。
 // theme と違って applied state ↔ stored state の差が無く ('en' / 'ja' のみ)、循環順序も
 // `nextStoredLang` の単純な 2 state 反転。textContent は lang コード ('EN' / 'JA') を
 // machine contract として翻訳せずに表示し、aria-label / data-tooltip だけ翻訳に追従する。

@@ -5,10 +5,11 @@
 
 import type { Heading } from '../../core/page-outline'
 import type { Page } from '../../core/page-split'
+import type { Unsubscribe } from '../document/load-document'
 import { buildPageHashFragment } from '../document/pages'
 import { escapeHtml } from '../../core/escape'
 import { state } from '../state/app-state'
-import { translate } from '../i18n/i18n-browser'
+import { subscribeLangChange, translate } from '../i18n/i18n-browser'
 
 interface SequentialControlsViewModel {
   next: Page | null
@@ -214,6 +215,31 @@ export const renderPageNavigation = (): void => {
     return
   }
   list.innerHTML = buildPageNavBodyHtml(state.pages, state.activePageIndex)
+}
+
+// lang toggle 時に Prev/Next ボタン textContent / sequential-nav aria-label を再描画するため、
+// `subscribeLangChange` で `renderPageNavigation` を呼び直す。state.pages を直接読むため
+// currentPages の二重保持は不要 (再描画でも DOM 構造は同じ)。
+let langSubscription: Unsubscribe | null = null
+
+/**
+ * bootstrap で 1 回だけ呼ぶ。`subscribeLangChange` で lang toggle に追従 (idempotent)。
+ */
+export const setupPageNavI18n = (): void => {
+  if (langSubscription !== null) {
+    return
+  }
+  langSubscription = subscribeLangChange((): void => {
+    renderPageNavigation()
+  })
+}
+
+/** test fixture / HMR で listener leak を防ぐ。2 回連続で呼んでも例外を投げない。 */
+export const teardownPageNavI18n = (): void => {
+  if (langSubscription !== null) {
+    langSubscription()
+    langSubscription = null
+  }
 }
 
 // テスト用 fixture。consistent-function-scoping ルールで module-level に置く

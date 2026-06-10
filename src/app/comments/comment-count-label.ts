@@ -1,6 +1,5 @@
 // コメント件数のラベル生成。HTML bundle 専用 (CLI bundle には含めない)。
 // translatePlural 経由で `comments.count_label_zero/one/other` を引く。
-// 詳細は docs/feature-ui-i18n.md §3.4 / Step 6 の commentCountLabel 移動方針を参照。
 
 import { translatePlural } from '../i18n/i18n-browser'
 

@@ -4,9 +4,11 @@
 // CLI 経路 (review-request) は `data-toolbar-paste-markdown="off"` で wire 時に button +
 // modal を DOM から削除する (DESIGN.md §3 入力 4)。
 
+import type { DocumentLoader, Unsubscribe } from '../document/load-document'
 import { createStaticModalController, type StaticModalController } from '../dom/static-modal'
 import { qs, qsInput } from '../dom/dom-utils'
-import { translate } from '../i18n/i18n-browser'
+import type { MessageKey } from '../i18n/messages.en'
+import { subscribeLangChange, translate } from '../i18n/i18n-browser'
 
 const PASTE_MODAL_BACKDROP_ID = 'paste-markdown-modal-backdrop'
 const PASTE_MODAL_CANCEL_ID = 'paste-markdown-modal-cancel'
@@ -18,11 +20,16 @@ const PASTE_BUTTON_ID = 'btn-paste-markdown'
 const PASTE_DEFAULT_DOC_NAME = 'pasted.md'
 
 export interface PasteMarkdownRuntime {
-  loadFromMarkdown: (name: string, text: string) => Promise<void>
+  documentLoader: DocumentLoader
 }
 
 let modalController: StaticModalController | null = null
 let wired = false
+// 表示中のエラーキー (lang toggle で再描画するために state として保持)。null = エラー非表示。
+// 当初の `let` 宣言がフォーマッタで `const` に reformat されないよう、明示的に再代入を別関数に
+// 閉じ込めず module-local の生 `let` で管理する。
+let currentErrorKey: MessageKey | null = null
+let langSubscription: Unsubscribe | null = null
 
 const isPasteMarkdownSuppressed = (): boolean =>
   document.documentElement.dataset.toolbarPasteMarkdown === 'off'
@@ -52,15 +59,55 @@ export const closePasteMarkdownModal = (): void => {
   }
 }
 
-const showInputError = (message: string): void => {
+const renderCurrentError = (): void => {
   const el = document.getElementById(PASTE_ERROR_ID)
-  if (el instanceof HTMLElement) {
-    el.textContent = message
-    el.hidden = false
+  if (!(el instanceof HTMLElement)) {
+    return
   }
+  if (currentErrorKey === null) {
+    el.textContent = ''
+    el.hidden = true
+    return
+  }
+  el.textContent = translate(currentErrorKey)
+  el.hidden = false
+}
+
+const showInputError = (key: MessageKey): void => {
+  currentErrorKey = key
+  renderCurrentError()
 }
 
 const clearInputError = (): void => {
+  currentErrorKey = null
+  renderCurrentError()
+}
+
+/**
+ * bootstrap で 1 回だけ呼ぶ。`subscribeLangChange` で表示中のエラー文言を toggle に追従させる
+ * (modal が開いたままバリデーション失敗が出ている場合の lang 切替 UX)。idempotent。
+ */
+export const setupPasteMarkdownModalI18n = (): void => {
+  if (langSubscription !== null) {
+    return
+  }
+  langSubscription = subscribeLangChange((): void => {
+    if (currentErrorKey !== null) {
+      renderCurrentError()
+    }
+  })
+}
+
+/**
+ * test fixture / HMR で listener leak を防ぐ。全 subscription を解除 + state を null + DOM 初期化。
+ * 2 回連続で呼んでも例外を投げない。
+ */
+export const teardownPasteMarkdownModalI18n = (): void => {
+  if (langSubscription !== null) {
+    langSubscription()
+    langSubscription = null
+  }
+  currentErrorKey = null
   const el = document.getElementById(PASTE_ERROR_ID)
   if (el instanceof HTMLElement) {
     el.textContent = ''
@@ -96,10 +143,10 @@ const loadOrShowError = async (
   body: string
 ): Promise<boolean> => {
   try {
-    await runtime.loadFromMarkdown(docName, body)
+    await runtime.documentLoader.loadDocument({ body, docName, kind: 'local' })
     return true
   } catch {
-    showInputError(translate('modal.paste_markdown_load_failed'))
+    showInputError('modal.paste_markdown_load_failed')
     return false
   }
 }
@@ -112,7 +159,7 @@ const handleSubmit = async (
   event.preventDefault()
   const body = qsInput(`#${PASTE_BODY_INPUT_ID}`).value
   if (body.trim() === '') {
-    showInputError(translate('modal.paste_markdown_empty_error'))
+    showInputError('modal.paste_markdown_empty_error')
     return
   }
   const docName = resolvePasteDocName(qsInput(`#${PASTE_NAME_INPUT_ID}`).value)
@@ -143,6 +190,13 @@ const removeSuppressedDom = (): void => {
   removeIfPresent(`#${PASTE_MODAL_BACKDROP_ID}`)
 }
 
+const wireControllerAndForm = (runtime: PasteMarkdownRuntime): void => {
+  const controller = getController()
+  controller.wire()
+  wireButton(controller)
+  wireFormListeners(runtime, controller)
+}
+
 export const wirePasteMarkdownModal = (runtime: PasteMarkdownRuntime): void => {
   if (isPasteMarkdownSuppressed()) {
     removeSuppressedDom()
@@ -154,16 +208,14 @@ export const wirePasteMarkdownModal = (runtime: PasteMarkdownRuntime): void => {
     return
   }
   wired = true
-  const controller = getController()
-  controller.wire()
-  wireButton(controller)
-  wireFormListeners(runtime, controller)
+  wireControllerAndForm(runtime)
 }
 
 if (import.meta.vitest) {
   const { afterEach, describe, expect, it } = import.meta.vitest
 
   afterEach((): void => {
+    teardownPasteMarkdownModalI18n()
     modalController = null
     wired = false
   })
@@ -182,6 +234,41 @@ if (import.meta.vitest) {
     it('非空はそのまま返す (拡張子の補完はしない)', () => {
       expect(resolvePasteDocName('draft')).toBe('draft')
       expect(resolvePasteDocName('日本語 spec.md')).toBe('日本語 spec.md')
+    })
+  })
+
+  describe('paste-markdown-modal I18n purchase', () => {
+    // eslint-disable-next-line unicorn/consistent-function-scoping
+    const setupErrorEl = (): HTMLElement => {
+      const el = document.createElement('div')
+      el.id = PASTE_ERROR_ID
+      el.hidden = true
+      document.body.append(el)
+      return el
+    }
+
+    afterEach((): void => {
+      const el = document.getElementById(PASTE_ERROR_ID)
+      if (el !== null) {
+        el.remove()
+      }
+    })
+
+    it('teardown は 2 回連続で呼んでも例外を投げない (idempotent)', () => {
+      setupErrorEl()
+      setupPasteMarkdownModalI18n()
+      teardownPasteMarkdownModalI18n()
+      expect((): void => teardownPasteMarkdownModalI18n()).not.toThrow()
+    })
+
+    it('setup を 2 回呼んでも subscribeLangChange listener は 1 つだけ', () => {
+      // 1 回目の setup で listener が登録される。2 回目の setup は idempotent guard で no-op。
+      // teardown 後に再 setup できることも確認する (langSubscription が null に戻る)。
+      setupPasteMarkdownModalI18n()
+      setupPasteMarkdownModalI18n()
+      teardownPasteMarkdownModalI18n()
+      setupPasteMarkdownModalI18n()
+      expect((): void => teardownPasteMarkdownModalI18n()).not.toThrow()
     })
   })
 }

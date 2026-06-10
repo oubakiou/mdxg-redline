@@ -11,15 +11,15 @@ import { findPageIndexBySourceLine } from '../core/page-split'
 import { reapplyAllMarks } from './comments/mark-engine'
 import { renderComments } from './comments/comments'
 import { showOnlineError } from './online/error-display'
-import { showOnlineSource } from './online/source-display'
 import { resolveOnlineAllowlistFromJson } from '../core/online-allowlist-config'
 import { normalizeGithubViewUrl } from '../core/online-url-normalize'
 import { restoreWorkspaceHandle } from './workspace/workspace'
 import type { MessageKey } from './i18n/messages.en'
+import { type DocumentLoader, createDocumentLoader } from './document/load-document'
 import { translate } from './i18n/i18n-browser'
 
 interface BootRuntime {
-  loadFromMarkdown: (name: string, text: string) => Promise<void>
+  documentLoader: DocumentLoader
 }
 
 /** 任意要素の textContent を trim して返す。null/未存在の場合は空文字（embedded フォールバックを連鎖させやすくする） */
@@ -92,7 +92,7 @@ const loadEmbeddedMarkdown = async (runtime: BootRuntime): Promise<boolean> => {
     return false
   }
   const name = embedded.dataset.name || 'document.md'
-  await runtime.loadFromMarkdown(name, embeddedText)
+  await runtime.documentLoader.loadDocument({ body: embeddedText, docName: name, kind: 'local' })
   restoreEmbeddedFeedback(elementText(document.getElementById('embedded-feedback')))
   return true
 }
@@ -142,7 +142,7 @@ const formatValidationFailure = (reason: string, url: string): string => {
   return translate('empty.url_failed_validation', { reason: reasonText, url })
 }
 
-/** §5.d エラーカテゴリのメッセージ。Step 5 で error modal に richen 化する想定の暫定 toast 用 */
+/** §5.d エラーカテゴリのメッセージ。 inline error UI / toast 経由で表示する */
 export const formatFetchFailureMessage = (failure: FetchFailure): string => {
   switch (failure.error) {
     case 'http_error': {
@@ -169,7 +169,7 @@ export const formatFetchFailureMessage = (failure: FetchFailure): string => {
     default: {
       // exhaustiveness check: FetchFailure に新 variant が追加されたら `satisfies never` が
       // 型エラーで気付かせる。runtime fallback は throw せず graceful な文字列に倒し、
-      // toast / Step 5 modal に表示できる経路を維持する (white screen 回避)。
+      // inline error UI / toast に表示できる経路を維持する (white screen 回避)。
       failure satisfies never
       return translate('empty.url_failed_unknown')
     }
@@ -209,7 +209,8 @@ const scheduleFetchLoadingSpinner = (): ReturnType<typeof setTimeout> =>
 /** fetch 失敗時: spinner class を剥がしてから empty-state-online-error を露出させる */
 const handleFetchFailure = (failure: FetchFailure): false => {
   document.documentElement.classList.remove('has-embedded-md')
-  showOnlineError(formatFetchFailureMessage(failure))
+  // renderer 関数で wrap し、lang toggle 時に formatFetchFailureMessage(failure) を再評価する。
+  showOnlineError((): string => formatFetchFailureMessage(failure))
   return false
 }
 
@@ -228,8 +229,14 @@ const handleFetchSuccess = async (result: FetchSuccess, runtime: BootRuntime): P
   // いるので no-op。 caller 側 (tryFetchAndLoad) で `clearTimeout` 後に走ることが保証されるため、
   // タイマー callback と race して二重 add される懸念はない。
   document.documentElement.classList.add('has-embedded-md')
-  showOnlineSource(result.finalUrl)
-  await runtime.loadFromMarkdown(deriveDocNameFromUrl(result.finalUrl), result.text)
+  // Source link 表示は `setupOnlineSourceI18n` が `registerOnDocumentLoad` 経由で
+  // `kind === 'online'` のとき自動 show するため、ここでは明示的に呼ばない (§3.5 hook 経由統一)。
+  await runtime.documentLoader.loadDocument({
+    body: result.text,
+    docName: deriveDocNameFromUrl(result.finalUrl),
+    kind: 'online',
+    url: result.finalUrl,
+  })
   return true
 }
 
@@ -273,7 +280,7 @@ const fetchWithSpinnerCleanup = async (
  * 成功時は Source link を status bar に表示 (§5.f Referer leak 防止 3 属性付き)、
  * `#empty-state-default` を `has-embedded-md` class 追加で隠す (online edition は CLI rewrite を
  * 経由しないため `<meta name="mdxg-redline:embedded-md">` がなく、boot 時に class が立たない)。
- * 失敗時は §5.d カテゴリ別メッセージを inline error UI に表示 + 「別 URL を試す」ボタン (Step 5)。
+ * 失敗時は §5.d カテゴリ別メッセージを inline error UI に表示 + 「別 URL を試す」ボタンで Open URL modal を再 open する。
  *
  * fetch が `ONLINE_FETCH_LOADING_DELAY_MS` を超えた時点で `has-embedded-md` を前倒し付与し、
  * 既存の spinner pattern を Loading 表示として再利用する。 fetch 失敗時は class を剥がして
@@ -313,7 +320,7 @@ export const loadFromOnlineUrlQuery = async (runtime: BootRuntime): Promise<bool
     return false
   }
   if (!isHttpProtocol(globalThis.location.protocol)) {
-    showOnlineError(translate('online.error.not_http_hosted'))
+    showOnlineError((): string => translate('online.error.not_http_hosted'))
     return false
   }
   return tryFetchAndLoad(url, runtime)
@@ -519,7 +526,7 @@ if (import.meta.vitest) {
       const spy = vi.fn(async (): Promise<void> => {
         /* noop test stub */
       })
-      return { runtime: { loadFromMarkdown: spy }, spy }
+      return { runtime: { documentLoader: createDocumentLoader(spy) }, spy }
     }
 
     it('?url= 未指定で false を返し、loadFromMarkdown は呼ばれない (fallthrough)', async () => {
@@ -596,7 +603,7 @@ if (import.meta.vitest) {
       const spy = vi.fn(async (): Promise<void> => {
         /* noop test stub */
       })
-      expect(await loadFromOnlineUrlQuery({ loadFromMarkdown: spy })).toBe(true)
+      expect(await loadFromOnlineUrlQuery({ documentLoader: createDocumentLoader(spy) })).toBe(true)
       expect(spy).toHaveBeenCalledWith('README.md', '# hello')
     })
 
@@ -616,7 +623,7 @@ if (import.meta.vitest) {
       const spy = vi.fn(async (): Promise<void> => {
         /* noop test stub */
       })
-      expect(await loadFromOnlineUrlQuery({ loadFromMarkdown: spy })).toBe(true)
+      expect(await loadFromOnlineUrlQuery({ documentLoader: createDocumentLoader(spy) })).toBe(true)
       expect(spy).toHaveBeenCalledWith('hello.md', '# hello')
     })
 
@@ -629,7 +636,9 @@ if (import.meta.vitest) {
       const spy = vi.fn(async (): Promise<void> => {
         /* noop test stub */
       })
-      expect(await loadFromOnlineUrlQuery({ loadFromMarkdown: spy })).toBe(false)
+      expect(await loadFromOnlineUrlQuery({ documentLoader: createDocumentLoader(spy) })).toBe(
+        false
+      )
       expect(spy).not.toHaveBeenCalled()
     })
   })
@@ -675,9 +684,11 @@ if (import.meta.vitest) {
     })
   }
   const noopRuntime = (): BootRuntime => ({
-    loadFromMarkdown: vi.fn(async (): Promise<void> => {
-      /* noop */
-    }),
+    documentLoader: createDocumentLoader(
+      vi.fn(async (): Promise<void> => {
+        /* noop */
+      })
+    ),
   })
   // eslint-disable-next-line unicorn/consistent-function-scoping
   const delayedResponse = async (status: number, delayMs: number, body = ''): Promise<Response> =>
@@ -695,9 +706,11 @@ if (import.meta.vitest) {
     expect(errorEl instanceof HTMLElement && errorEl.hidden).toBe(true)
   }
   const throwingRuntime = (error: Error): BootRuntime => ({
-    loadFromMarkdown: vi.fn(async (): Promise<void> => {
-      throw error
-    }),
+    documentLoader: createDocumentLoader(
+      vi.fn(async (): Promise<void> => {
+        throw error
+      })
+    ),
   })
 
   describe('loadFromOnlineUrlQuery: Loading spinner (has-embedded-md) の遅延付与', () => {
