@@ -1,8 +1,8 @@
 // CLI の i18n state (Node 専用)。document / localStorage には触らない。
 // bootstrap (review-request.ts main()) で setCliLang を 1 回呼んで以降は固定。
-// 設計判断は docs/feature-ui-i18n.md §3.1 / §3.3 / Step 4 を参照。
+// 設計判断は DESIGN.md §14.2 / §14.4 を参照。
 
-import { type Lang, type MessageDict, translate as translateCore } from '../app/i18n/i18n-core'
+import { type Lang, type MessageDict, translate as translateCore } from '../core/i18n/i18n-core'
 import { type CliMessageKey, messagesCliEn } from './i18n/messages-cli.en'
 import { messagesCliJa } from './i18n/messages-cli.ja'
 

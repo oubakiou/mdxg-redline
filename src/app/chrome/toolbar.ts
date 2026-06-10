@@ -12,7 +12,7 @@ import {
 import { qs, qsInput, toast } from '../dom/dom-utils'
 import type { DocumentLoader } from '../document/load-document'
 import type { ExportPayload } from '../../core/types'
-import type { Lang } from '../i18n/i18n-core'
+import type { Lang } from '../../core/i18n/i18n-core'
 import type { MessageKey } from '../i18n/messages.en'
 import { confirmDialog } from '../dom/dialog'
 import { exportBaseName } from '../../core/review-export'
@@ -288,7 +288,7 @@ const wireClear = (): void => {
   })
 }
 
-// EN / JA 2 state toggle (DESIGN.md §3.5)。
+// EN / JA 2 state toggle (DESIGN.md §14.6)。
 // theme と違って applied state ↔ stored state の差が無く ('en' / 'ja' のみ)、循環順序も
 // `nextStoredLang` の単純な 2 state 反転。textContent は lang コード ('EN' / 'JA') を
 // machine contract として翻訳せずに表示し、aria-label / data-tooltip だけ翻訳に追従する。

@@ -4,7 +4,7 @@
 // 不正値を検出する時点で lang 未確定だと循環依存になる。本ファイルが先行抽出 + エラー検出を
 // 1 パスで行うことでこれを回避する。
 
-import { type Lang, detectLangFromEnv } from '../app/i18n/i18n-core'
+import { type Lang, detectLangFromEnv } from '../core/i18n/i18n-core'
 import { HELP_FLAGS } from './arg-spec'
 
 const LANG_FLAG = '--lang'

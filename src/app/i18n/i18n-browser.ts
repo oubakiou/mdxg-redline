@@ -1,6 +1,6 @@
 // i18n のブラウザ副作用層。<html lang> / localStorage / DOM 反映を扱う。
-// 純粋ロジックは i18n-core.ts に分離されており、本ファイルは Node では import できない
-// (document / localStorage / navigator への依存)。設計判断は docs/feature-ui-i18n.md §3.1 / §3.5 を参照。
+// 純粋ロジックは core/i18n/i18n-core.ts に分離されており、本ファイルは Node では import できない
+// (document / localStorage / navigator への依存)。設計判断は DESIGN.md §14.2 / §14.6 を参照。
 
 import {
   type Lang,
@@ -9,7 +9,7 @@ import {
   resolveInitialLang,
   translate as translateCore,
   translatePlural as translatePluralCore,
-} from './i18n-core'
+} from '../../core/i18n/i18n-core'
 import { type MessageKey, messagesEn } from './messages.en'
 import { messagesJa } from './messages.ja'
 

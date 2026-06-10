@@ -40,6 +40,8 @@ MDXG Redline は、LLM エージェントが人間レビュワーから「長文
 
 対応する markdown URL の host は `raw.githubusercontent.com` / `gist.githubusercontent.com` に絞られている (CSP `connect-src` の allowlist)。 self-host して allowlist を拡張する場合は環境変数 `MDXG_ONLINE_CONNECT_SRC` で追加する (詳細は [docs/DESIGN.md §11.b](docs/DESIGN.md#b-content-security-policy二重保険))。
 
+UI の表示言語は **`localStorage('mdxg-redline.lang') > navigator.language > 'en'`** の優先順位で自動決定する (詳細は [docs/DESIGN.md §14](docs/DESIGN.md#14-ui-国際化))。日本語ロケールのブラウザでは初回起動で日本語表示、それ以外では英語表示になる。toolbar 右上の `EN` / `JA` ボタンで toggle すると `localStorage` に保存され、次回起動時はその選択が最優先される。
+
 ### standalone 版
 
 [GitHub Releases](https://github.com/oubakiou/mdxg-redline/releases) から `standalone.html` をダウンロードし、ブラウザで開いて利用する。
@@ -210,6 +212,7 @@ vp test         # in-source tests を実行
 - [11. セキュリティとプライバシー](docs/DESIGN.md#11-セキュリティとプライバシー)
 - [12. MDXG 準拠ロードマップ・今後の拡張](docs/DESIGN.md#12-mdxg-準拠ロードマップ今後の拡張)
 - [13. ビルドパイプライン](docs/DESIGN.md#13-ビルドパイプライン)
+- [14. UI 国際化](docs/DESIGN.md#14-ui-国際化)
 
 ## ライセンス
 

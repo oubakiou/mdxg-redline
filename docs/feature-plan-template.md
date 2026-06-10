@@ -183,7 +183,9 @@ export function {pureFn}(input: {InputType}): {OutputType}
 
 > 本 Step は「単一の真実の源を DESIGN.md に切り替える」最終整理であり、**各 Step で随時更新してきた公開仕様（README / DESIGN.md のオプション表 / コマンド構文）の追加分も矛盾していないか最終確認する**。各 Step で同期する運用（§4 冒頭の原則）に従えば、本 Step での新規追加は表行の状態列の書き換えと §X 表全体の archive リンク追加程度に収束する。
 
-成果物：DESIGN.md 更新 + 本ドキュメントの archive
+> **アーカイブ化のタイミング**：本ドキュメントを `docs/archive/{topic}.archive.md` にリネームする操作は **本 Step の一番最後にユーザーの確認を取ってから行う**。理由は (1) 計画書側に残しておくべき設計判断・不変条件・履歴が DESIGN.md / コードコメント / README に過不足なく移植されたかを移植側 (DESIGN.md 等) のレビューが完了するまで自己判定できない、(2) archive 化前なら計画書の追記で補強できるが、archive 化後は不変原則 (`docs/archive/` 配下は基本書き換えない、参照される可能性があれば 1 行メモを足すに留める) に縛られ補強が困難になる、(3) リネームは git mv で履歴を保持しても reviewer 側の review 経路 (file path 検索 / IDE での open) が変わるため、reviewer の都合に合わせるべき、の 3 点。確認手順の推奨フロー: (a) DESIGN.md / README / コード移植が完了した状態で「アーカイブ化に進んでよいか」を確認、(b) ユーザーが OK と判断したら git mv で archive 化、(c) archive 化を別 commit に分離して revert 可能にする。
+
+成果物：DESIGN.md 更新 + 本ドキュメントの archive (archive 化はユーザー確認後)
 
 ## 5. 設計判断
 
