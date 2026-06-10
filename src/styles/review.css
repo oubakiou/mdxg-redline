@@ -936,9 +936,8 @@ html[data-toolbar-open-file='off'][data-toolbar-paste-markdown='off']:not([data-
   background: transparent;
   border-color: transparent;
 }
-#btn-search span {
-  font-size: 20px;
-  line-height: 1;
+.btn-toolbar-icon {
+  vertical-align: middle;
 }
 .btn-ghost:hover {
   background: var(--paper-edge);
