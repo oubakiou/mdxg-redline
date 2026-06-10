@@ -654,7 +654,7 @@ const applyToElement = (el: HTMLElement): void => {
 
 ### Step 2: (完了済み) i18n 純粋ロジック層 + browser / CLI 分離実装
 
-**状態**: **完了済み** — 未コミット。`src/app/i18n/i18n-core.ts` (39 tests) / `src/app/i18n/i18n-browser.ts` (24 tests) / `src/cli/i18n.ts` (8 tests) を新規追加し、`vp check` / `vp test` (全 1354 tests) 通過。実装過程で計画から 3 点の乖離 (§3.1 core 層 signature: `translate(dict, key, params?)` + `MessageDict = Record<string, string>` 統一、§3.4 `translatePlural` の options object 化、§3.5 walk セレクタを `closest('#doc')` ベース JS フィルタに変更) が確定し、それぞれ該当節に追記済み。加えて Step 2 完了後のフィードバック修正 3 点 (translatePlural の count 上書き防止 / footnote 構造的例外での textContent skip 二重防御 / 不正 lang の runtime fallback 契約削除 + 入口経路のみへの限定) を本ドキュメントの該当節に反映済み。
+**状態**: **完了済み** — commit `d60fa4f`。`src/app/i18n/i18n-core.ts` (39 tests) / `src/app/i18n/i18n-browser.ts` (24 tests) / `src/cli/i18n.ts` (8 tests) を新規追加し、`vp check` / `vp test` (全 1354 tests) 通過。実装過程で計画から 3 点の乖離 (§3.1 core 層 signature: `translate(dict, key, params?)` + `MessageDict = Record<string, string>` 統一、§3.4 `translatePlural` の options object 化、§3.5 walk セレクタを `closest('#doc')` ベース JS フィルタに変更) が確定し、それぞれ該当節に追記済み。加えて Step 2 完了後のフィードバック修正 3 点 (translatePlural の count 上書き防止 / footnote 構造的例外での textContent skip 二重防御 / 不正 lang の runtime fallback 契約削除 + 入口経路のみへの限定) を本ドキュメントの該当節に反映済み。
 
 UI / DOM / I/O に依存しないロジックを pure 関数で書き、in-source test を通す。**本 Step で 3 ファイルを新規作成**してコミット (セルフレビュー反映: Node 環境で `document` / `localStorage` を触る関数が失敗する経路を構造的に排除)。
 
