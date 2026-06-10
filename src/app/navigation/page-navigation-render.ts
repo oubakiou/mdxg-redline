@@ -8,6 +8,7 @@ import type { Page } from '../../core/page-split'
 import { buildPageHashFragment } from '../document/pages'
 import { escapeHtml } from '../../core/escape'
 import { state } from '../state/app-state'
+import { translate } from '../i18n/i18n-browser'
 
 interface SequentialControlsViewModel {
   next: Page | null
@@ -36,9 +37,10 @@ const renderSequentialPrev = (page: Page | null): string => {
     return ''
   }
   const fragment = escapeHtml(buildPageHashFragment(page.slug))
+  const label = escapeHtml(translate('page_nav.prev_button'))
   return (
     `<a class="page-nav-sequential-link page-nav-sequential-prev" href="#${fragment}" data-slug="${fragment}" rel="prev">` +
-    `<span class="page-nav-sequential-direction" aria-hidden="true">‹ Prev</span>` +
+    `<span class="page-nav-sequential-direction" aria-hidden="true">${label}</span>` +
     `<span class="page-nav-sequential-title">${escapeHtml(page.title)}</span>` +
     `</a>`
   )
@@ -49,9 +51,10 @@ const renderSequentialNext = (page: Page | null): string => {
     return ''
   }
   const fragment = escapeHtml(buildPageHashFragment(page.slug))
+  const label = escapeHtml(translate('page_nav.next_button'))
   return (
     `<a class="page-nav-sequential-link page-nav-sequential-next" href="#${fragment}" data-slug="${fragment}" rel="next">` +
-    `<span class="page-nav-sequential-direction" aria-hidden="true">Next ›</span>` +
+    `<span class="page-nav-sequential-direction" aria-hidden="true">${label}</span>` +
     `<span class="page-nav-sequential-title">${escapeHtml(page.title)}</span>` +
     `</a>`
   )
@@ -65,7 +68,8 @@ export const buildSequentialControlsHtml = (viewModel: SequentialControlsViewMod
   if (viewModel.prev === null && viewModel.next === null) {
     return ''
   }
-  return `<nav class="page-nav-sequential" aria-label="Sequential page navigation">${renderSequentialPrev(
+  const navLabel = escapeHtml(translate('page_nav.sequential_nav_aria'))
+  return `<nav class="page-nav-sequential" aria-label="${navLabel}">${renderSequentialPrev(
     viewModel.prev
   )}${renderSequentialNext(viewModel.next)}</nav>`
 }

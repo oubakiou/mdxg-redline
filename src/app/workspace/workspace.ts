@@ -16,16 +16,15 @@ import {
   wsState,
   wsSupported,
 } from './workspace-fs'
-import {
-  buildReviewExportPayload,
-  commentCountLabel as formatCommentCount,
-} from '../../core/review-export'
+import { buildReviewExportPayload } from '../../core/review-export'
+import { commentCountLabel as formatCommentCount } from '../comments/comment-count-label'
 import { deriveFeedbackJsonName, stripMarkdownExt } from '../../core/embed'
 import { markFeedbackUnsaved, markFeedbackWritten, state } from '../state/app-state'
 import { qs, toast } from '../dom/dom-utils'
 import type { ExportPayload } from '../../core/types'
 import { renderComments } from '../comments/comments'
 import { sanitizeMdFileName } from '../../core/filename-sanitize'
+import { applyI18nDataset, translate } from '../i18n/i18n-browser'
 
 const buildExportPayload = (): ExportPayload => buildReviewExportPayload(state)
 
@@ -38,14 +37,16 @@ const commentCountLabel = (): string => formatCommentCount(state.comments.length
 const refreshSendButtonTooltip = (): void => {
   const sendBtn = qs('#btn-send')
   const name = getOutputFolderName()
+  // dataset + applyI18nDataset 経由に統一して言語切替に追従させる。folder 名は
+  // data-i18n-params に JSON で書き込むことで applyI18nDataset の placeholder 展開が走る。
   if (name === null) {
-    sendBtn.setAttribute(
-      'data-tooltip',
-      'Choose an output folder and write the current feedback there'
-    )
-    return
+    sendBtn.dataset.i18nDataTooltip = 'comments.write_feedback_tooltip_default'
+    delete sendBtn.dataset.i18nParams
+  } else {
+    sendBtn.dataset.i18nDataTooltip = 'comments.write_feedback_tooltip_folder'
+    sendBtn.dataset.i18nParams = JSON.stringify({ name })
   }
-  sendBtn.setAttribute('data-tooltip', `Write feedback.json into “${name}”`)
+  applyI18nDataset(sendBtn)
 }
 
 /**
@@ -97,8 +98,24 @@ const writeFeedbackToHandle = async (
 
 /** Write 成功時の toast と status bar を一括更新し、dirty 状態をクリアする */
 const finishWrite = (folderName: string, filename: string): void => {
-  toast(`Wrote ${folderName}/${filename} · ${commentCountLabel()}`)
-  qs('#status').textContent = `${state.docName} · ${folderName}/${filename} written`
+  toast(
+    translate('toast.feedback_written', {
+      countLabel: commentCountLabel(),
+      filename,
+      folder: folderName,
+    })
+  )
+  // dataset 経由で書き換えることで言語切替に追従する。docName は state.docName が
+  // null になり得るが、書き出し成功 = markdown 読み込み済みなので実質非 null。型に合わせて
+  // `?? ''` で逃がす (placeholder の {docName} は空文字で展開される)。
+  const statusEl = qs('#status')
+  statusEl.dataset.i18n = 'toolbar.status_written'
+  statusEl.dataset.i18nParams = JSON.stringify({
+    docName: state.docName ?? '',
+    filename,
+    folder: folderName,
+  })
+  applyI18nDataset(statusEl)
   markFeedbackWritten()
   renderComments()
 }
@@ -133,12 +150,12 @@ const acquireUsableHandle = async (): Promise<FsDirectoryHandle | null> => {
 /** 書き出し可能な前提が揃っていれば feedback.json の filename を返す。未確定なら toast を出して null */
 const ensureWritableFilename = (): string | null => {
   if (!state.markdown) {
-    toast('Nothing to write')
+    toast(translate('toast.nothing_to_write'))
     return null
   }
   const filename = resolveFeedbackFilename()
   if (!filename) {
-    toast('Nothing to write')
+    toast(translate('toast.nothing_to_write'))
     return null
   }
   return filename
@@ -160,7 +177,7 @@ const retryWriteAfterFailure = async (filename: string): Promise<void> => {
     await writeFeedbackToHandle(fresh, filename)
     finishWrite(fresh.name, filename)
   } catch {
-    toast('Write failed')
+    toast(translate('toast.write_failed'))
   }
 }
 
@@ -195,7 +212,7 @@ export const changeOutputFolder = async (): Promise<void> => {
   refreshSendButtonTooltip()
   markFeedbackUnsaved()
   renderComments()
-  toast(`Output folder set to “${picked.name}”`)
+  toast(translate('toast.output_folder_set', { name: picked.name }))
 }
 
 const resetWorkspaceForTest = (): void => {

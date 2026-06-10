@@ -4,6 +4,7 @@
 
 import { MERMAID_ATTR, MERMAID_ATTR_VALUE } from '../../core/mermaid-attrs'
 import { openMermaidModal } from './mermaid-modal'
+import { translate } from '../i18n/i18n-browser'
 
 export const parseSvg = (svgText: string): SVGSVGElement | null => {
   const tpl = document.createElement('template')
@@ -38,7 +39,7 @@ const handleMermaidSvgClick = (event: Event, svg: SVGSVGElement): void => {
 export const wireMermaidSvgExpand = (svg: SVGSVGElement): void => {
   svg.setAttribute('role', 'button')
   svg.setAttribute('tabindex', '0')
-  svg.setAttribute('aria-label', 'Expand diagram')
+  svg.setAttribute('aria-label', translate('diagram.expand_aria'))
   svg.setAttribute(MERMAID_ATTR.expandable, MERMAID_ATTR_VALUE)
   svg.style.cursor = 'zoom-in'
   svg.addEventListener('click', (event): void => handleMermaidSvgClick(event, svg))

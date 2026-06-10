@@ -9,6 +9,7 @@ import type { Comment } from '../../core/types'
 import type { Page } from '../../core/page-split'
 import { escapeHtml } from '../../core/escape'
 import { state } from '../state/app-state'
+import { translate } from '../i18n/i18n-browser'
 
 /**
  * 複数ページ文書の comments panel が全コメントを混ぜて表示する際、各カードがどのページに属するかを
@@ -29,16 +30,23 @@ export const pageBadgeHTML = (comment: Comment): string => {
  * カード 1 枚分の HTML を生成。`escapeHtml` で quote / body を必ずエスケープすることが、
  * ユーザー由来テキストを innerHTML に流す際の前提。
  */
-export const commentCardHTML = (comment: Comment): string => `
+export const commentCardHTML = (comment: Comment): string => {
+  // 辞書値を innerHTML 経由に流す前に escapeHtml で防御層を 1 段はさむ (§11 信頼境界)。
+  const editAriaLabel = escapeHtml(translate('comments.action_edit_aria'))
+  const editLabel = escapeHtml(translate('comments.action_edit'))
+  const deleteAriaLabel = escapeHtml(translate('comments.action_delete_aria'))
+  const deleteLabel = escapeHtml(translate('comments.action_delete'))
+  return `
   <div class="cmt-quote">“${escapeHtml(comment.quote)}”</div>
   <div class="cmt-body">${escapeHtml(comment.comment)}</div>
   <div class="cmt-meta">
     <span>${pageBadgeHTML(comment)}${comment.blockId} · ${new Date(comment.created).toLocaleString()}</span>
     <span class="cmt-actions">
-      <button class="cmt-edit" data-edit="${comment.id}" aria-label="Edit comment">Edit</button>
-      <button class="cmt-del" data-del="${comment.id}" aria-label="Delete comment">Delete</button>
+      <button class="cmt-edit" data-edit="${comment.id}" aria-label="${editAriaLabel}">${editLabel}</button>
+      <button class="cmt-del" data-del="${comment.id}" aria-label="${deleteAriaLabel}">${deleteLabel}</button>
     </span>
   </div>`
+}
 
 const commentForTest = (id: string): Comment => ({
   blockId: 'b001',

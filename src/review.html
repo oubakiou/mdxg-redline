@@ -187,7 +187,13 @@
     <!-- Skip to navigation (MDXG §13)。
          focus 時のみ画面左上に visible になり、Enter で TOC の active page-nav-link に焦点を移す。
          WAI-ARIA Authoring Practices の skip link パターン。 -->
-    <a class="skip-link" id="skip-to-nav" href="#page-nav-list">Skip to navigation</a>
+    <a
+      class="skip-link"
+      id="skip-to-nav"
+      href="#page-nav-list"
+      data-i18n="toolbar.skip_to_navigation"
+      >Skip to navigation</a
+    >
 
     <header class="app-header">
       <div class="app-brand">
@@ -224,7 +230,9 @@
         </a>
       </div>
       <div class="toolbar-actions">
-        <span id="status" class="label toolbar-status">No file</span>
+        <span id="status" class="label toolbar-status" data-i18n="toolbar.status_no_file"
+          >No file</span
+        >
         <!-- online edition 専用 source indicator。data-mdxg-online ガード下のみ visible (CSS) -->
         <span id="online-source" class="label toolbar-source" hidden></span>
         <!-- 入力経路 (Open file / Open URL / Paste markdown) を 1 つの dropdown に集約する。
@@ -241,20 +249,33 @@
             aria-haspopup="true"
             aria-expanded="false"
             data-tooltip="Open a markdown source"
+            data-i18n-data-tooltip="toolbar.open_menu_tooltip"
           >
-            Open <span class="menu-caret" aria-hidden="true">▾</span>
+            <span data-i18n="toolbar.open">Open</span>
+            <span class="menu-caret" aria-hidden="true">▾</span>
           </button>
           <div class="menu" id="menu-open" role="menu">
-            <button class="menu-item toolbar-open-file" id="btn-load" role="menuitem">
+            <button
+              class="menu-item toolbar-open-file"
+              id="btn-load"
+              role="menuitem"
+              data-i18n="toolbar.open_file"
+            >
               Open file…
             </button>
-            <button class="menu-item toolbar-open-url" id="btn-open-url" role="menuitem">
+            <button
+              class="menu-item toolbar-open-url"
+              id="btn-open-url"
+              role="menuitem"
+              data-i18n="toolbar.open_url"
+            >
               Open URL…
             </button>
             <button
               class="menu-item toolbar-paste-markdown"
               id="btn-paste-markdown"
               role="menuitem"
+              data-i18n="toolbar.paste_markdown"
             >
               Paste markdown…
             </button>
@@ -265,6 +286,8 @@
           id="btn-search"
           aria-label="Search the document"
           data-tooltip="Search (f)"
+          data-i18n-aria-label="toolbar.search_aria"
+          data-i18n-data-tooltip="toolbar.search_tooltip"
         >
           <span aria-hidden="true">⌕</span>
         </button>
@@ -273,9 +296,14 @@
           id="btn-help"
           aria-label="Show keyboard shortcuts"
           data-tooltip="Keyboard shortcuts (h)"
+          data-i18n-aria-label="toolbar.kbd_help_aria"
+          data-i18n-data-tooltip="toolbar.kbd_help_tooltip"
         >
           ?
         </button>
+        <!-- aria-label / data-tooltip は theme.ts が `Theme: system|light|dark` / `Switch to ...` に
+             動的更新する (toolbar.theme_*_aria / toolbar.theme_switch_*)。静的な data-i18n-* は
+             付けない (動的更新と競合するため)。Step 6 で subscribeLangChange 連動を toolbar.ts に追加。 -->
         <button
           class="btn btn-ghost tooltipped"
           id="btn-theme"
@@ -291,7 +319,13 @@
          `/` キー or toolbar 検索ボタンで起動、Esc / × ボタンで閉じる。Enter / Shift+Enter で
          next / prev、入力欄外の Prev / Next ボタンも同経路を呼ぶ (search.ts 参照)。
          input の autocomplete を off にしてブラウザの履歴サジェストを抑制する。 -->
-    <div class="search-bar" id="search-bar" role="search" aria-label="Document search">
+    <div
+      class="search-bar"
+      id="search-bar"
+      role="search"
+      aria-label="Document search"
+      data-i18n-aria-label="toolbar.search_bar_aria"
+    >
       <input
         type="text"
         id="search-input"
@@ -300,6 +334,8 @@
         aria-label="Search query"
         autocomplete="off"
         spellcheck="false"
+        data-i18n-placeholder="toolbar.search_placeholder"
+        data-i18n-aria-label="toolbar.search_input_aria"
       />
       <span class="search-count" id="search-count" aria-live="polite"></span>
       <button
@@ -308,6 +344,8 @@
         id="search-prev"
         aria-label="Previous match"
         data-tooltip="Previous (⇧Enter)"
+        data-i18n-aria-label="toolbar.search_prev_aria"
+        data-i18n-data-tooltip="toolbar.search_prev_tooltip"
       >
         <span aria-hidden="true">↑</span>
       </button>
@@ -317,6 +355,8 @@
         id="search-next"
         aria-label="Next match"
         data-tooltip="Next (Enter)"
+        data-i18n-aria-label="toolbar.search_next_aria"
+        data-i18n-data-tooltip="toolbar.search_next_tooltip"
       >
         <span aria-hidden="true">↓</span>
       </button>
@@ -326,6 +366,8 @@
         id="search-close"
         aria-label="Close search"
         data-tooltip="Close (Esc)"
+        data-i18n-aria-label="toolbar.search_close_aria"
+        data-i18n-data-tooltip="toolbar.search_close_tooltip"
       >
         <span aria-hidden="true">×</span>
       </button>
@@ -337,7 +379,12 @@
       <!-- 左サイドバー: 仮想ページ TOC (MDXG §7 Page Navigation)。
            state.pages が空の間は CSS 側の :root:not(.has-pages) ルールで列ごと隠れる。
            page-nav-list 配下の <ul> は page-navigation.ts が描画する。 -->
-      <aside class="page-nav" id="page-nav" aria-label="Document pages">
+      <aside
+        class="page-nav"
+        id="page-nav"
+        aria-label="Document pages"
+        data-i18n-aria-label="page_nav.section_aria"
+      >
         <!-- ドラッグで横幅変更。PAGE_NAV_MIN_WIDTH (180px) 未満まで縮めると snap で
              closed 状態になる (page-nav-resize.ts)。 -->
         <div
@@ -347,12 +394,13 @@
           aria-orientation="vertical"
           aria-label="Resize document pages panel"
           aria-controls="page-nav-list"
+          data-i18n-aria-label="page_nav.resize_aria"
         ></div>
         <!-- TOC ヘッダー: 「Pages」見出しと focus 時のみ表示される ↑↓ Enter キーヒント (§13)。
              page-nav 全体が :focus-within のときだけ ephemeral に hint が現れ、キーボードで
              移動できることを伝える。Help (?) ボタンは toolbar 側に配置。 -->
         <header class="page-nav-header">
-          <h2 class="page-nav-title">Pages</h2>
+          <h2 class="page-nav-title" data-i18n="page_nav.title">Pages</h2>
           <span class="page-nav-keyhints" aria-hidden="true">
             <kbd data-key="a">a</kbd><kbd data-key="w">w</kbd><kbd data-key="s">s</kbd
             ><kbd data-key="d">d</kbd> / <kbd data-key="e">e</kbd>
@@ -379,18 +427,29 @@
                エージェント連携時は review-request CLI で生成された HTML を開く前提なので、
                この空状態は実質「直接ブラウザで開いた利用者」だけが目にする -->
           <div class="empty-state" id="empty-state-default">
-            <div class="empty-state-title">No file loaded</div>
-            <div class="label empty-state-hint">Open a markdown file to start reviewing</div>
+            <div class="empty-state-title" data-i18n="empty.no_file_title">No file loaded</div>
+            <div class="label empty-state-hint" data-i18n="empty.no_file_description">
+              Open a markdown file to start reviewing
+            </div>
           </div>
           <!-- online edition の fetch 失敗時のみ JS が visible 化する持続的エラー表示。
                toast (1.8s で消える) と違い、ユーザーが状況を理解して別アクションに移れるよう
-               「別 URL を試す」ボタンで Open URL modal を再 open する経路を残す (§5.d / Step 5)。 -->
+               「別 URL を試す」ボタンで Open URL modal を再 open する経路を残す (§5.d / Step 5)。
+               online-error-message の textContent は boot.ts の formatFetchFailureMessage が
+               translate() で生成して書き込む (Step 3c)。 -->
           <div class="empty-state online-edition-only" id="empty-state-online-error" hidden>
-            <div class="empty-state-title">URL を読み込めませんでした</div>
+            <div class="empty-state-title" data-i18n="empty.url_failed_title">
+              Failed to load the URL
+            </div>
             <div class="label empty-state-hint" id="online-error-message"></div>
             <div class="empty-state-actions">
-              <button class="btn btn-primary" id="online-error-retry" type="button">
-                別 URL を試す
+              <button
+                class="btn btn-primary"
+                id="online-error-retry"
+                type="button"
+                data-i18n="empty.url_failed_button"
+              >
+                Try another URL
               </button>
             </div>
           </div>
@@ -409,6 +468,7 @@
           aria-orientation="vertical"
           aria-label="Resize comments panel"
           aria-controls="cmt-list"
+          data-i18n-aria-label="comments.resize_aria"
         ></div>
         <!-- focus 時のみ表示される ↑↓ PgUp/PgDn / h キーヒント (§13)。.doc-pane-keyhints と
              同じ anchor (height:0 / position:sticky) パターンで、comments panel のスクロールに
@@ -424,13 +484,15 @@
                隣接した 2 ボタンの border を内側で潰し、caret 側の半透明 border-left で
                「分割されているが 1 つの UI」として読ませる (CSS .split-btn-caret 参照) -->
           <div class="split-btn">
+            <!-- data-tooltip は workspace-fs.ts が「default / pending / folder」の 3 状態に
+                 動的更新する。静的 data-i18n-* は付けず Step 6 で動的更新側に翻訳を組み込む。 -->
             <button
               class="btn btn-primary split-btn-main tooltipped"
               id="btn-send"
               data-tooltip="Choose an output folder and write the current feedback there"
               disabled
             >
-              Write feedback.json
+              <span data-i18n="comments.write_feedback">Write feedback.json</span>
             </button>
             <button
               class="btn btn-primary split-btn-caret"
@@ -438,40 +500,70 @@
               aria-haspopup="true"
               aria-expanded="false"
               aria-label="Output folder options"
+              data-i18n-aria-label="comments.write_feedback_menu_aria"
             >
               <span aria-hidden="true">▾</span>
             </button>
             <div class="menu" id="menu-send" role="menu">
-              <button class="menu-item" id="btn-change-output" role="menuitem">
+              <button
+                class="menu-item"
+                id="btn-change-output"
+                role="menuitem"
+                data-i18n="comments.change_output_folder"
+              >
                 Change output folder…
               </button>
             </div>
           </div>
           <div class="menu-wrap">
+            <!-- cmt-count の textContent は comments.ts が動的に更新する (translatePlural)。
+                 caret span は子要素として保持する必要があるため leaf span 化していない。
+                 Step 6 で subscribeLangChange + dataset.i18n / i18nParams 連動を組み込む。 -->
             <button
               class="btn btn-ghost"
               id="btn-comments-menu"
               aria-haspopup="true"
               aria-expanded="false"
             >
-              <span id="cmt-count">0</span> comments<span class="menu-caret" aria-hidden="true"
-                >▾</span
-              >
+              <span id="cmt-count">0 comments</span>
+              <span class="menu-caret" aria-hidden="true">▾</span>
             </button>
             <div class="menu" id="menu-comments" role="menu">
-              <button class="menu-item" id="btn-copy" role="menuitem" disabled>Copy as JSON</button>
-              <button class="menu-item" id="btn-export" role="menuitem" disabled>
+              <button
+                class="menu-item"
+                id="btn-copy"
+                role="menuitem"
+                disabled
+                data-i18n="comments.copy"
+              >
+                Copy as JSON
+              </button>
+              <button
+                class="menu-item"
+                id="btn-export"
+                role="menuitem"
+                disabled
+                data-i18n="comments.export"
+              >
                 Export as JSON
               </button>
               <div class="menu-divider"></div>
-              <button class="menu-item menu-item-danger" id="btn-clear" role="menuitem" disabled>
+              <button
+                class="menu-item menu-item-danger"
+                id="btn-clear"
+                role="menuitem"
+                disabled
+                data-i18n="comments.discard"
+              >
                 Discard all
               </button>
             </div>
           </div>
         </div>
         <div id="cmt-list">
-          <div class="label comments-hint">Select text in the file to add a review comment.</div>
+          <div class="label comments-hint" data-i18n="comments.empty">
+            Select text in the file to add a review comment.
+          </div>
         </div>
       </aside>
     </main>
@@ -487,6 +579,7 @@
       aria-label="Show comments panel"
       aria-expanded="false"
       aria-controls="cmt-list"
+      data-i18n-aria-label="comments.toggle_panel_aria"
     >
       <span aria-hidden="true">‹</span>
     </button>
@@ -500,31 +593,43 @@
       aria-label="Show document pages panel"
       aria-expanded="false"
       aria-controls="page-nav-list"
+      data-i18n-aria-label="page_nav.toggle_panel_aria"
     >
       <span aria-hidden="true">›</span>
     </button>
 
-    <div id="floater"><span aria-hidden="true">＋</span> Comment</div>
+    <div id="floater">
+      <span aria-hidden="true">＋</span>
+      <span data-i18n="comments.floater_label">Comment</span>
+    </div>
 
     <div class="modal-backdrop" id="modal">
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-input-label">
-        <div class="label modal-label">Selected text</div>
+        <div class="label modal-label" data-i18n="modal.comment_selected_text">Selected text</div>
         <div id="modal-quote" class="cmt-quote modal-quote"></div>
-        <div class="label modal-label" id="modal-input-label">Add a review comment</div>
+        <div class="label modal-label" id="modal-input-label" data-i18n="modal.comment_label">
+          Add a review comment
+        </div>
         <textarea
           id="modal-input"
           rows="4"
           placeholder="Leave a comment"
           aria-labelledby="modal-input-label"
+          data-i18n-placeholder="modal.comment_placeholder"
         ></textarea>
         <div class="modal-actions">
           <span class="btn-with-hint">
             <span class="btn-hint-label" aria-hidden="true">
-              <kbd class="btn-key-hint">Esc</kbd> to cancel
+              <kbd class="btn-key-hint">Esc</kbd>
+              <span data-i18n="modal.hint_cancel">to cancel</span>
             </span>
-            <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
+            <button class="btn btn-ghost" id="modal-cancel" data-i18n="modal.comment_cancel">
+              Cancel
+            </button>
           </span>
-          <button class="btn btn-primary" id="modal-save">Comment</button>
+          <button class="btn btn-primary" id="modal-save" data-i18n="modal.comment_save">
+            Comment
+          </button>
         </div>
       </div>
     </div>
@@ -542,38 +647,60 @@
         aria-labelledby="help-modal-title"
       >
         <header class="modal-header">
-          <h2 class="modal-title" id="help-modal-title">Keyboard shortcuts</h2>
+          <h2 class="modal-title" id="help-modal-title" data-i18n="modal.kbd_help_title">
+            Keyboard shortcuts
+          </h2>
         </header>
         <div class="modal-body">
           <dl class="help-shortcuts">
             <dt><kbd>a</kbd> / <kbd>d</kbd></dt>
-            <dd>Move focus to the pane on the left / right (TOC ↔ doc ↔ comments)</dd>
+            <dd data-i18n="modal.kbd_help_desc_focus_lr">
+              Move focus to the pane on the left / right (TOC ↔ doc ↔ comments)
+            </dd>
             <dt><kbd>w</kbd> / <kbd>s</kbd></dt>
-            <dd>Move focus up / down within the current pane (line scroll in doc)</dd>
+            <dd data-i18n="modal.kbd_help_desc_focus_ud">
+              Move focus up / down within the current pane (line scroll in doc)
+            </dd>
             <dt><kbd>e</kbd></dt>
-            <dd>Activate the focused item (same as Enter / click)</dd>
+            <dd data-i18n="modal.kbd_help_desc_activate">
+              Activate the focused item (same as Enter / click)
+            </dd>
             <dt><kbd>f</kbd></dt>
-            <dd>Open search</dd>
+            <dd data-i18n="modal.kbd_help_desc_search">Open search</dd>
             <dt><kbd>h</kbd></dt>
-            <dd>Show this help</dd>
+            <dd data-i18n="modal.kbd_help_desc_help">Show this help</dd>
             <dt><kbd>↑</kbd> / <kbd>↓</kbd></dt>
-            <dd>Move within TOC / comments (same as w / s)</dd>
+            <dd data-i18n="modal.kbd_help_desc_arrows">
+              Move within TOC / comments (same as w / s)
+            </dd>
             <dt><kbd>Home</kbd> / <kbd>End</kbd></dt>
-            <dd>Jump to first / last TOC entry</dd>
+            <dd data-i18n="modal.kbd_help_desc_home_end">Jump to first / last TOC entry</dd>
             <dt><kbd>Tab</kbd></dt>
-            <dd>Move forward through TOC links and other controls</dd>
+            <dd data-i18n="modal.kbd_help_desc_tab">
+              Move forward through TOC links and other controls
+            </dd>
             <dt><kbd>Enter</kbd></dt>
-            <dd>Activate the focused entry (or Enter / Shift+Enter for next/prev search match)</dd>
+            <dd data-i18n="modal.kbd_help_desc_enter">
+              Activate the focused entry (or Enter / Shift+Enter for next/prev search match)
+            </dd>
             <dt><kbd>Esc</kbd></dt>
-            <dd>Close any open modal, menu, or search</dd>
+            <dd data-i18n="modal.kbd_help_desc_escape">Close any open modal, menu, or search</dd>
           </dl>
         </div>
         <footer class="modal-actions">
           <span class="btn-with-hint">
             <span class="btn-hint-label" aria-hidden="true">
-              <kbd class="btn-key-hint">Esc</kbd> to close
+              <kbd class="btn-key-hint">Esc</kbd>
+              <span data-i18n="modal.hint_close">to close</span>
             </span>
-            <button type="button" class="btn btn-primary" id="help-modal-close">Close</button>
+            <button
+              type="button"
+              class="btn btn-primary"
+              id="help-modal-close"
+              data-i18n="modal.kbd_help_close"
+            >
+              Close
+            </button>
           </span>
         </footer>
       </div>
@@ -592,10 +719,14 @@
         aria-labelledby="open-url-modal-title"
       >
         <header class="modal-header">
-          <h2 class="modal-title" id="open-url-modal-title">Open URL</h2>
+          <h2 class="modal-title" id="open-url-modal-title" data-i18n="modal.open_url_title">
+            Open URL
+          </h2>
         </header>
         <form id="open-url-form" class="modal-body" novalidate>
-          <label for="open-url-input" class="open-url-label"> Markdown URL (https only) </label>
+          <label for="open-url-input" class="open-url-label" data-i18n="modal.open_url_label">
+            Markdown URL (https only)
+          </label>
           <input
             type="url"
             id="open-url-input"
@@ -605,22 +736,33 @@
             spellcheck="false"
             placeholder="https://github.com/oubakiou/mdxg-redline/blob/main/README.md"
             required
+            data-i18n-placeholder="modal.open_url_placeholder"
           />
           <p id="open-url-error" class="open-url-error" role="alert" hidden></p>
           <!-- allowlist の <ul> は wireOpenUrlModal が <script id="online-allowlist"> から
                読んで動的注入する。プレースホルダの placeholder text は注入失敗時の最小 fallback。 -->
           <section class="open-url-help" id="open-url-help">
-            <p class="open-url-help-lead">Accepted hosts (https only):</p>
+            <p class="open-url-help-lead" data-i18n="modal.open_url_help_lead">
+              Accepted hosts (https only):
+            </p>
             <ul class="open-url-help-allowlist" id="open-url-help-allowlist"></ul>
           </section>
         </form>
         <footer class="modal-actions">
-          <button type="button" class="btn" id="open-url-modal-cancel">Cancel</button>
+          <button
+            type="button"
+            class="btn"
+            id="open-url-modal-cancel"
+            data-i18n="modal.open_url_cancel"
+          >
+            Cancel
+          </button>
           <button
             type="submit"
             class="btn btn-primary"
             id="open-url-modal-submit"
             form="open-url-form"
+            data-i18n="modal.open_url_submit"
           >
             Open
           </button>
@@ -639,10 +781,22 @@
         aria-labelledby="paste-markdown-modal-title"
       >
         <header class="modal-header">
-          <h2 class="modal-title" id="paste-markdown-modal-title">Paste markdown</h2>
+          <h2
+            class="modal-title"
+            id="paste-markdown-modal-title"
+            data-i18n="modal.paste_markdown_title"
+          >
+            Paste markdown
+          </h2>
         </header>
         <form id="paste-markdown-form" class="modal-body" novalidate>
-          <label for="paste-markdown-name" class="paste-markdown-label"> Document name </label>
+          <label
+            for="paste-markdown-name"
+            class="paste-markdown-label"
+            data-i18n="modal.paste_markdown_name_label"
+          >
+            Document name
+          </label>
           <input
             type="text"
             id="paste-markdown-name"
@@ -650,8 +804,13 @@
             autocomplete="off"
             spellcheck="false"
             placeholder="pasted.md"
+            data-i18n-placeholder="modal.paste_markdown_name_placeholder"
           />
-          <label for="paste-markdown-input" class="paste-markdown-label paste-markdown-body-label">
+          <label
+            for="paste-markdown-input"
+            class="paste-markdown-label paste-markdown-body-label"
+            data-i18n="modal.paste_markdown_body_label"
+          >
             Markdown source
           </label>
           <textarea
@@ -661,16 +820,25 @@
             placeholder="# Heading&#10;&#10;Paste or type markdown here."
             spellcheck="false"
             required
+            data-i18n-placeholder="modal.paste_markdown_body_placeholder"
           ></textarea>
           <p id="paste-markdown-error" class="paste-markdown-error" role="alert" hidden></p>
         </form>
         <footer class="modal-actions">
-          <button type="button" class="btn" id="paste-markdown-modal-cancel">Cancel</button>
+          <button
+            type="button"
+            class="btn"
+            id="paste-markdown-modal-cancel"
+            data-i18n="modal.paste_markdown_cancel"
+          >
+            Cancel
+          </button>
           <button
             type="submit"
             class="btn btn-primary"
             id="paste-markdown-modal-submit"
             form="paste-markdown-form"
+            data-i18n="modal.paste_markdown_submit"
           >
             Open
           </button>
@@ -689,7 +857,9 @@
         aria-labelledby="mermaid-modal-title"
       >
         <header class="modal-header">
-          <h2 class="modal-title" id="mermaid-modal-title">Diagram</h2>
+          <h2 class="modal-title" id="mermaid-modal-title" data-i18n="modal.mermaid_title">
+            Diagram
+          </h2>
           <div class="modal-zoom-controls">
             <span class="modal-zoom-hint" aria-hidden="true">
               <svg
@@ -704,13 +874,14 @@
                 <rect x="6" y="3" width="12" height="18" rx="6" />
                 <line x1="12" y1="7" x2="12" y2="11" />
               </svg>
-              Scroll to zoom &middot; drag to pan
+              <span data-i18n="modal.mermaid_zoom_hint">Scroll to zoom · drag to pan</span>
             </span>
             <button
               type="button"
               class="btn modal-zoom-btn"
               id="mermaid-modal-zoom-out"
               aria-label="Zoom out"
+              data-i18n-aria-label="modal.mermaid_zoom_out_aria"
             >
               &minus;
             </button>
@@ -719,6 +890,7 @@
               class="btn modal-zoom-btn"
               id="mermaid-modal-zoom-in"
               aria-label="Zoom in"
+              data-i18n-aria-label="modal.mermaid_zoom_in_aria"
             >
               +
             </button>
@@ -728,9 +900,17 @@
         <footer class="modal-actions">
           <span class="btn-with-hint">
             <span class="btn-hint-label" aria-hidden="true">
-              <kbd class="btn-key-hint">Esc</kbd> to close
+              <kbd class="btn-key-hint">Esc</kbd>
+              <span data-i18n="modal.hint_close">to close</span>
             </span>
-            <button type="button" class="btn btn-primary" id="mermaid-modal-close">Close</button>
+            <button
+              type="button"
+              class="btn btn-primary"
+              id="mermaid-modal-close"
+              data-i18n="modal.mermaid_close"
+            >
+              Close
+            </button>
           </span>
         </footer>
       </div>

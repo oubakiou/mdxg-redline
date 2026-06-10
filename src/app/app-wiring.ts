@@ -49,6 +49,7 @@ import {
 import { createDropdownMenu } from './dom/menu'
 import { createOnlineAssetCache, type OnlineAssetCache } from './online/asset-loader'
 import { decorateLoadFromMarkdownForOnline } from './online/runtime-decorator'
+import { translate } from './i18n/i18n-browser'
 import { wirePasteMarkdownModal } from './chrome/paste-markdown-modal'
 import { initCommentsResize } from './comments/comments-resize'
 import { initPageNavResize } from './navigation/page-nav-resize'
@@ -204,7 +205,7 @@ const launchBoot = (loadFromMarkdown: BootstrapDeps['loadFromMarkdown']): void =
   boot({
     loadFromMarkdown,
   }).catch((): void => {
-    toast('Startup failed')
+    toast(translate('toast.startup_failed'))
     // paint 前ガード (#doc-wrap / .doc-pane を隠す class) を解除し、空状態を見せる
     document.documentElement.classList.remove('has-embedded-md')
     document.documentElement.classList.add('doc-ready')

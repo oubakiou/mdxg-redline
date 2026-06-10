@@ -25,6 +25,7 @@ import {
 import { parseSvg, wireMermaidSvgExpand } from './mermaid-svg-interactions'
 import { reapplyAllMarks } from '../comments/mark-engine'
 import { state } from '../state/app-state'
+import { translatePlural } from '../i18n/i18n-browser'
 
 // dist/mermaid.mjs 側で `globalThis.__mdxgMermaid = mermaid` がセットされる契約 (§3.2 / §5.k)。
 // 実 mermaid 型を import すると bundle に重複が出るため、必要最小限の subset を local interface に
@@ -157,10 +158,14 @@ const upgradeAllMermaidPres = async (
 
 const MERMAID_APPLIED_SELECTOR = `pre[${MERMAID_ATTR.applied}="${MERMAID_ATTR_VALUE}"]`
 
+// 汎用キー `toast.render_failed_*` を流用する。Diagram block / Math expression の
+// 区別はユーザー視点で軽微で、辞書を 2 セット維持するコストの方が大きい (KATEX 側と同じ判断)。
 const MERMAID_FAILURE_LABELS = {
-  plural: (count: number): string => `Diagram render failed for ${count} blocks`,
-  singular: 'Diagram render failed for 1 block',
-} as const
+  plural: (count: number): string => translatePlural({ baseKey: 'toast.render_failed', count }),
+  get singular(): string {
+    return translatePlural({ baseKey: 'toast.render_failed', count: 1 })
+  },
+}
 
 /**
  * `#doc` 配下の `<pre data-mermaid="1">` を順次 SVG に upgrade する。

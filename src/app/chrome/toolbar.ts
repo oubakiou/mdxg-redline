@@ -11,12 +11,14 @@ import {
 } from './theme'
 import { qs, qsInput, toast } from '../dom/dom-utils'
 import type { ExportPayload } from '../../core/types'
+import type { MessageKey } from '../i18n/messages.en'
 import { confirmDialog } from '../dom/dialog'
 import { exportBaseName } from '../../core/review-export'
 import { reapplyAllMarks } from '../comments/mark-engine'
 import { redrawMermaidForTheme } from '../renderers/mermaid'
 import { renderComments } from '../comments/comments'
 import { replaceComments, state } from '../state/app-state'
+import { translate, translatePlural } from '../i18n/i18n-browser'
 
 /** loadFromMarkdown のみ循環を避けるため runtime 経由で受け取る */
 export interface ToolbarRuntime {
@@ -94,9 +96,9 @@ const fallbackCopy = (text: string): void => {
   document.body.appendChild(textarea)
   textarea.select()
   if (copySelectedText()) {
-    toast('Copied')
+    toast(translate('toast.copied'))
   } else {
-    toast('Copy failed')
+    toast(translate('toast.copy_failed'))
   }
   document.body.removeChild(textarea)
 }
@@ -106,7 +108,7 @@ const clearAllComments = (): void => {
   replaceComments([])
   reapplyAllMarks()
   renderComments()
-  toast('Comments discarded')
+  toast(translate('toast.comments_discarded'))
 }
 
 // テキストアイコン (Unicode シンボル) を使うことで OS 絵文字差異を回避しつつ、追加リソース無しで
@@ -117,16 +119,16 @@ const THEME_ICON: Readonly<Record<StoredTheme, string>> = {
   system: '◐',
 }
 
-const THEME_LABEL: Readonly<Record<StoredTheme, string>> = {
-  dark: 'Theme: dark',
-  light: 'Theme: light',
-  system: 'Theme: system',
+const THEME_LABEL_KEY: Readonly<Record<StoredTheme, MessageKey>> = {
+  dark: 'toolbar.theme_dark_aria',
+  light: 'toolbar.theme_light_aria',
+  system: 'toolbar.theme_system_aria',
 }
 
-const THEME_TOOLTIP_NEXT: Readonly<Record<StoredTheme, string>> = {
-  dark: 'Switch to system',
-  light: 'Switch to dark',
-  system: 'Switch to light',
+const THEME_TOOLTIP_NEXT_KEY: Readonly<Record<StoredTheme, MessageKey>> = {
+  dark: 'toolbar.theme_switch_system',
+  light: 'toolbar.theme_switch_dark',
+  system: 'toolbar.theme_switch_light',
 }
 
 // FOUC inline script と同じ P1 (cliHint > stored > 'system') で起動時の effective StoredTheme を求める。
@@ -139,8 +141,8 @@ const initialSelection = (): StoredTheme => readCliHint() ?? readStoredTheme() ?
 /** session state 値から button の見た目とアクセシブル名 / tooltip を更新する */
 const renderThemeButton = (button: HTMLElement, selection: StoredTheme): void => {
   button.textContent = THEME_ICON[selection]
-  button.setAttribute('aria-label', THEME_LABEL[selection])
-  button.setAttribute('data-tooltip', THEME_TOOLTIP_NEXT[selection])
+  button.setAttribute('aria-label', translate(THEME_LABEL_KEY[selection]))
+  button.setAttribute('data-tooltip', translate(THEME_TOOLTIP_NEXT_KEY[selection]))
 }
 
 /**
@@ -231,11 +233,11 @@ const wireMarkdownLoad = (runtime: ToolbarRuntime): void => {
 const wireExport = (runtime: ToolbarRuntime): void => {
   qs('#btn-export').addEventListener('click', (): void => {
     if (!state.markdown) {
-      toast('Nothing to export')
+      toast(translate('toast.nothing_to_export'))
       return
     }
     downloadJson(runtime.buildExportPayload())
-    toast('Exported')
+    toast(translate('toast.exported'))
   })
 }
 
@@ -243,13 +245,13 @@ const wireExport = (runtime: ToolbarRuntime): void => {
 const wireCopy = (runtime: ToolbarRuntime): void => {
   qs('#btn-copy').addEventListener('click', async (): Promise<void> => {
     if (!state.markdown) {
-      toast('Nothing to copy')
+      toast(translate('toast.nothing_to_copy'))
       return
     }
     const text = JSON.stringify(runtime.buildExportPayload(), null, 2)
     try {
       await navigator.clipboard.writeText(text)
-      toast(`Copied · ${runtime.commentCountLabel()}`)
+      toast(translate('toast.copied_with_count', { count: runtime.commentCountLabel() }))
     } catch {
       fallbackCopy(text)
     }
@@ -260,12 +262,15 @@ const wireCopy = (runtime: ToolbarRuntime): void => {
 const wireClear = (): void => {
   qs('#btn-clear').addEventListener('click', async (): Promise<void> => {
     if (!state.comments.length) {
-      toast('No comments to clear')
+      toast(translate('toast.no_comments_to_clear'))
       return
     }
     const confirmed = await confirmDialog(
-      `Delete all ${state.comments.length} comments?`,
-      'This cannot be undone.'
+      translatePlural({
+        baseKey: 'modal.confirm_delete_comments',
+        count: state.comments.length,
+      }),
+      translate('modal.confirm_warn')
     )
     if (!confirmed) {
       return

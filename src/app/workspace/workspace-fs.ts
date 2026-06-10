@@ -4,6 +4,7 @@
 
 import { IDB } from './storage'
 import { noticeDialog } from '../dom/dialog'
+import { translate } from '../i18n/i18n-browser'
 
 // File System Access API の型は実装依存のため、利用箇所だけ narrow に定義する
 export type FsPermissionState = 'granted' | 'denied' | 'prompt'
@@ -112,9 +113,8 @@ export const safelyStoredHandle = async (): Promise<FsDirectoryHandle | null> =>
 export const pickOutputFolder = async (): Promise<FsDirectoryHandle | null> => {
   if (!wsSupported() || !globalThis.showDirectoryPicker) {
     await noticeDialog(
-      'File System Access API is not supported',
-      'Use Chrome, Edge, or another Chromium-based browser to enable writing feedback.json directly to a folder. ' +
-        'You can still use Export as JSON / Copy as JSON.'
+      translate('dialog.fs_access_unsupported_title'),
+      translate('dialog.fs_access_unsupported_body')
     )
     return null
   }

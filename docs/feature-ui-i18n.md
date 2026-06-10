@@ -821,7 +821,15 @@ export const translateCli = (
 
 成果物: 3 ファイル新規 + in-source test（env / navigator / 優先順位 / 不正値 / 未知 key / placeholder / plural suffix 解決）。ブラウザ専用関数 (`setLang` 等) が Node で誤って呼ばれないことは TypeScript 型 + import 経路で構造的に防ぐ
 
-### Step 3: 翻訳対象抽出と辞書本体の埋め
+### Step 3: (完了済み) 翻訳対象抽出と辞書本体への適用
+
+**状態**: **完了済み** — 未コミット。`src/review.html` の主要な textContent / aria-label / placeholder / data-tooltip を `data-i18n*` 属性で markup し、`src/app/chrome/toolbar.ts` / `paste-markdown-modal.ts` / `src/app/comments/*.ts` / `src/app/document/code-copy-wrap.ts` / `src/app/workspace/workspace.ts` / `workspace-fs.ts` / `src/app/boot.ts` / `src/app/online/open-url-modal.ts` / `src/app/navigation/page-navigation-render.ts` / `src/app/renderers/{mermaid-svg-interactions,katex,mermaid}.ts` / `src/app/app-wiring.ts` の動的文言を `translate(key)` / `translatePlural({...})` に置き換え。`commentCountLabel` を `src/app/comments/comment-count-label.ts`、`formatMatchCount` を `src/app/search/format-match-count.ts` に移動 (HTML bundle 専用、CLI 巻き込み防止)。`KATEX_FAILURE_LABELS` / `MERMAID_FAILURE_LABELS` は汎用 `toast.render_failed_*` キーを流用 (Math expression / Diagram block の区別はユーザー視点で軽微との判断、辞書を 2 セット維持しない)。加えて Step 3 セルフレビュー後の追加フィードバックで、(a) `#status` の textContent 直接書き換え経路 (`src/app/review.ts:loadFromMarkdown` / `src/app/workspace/workspace.ts:finishWrite`) を `dataset.i18n` + `dataset.i18nParams` JSON + `applyI18nDataset(statusEl)` 経路に統一して言語切替時に古い data-i18n 属性で上書きされる退行を解消、(b) `refreshSendButtonTooltip` も同じく `dataset.i18nDataTooltip` + `i18nParams` 経路に統一して未使用だった `comments.write_feedback_tooltip_*` 辞書を活用、を実施。`vp check` / `vp test` (全 1352 tests + 4 skipped) 通過。Step 5 の起動シーケンス (`initLangFromBrowser` + `applyI18nDataset(document)`) が未配線のため、現状はすべて en 辞書を引いて従来表示と一致。
+
+スコープ外として Step 6 に持ち越し:
+
+- `src/app/online/source-display.ts` の `buildSourceLinkHtml` → `buildSourceLinkElement` 書き換え (innerHTML 経路を DOM API に置換 + `online.label.source` 翻訳)
+- toolbar 内 `#cmt-count` の textContent 動的更新を subscribeLangChange 連動に変える dataset 化 (現状 `commentCountLabel` 関数で翻訳済み文字列を生成するだけ)
+- toast / modal の表示中 toggle 追従 (生存期間ベースの判断、Step 6 §3.5 参照)
 
 - `src/review.html` の文言（約 60 個）を `data-i18n` 属性化して辞書に登録
 - `src/app/chrome/*.ts` / `src/app/document/*.ts` の動的文言（約 15 個 / toast / modal）を `translate(key)` 呼び出しに置き換え

@@ -5,11 +5,10 @@
 import type { Comment, ExportPayload } from '../core/types'
 import { type NavigateTarget, resolveTargetFromHash } from './document/pages'
 import { appendFootnotesPage, splitIntoPages } from '../core/page-split'
-import {
-  buildReviewExportPayload,
-  commentCountLabel as formatCommentCount,
-} from '../core/review-export'
-import { computeDocHash, formatLoadedStatus } from '../core/embed'
+import { applyI18nDataset } from './i18n/i18n-browser'
+import { buildReviewExportPayload } from '../core/review-export'
+import { commentCountLabel as formatCommentCount } from './comments/comment-count-label'
+import { computeDocHash } from '../core/embed'
 import { loadDocumentState, markFeedbackUnsaved, state } from './state/app-state'
 import { renderAll, scrollToTargetAfterRender } from './navigation/navigation-orchestrator'
 import { bootstrapReviewApp } from './app-wiring'
@@ -51,7 +50,12 @@ export const loadFromMarkdown = async (name: string, text: string): Promise<void
   const { docHash, target } = await initStateFromMarkdown(name, text)
   markFeedbackUnsaved()
   renderAll()
-  qs('#status').textContent = formatLoadedStatus(name, docHash)
+  // dataset 経由で書き換えることで言語切替に追従する。
+  // applyI18nDataset(statusEl) で現在の currentLang で textContent が確定する。
+  const statusEl = qs('#status')
+  statusEl.dataset.i18n = 'toolbar.status_loaded'
+  statusEl.dataset.i18nParams = JSON.stringify({ docHash, docName: name })
+  applyI18nDataset(statusEl)
   // 初期ロードでは `pageChanged=true` 相当 (activePageIndex は hash から復元したばかり) で、
   // page-only hash (`#page-3` 等) でも instant scroll で位置確定させる。
   scrollToTargetAfterRender(target, true, 'auto')
@@ -84,28 +88,11 @@ const dummyCommentForTest = (id: string): Comment => ({
 if (import.meta.vitest) {
   const { describe, it, expect } = import.meta.vitest
 
-  describe('commentCountLabel (state 依存)', () => {
-    it('1 件のときは単数形', () => {
-      const prev = state.comments
-      state.comments = [dummyCommentForTest('x')]
-      try {
-        expect(commentCountLabel()).toBe('1 comment')
-      } finally {
-        state.comments = prev
-      }
-    })
-
-    it('0 件のときは複数形 (i18n 非対応の既知挙動)', () => {
-      const prev = state.comments
-      state.comments = []
-      try {
-        expect(commentCountLabel()).toBe('0 comments')
-      } finally {
-        state.comments = prev
-      }
-    })
-
-    it('2 件以上のときは複数形', () => {
+  describe('commentCountLabel (state 依存の薄いラッパ)', () => {
+    // suffix 解決 (_zero / _one / _other) は src/app/comments/comment-count-label.ts の test で
+    // 直接検証済み。ここでは state.comments.length を参照して formatCommentCount に流す
+    // 配線部分だけを 1 ケース確認する。
+    it('state.comments.length を formatCommentCount に渡している', () => {
       const prev = state.comments
       state.comments = [
         dummyCommentForTest('a'),

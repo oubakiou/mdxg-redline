@@ -9,6 +9,7 @@ import { parsePendingSelection } from '../../core/feedback'
 import { reapplyAllMarks } from './mark-engine'
 import { renderComments } from './comments'
 import { state } from '../state/app-state'
+import { translate } from '../i18n/i18n-browser'
 
 /**
  * コメント入力モーダルの状態を表す tagged union。
@@ -28,12 +29,12 @@ const modalState: { current: ModalState } = { current: { kind: 'closed' } }
 
 const setModalChrome = (mode: 'add' | 'edit'): void => {
   if (mode === 'edit') {
-    qs('#modal-input-label').textContent = 'Edit review comment'
-    qs('#modal-save').textContent = 'Save'
+    qs('#modal-input-label').textContent = translate('comments.edit_label')
+    qs('#modal-save').textContent = translate('comments.save_button')
     return
   }
-  qs('#modal-input-label').textContent = 'Add a review comment'
-  qs('#modal-save').textContent = 'Comment'
+  qs('#modal-input-label').textContent = translate('modal.comment_label')
+  qs('#modal-save').textContent = translate('modal.comment_save')
 }
 
 const showModalWithBody = (quote: string, body: string): void => {
@@ -144,7 +145,7 @@ const saveEditedComment = (commentId: string, body: string): void => {
   }
   renderComments()
   closeCommentModal()
-  toast('Comment updated')
+  toast(translate('toast.comment_updated'))
 }
 
 const saveNewComment = (selection: PendingSelection, body: string): void => {
@@ -156,7 +157,7 @@ const saveNewComment = (selection: PendingSelection, body: string): void => {
   reapplyAllMarks()
   renderComments()
   closeCommentModal()
-  toast('Comment added')
+  toast(translate('toast.comment_added'))
 }
 
 const saveModalComment = async (): Promise<void> => {

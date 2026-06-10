@@ -70,13 +70,8 @@ export const exportBaseName = (docName: string | null): string => {
   return 'review'
 }
 
-/** トースト用のコメント件数ラベル。単数/複数を簡易的に切り替える（i18n 対応はしていない） */
-export const commentCountLabel = (count: number): string => {
-  if (count === 1) {
-    return `${count} comment`
-  }
-  return `${count} comments`
-}
+// commentCountLabel は i18n 化に伴い src/app/comments/comment-count-label.ts に移動した
+// (HTML bundle 専用、translatePlural 経由)。CLI bundle に巻き込まないため core 層には残さない。
 
 // Phase 5 で pageIndex / sourceLine が必須化されたが、テストでは個別 case ごとに必要な値だけ
 // overrides で差し替えれば十分。固定 default で fixture を最小限に留める。
@@ -109,19 +104,7 @@ if (import.meta.vitest) {
     })
   })
 
-  describe('commentCountLabel', () => {
-    it('1 件のときは単数形', () => {
-      expect(commentCountLabel(1)).toBe('1 comment')
-    })
-
-    it('0 件のときは複数形 (i18n 非対応の既知挙動)', () => {
-      expect(commentCountLabel(0)).toBe('0 comments')
-    })
-
-    it('2 件以上のときは複数形', () => {
-      expect(commentCountLabel(3)).toBe('3 comments')
-    })
-  })
+  // commentCountLabel の test は src/app/comments/comment-count-label.ts に移動済 (i18n 化に伴う)。
 
   describe('buildReviewExportPayload', () => {
     it('state から export payload を構築する', () => {

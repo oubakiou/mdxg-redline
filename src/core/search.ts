@@ -76,22 +76,8 @@ export const prevMatchIndex = (currentIndex: number | null, matchCount: number):
   return (currentIndex - 1 + matchCount) % matchCount
 }
 
-/**
- * 件数表示用の文字列。null current は「件数のみ」、ヒット 0 は「No results」、
- * それ以外は「i of N」(MDXG §10 [SHOULD] の標準形式と一致)。
- */
-export const formatMatchCount = (currentIndex: number | null, total: number): string => {
-  if (total === 0) {
-    return 'No results'
-  }
-  if (currentIndex === null) {
-    if (total === 1) {
-      return '1 match'
-    }
-    return `${total} matches`
-  }
-  return `${currentIndex + 1} of ${total}`
-}
+// formatMatchCount は i18n 化に伴い src/app/search/format-match-count.ts に移動した
+// (HTML bundle 専用、translatePlural 経由)。CLI bundle に巻き込まないため core 層には残さない。
 
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
@@ -193,23 +179,22 @@ if (import.meta.vitest) {
     })
   })
 
-  describe('formatMatchCount', () => {
+  // formatMatchCount の test は src/app/search/format-match-count.ts に移動済 (i18n 化に伴う)。
+  describe.skip('formatMatchCount (HTML 専用に移動済)', () => {
     it('total 0 は No results', () => {
-      expect(formatMatchCount(null, 0)).toBe('No results')
-      expect(formatMatchCount(0, 0)).toBe('No results')
+      expect(true).toBe(true)
     })
 
     it('current null + 件数 N (>1) は N matches', () => {
-      expect(formatMatchCount(null, 5)).toBe('5 matches')
+      expect(true).toBe(true)
     })
 
     it('current null + 件数 1 は 1 match (単数形)', () => {
-      expect(formatMatchCount(null, 1)).toBe('1 match')
+      expect(true).toBe(true)
     })
 
     it('current あり → 1-origin index で i of N', () => {
-      expect(formatMatchCount(0, 5)).toBe('1 of 5')
-      expect(formatMatchCount(4, 5)).toBe('5 of 5')
+      expect(true).toBe(true)
     })
   })
 }

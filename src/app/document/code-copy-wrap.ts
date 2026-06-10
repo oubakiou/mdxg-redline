@@ -4,6 +4,7 @@
 import { MERMAID_ATTR, MERMAID_ATTR_VALUE } from '../../core/mermaid-attrs'
 import { normalizeLangIdentifier } from '../../core/scan-fenced-langs'
 import { toast } from '../dom/dom-utils'
+import { translate } from '../i18n/i18n-browser'
 
 const COPY_FEEDBACK_MS = 1500
 
@@ -17,10 +18,10 @@ const setCopyButtonLabel = (btn: HTMLButtonElement, label: string): void => {
 const handleCopyClick = async (btn: HTMLButtonElement, pre: HTMLElement): Promise<void> => {
   try {
     await navigator.clipboard.writeText(pre.textContent ?? '')
-    setCopyButtonLabel(btn, 'Copied')
-    setTimeout((): void => setCopyButtonLabel(btn, 'Copy'), COPY_FEEDBACK_MS)
+    setCopyButtonLabel(btn, translate('modal.code_copied'))
+    setTimeout((): void => setCopyButtonLabel(btn, translate('modal.code_copy')), COPY_FEEDBACK_MS)
   } catch {
-    toast('Copy failed. Select the text manually.')
+    toast(translate('toast.copy_failed_with_hint'))
   }
 }
 
@@ -28,10 +29,10 @@ const buildCopyButton = (pre: HTMLElement): HTMLButtonElement => {
   const btn = document.createElement('button')
   btn.type = 'button'
   btn.className = 'code-copy-btn'
-  btn.setAttribute('aria-label', 'Copy code')
+  btn.setAttribute('aria-label', translate('modal.code_copy_aria'))
   const span = document.createElement('span')
   span.setAttribute('aria-hidden', 'true')
-  span.textContent = 'Copy'
+  span.textContent = translate('modal.code_copy')
   btn.appendChild(span)
   btn.addEventListener('click', async (): Promise<void> => {
     await handleCopyClick(btn, pre)

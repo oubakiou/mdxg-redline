@@ -8,6 +8,7 @@ import { createStaticModalController, type StaticModalController } from '../dom/
 import { qs, qsInput } from '../dom/dom-utils'
 import { resolveOnlineAllowlistFromJson } from '../../core/online-allowlist-config'
 import { REWRITTEN_INPUT_HOSTS } from '../../core/online-url-normalize'
+import { translate } from '../i18n/i18n-browser'
 
 const OPEN_URL_MODAL_BACKDROP_ID = 'open-url-modal-backdrop'
 const OPEN_URL_MODAL_CANCEL_ID = 'open-url-modal-cancel'
@@ -91,7 +92,7 @@ const handleSubmit = (event: SubmitEvent): void => {
   const input = qsInput(`#${OPEN_URL_INPUT_ID}`)
   const raw = input.value.trim()
   if (raw === '') {
-    showInputError('URL を入力してください')
+    showInputError(translate('online.error.empty_url_input'))
     return
   }
   // submit 後は同一ページを reload するので、エラー表示はリセットしておく
@@ -144,7 +145,9 @@ export const formatAllowlistEntriesForHelp = (allowlist: readonly string[]): rea
   })
 
 const formatRewrittenInputHostEntries = (): readonly string[] =>
-  REWRITTEN_INPUT_HOSTS.map(({ input, target }): string => `${input} (rewritten to ${target})`)
+  REWRITTEN_INPUT_HOSTS.map(({ input, target }): string =>
+    translate('online.help.url_rewritten', { input, target })
+  )
 
 /**
  * `<script id="online-allowlist">` JSON を読んで、Open URL modal の help block に並べる

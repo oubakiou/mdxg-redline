@@ -3,7 +3,8 @@
 // state singleton は search-state.ts に分離されており、本ファイルは「state を読んで DOM に流す」
 // 方向の関数を提供する。
 
-import { type MatchRange, findMatchesInText, formatMatchCount } from '../../core/search'
+import { type MatchRange, findMatchesInText } from '../../core/search'
+import { formatMatchCount } from './format-match-count'
 import {
   rangeFromEndpoints,
   textRangeFromOffsets,

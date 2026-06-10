@@ -6,6 +6,7 @@
 
 import { createStaticModalController, type StaticModalController } from '../dom/static-modal'
 import { qs, qsInput } from '../dom/dom-utils'
+import { translate } from '../i18n/i18n-browser'
 
 const PASTE_MODAL_BACKDROP_ID = 'paste-markdown-modal-backdrop'
 const PASTE_MODAL_CANCEL_ID = 'paste-markdown-modal-cancel'
@@ -98,7 +99,7 @@ const loadOrShowError = async (
     await runtime.loadFromMarkdown(docName, body)
     return true
   } catch {
-    showInputError('読み込みに失敗しました。Markdown を確認してください')
+    showInputError(translate('modal.paste_markdown_load_failed'))
     return false
   }
 }
@@ -111,7 +112,7 @@ const handleSubmit = async (
   event.preventDefault()
   const body = qsInput(`#${PASTE_BODY_INPUT_ID}`).value
   if (body.trim() === '') {
-    showInputError('Markdown を入力してください')
+    showInputError(translate('modal.paste_markdown_empty_error'))
     return
   }
   const docName = resolvePasteDocName(qsInput(`#${PASTE_NAME_INPUT_ID}`).value)

@@ -15,6 +15,8 @@ import { showOnlineSource } from './online/source-display'
 import { resolveOnlineAllowlistFromJson } from '../core/online-allowlist-config'
 import { normalizeGithubViewUrl } from '../core/online-url-normalize'
 import { restoreWorkspaceHandle } from './workspace/workspace'
+import type { MessageKey } from './i18n/messages.en'
+import { translate } from './i18n/i18n-browser'
 
 interface BootRuntime {
   loadFromMarkdown: (name: string, text: string) => Promise<void>
@@ -123,36 +125,53 @@ export const deriveDocNameFromUrl = (url: string): string => {
 
 type FetchFailure = Exclude<FetchResult, { ok: true }>
 
+// pre_validation_failed の reason は二段構造で辞書化する: reason を `empty.validation_reason_*`
+// で翻訳し、その文字列を `empty.url_failed_validation` の `{reason}` placeholder に流す。
+const VALIDATION_REASON_KEY: Readonly<Record<string, MessageKey>> = {
+  host_not_allowlisted: 'empty.validation_reason_host_not_allowlisted',
+  malformed: 'empty.validation_reason_malformed',
+  scheme_not_https: 'empty.validation_reason_scheme_not_https',
+}
+
+const formatValidationFailure = (reason: string, url: string): string => {
+  const reasonKey = VALIDATION_REASON_KEY[reason]
+  let reasonText = reason
+  if (typeof reasonKey === 'string') {
+    reasonText = translate(reasonKey)
+  }
+  return translate('empty.url_failed_validation', { reason: reasonText, url })
+}
+
 /** §5.d エラーカテゴリのメッセージ。Step 5 で error modal に richen 化する想定の暫定 toast 用 */
 export const formatFetchFailureMessage = (failure: FetchFailure): string => {
   switch (failure.error) {
     case 'http_error': {
-      return `URL が見つかりません (HTTP ${failure.status})`
+      return translate('empty.url_failed_http_error', { status: failure.status })
     }
     case 'network_error': {
-      return `ネットワークエラー: ${failure.message}`
+      return translate('empty.url_failed_network')
     }
     case 'pre_validation_failed': {
-      return `URL が対応リストに含まれていません (${failure.reason}): ${failure.url}`
+      return formatValidationFailure(failure.reason, failure.url)
     }
     case 'redirected_off_allowlist': {
-      return `リダイレクト先が対応 URL リスト外でした: ${failure.finalUrl}`
+      return translate('empty.url_failed_redirect', { finalUrl: failure.finalUrl })
     }
     case 'size_exceeded': {
-      return '対応サイズを超えています'
+      return translate('empty.url_failed_size')
     }
     case 'timeout': {
-      return 'fetch がタイムアウトしました'
+      return translate('empty.url_failed_timeout')
     }
     case 'unsupported_content_type': {
-      return `対応形式ではありません (${failure.contentType})`
+      return translate('empty.url_failed_content_type', { contentType: failure.contentType })
     }
     default: {
       // exhaustiveness check: FetchFailure に新 variant が追加されたら `satisfies never` が
       // 型エラーで気付かせる。runtime fallback は throw せず graceful な文字列に倒し、
       // toast / Step 5 modal に表示できる経路を維持する (white screen 回避)。
       failure satisfies never
-      return '不明なエラーが発生しました'
+      return translate('empty.url_failed_unknown')
     }
   }
 }
@@ -294,7 +313,7 @@ export const loadFromOnlineUrlQuery = async (runtime: BootRuntime): Promise<bool
     return false
   }
   if (!isHttpProtocol(globalThis.location.protocol)) {
-    showOnlineError('online edition は http(s) でホスティングされた環境でのみ機能します')
+    showOnlineError(translate('online.error.not_http_hosted'))
     return false
   }
   return tryFetchAndLoad(url, runtime)
@@ -414,21 +433,21 @@ if (import.meta.vitest) {
       expect(msg).toContain('404')
     })
 
-    it('timeout: タイムアウトを示す', () => {
+    it('timeout: タイムアウトを示す (en 辞書)', () => {
       const msg = formatFetchFailureMessage({ error: 'timeout', ok: false })
-      expect(msg).toContain('タイムアウト')
+      expect(msg).toContain('timed out')
     })
 
-    it('network_error: message を含む', () => {
+    it('network_error: 翻訳済みカテゴリ文言を返す (失敗 message は辞書外に隠す)', () => {
       const msg = formatFetchFailureMessage({
         error: 'network_error',
         message: 'Failed to fetch',
         ok: false,
       })
-      expect(msg).toContain('Failed to fetch')
+      expect(msg).toContain('Network error')
     })
 
-    it('pre_validation_failed: reason + url を含む', () => {
+    it('pre_validation_failed: 翻訳済み reason + url を含む (二段構造)', () => {
       const msg = formatFetchFailureMessage({
         error: 'pre_validation_failed',
         ok: false,
@@ -436,7 +455,8 @@ if (import.meta.vitest) {
         url: 'https://evil.example',
       })
       expect(msg).toContain('https://evil.example')
-      expect(msg).toContain('host_not_allowlisted')
+      // reason は empty.validation_reason_host_not_allowlisted で翻訳される
+      expect(msg).toContain('host is not in the allowlist')
     })
 
     it('redirected_off_allowlist: finalUrl を含む', () => {
@@ -448,9 +468,9 @@ if (import.meta.vitest) {
       expect(msg).toContain('https://attacker.example/x')
     })
 
-    it('size_exceeded: サイズ超過を示す', () => {
+    it('size_exceeded: サイズ超過を示す (en 辞書)', () => {
       const msg = formatFetchFailureMessage({ error: 'size_exceeded', ok: false })
-      expect(msg).toContain('サイズ')
+      expect(msg).toContain('size')
     })
 
     it('unsupported_content_type: contentType を含む', () => {

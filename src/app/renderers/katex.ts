@@ -18,6 +18,7 @@
 import { isOnlineEdition } from '../boot'
 import { reapplyAllMarks } from '../comments/mark-engine'
 import { state } from '../state/app-state'
+import { translatePlural } from '../i18n/i18n-browser'
 import {
   type UpgradeResult,
   type UpgradeStatus,
@@ -174,10 +175,17 @@ const upgradeAllMathElements = (docEl: HTMLElement, katex: KatexLike): UpgradeRe
 
 const KATEX_APPLIED_SELECTOR = '[data-math-applied="1"]'
 
+// FAILURE_LABELS は toast 表示直前に評価することで、currentLang を反映する。
+// 設計時の専用 key 案 (`toast.math_render_failed_*`) は最小変更原則で見送り、汎用キー
+// `toast.render_failed_*` (Failed to render {count} block(s)) を流用する。block / expression の
+// 差はユーザー視点で軽微で、辞書を 2 セット維持するコストの方が大きい判断 (Step 3 振り返り)。
 const KATEX_FAILURE_LABELS = {
-  plural: (count: number): string => `Math render failed for ${count} expressions`,
-  singular: 'Math render failed for 1 expression',
-} as const
+  plural: (count: number): string => translatePlural({ baseKey: 'toast.render_failed', count }),
+  // RenderFailureLabels の singular は string なので getter で lang 反映する。
+  get singular(): string {
+    return translatePlural({ baseKey: 'toast.render_failed', count: 1 })
+  },
+}
 
 /**
  * `#doc` 配下の `[data-math]` 要素を順次 KaTeX HTML に upgrade する。

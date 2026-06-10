@@ -6,6 +6,7 @@ import { instantScrollToCenter } from '../document/scroll'
 import { orderedComments } from './comment-orderer'
 import { reapplyAllMarks } from './mark-engine'
 import { resolveNextFocusIndex } from '../dom/focus-list'
+import { translate } from '../i18n/i18n-browser'
 
 /**
  * 別ページのコメントカードをクリックされた際に呼ばれる navigate ハンドラ。
@@ -126,7 +127,7 @@ const wireCommentCard = (card: HTMLElement, comment: Comment, onDeleted: () => v
       event.stopPropagation()
       deleteComment(comment)
       onDeleted()
-      toast('Comment deleted')
+      toast(translate('toast.comment_deleted'))
     })
   }
 }
@@ -142,8 +143,13 @@ const createCommentCard = (comment: Comment, onDeleted: () => void): HTMLDivElem
 
 /** コメント 0 件時の案内表示 */
 const showEmptyComments = (list: HTMLElement): void => {
-  list.innerHTML =
-    '<div class="label" style="color: var(--ink-faint);">Select text in the file to add a review comment.</div>'
+  list.replaceChildren()
+  const div = document.createElement('div')
+  div.className = 'label'
+  div.style.color = 'var(--ink-faint)'
+  // textContent 経路で辞書値を流すため innerHTML XSS の経路はない。
+  div.textContent = translate('comments.empty')
+  list.appendChild(div)
 }
 
 const COMMENT_MENU_BUTTON_IDS = ['#btn-copy', '#btn-export', '#btn-clear'] as const
