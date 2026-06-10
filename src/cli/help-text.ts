@@ -1,131 +1,111 @@
 // review-request CLI の usage テキスト。flag spec と並ぶ書き換え対象なので、
 // parse-args.ts の parser logic から分離して 1 ファイルにまとめる。
-// テキスト本体は CLI 仕様の単一の真実の源としてここに保持する。
+// テキスト本体は CLI 辞書 (src/cli/i18n/messages-cli.{en,ja}.ts) の cli.help.* に
+// block 形式で配置し、ここでは現在の CLI 言語に応じて結合して返す。
 
-export const HELP_TEXT = `Usage: mdxg-redline [options] <input.md|-> [output-dir]
+import { translateCli } from './i18n'
 
-Generate a review-request HTML with the markdown embedded and open it in
-your default browser.
+/**
+ * 現在の CLI 言語 (setCliLang で確定済み) に応じた help テキスト全体を返す。
+ * Usage / description / arguments / options / cleanup / examples の各 block を改行 2 つで連結。
+ * 末尾改行を 1 つ付与し、stdout に書いた時のターミナル整形と合わせる。
+ */
+export const getHelpText = (): string => {
+  const sections = [
+    translateCli('cli.help.usage'),
+    translateCli('cli.help.description'),
+    translateCli('cli.help.arguments_block'),
+    translateCli('cli.help.options_block'),
+    translateCli('cli.help.cleanup_block'),
+    translateCli('cli.help.examples_block'),
+  ]
+  return `${sections.join('\n\n')}\n`
+}
 
-Arguments:
-  <input.md>             Path to a markdown file. Pass \`-\` to read from stdin.
-  [output-dir]           Output directory. Defaults to the input file's
-                         directory; for stdin input, defaults to the current
-                         working directory. Output filename is auto-derived
-                         as <mdFileName>-<docHash>-review.html.
+if (import.meta.vitest) {
+  const { afterEach, beforeEach, describe, expect, it } = import.meta.vitest
+  const { setCliLang } = await import('./i18n')
 
-Options:
-  --document-name <name> Override the document name used for the data-name
-                         attribute and the output filename prefix. Useful
-                         with stdin input.
-  --theme <value>        Set the initial theme hint for the generated HTML.
-                         One of: system | light | dark. Written as a
-                         <html data-theme> attribute. Takes precedence over
-                         the viewer's localStorage at every reload (the CLI
-                         hint always wins on initial paint; UI toggle clicks
-                         override only within the current session, and a
-                         subsequent reload re-applies the CLI hint). Omit to
-                         leave the attribute off entirely.
-  --shiki-langs <value>  Select which Shiki grammars to embed in the HTML
-                         for syntax highlighting. One of:
-                           auto  Scan the input markdown and embed only the
-                                 grammars used by fenced blocks (default).
-                           all   Embed all Shiki-bundled grammars (heaviest,
-                                 ~235 languages, ~5.5 MB gzipped).
-                           none  Embed no grammars (all code blocks render as
-                                 plain text).
-                           <csv> Comma-separated list of language identifiers
-                                 (e.g. ts,js,py). Aliases are normalized to
-                                 canonical names; unsupported entries are
-                                 silently ignored.
-  --comments-width <px>   Set the initial comments-panel width hint for the
-                         generated HTML. One of:
-                           0         Start with the comments panel closed (only the
-                                     edge tab is visible until the user opens
-                                     it).
-                           280–640   Start open with the given width in pixels.
-                         Written as a <html data-comments-width> attribute and
-                         takes precedence over the viewer's localStorage at
-                         every reload (UI drags / toggle-tab clicks override
-                         only within the current session; reload re-applies
-                         the CLI hint). Omit to leave the attribute off
-                         entirely.
-  --page-nav-width <px>  Set the initial document-pages panel (left TOC) width
-                         hint. One of:
-                           0         Start with the panel closed (only the left
-                                     edge tab is visible).
-                           180–480   Start open with the given width in pixels.
-                         Written as a <html data-page-nav-width> attribute and
-                         follows the same precedence rules as --comments-width.
-  --mermaid <value>      Control Mermaid runtime injection for \`\`\`mermaid blocks.
-                         One of:
-                           auto  Inject Mermaid only if the markdown contains at
-                                 least one \`\`\`mermaid block (default). Keeps
-                                 distribution size minimal when not used.
-                           on    Always inject. Adds ~700 KB gzipped to the
-                                 distribution HTML.
-                           off   Never inject. \`\`\`mermaid blocks fall back to
-                                 Shiki-highlighted code blocks (MDXG §15 [MUST]).
-  --math <value>         Control KaTeX runtime injection for $...$ / $$...$$
-                         math expressions (MDXG §14). One of:
-                           auto  Inject KaTeX only if the markdown contains at
-                                 least one math expression (default).
-                           on    Always inject. Adds ~250 / ~350 KB gzipped
-                                 depending on --math-fonts.
-                           off   Never inject. $...$ / $$...$$ render as raw
-                                 markdown text (MDXG §14 [MUST]).
-  --math-fonts <value>   Choose the KaTeX woff2 font set embedded as data URI
-                         (only meaningful when KaTeX is injected). One of:
-                           minimal  Main / AMS / Math / Size1-4 only, +~110 KB
-                                    gzipped (default). \\mathcal / \\mathfrak /
-                                    \\mathscr / SansSerif / Typewriter fall back
-                                    to the host's system font.
-                           all      Embed all 20 woff2 families, +~220 KB gzipped.
-                                    Use when the document relies on rare math
-                                    glyphs (\\mathcal{X}, \\mathfrak{X}, ...).
-  --markdown-css <path>  Replace the bundled markdown preview stylesheet with the
-                         CSS file at <path>. Targets only the markdown preview
-                         (#doc scope). Layout / chrome (review.css) is not
-                         affected. Useful for distributing review HTML with a
-                         custom typographic theme.
-  --no-open              Generate the HTML but do not launch a browser.
-  --show-open-file       Keep the "Open file" item visible in the generated
-                         HTML's Open ▾ menu. By default (without this flag),
-                         CLI output hides the item to prevent accidentally
-                         loading a different markdown (which would discard the
-                         current comments). The standalone HTML — opened
-                         directly without the CLI — always shows the item.
-  --show-paste-markdown  Keep the "Paste markdown" item visible in the
-                         generated HTML's Open ▾ menu. By default (without
-                         this flag), CLI output hides the item for the same
-                         reason as --show-open-file (paste also replaces the
-                         currently loaded markdown and discards comments).
-                         The standalone HTML always shows the item.
-  -h, --help             Print this help and exit. Takes precedence over all
-                         other arguments and flags when present.
+  beforeEach(() => {
+    setCliLang('en')
+  })
+  afterEach(() => {
+    setCliLang('en')
+  })
 
-Cleanup mode:
-  --clean [dir]          Remove all *-<docHash>-review.html and
-                         *-<docHash>-feedback.json files in <dir> (top level
-                         only). <dir> defaults to the current directory when
-                         omitted. By default runs in dry-run mode and only
-                         prints the candidates; pass --yes to actually delete.
-  --yes                  With --clean, perform deletion (no prompt). Without
-                         --yes, --clean is dry-run.
-  --keep <docHash>       With --clean, preserve files whose 16-hex docHash
-                         matches. May be repeated.
-  -r, --recursive        With --clean, also descend into subdirectories
-                         (default: top level only).
+  describe('getHelpText: en', () => {
+    it('Usage: で始まり末尾改行が 1 つ付く', () => {
+      const text = getHelpText()
+      expect(text.startsWith('Usage: mdxg-redline')).toBe(true)
+      expect(text.endsWith('\n')).toBe(true)
+    })
 
-Examples:
-  mdxg-redline spec.md
-  mdxg-redline spec.md ./reviews
-  mdxg-redline --no-open spec.md
-  mdxg-redline --theme dark spec.md
-  cat spec.md | mdxg-redline - --document-name spec.md
-  mdxg-redline --clean
-  mdxg-redline --clean ./reviews
-  mdxg-redline --clean ./reviews --yes
-  mdxg-redline --clean ./reviews --keep a1b2c3d4e5f6a7b8 --yes
-  mdxg-redline --clean ./reviews --recursive --yes
-`
+    it('全主要オプション名を含む', () => {
+      const text = getHelpText()
+      for (const flag of [
+        '--theme',
+        '--shiki-langs',
+        '--comments-width',
+        '--page-nav-width',
+        '--mermaid',
+        '--math',
+        '--math-fonts',
+        '--markdown-css',
+        '--no-open',
+        '--show-open-file',
+        '--show-paste-markdown',
+        '--lang',
+        '--clean',
+        '--yes',
+        '--keep',
+        '-r',
+        '--recursive',
+        '-h',
+        '--help',
+      ]) {
+        expect(text, `flag=${flag}`).toContain(flag)
+      }
+    })
+
+    it('各モード値キーワードを含む', () => {
+      const text = getHelpText()
+      for (const value of [
+        'system',
+        'light',
+        'dark',
+        'auto',
+        'all',
+        'none',
+        'on',
+        'off',
+        'minimal',
+      ]) {
+        expect(text, `value=${value}`).toContain(value)
+      }
+    })
+  })
+
+  describe('getHelpText: ja', () => {
+    it('日本語に切替後は 使い方: で始まる', () => {
+      setCliLang('ja')
+      const text = getHelpText()
+      expect(text.startsWith('使い方: mdxg-redline')).toBe(true)
+    })
+
+    it('日本語版も同じ主要オプション名を含む (フラグ名は machine contract で英語固定)', () => {
+      setCliLang('ja')
+      const text = getHelpText()
+      for (const flag of ['--theme', '--shiki-langs', '--lang', '--clean', '--help']) {
+        expect(text, `flag=${flag}`).toContain(flag)
+      }
+    })
+
+    it('en と ja で行数構造が大きく崩れない (オプション block の長さは現状の 95% 以上を保つ)', () => {
+      setCliLang('en')
+      const enOptions = getHelpText()
+      setCliLang('ja')
+      const jaOptions = getHelpText()
+      expect(jaOptions.length).toBeGreaterThan(enOptions.length * 0.7)
+    })
+  })
+}

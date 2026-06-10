@@ -10,6 +10,7 @@ import { commentsFromUnknown } from '../../core/feedback'
 import process from 'node:process'
 import { readFile } from 'node:fs/promises'
 import { sanitizeMdFileName } from '../../core/filename-sanitize'
+import { translateCli } from '../i18n'
 
 const STDIN_TOKEN = '-'
 
@@ -81,7 +82,7 @@ const readFeedbackFile = async (feedbackPath: string): Promise<FeedbackReadResul
     }
     return {
       raw: null,
-      warning: `(skipped resuming ${feedbackPath}: read failed with ${code})\n`,
+      warning: `${translateCli('cli.feedback_read_failed', { code, path: feedbackPath })}\n`,
     }
   }
 }
@@ -103,13 +104,20 @@ const validateFeedbackPayload = (
 ): ValidationResult => {
   const payload = parseFeedbackJson(raw)
   if (payload === null) {
-    return { payload: null, warning: `(skipped resuming ${feedbackPath}: invalid JSON)\n` }
+    return {
+      payload: null,
+      warning: `${translateCli('cli.feedback_invalid_json', { path: feedbackPath })}\n`,
+    }
   }
   const payloadDocHash = extractDocHash(payload)
   if (payloadDocHash !== expectedDocHash) {
     return {
       payload: null,
-      warning: `(skipped resuming ${feedbackPath}: docHash mismatch — got ${payloadDocHash ?? 'null'}, expected ${expectedDocHash})\n`,
+      warning: `${translateCli('cli.feedback_hash_mismatch', {
+        expected: expectedDocHash,
+        got: payloadDocHash ?? 'null',
+        path: feedbackPath,
+      })}\n`,
     }
   }
   return { payload, warning: null }
@@ -167,7 +175,9 @@ export const applyResumeFeedback = async (
   }
   const count = countComments(resolved.payload)
   const rewritten = rewriteEmbeddedFeedback(html, resolved.payload)
-  process.stderr.write(`Resumed ${count} comment(s) from ${resolved.feedbackPath}.\n`)
+  process.stderr.write(
+    `${translateCli('cli.feedback_resumed', { count, path: resolved.feedbackPath })}\n`
+  )
   return rewritten
 }
 

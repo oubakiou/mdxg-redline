@@ -32,6 +32,7 @@ import { applyShikiLangs } from './assets/shiki'
 import { fileURLToPath } from 'node:url'
 import { readFile } from 'node:fs/promises'
 import { resolveInput } from './input-source'
+import { translateCli } from './i18n'
 
 // embed-template.html は CLI から見て暗黙的な前提依存のため、未生成時は Node 既定の ENOENT より
 // 親切な案内に差し替える。input.md は利用者が指定したパスなので、
@@ -42,7 +43,7 @@ const readReviewHtml = async (path: string): Promise<string> => {
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       throw new Error(
-        `${path} が見つかりません。先に \`npm run build\` を実行して dist/embed-template.html を生成してください。`,
+        translateCli('cli.error.asset_missing', { path, target: 'dist/embed-template.html' }),
         { cause: error }
       )
     }

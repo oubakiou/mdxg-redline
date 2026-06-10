@@ -7,6 +7,7 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { rewriteEmbeddedMermaid } from '../../core/embed'
 import { scanMermaidFences } from '../../core/scan-mermaid'
+import { translateCli } from '../i18n'
 
 /**
  * `--mermaid` mode と markdown 内容から Mermaid runtime を注入すべきか判定する pure 関数。
@@ -31,7 +32,7 @@ const readMermaidRuntime = async (scriptDir: string): Promise<string> => {
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       throw new Error(
-        `${path} が見つかりません。先に \`npm run build\` を実行して dist/mermaid.mjs を生成してください。`,
+        translateCli('cli.error.asset_missing', { path, target: 'dist/mermaid.mjs' }),
         { cause: error }
       )
     }
@@ -50,11 +51,11 @@ export const applyMermaid = async (
   const runtime = await readMermaidRuntime(ctx.scriptDir)
   const { escapedScriptCount, html: rewritten } = rewriteEmbeddedMermaid(html, runtime)
   const count = scanMermaidFences(ctx.markdown)
-  process.stderr.write(
-    `Detected ${count} mermaid block(s). Embedding mermaid runtime (+~700 KB gzipped).\n`
-  )
+  process.stderr.write(`${translateCli('cli.mermaid_injection', { count })}\n`)
   if (escapedScriptCount > 0) {
-    process.stderr.write(`(escaped ${escapedScriptCount} literal </script> in mermaid runtime)\n`)
+    process.stderr.write(
+      `${translateCli('cli.mermaid_escaped_script', { count: escapedScriptCount })}\n`
+    )
   }
   return rewritten
 }

@@ -17,6 +17,7 @@ import {
   formatMissingValueMessage,
   formatUnknownFlagMessage,
 } from './flag-parser'
+import { translateCli } from './i18n'
 
 interface CleanPartitionState {
   cleanSeen: boolean
@@ -67,7 +68,7 @@ const markCleanFlag = (acc: CleanPartitionState): CleanPartitionState => {
   if (acc.cleanSeen) {
     return {
       ...acc,
-      error: `${CLEAN_FLAG}: specified more than once (use it only once to avoid wiping the wrong directory)`,
+      error: translateCli('cli.error.clean_specified_multiple', { flag: CLEAN_FLAG }),
       valid: false,
     }
   }

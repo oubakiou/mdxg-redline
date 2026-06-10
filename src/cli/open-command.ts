@@ -4,6 +4,7 @@
 
 import { execFile } from 'node:child_process'
 import process from 'node:process'
+import { translateCli } from './i18n'
 
 // VS Code Remote Containers / Codespaces などで $BROWSER がホスト側ブラウザを
 // 開く helper script を指している場合、URL は openExternal でホストに転送できるが、
@@ -67,7 +68,10 @@ export const openInBrowser = async (path: string): Promise<void> =>
     execFile(command, args, (error): void => {
       if (error) {
         process.stderr.write(
-          `review-request: ブラウザを起動できませんでした (${command}: ${error.message})。上記のパスを手動で開いてください。\n`
+          `${translateCli('cli.error.browser_launch_failed', {
+            command,
+            message: error.message,
+          })}\n`
         )
       }
       done()

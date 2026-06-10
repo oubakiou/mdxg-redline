@@ -8,6 +8,7 @@ import process from 'node:process'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { rewriteEmbeddedKatex } from '../../core/embed'
+import { translateCli } from '../i18n'
 
 /**
  * `--math` mode と markdown 内容から KaTeX runtime を注入すべきか判定する pure 関数
@@ -32,10 +33,9 @@ const readKatexAsset = async (path: string): Promise<string> => {
     return await readFile(path, 'utf8')
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-      throw new Error(
-        `${path} が見つかりません。先に \`npm run build\` を実行して dist/katex/ を生成してください。`,
-        { cause: error }
-      )
+      throw new Error(translateCli('cli.error.asset_missing', { path, target: 'dist/katex/' }), {
+        cause: error,
+      })
     }
     throw error
   }
@@ -82,11 +82,15 @@ const reportKatexInjection = (report: KatexInjectionReport): void => {
   const counts = countMath(report.markdown)
   const total = counts.inline + counts.display
   process.stderr.write(
-    `Detected ${total} math expression(s). Embedding KaTeX runtime (fonts=${report.fontsMode}, ${report.sizeHintGzip} gzipped).\n`
+    `${translateCli('cli.katex_injection', {
+      count: total,
+      mode: report.fontsMode,
+      size: report.sizeHintGzip,
+    })}\n`
   )
   if (report.escapedScriptCount > 0) {
     process.stderr.write(
-      `(escaped ${report.escapedScriptCount} literal </script> in KaTeX runtime)\n`
+      `${translateCli('cli.katex_escaped_script', { count: report.escapedScriptCount })}\n`
     )
   }
 }

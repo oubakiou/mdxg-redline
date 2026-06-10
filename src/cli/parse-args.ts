@@ -1,14 +1,14 @@
 // review-request CLI の引数パース entry point。
 // help / clean / run の振り分け (dispatch) だけを担い、各 mode の partition / build は
 // parse-clean-args.ts / parse-run-args.ts に委譲する。flag 定数 / value parser / 結果型は
-// arg-spec.ts、HELP_TEXT は help-text.ts に分離。
+// arg-spec.ts、help テキストは help-text.ts に分離。
 // ファイル名サニタイズは CLI / browser 両側で共有するため src/core/filename-sanitize.ts へ移した。
 
 import { CLEAN_FLAG, HELP_FLAGS, type ParsedArgs } from './arg-spec'
 import { parseCleanArgs } from './parse-clean-args'
 import { parseRunArgs } from './parse-run-args'
 
-export { HELP_TEXT } from './help-text'
+export { getHelpText } from './help-text'
 export {
   type CleanArgsParsed,
   type MathFontsMode,

@@ -746,6 +746,359 @@ var MARKDOWN_CSS_VALUE_HELP = "a file path (cannot be `-`)";
 var DOCUMENT_NAME_VALUE_HELP = "a non-empty file name";
 var KEEP_VALUE_HELP = "a 16-character hex docHash (0-9, a-f)";
 //#endregion
+//#region src/app/i18n/i18n-core.ts
+var ENV_PRECEDENCE = [
+	"LC_ALL",
+	"LC_MESSAGES",
+	"LANG"
+];
+var JA_LOCALE_RE = /^ja(_|-|$)/i;
+var isJapaneseLocale = (raw) => JA_LOCALE_RE.test(raw);
+var langFromLocaleString = (raw) => {
+	if (isJapaneseLocale(raw)) return "ja";
+	return "en";
+};
+var detectLangFromEnv = (env) => {
+	for (const key of ENV_PRECEDENCE) {
+		const raw = env[key];
+		if (typeof raw === "string" && raw !== "") return langFromLocaleString(raw);
+	}
+	return "en";
+};
+var PLACEHOLDER_RE = /\{(\w+)\}/g;
+var formatTemplate = (template, params) => {
+	if (!params) return template;
+	return template.replace(PLACEHOLDER_RE, (whole, name) => {
+		if (!Object.hasOwn(params, name)) return whole;
+		const value = params[name];
+		if (typeof value !== "string" && typeof value !== "number") return whole;
+		return String(value);
+	});
+};
+var translate = (dict, key, params) => {
+	const template = dict[key];
+	if (typeof template !== "string") return key;
+	return formatTemplate(template, params);
+};
+//#endregion
+//#region src/cli/i18n.ts
+var CLI_DICTS = {
+	en: {
+		"cli.clean.deleted_summary": "Deleted {count} file(s) in {dir}.",
+		"cli.clean.dry_run_header": "[dry-run] Would delete {count} file(s) in {dir}:",
+		"cli.clean.kept_header": "Kept {count} file(s) matching --keep:",
+		"cli.clean.kept_summary": "Kept {count} file(s) matching --keep.",
+		"cli.clean.no_files_found": "No review/feedback artifacts found in {dir}.",
+		"cli.clean.run_with_yes_hint": "Run with --yes to delete.",
+		"cli.error.asset_missing": "{path} not found. Run `npm run build` first to generate {target}.",
+		"cli.error.browser_launch_failed": "review-request: failed to launch browser ({command}: {message}). Open the path above manually.",
+		"cli.error.clean_specified_multiple": "{flag}: specified more than once (use it only once to avoid wiping the wrong directory)",
+		"cli.error.invalid_arguments": "mdxg-redline: invalid arguments: {detail}. Run `mdxg-redline --help` for usage.",
+		"cli.error.invalid_arguments_no_detail": "mdxg-redline: invalid arguments. Run `mdxg-redline --help` for usage.",
+		"cli.error.invalid_flag_value": "{flag}: invalid value '{token}' (expected {expected})",
+		"cli.error.invalid_lang": "--lang must be one of: auto, en, ja",
+		"cli.error.missing_flag_value": "{flag}: missing value (expected {expected})",
+		"cli.error.missing_input_markdown": "missing input markdown (expected <input.md|-> [output-dir])",
+		"cli.error.too_many_positional_args": "too many positional arguments: {count} (expected at most 2: <input.md|-> [output-dir])",
+		"cli.error.unexpected": "review-request: unexpected error: {message}",
+		"cli.error.unknown_option": "unknown option: {token}",
+		"cli.feedback_hash_mismatch": "(skipped resuming {path}: docHash mismatch — got {got}, expected {expected})",
+		"cli.feedback_invalid_json": "(skipped resuming {path}: invalid JSON)",
+		"cli.feedback_read_failed": "(skipped resuming {path}: read failed with {code})",
+		"cli.feedback_resumed": "Resumed {count} comment(s) from {path}.",
+		"cli.help.arguments_block": `Arguments:
+  <input.md>             Path to a markdown file. Pass \`-\` to read from stdin.
+  [output-dir]           Output directory. Defaults to the input file's
+                         directory; for stdin input, defaults to the current
+                         working directory. Output filename is auto-derived
+                         as <mdFileName>-<docHash>-review.html.`,
+		"cli.help.cleanup_block": `Cleanup mode:
+  --clean [dir]          Remove all *-<docHash>-review.html and
+                         *-<docHash>-feedback.json files in <dir> (top level
+                         only). <dir> defaults to the current directory when
+                         omitted. By default runs in dry-run mode and only
+                         prints the candidates; pass --yes to actually delete.
+  --yes                  With --clean, perform deletion (no prompt). Without
+                         --yes, --clean is dry-run.
+  --keep <docHash>       With --clean, preserve files whose 16-hex docHash
+                         matches. May be repeated.
+  -r, --recursive        With --clean, also descend into subdirectories
+                         (default: top level only).`,
+		"cli.help.description": "Generate a review-request HTML with the markdown embedded and open it in your default browser.",
+		"cli.help.examples_block": `Examples:
+  mdxg-redline spec.md
+  mdxg-redline spec.md ./reviews
+  mdxg-redline --no-open spec.md
+  mdxg-redline --theme dark spec.md
+  cat spec.md | mdxg-redline - --document-name spec.md
+  mdxg-redline --clean
+  mdxg-redline --clean ./reviews
+  mdxg-redline --clean ./reviews --yes
+  mdxg-redline --clean ./reviews --keep a1b2c3d4e5f6a7b8 --yes
+  mdxg-redline --clean ./reviews --recursive --yes`,
+		"cli.help.options_block": `Options:
+  --document-name <name> Override the document name used for the data-name
+                         attribute and the output filename prefix. Useful
+                         with stdin input.
+  --theme <value>        Set the initial theme hint for the generated HTML.
+                         One of: system | light | dark. Written as a
+                         <html data-theme> attribute. Takes precedence over
+                         the viewer's localStorage at every reload (the CLI
+                         hint always wins on initial paint; UI toggle clicks
+                         override only within the current session, and a
+                         subsequent reload re-applies the CLI hint). Omit to
+                         leave the attribute off entirely.
+  --shiki-langs <value>  Select which Shiki grammars to embed in the HTML
+                         for syntax highlighting. One of:
+                           auto  Scan the input markdown and embed only the
+                                 grammars used by fenced blocks (default).
+                           all   Embed all Shiki-bundled grammars (heaviest,
+                                 ~235 languages, ~5.5 MB gzipped).
+                           none  Embed no grammars (all code blocks render as
+                                 plain text).
+                           <csv> Comma-separated list of language identifiers
+                                 (e.g. ts,js,py). Aliases are normalized to
+                                 canonical names; unsupported entries are
+                                 silently ignored.
+  --comments-width <px>   Set the initial comments-panel width hint for the
+                         generated HTML. One of:
+                           0         Start with the comments panel closed (only the
+                                     edge tab is visible until the user opens
+                                     it).
+                           280–640   Start open with the given width in pixels.
+                         Written as a <html data-comments-width> attribute and
+                         takes precedence over the viewer's localStorage at
+                         every reload (UI drags / toggle-tab clicks override
+                         only within the current session; reload re-applies
+                         the CLI hint). Omit to leave the attribute off
+                         entirely.
+  --page-nav-width <px>  Set the initial document-pages panel (left TOC) width
+                         hint. One of:
+                           0         Start with the panel closed (only the left
+                                     edge tab is visible).
+                           180–480   Start open with the given width in pixels.
+                         Written as a <html data-page-nav-width> attribute and
+                         follows the same precedence rules as --comments-width.
+  --mermaid <value>      Control Mermaid runtime injection for \`\`\`mermaid blocks.
+                         One of:
+                           auto  Inject Mermaid only if the markdown contains at
+                                 least one \`\`\`mermaid block (default). Keeps
+                                 distribution size minimal when not used.
+                           on    Always inject. Adds ~700 KB gzipped to the
+                                 distribution HTML.
+                           off   Never inject. \`\`\`mermaid blocks fall back to
+                                 Shiki-highlighted code blocks (MDXG §15 [MUST]).
+  --math <value>         Control KaTeX runtime injection for $...$ / $$...$$
+                         math expressions (MDXG §14). One of:
+                           auto  Inject KaTeX only if the markdown contains at
+                                 least one math expression (default).
+                           on    Always inject. Adds ~250 / ~350 KB gzipped
+                                 depending on --math-fonts.
+                           off   Never inject. $...$ / $$...$$ render as raw
+                                 markdown text (MDXG §14 [MUST]).
+  --math-fonts <value>   Choose the KaTeX woff2 font set embedded as data URI
+                         (only meaningful when KaTeX is injected). One of:
+                           minimal  Main / AMS / Math / Size1-4 only, +~110 KB
+                                    gzipped (default). \\mathcal / \\mathfrak /
+                                    \\mathscr / SansSerif / Typewriter fall back
+                                    to the host's system font.
+                           all      Embed all 20 woff2 families, +~220 KB gzipped.
+                                    Use when the document relies on rare math
+                                    glyphs (\\mathcal{X}, \\mathfrak{X}, ...).
+  --markdown-css <path>  Replace the bundled markdown preview stylesheet with the
+                         CSS file at <path>. Targets only the markdown preview
+                         (#doc scope). Layout / chrome (review.css) is not
+                         affected. Useful for distributing review HTML with a
+                         custom typographic theme.
+  --lang <value>         Set the CLI's output language for help and error messages.
+                         One of: auto (infer from $LC_ALL > $LC_MESSAGES > $LANG,
+                         default), en, ja. Affects only CLI output; generated HTML
+                         resolves its own display language from localStorage /
+                         navigator.language (CLI hint is not embedded). Unlike
+                         --shiki-langs / --mermaid / --math, "auto" here infers
+                         from env, not by scanning the markdown body.
+  --no-open              Generate the HTML but do not launch a browser.
+  --show-open-file       Keep the "Open file" item visible in the generated
+                         HTML's Open ▾ menu. By default (without this flag),
+                         CLI output hides the item to prevent accidentally
+                         loading a different markdown (which would discard the
+                         current comments). The standalone HTML — opened
+                         directly without the CLI — always shows the item.
+  --show-paste-markdown  Keep the "Paste markdown" item visible in the
+                         generated HTML's Open ▾ menu. By default (without
+                         this flag), CLI output hides the item for the same
+                         reason as --show-open-file (paste also replaces the
+                         currently loaded markdown and discards comments).
+                         The standalone HTML always shows the item.
+  -h, --help             Print this help and exit. Takes precedence over all
+                         other arguments and flags when present.`,
+		"cli.help.usage": "Usage: mdxg-redline [options] <input.md|-> [output-dir]",
+		"cli.katex_escaped_script": "(escaped {count} literal <\/script> in KaTeX runtime)",
+		"cli.katex_injection": "Detected {count} math expression(s). Embedding KaTeX runtime (fonts={mode}, {size} gzipped).",
+		"cli.mermaid_escaped_script": "(escaped {count} literal <\/script> in mermaid runtime)",
+		"cli.mermaid_injection": "Detected {count} mermaid block(s). Embedding mermaid runtime (+~700 KB gzipped).",
+		"cli.port_in_use_fallback": "review-request: port {preferred} is in use, falling back to {random}. Override the default with {var}. The browser-side IndexedDB silent restore (Write feedback.json target memory) may not work this time.",
+		"cli.port_invalid": "review-request: {var}=\"{value}\" is not a valid port number, using {default}.",
+		"cli.serve_address_failed": "Failed to obtain the HTTP server address.",
+		"cli.serve_remote_started": "review-request: detected VS Code Remote. HTTP server started at {url}. Auto-stops {seconds1}s after first access, or {seconds2}s without requests."
+	},
+	ja: {
+		"cli.clean.deleted_summary": "{dir} 内の {count} 個のファイルを削除しました。",
+		"cli.clean.dry_run_header": "[dry-run] {dir} 内の以下 {count} 個のファイルを削除します:",
+		"cli.clean.kept_header": "--keep に一致する以下 {count} 個のファイルを温存します:",
+		"cli.clean.kept_summary": "--keep に一致する {count} 個のファイルを温存しました。",
+		"cli.clean.no_files_found": "{dir} 内にレビュー / フィードバック成果物は見つかりませんでした。",
+		"cli.clean.run_with_yes_hint": "実削除には --yes を付けて再実行してください。",
+		"cli.error.asset_missing": "{path} が見つかりません。先に `npm run build` を実行して {target} を生成してください。",
+		"cli.error.browser_launch_failed": "review-request: ブラウザを起動できませんでした ({command}: {message})。上記のパスを手動で開いてください。",
+		"cli.error.clean_specified_multiple": "{flag}: 複数回指定されています (誤って別ディレクトリを削除する事故を避けるため 1 回のみ指定可能)",
+		"cli.error.invalid_arguments": "mdxg-redline: 引数が不正です: {detail}。`mdxg-redline --help` で使い方を確認してください。",
+		"cli.error.invalid_arguments_no_detail": "mdxg-redline: 引数が不正です。`mdxg-redline --help` で使い方を確認してください。",
+		"cli.error.invalid_flag_value": "{flag}: 不正な値 '{token}' (期待値: {expected})",
+		"cli.error.invalid_lang": "--lang は auto / en / ja のいずれかを指定してください",
+		"cli.error.missing_flag_value": "{flag}: 値が指定されていません (期待値: {expected})",
+		"cli.error.missing_input_markdown": "入力 markdown が指定されていません (期待形式: <input.md|-> [output-dir])",
+		"cli.error.too_many_positional_args": "位置引数が多すぎます: {count} 個 (最大 2 個まで: <input.md|-> [output-dir])",
+		"cli.error.unexpected": "review-request: 想定外のエラー: {message}",
+		"cli.error.unknown_option": "不明なオプション: {token}",
+		"cli.feedback_hash_mismatch": "({path} の再開をスキップ: docHash が一致しません — 実際 {got}, 期待 {expected})",
+		"cli.feedback_invalid_json": "({path} の再開をスキップ: JSON が不正です)",
+		"cli.feedback_read_failed": "({path} の再開をスキップ: 読み取り失敗 {code})",
+		"cli.feedback_resumed": "{path} から {count} 件のコメントを復元しました。",
+		"cli.help.arguments_block": `引数:
+  <input.md>             markdown ファイルのパス。\`-\` を指定すると標準入力から読み込み。
+  [output-dir]           出力ディレクトリ。省略時は入力ファイルと同じディレクトリ
+                         (標準入力の場合はカレントディレクトリ)。出力ファイル名は
+                         <mdFileName>-<docHash>-review.html の形式で自動決定。`,
+		"cli.help.cleanup_block": `クリーンアップモード:
+  --clean [dir]          <dir> 直下の *-<docHash>-review.html と
+                         *-<docHash>-feedback.json をすべて削除。<dir> を省略
+                         するとカレントディレクトリ。既定は dry-run で削除候補を
+                         表示するのみ。実削除には --yes を指定。
+  --yes                  --clean と併用して実削除を行う (確認なし)。未指定時は
+                         dry-run。
+  --keep <docHash>       --clean と併用して、16 桁 hex の docHash が一致する
+                         ファイルを温存する (繰り返し指定可)。
+  -r, --recursive        --clean と併用してサブディレクトリも再帰的に対象に
+                         する (既定: 直下のみ)。`,
+		"cli.help.description": "markdown を埋め込んだレビュー依頼用 HTML を生成し、標準ブラウザで開きます。",
+		"cli.help.examples_block": `例:
+  mdxg-redline spec.md
+  mdxg-redline spec.md ./reviews
+  mdxg-redline --no-open spec.md
+  mdxg-redline --theme dark spec.md
+  cat spec.md | mdxg-redline - --document-name spec.md
+  mdxg-redline --clean
+  mdxg-redline --clean ./reviews
+  mdxg-redline --clean ./reviews --yes
+  mdxg-redline --clean ./reviews --keep a1b2c3d4e5f6a7b8 --yes
+  mdxg-redline --clean ./reviews --recursive --yes`,
+		"cli.help.options_block": `オプション:
+  --document-name <name> data-name 属性と出力ファイル名 prefix に使うドキュメント
+                         名を上書き。標準入力時に意味のあるファイル名を付けたい
+                         場合に推奨。
+  --theme <value>        生成 HTML の初期テーマヒント。system | light | dark の
+                         いずれか。<html data-theme> 属性として書き込まれ、
+                         viewer の localStorage に対しリロード時に毎回優先される
+                         (CLI ヒントが初回 paint で必ず勝つ。UI toggle 操作は
+                         現在のセッション内でのみ上書きでき、リロード時には CLI
+                         ヒントが再適用される)。省略時は属性ごと付与しない。
+  --shiki-langs <value>  シンタックスハイライト用に HTML に埋め込む Shiki grammar
+                         を選択する。以下のいずれか:
+                           auto  入力 markdown を走査し、フェンスブロックで使われ
+                                 ている grammar のみを埋め込む (既定)。
+                           all   Shiki 同梱の全 grammar を埋め込む (最大、
+                                 約 235 言語、約 5.5 MB gzipped)。
+                           none  grammar を一切埋め込まない (全コードブロックは
+                                 plain text として描画)。
+                           <csv> 言語識別子のカンマ区切り (例: ts,js,py)。エイリ
+                                 アスは正規名に正規化、未対応の識別子は黙って
+                                 無視される。
+  --comments-width <px>   生成 HTML のコメントパネル初期幅ヒント。以下のいずれか:
+                           0         コメントパネルを閉じた状態で開始 (ユーザーが
+                                     開くまでエッジタブのみ表示)。
+                           280–640   指定 px 幅で開いた状態で開始。
+                         <html data-comments-width> 属性として書き込まれ、viewer
+                         の localStorage に対しリロード時に毎回優先される (UI
+                         ドラッグ / toggle タブクリックは現在のセッション内での
+                         み上書きでき、リロード時には CLI ヒントが再適用される)。
+                         省略時は属性ごと付与しない。
+  --page-nav-width <px>  ドキュメントページパネル (左 TOC) の初期幅ヒント。以下
+                         のいずれか:
+                           0         パネルを閉じた状態で開始 (左エッジタブのみ
+                                     表示)。
+                           180–480   指定 px 幅で開いた状態で開始。
+                         <html data-page-nav-width> 属性として書き込まれ、
+                         --comments-width と同じ優先順位ルールに従う。
+  --mermaid <value>      \`\`\`mermaid ブロックに対する Mermaid ランタイム注入の制御。
+                         以下のいずれか:
+                           auto  markdown に \`\`\`mermaid ブロックが 1 つ以上ある
+                                 場合のみ注入 (既定)。使用していない場合の配布
+                                 サイズを最小に保つ。
+                           on    常に注入。配布 HTML に約 700 KB gzipped を追加。
+                           off   注入しない。\`\`\`mermaid ブロックは Shiki ハイライ
+                                 トされたコードブロックに fallback (MDXG §15 [MUST])。
+  --math <value>         $...$ / $$...$$ 数式 (MDXG §14) に対する KaTeX ランタイム
+                         注入の制御。以下のいずれか:
+                           auto  markdown に数式が 1 つ以上ある場合のみ注入
+                                 (既定)。
+                           on    常に注入。--math-fonts に応じて約 250 / 約 350 KB
+                                 gzipped 追加。
+                           off   注入しない。$...$ / $$...$$ は raw markdown
+                                 テキストとして描画 (MDXG §14 [MUST])。
+  --math-fonts <value>   data URI として埋め込む KaTeX woff2 フォントセットを選択
+                         (KaTeX 注入時のみ意味あり)。以下のいずれか:
+                           minimal  Main / AMS / Math / Size1-4 のみ、約 110 KB
+                                    gzipped 追加 (既定)。\\mathcal / \\mathfrak /
+                                    \\mathscr / SansSerif / Typewriter はホスト
+                                    のシステムフォントに fallback。
+                           all      全 20 woff2 ファミリを埋め込み、約 220 KB
+                                    gzipped 追加。文書が稀な数式グリフ
+                                    (\\mathcal{X}, \\mathfrak{X}, ...) に依存する
+                                    場合に使用。
+  --markdown-css <path>  本文プレビュー用の同梱 CSS を <path> のファイルで差し替
+                         える。markdown プレビュー (#doc スコープ) のみが対象で、
+                         レイアウト / chrome (review.css) は変更されない。カスタム
+                         タイポグラフィテーマで review HTML を配布したい場合に
+                         有用。
+  --lang <value>         CLI の help / エラーメッセージの出力言語を指定する。
+                         auto (env $LC_ALL > $LC_MESSAGES > $LANG から推定、
+                         既定) / en / ja のいずれか。CLI 出力にのみ作用し、
+                         生成 HTML の表示言語はブラウザ環境 (localStorage /
+                         navigator.language) で独立に決定される (CLI ヒントは
+                         埋め込まれない)。--shiki-langs / --mermaid / --math と
+                         異なり、ここでの "auto" は markdown 本文の走査ではなく
+                         env からの推定を意味する。
+  --no-open              HTML を生成するがブラウザは起動しない。
+  --show-open-file       生成 HTML の Open ▾ メニューに "Open file" 項目を表示
+                         したままにする。既定 (本フラグなし) では、誤って別の
+                         markdown を読み込んで現在のコメントを破棄する事故を防ぐ
+                         ため、CLI 出力は本項目を非表示にする。standalone HTML —
+                         CLI を経由せずに直接開いた場合 — は常に本項目を表示。
+  --show-paste-markdown  生成 HTML の Open ▾ メニューに "Paste markdown" 項目を
+                         表示したままにする。既定 (本フラグなし) では、--show-
+                         open-file と同じ理由で CLI 出力は本項目を非表示にする
+                         (paste も現在の markdown を上書きしてコメントを破棄する
+                         ため)。standalone HTML は常に本項目を表示。
+  -h, --help             このヘルプを表示して終了。指定時は他のすべての引数 /
+                         フラグより優先される。`,
+		"cli.help.usage": "使い方: mdxg-redline [options] <input.md|-> [output-dir]",
+		"cli.katex_escaped_script": "(KaTeX ランタイム内の生の <\/script> {count} 件をエスケープしました)",
+		"cli.katex_injection": "{count} 件の数式を検出。KaTeX ランタイムを埋め込みます (fonts={mode}, {size} gzipped)。",
+		"cli.mermaid_escaped_script": "(mermaid ランタイム内の生の <\/script> {count} 件をエスケープしました)",
+		"cli.mermaid_injection": "{count} 件の mermaid ブロックを検出。mermaid ランタイムを埋め込みます (+~700 KB gzipped)。",
+		"cli.port_in_use_fallback": "review-request: ポート {preferred} が使用中のため {random} を使います。{var} でデフォルトを上書きできます。今回はブラウザ側 IndexedDB のサイレント復元 (Write feedback.json の保存先記憶) が効かない可能性があります。",
+		"cli.port_invalid": "review-request: {var}=\"{value}\" は有効なポート番号ではないため {default} を使います。",
+		"cli.serve_address_failed": "HTTP サーバーのアドレス取得に失敗しました。",
+		"cli.serve_remote_started": "review-request: VS Code Remote 環境を検知。HTTP サーバーを {url} で起動しました。初回アクセス後 {seconds1} 秒、リクエストが無ければ {seconds2} 秒で自動停止します。"
+	}
+};
+var currentCliLang = "en";
+var setCliLang = (lang) => {
+	currentCliLang = lang;
+};
+var translateCli = (key, params) => translate(CLI_DICTS[currentCliLang], key, params);
+//#endregion
 //#region src/cli/flag-parser.ts
 var INITIAL_PARTITION_STATE = {
 	commentsWidth: null,
@@ -765,10 +1118,16 @@ var INITIAL_PARTITION_STATE = {
 	themeHint: null,
 	valid: true
 };
-var quoteToken = (token) => `'${token}'`;
-var formatInvalidValueMessage = (flag, token, valueHelp) => `${flag}: invalid value ${quoteToken(token)} (expected ${valueHelp})`;
-var formatMissingValueMessage = (flag, valueHelp) => `${flag}: missing value (expected ${valueHelp})`;
-var formatUnknownFlagMessage = (token) => `unknown option: ${token}`;
+var formatInvalidValueMessage = (flag, token, valueHelp) => translateCli("cli.error.invalid_flag_value", {
+	expected: valueHelp,
+	flag,
+	token
+});
+var formatMissingValueMessage = (flag, valueHelp) => translateCli("cli.error.missing_flag_value", {
+	expected: valueHelp,
+	flag
+});
+var formatUnknownFlagMessage = (token) => translateCli("cli.error.unknown_option", { token });
 var defineFlagDef = (spec) => ({
 	consume: (acc, token) => {
 		const value = spec.parser(token);
@@ -976,7 +1335,7 @@ var consumeCleanKeepValue = (acc, token) => {
 var markCleanFlag = (acc) => {
 	if (acc.cleanSeen) return {
 		...acc,
-		error: `${CLEAN_FLAG}: specified more than once (use it only once to avoid wiping the wrong directory)`,
+		error: translateCli("cli.error.clean_specified_multiple", { flag: CLEAN_FLAG }),
 		valid: false
 	};
 	return {
@@ -1122,8 +1481,8 @@ var invalid = (error) => {
 	};
 };
 var formatPositionalError = (count) => {
-	if (count === 0) return "missing input markdown (expected <input.md|-> [output-dir])";
-	return `too many positional arguments: ${count} (expected at most 2: <input.md|-> [output-dir])`;
+	if (count === 0) return translateCli("cli.error.missing_input_markdown");
+	return translateCli("cli.error.too_many_positional_args", { count });
 };
 var parseRunArgs = (argv) => {
 	const parts = partitionArgs(argv);
@@ -1133,133 +1492,21 @@ var parseRunArgs = (argv) => {
 };
 //#endregion
 //#region src/cli/help-text.ts
-var HELP_TEXT = `Usage: mdxg-redline [options] <input.md|-> [output-dir]
-
-Generate a review-request HTML with the markdown embedded and open it in
-your default browser.
-
-Arguments:
-  <input.md>             Path to a markdown file. Pass \`-\` to read from stdin.
-  [output-dir]           Output directory. Defaults to the input file's
-                         directory; for stdin input, defaults to the current
-                         working directory. Output filename is auto-derived
-                         as <mdFileName>-<docHash>-review.html.
-
-Options:
-  --document-name <name> Override the document name used for the data-name
-                         attribute and the output filename prefix. Useful
-                         with stdin input.
-  --theme <value>        Set the initial theme hint for the generated HTML.
-                         One of: system | light | dark. Written as a
-                         <html data-theme> attribute. Takes precedence over
-                         the viewer's localStorage at every reload (the CLI
-                         hint always wins on initial paint; UI toggle clicks
-                         override only within the current session, and a
-                         subsequent reload re-applies the CLI hint). Omit to
-                         leave the attribute off entirely.
-  --shiki-langs <value>  Select which Shiki grammars to embed in the HTML
-                         for syntax highlighting. One of:
-                           auto  Scan the input markdown and embed only the
-                                 grammars used by fenced blocks (default).
-                           all   Embed all Shiki-bundled grammars (heaviest,
-                                 ~235 languages, ~5.5 MB gzipped).
-                           none  Embed no grammars (all code blocks render as
-                                 plain text).
-                           <csv> Comma-separated list of language identifiers
-                                 (e.g. ts,js,py). Aliases are normalized to
-                                 canonical names; unsupported entries are
-                                 silently ignored.
-  --comments-width <px>   Set the initial comments-panel width hint for the
-                         generated HTML. One of:
-                           0         Start with the comments panel closed (only the
-                                     edge tab is visible until the user opens
-                                     it).
-                           280–640   Start open with the given width in pixels.
-                         Written as a <html data-comments-width> attribute and
-                         takes precedence over the viewer's localStorage at
-                         every reload (UI drags / toggle-tab clicks override
-                         only within the current session; reload re-applies
-                         the CLI hint). Omit to leave the attribute off
-                         entirely.
-  --page-nav-width <px>  Set the initial document-pages panel (left TOC) width
-                         hint. One of:
-                           0         Start with the panel closed (only the left
-                                     edge tab is visible).
-                           180–480   Start open with the given width in pixels.
-                         Written as a <html data-page-nav-width> attribute and
-                         follows the same precedence rules as --comments-width.
-  --mermaid <value>      Control Mermaid runtime injection for \`\`\`mermaid blocks.
-                         One of:
-                           auto  Inject Mermaid only if the markdown contains at
-                                 least one \`\`\`mermaid block (default). Keeps
-                                 distribution size minimal when not used.
-                           on    Always inject. Adds ~700 KB gzipped to the
-                                 distribution HTML.
-                           off   Never inject. \`\`\`mermaid blocks fall back to
-                                 Shiki-highlighted code blocks (MDXG §15 [MUST]).
-  --math <value>         Control KaTeX runtime injection for $...$ / $$...$$
-                         math expressions (MDXG §14). One of:
-                           auto  Inject KaTeX only if the markdown contains at
-                                 least one math expression (default).
-                           on    Always inject. Adds ~250 / ~350 KB gzipped
-                                 depending on --math-fonts.
-                           off   Never inject. $...$ / $$...$$ render as raw
-                                 markdown text (MDXG §14 [MUST]).
-  --math-fonts <value>   Choose the KaTeX woff2 font set embedded as data URI
-                         (only meaningful when KaTeX is injected). One of:
-                           minimal  Main / AMS / Math / Size1-4 only, +~110 KB
-                                    gzipped (default). \\mathcal / \\mathfrak /
-                                    \\mathscr / SansSerif / Typewriter fall back
-                                    to the host's system font.
-                           all      Embed all 20 woff2 families, +~220 KB gzipped.
-                                    Use when the document relies on rare math
-                                    glyphs (\\mathcal{X}, \\mathfrak{X}, ...).
-  --markdown-css <path>  Replace the bundled markdown preview stylesheet with the
-                         CSS file at <path>. Targets only the markdown preview
-                         (#doc scope). Layout / chrome (review.css) is not
-                         affected. Useful for distributing review HTML with a
-                         custom typographic theme.
-  --no-open              Generate the HTML but do not launch a browser.
-  --show-open-file       Keep the "Open file" item visible in the generated
-                         HTML's Open ▾ menu. By default (without this flag),
-                         CLI output hides the item to prevent accidentally
-                         loading a different markdown (which would discard the
-                         current comments). The standalone HTML — opened
-                         directly without the CLI — always shows the item.
-  --show-paste-markdown  Keep the "Paste markdown" item visible in the
-                         generated HTML's Open ▾ menu. By default (without
-                         this flag), CLI output hides the item for the same
-                         reason as --show-open-file (paste also replaces the
-                         currently loaded markdown and discards comments).
-                         The standalone HTML always shows the item.
-  -h, --help             Print this help and exit. Takes precedence over all
-                         other arguments and flags when present.
-
-Cleanup mode:
-  --clean [dir]          Remove all *-<docHash>-review.html and
-                         *-<docHash>-feedback.json files in <dir> (top level
-                         only). <dir> defaults to the current directory when
-                         omitted. By default runs in dry-run mode and only
-                         prints the candidates; pass --yes to actually delete.
-  --yes                  With --clean, perform deletion (no prompt). Without
-                         --yes, --clean is dry-run.
-  --keep <docHash>       With --clean, preserve files whose 16-hex docHash
-                         matches. May be repeated.
-  -r, --recursive        With --clean, also descend into subdirectories
-                         (default: top level only).
-
-Examples:
-  mdxg-redline spec.md
-  mdxg-redline spec.md ./reviews
-  mdxg-redline --no-open spec.md
-  mdxg-redline --theme dark spec.md
-  cat spec.md | mdxg-redline - --document-name spec.md
-  mdxg-redline --clean
-  mdxg-redline --clean ./reviews
-  mdxg-redline --clean ./reviews --yes
-  mdxg-redline --clean ./reviews --keep a1b2c3d4e5f6a7b8 --yes
-  mdxg-redline --clean ./reviews --recursive --yes
-`;
+/**
+* 現在の CLI 言語 (setCliLang で確定済み) に応じた help テキスト全体を返す。
+* Usage / description / arguments / options / cleanup / examples の各 block を改行 2 つで連結。
+* 末尾改行を 1 つ付与し、stdout に書いた時のターミナル整形と合わせる。
+*/
+var getHelpText = () => {
+	return `${[
+		translateCli("cli.help.usage"),
+		translateCli("cli.help.description"),
+		translateCli("cli.help.arguments_block"),
+		translateCli("cli.help.options_block"),
+		translateCli("cli.help.cleanup_block"),
+		translateCli("cli.help.examples_block")
+	].join("\n\n")}\n`;
+};
 //#endregion
 //#region src/cli/parse-args.ts
 var parseArgs = (argv) => {
@@ -1774,7 +2021,10 @@ var readKatexAsset = async (path) => {
 	try {
 		return await readFile(path, "utf8");
 	} catch (error) {
-		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(`${path} が見つかりません。先に \`npm run build\` を実行して dist/katex/ を生成してください。`, { cause: error });
+		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(translateCli("cli.error.asset_missing", {
+			path,
+			target: "dist/katex/"
+		}), { cause: error });
 		throw error;
 	}
 };
@@ -1800,8 +2050,12 @@ var readKatexAssets = async (scriptDir, fontsMode) => {
 var reportKatexInjection = (report) => {
 	const counts = countMath(report.markdown);
 	const total = counts.inline + counts.display;
-	process$1.stderr.write(`Detected ${total} math expression(s). Embedding KaTeX runtime (fonts=${report.fontsMode}, ${report.sizeHintGzip} gzipped).\n`);
-	if (report.escapedScriptCount > 0) process$1.stderr.write(`(escaped ${report.escapedScriptCount} literal <\/script> in KaTeX runtime)\n`);
+	process$1.stderr.write(`${translateCli("cli.katex_injection", {
+		count: total,
+		mode: report.fontsMode,
+		size: report.sizeHintGzip
+	})}\n`);
+	if (report.escapedScriptCount > 0) process$1.stderr.write(`${translateCli("cli.katex_escaped_script", { count: report.escapedScriptCount })}\n`);
 };
 var applyKatex = async (html, args, ctx) => {
 	if (!shouldInjectKatex(args.math, ctx.markdown)) return html;
@@ -1872,7 +2126,10 @@ var readMermaidRuntime = async (scriptDir) => {
 	try {
 		return await readFile(path, "utf8");
 	} catch (error) {
-		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(`${path} が見つかりません。先に \`npm run build\` を実行して dist/mermaid.mjs を生成してください。`, { cause: error });
+		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(translateCli("cli.error.asset_missing", {
+			path,
+			target: "dist/mermaid.mjs"
+		}), { cause: error });
 		throw error;
 	}
 };
@@ -1880,8 +2137,8 @@ var applyMermaid = async (html, args, ctx) => {
 	if (!shouldInjectMermaid(args.mermaid, ctx.markdown)) return html;
 	const { escapedScriptCount, html: rewritten } = rewriteEmbeddedMermaid(html, await readMermaidRuntime(ctx.scriptDir));
 	const count = scanMermaidFences(ctx.markdown);
-	process$1.stderr.write(`Detected ${count} mermaid block(s). Embedding mermaid runtime (+~700 KB gzipped).\n`);
-	if (escapedScriptCount > 0) process$1.stderr.write(`(escaped ${escapedScriptCount} literal <\/script> in mermaid runtime)\n`);
+	process$1.stderr.write(`${translateCli("cli.mermaid_injection", { count })}\n`);
+	if (escapedScriptCount > 0) process$1.stderr.write(`${translateCli("cli.mermaid_escaped_script", { count: escapedScriptCount })}\n`);
 	return rewritten;
 };
 //#endregion
@@ -1966,7 +2223,10 @@ var readFeedbackFile = async (feedbackPath) => {
 		};
 		return {
 			raw: null,
-			warning: `(skipped resuming ${feedbackPath}: read failed with ${code})\n`
+			warning: `${translateCli("cli.feedback_read_failed", {
+				code,
+				path: feedbackPath
+			})}\n`
 		};
 	}
 };
@@ -1974,12 +2234,16 @@ var validateFeedbackPayload = (raw, expectedDocHash, feedbackPath) => {
 	const payload = parseFeedbackJson(raw);
 	if (payload === null) return {
 		payload: null,
-		warning: `(skipped resuming ${feedbackPath}: invalid JSON)\n`
+		warning: `${translateCli("cli.feedback_invalid_json", { path: feedbackPath })}\n`
 	};
 	const payloadDocHash = extractDocHash(payload);
 	if (payloadDocHash !== expectedDocHash) return {
 		payload: null,
-		warning: `(skipped resuming ${feedbackPath}: docHash mismatch — got ${payloadDocHash ?? "null"}, expected ${expectedDocHash})\n`
+		warning: `${translateCli("cli.feedback_hash_mismatch", {
+			expected: expectedDocHash,
+			got: payloadDocHash ?? "null",
+			path: feedbackPath
+		})}\n`
 	};
 	return {
 		payload,
@@ -2009,7 +2273,10 @@ var applyResumeFeedback = async (html, args, ctx) => {
 	if (resolved === null) return html;
 	const count = countComments(resolved.payload);
 	const rewritten = rewriteEmbeddedFeedback(html, resolved.payload);
-	process$1.stderr.write(`Resumed ${count} comment(s) from ${resolved.feedbackPath}.\n`);
+	process$1.stderr.write(`${translateCli("cli.feedback_resumed", {
+		count,
+		path: resolved.feedbackPath
+	})}\n`);
 	return rewritten;
 };
 //#endregion
@@ -2039,7 +2306,10 @@ var readGrammarJson = async (scriptDir, lang) => {
 		const content = await readFile(path, "utf8");
 		return JSON.parse(content);
 	} catch (error) {
-		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(`${path} が見つかりません。先に \`npm run build\` を実行して dist/shiki-langs/ を生成してください。`, { cause: error });
+		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(translateCli("cli.error.asset_missing", {
+			path,
+			target: "dist/shiki-langs/"
+		}), { cause: error });
 		throw error;
 	}
 };
@@ -2088,7 +2358,10 @@ var readReviewHtml = async (path) => {
 	try {
 		return await readFile(path, "utf8");
 	} catch (error) {
-		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(`${path} が見つかりません。先に \`npm run build\` を実行して dist/embed-template.html を生成してください。`, { cause: error });
+		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(translateCli("cli.error.asset_missing", {
+			path,
+			target: "dist/embed-template.html"
+		}), { cause: error });
 		throw error;
 	}
 };
@@ -2148,20 +2421,26 @@ var formatEntryLines = (header, entries) => {
 	return [header, ...entries.map((entry) => `  ${entry.filename}`)];
 };
 var formatDryRun = (dir, result) => {
-	if (result.toDelete.length === 0 && result.kept.length === 0) return `No review/feedback artifacts found in ${dir}.\n`;
-	const deleteLines = formatEntryLines(`[dry-run] Would delete ${result.toDelete.length} file(s) in ${dir}:`, result.toDelete);
-	const keepLines = formatEntryLines(`Kept ${result.kept.length} file(s) matching --keep:`, result.kept);
+	if (result.toDelete.length === 0 && result.kept.length === 0) return `${translateCli("cli.clean.no_files_found", { dir })}\n`;
+	const deleteLines = formatEntryLines(translateCli("cli.clean.dry_run_header", {
+		count: result.toDelete.length,
+		dir
+	}), result.toDelete);
+	const keepLines = formatEntryLines(translateCli("cli.clean.kept_header", { count: result.kept.length }), result.kept);
 	return `${[
 		...deleteLines,
 		...keepLines,
-		`Run with --yes to delete.`
+		translateCli("cli.clean.run_with_yes_hint")
 	].join("\n")}\n`;
 };
 var formatDeleted = (dir, deleted, kept) => {
-	if (deleted === 0 && kept === 0) return `No review/feedback artifacts found in ${dir}.\n`;
-	const head = `Deleted ${deleted} file(s) in ${dir}.\n`;
+	if (deleted === 0 && kept === 0) return `${translateCli("cli.clean.no_files_found", { dir })}\n`;
+	const head = `${translateCli("cli.clean.deleted_summary", {
+		count: deleted,
+		dir
+	})}\n`;
 	if (kept === 0) return head;
-	return `${head}Kept ${kept} file(s) matching --keep.\n`;
+	return `${head}${translateCli("cli.clean.kept_summary", { count: kept })}\n`;
 };
 //#endregion
 //#region src/cli/clean-io.ts
@@ -2228,6 +2507,88 @@ var runClean = async (args, io) => {
 	return 0;
 };
 //#endregion
+//#region src/cli/preextract-lang.ts
+var LANG_FLAG = "--lang";
+var isValidLangValue = (value) => value === "en" || value === "ja";
+var isMissingValueToken = (next) => {
+	if (typeof next !== "string") return true;
+	if (next.startsWith("--")) return true;
+	return HELP_FLAGS.has(next);
+};
+var INITIAL_STATE = {
+	error: null,
+	lang: null,
+	out: [],
+	pendingLang: false
+};
+var applyLangValue = (acc, value, env) => {
+	if (isValidLangValue(value)) return {
+		...acc,
+		lang: value,
+		pendingLang: false
+	};
+	if (value === "auto") return {
+		...acc,
+		lang: detectLangFromEnv(env),
+		pendingLang: false
+	};
+	return {
+		...acc,
+		error: {
+			kind: "invalid_value",
+			token: value
+		},
+		pendingLang: false
+	};
+};
+var consumePendingLang = (acc, token, env) => {
+	if (isMissingValueToken(token)) return {
+		...acc,
+		error: { kind: "missing_value" },
+		out: [...acc.out, token],
+		pendingLang: false
+	};
+	return applyLangValue(acc, token, env);
+};
+var stepNormal = (acc, token) => {
+	if (token === LANG_FLAG) return {
+		...acc,
+		pendingLang: true
+	};
+	return {
+		...acc,
+		out: [...acc.out, token]
+	};
+};
+var stepExtract = (env) => (acc, token) => {
+	if (acc.pendingLang) return consumePendingLang(acc, token, env);
+	return stepNormal(acc, token);
+};
+var finalizeState = (state) => {
+	if (state.pendingLang) return {
+		...state,
+		error: { kind: "missing_value" },
+		pendingLang: false
+	};
+	return state;
+};
+/**
+* 単一トラバーサルで --lang を抽出し、argv から strip し、エラー情報を返す。
+* 有効値同士の重複指定は後勝ち (--theme / --shiki-langs と同じ)。ただし一度検出した
+* 不正値の error は後続の有効値でクリアされず保持し、bootstrap で必ず reject する
+* (flag-parser.ts の「不正値検出で停止」モデルと整合)。例: `--lang fr --lang en` は
+* lang=en、error=invalid_value 'fr' を保持して reject される。
+*/
+var extractLang = (rawArgv, env) => {
+	const reduced = finalizeState(rawArgv.reduce(stepExtract(env), INITIAL_STATE));
+	const lang = reduced.lang ?? detectLangFromEnv(env);
+	return {
+		argv: reduced.out,
+		error: reduced.error,
+		lang
+	};
+};
+//#endregion
 //#region src/cli/open-command.ts
 var isHostBrowserUnreachableViaFile = (env) => {
 	if (env.REMOTE_CONTAINERS === "true") return true;
@@ -2261,7 +2622,10 @@ var buildOpenCommand = (platform, path, env = process$1.env) => {
 var openInBrowser = async (path) => new Promise((done) => {
 	const { args, command } = buildOpenCommand(process$1.platform, path, process$1.env);
 	execFile(command, args, (error) => {
-		if (error) process$1.stderr.write(`review-request: ブラウザを起動できませんでした (${command}: ${error.message})。上記のパスを手動で開いてください。\n`);
+		if (error) process$1.stderr.write(`${translateCli("cli.error.browser_launch_failed", {
+			command,
+			message: error.message
+		})}\n`);
 		done();
 	});
 });
@@ -2277,7 +2641,11 @@ var resolvePreferredPort = (env) => {
 	if (!raw) return DEFAULT_PORT;
 	const parsed = Number(raw);
 	if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
-		process$1.stderr.write(`review-request: ${PORT_ENV_VAR}="${raw}" は有効なポート番号ではないため ${String(DEFAULT_PORT)} を使います。\n`);
+		process$1.stderr.write(`${translateCli("cli.port_invalid", {
+			default: String(DEFAULT_PORT),
+			value: raw,
+			var: PORT_ENV_VAR
+		})}\n`);
 		return DEFAULT_PORT;
 	}
 	return parsed;
@@ -2296,7 +2664,7 @@ var tryListen = async (server, port) => new Promise((resolveFn, rejectFn) => {
 		server.removeListener("error", listeners.onError);
 		const addr = server.address();
 		if (addr === null || typeof addr === "string") {
-			rejectFn(/* @__PURE__ */ new Error("HTTP サーバーのアドレス取得に失敗しました"));
+			rejectFn(new Error(translateCli("cli.serve_address_failed")));
 			return;
 		}
 		resolveFn({
@@ -2315,7 +2683,11 @@ var listenWithFallback = async (server, preferred) => {
 		if (!isPortInUseError(error)) throw error;
 	}
 	const result = await tryListen(server, 0);
-	process$1.stderr.write(`review-request: ポート ${String(preferred)} が使用中のため ${String(result.port)} を使います。${PORT_ENV_VAR} でデフォルトを上書きできます。今回はブラウザ側 IndexedDB のサイレント復元 (Write feedback.json の保存先記憶) が効かない可能性があります。\n`);
+	process$1.stderr.write(`${translateCli("cli.port_in_use_fallback", {
+		preferred: String(preferred),
+		random: String(result.port),
+		var: PORT_ENV_VAR
+	})}\n`);
 	return result;
 };
 var serveOnceAndAutoStop = async (filePath) => {
@@ -2348,7 +2720,11 @@ var openOutput = async (outputPath) => {
 		return;
 	}
 	const handle = await serveOnceAndAutoStop(outputPath);
-	process$1.stderr.write(`review-request: VS Code Remote 環境を検知。HTTP サーバーを ${handle.url} で起動しました。初回アクセス後 ${SERVE_AUTOSTOP_MS / 1e3} 秒、リクエストが無ければ ${SERVE_GIVEUP_MS / 1e3} 秒で自動停止します。\n`);
+	process$1.stderr.write(`${translateCli("cli.serve_remote_started", {
+		seconds1: SERVE_AUTOSTOP_MS / 1e3,
+		seconds2: SERVE_GIVEUP_MS / 1e3,
+		url: handle.url
+	})}\n`);
 	await openInBrowser(handle.url);
 	await handle.done;
 };
@@ -2362,12 +2738,12 @@ var runEmbed = async (args) => {
 	if (args.open) await openOutput(ctx.outputPath);
 };
 var formatInvalidArgsMessage = (detail) => {
-	if (typeof detail === "string" && detail.length > 0) return `mdxg-redline: invalid arguments: ${detail}. Run \`mdxg-redline --help\` for usage.\n`;
-	return `mdxg-redline: invalid arguments. Run \`mdxg-redline --help\` for usage.\n`;
+	if (typeof detail === "string" && detail.length > 0) return `${translateCli("cli.error.invalid_arguments", { detail })}\n`;
+	return `${translateCli("cli.error.invalid_arguments_no_detail")}\n`;
 };
 var handleNonRunModes = (args) => {
 	if (args.mode === "help") {
-		process$1.stdout.write(HELP_TEXT);
+		process$1.stdout.write(getHelpText());
 		return true;
 	}
 	if (args.mode === "invalid") {
@@ -2376,8 +2752,27 @@ var handleNonRunModes = (args) => {
 	}
 	return false;
 };
-var main = async () => {
-	const args = parseArgs(process$1.argv.slice(2));
+var formatLangErrorMessage = (error) => {
+	if (error.kind === "invalid_value") return translateCli("cli.error.invalid_lang");
+	return translateCli("cli.error.missing_flag_value", {
+		expected: "auto, en, ja",
+		flag: "--lang"
+	});
+};
+var bootstrapCliLang = (rawArgv) => {
+	const { argv, error: langError, lang } = extractLang(rawArgv, process$1.env);
+	setCliLang(lang);
+	if (argv.some((token) => HELP_FLAGS.has(token))) {
+		process$1.stdout.write(getHelpText());
+		return null;
+	}
+	if (langError !== null) {
+		process$1.stderr.write(`mdxg-redline: ${formatLangErrorMessage(langError)}\n`);
+		process$1.exit(2);
+	}
+	return argv;
+};
+var dispatchParsedMode = async (args) => {
 	if (handleNonRunModes(args)) return;
 	if (args.mode === "clean") {
 		const code = await runClean({
@@ -2390,8 +2785,13 @@ var main = async () => {
 	}
 	if (args.mode === "run") await runEmbed(args);
 };
+var main = async () => {
+	const argv = bootstrapCliLang(process$1.argv.slice(2));
+	if (argv === null) return;
+	await dispatchParsedMode(parseArgs(argv));
+};
 main().catch((error) => {
-	process$1.stderr.write(`review-request: ${errorMessage(error)}\n`);
+	process$1.stderr.write(`${translateCli("cli.error.unexpected", { message: errorMessage(error) })}\n`);
 	process$1.exit(1);
 });
 //#endregion

@@ -18,6 +18,7 @@ import {
   isPartitionValid,
   stepArg,
 } from './flag-parser'
+import { translateCli } from './i18n'
 
 interface PartitionedArgs {
   documentName?: string
@@ -120,9 +121,9 @@ const invalid = (error?: string): ParsedArgs => {
 
 const formatPositionalError = (count: number): string => {
   if (count === 0) {
-    return 'missing input markdown (expected <input.md|-> [output-dir])'
+    return translateCli('cli.error.missing_input_markdown')
   }
-  return `too many positional arguments: ${count} (expected at most 2: <input.md|-> [output-dir])`
+  return translateCli('cli.error.too_many_positional_args', { count })
 }
 
 // 位置引数 (<input.md|->, [output-dir]) と --no-open / --document-name 等を混在順序で受け付ける。

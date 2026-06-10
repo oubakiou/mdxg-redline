@@ -3,6 +3,7 @@
 // `defineFlagDef` の closure に閉じ込めることで、テーブル格納時に unknown cast を不要にする。
 // PartitionedArgs への変換は parse-run-args.ts (orchestrator) 側の責務。
 
+import { translateCli } from './i18n'
 import {
   COMMENTS_WIDTH_FLAG,
   COMMENTS_WIDTH_VALUE_HELP,
@@ -89,15 +90,14 @@ export const INITIAL_PARTITION_STATE: PartitionState = {
   valid: true,
 }
 
-const quoteToken = (token: string): string => `'${token}'`
-
 export const formatInvalidValueMessage = (flag: string, token: string, valueHelp: string): string =>
-  `${flag}: invalid value ${quoteToken(token)} (expected ${valueHelp})`
+  translateCli('cli.error.invalid_flag_value', { expected: valueHelp, flag, token })
 
 export const formatMissingValueMessage = (flag: string, valueHelp: string): string =>
-  `${flag}: missing value (expected ${valueHelp})`
+  translateCli('cli.error.missing_flag_value', { expected: valueHelp, flag })
 
-export const formatUnknownFlagMessage = (token: string): string => `unknown option: ${token}`
+export const formatUnknownFlagMessage = (token: string): string =>
+  translateCli('cli.error.unknown_option', { token })
 
 // FlagDef のファクトリ。Value を generic で受け、parser + assign を closure に閉じ込めて
 // FlagDef (Value 型を持たない) を返す。テーブル格納時の existential エミュレートが不要になる。

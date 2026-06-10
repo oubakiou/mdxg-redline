@@ -9,6 +9,7 @@ import { basename } from 'node:path'
 import { createReadStream } from 'node:fs'
 import { createServer } from 'node:http'
 import process from 'node:process'
+import { translateCli } from './i18n'
 
 const SERVE_AUTOSTOP_MS = 3000
 const SERVE_GIVEUP_MS = 10_000
@@ -36,7 +37,11 @@ export const resolvePreferredPort = (env: Record<string, string | undefined>): n
   const parsed = Number(raw)
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) {
     process.stderr.write(
-      `review-request: ${PORT_ENV_VAR}="${raw}" は有効なポート番号ではないため ${String(DEFAULT_PORT)} を使います。\n`
+      `${translateCli('cli.port_invalid', {
+        default: String(DEFAULT_PORT),
+        value: raw,
+        var: PORT_ENV_VAR,
+      })}\n`
     )
     return DEFAULT_PORT
   }
@@ -82,7 +87,7 @@ const tryListen = async (
       server.removeListener('error', listeners.onError)
       const addr = server.address()
       if (addr === null || typeof addr === 'string') {
-        rejectFn(new Error('HTTP サーバーのアドレス取得に失敗しました'))
+        rejectFn(new Error(translateCli('cli.serve_address_failed')))
         return
       }
       resolveFn({ port: addr.port, server })
@@ -108,7 +113,11 @@ const listenWithFallback = async (
   }
   const result = await tryListen(server, 0)
   process.stderr.write(
-    `review-request: ポート ${String(preferred)} が使用中のため ${String(result.port)} を使います。${PORT_ENV_VAR} でデフォルトを上書きできます。今回はブラウザ側 IndexedDB のサイレント復元 (Write feedback.json の保存先記憶) が効かない可能性があります。\n`
+    `${translateCli('cli.port_in_use_fallback', {
+      preferred: String(preferred),
+      random: String(result.port),
+      var: PORT_ENV_VAR,
+    })}\n`
   )
   return result
 }
@@ -171,7 +180,11 @@ export const openOutput = async (outputPath: string): Promise<void> => {
   }
   const handle = await serveOnceAndAutoStop(outputPath)
   process.stderr.write(
-    `review-request: VS Code Remote 環境を検知。HTTP サーバーを ${handle.url} で起動しました。初回アクセス後 ${SERVE_AUTOSTOP_MS / 1000} 秒、リクエストが無ければ ${SERVE_GIVEUP_MS / 1000} 秒で自動停止します。\n`
+    `${translateCli('cli.serve_remote_started', {
+      seconds1: SERVE_AUTOSTOP_MS / 1000,
+      seconds2: SERVE_GIVEUP_MS / 1000,
+      url: handle.url,
+    })}\n`
   )
   await openInBrowser(handle.url)
   await handle.done
@@ -220,7 +233,7 @@ if (import.meta.vitest) {
         resolvePreferredPort({ MDXG_REDLINE_PORT: '0' })
       )
       expect(result).toBe(51_729)
-      expect(written.join('')).toContain('有効なポート番号ではない')
+      expect(written.join('')).toContain('not a valid port number')
     })
 
     it('非整数の文字列も DEFAULT_PORT へ fallback', () => {

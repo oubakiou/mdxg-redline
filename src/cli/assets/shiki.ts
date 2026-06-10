@@ -8,6 +8,7 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { rewriteEmbeddedShikiLangs } from '../../core/embed'
 import { scanFencedLangs } from '../../core/scan-fenced-langs'
+import { translateCli } from '../i18n'
 
 /**
  * `--shiki-langs` の指定 (未指定時は auto と同じ) から注入対象の正規名集合を決める pure 関数。
@@ -42,7 +43,7 @@ const readGrammarJson = async (scriptDir: string, lang: SupportedLang): Promise<
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       throw new Error(
-        `${path} が見つかりません。先に \`npm run build\` を実行して dist/shiki-langs/ を生成してください。`,
+        translateCli('cli.error.asset_missing', { path, target: 'dist/shiki-langs/' }),
         { cause: error }
       )
     }
