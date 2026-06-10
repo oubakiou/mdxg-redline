@@ -2,11 +2,14 @@ import { isFeedbackDirty, replaceComments, state } from '../state/app-state'
 import { qs, toast } from '../dom/dom-utils'
 import type { Comment } from '../../core/types'
 import { commentCardHTML } from './comment-rendering'
+import { commentCountLabel } from './comment-count-label'
 import { instantScrollToCenter } from '../document/scroll'
 import { orderedComments } from './comment-orderer'
 import { reapplyAllMarks } from './mark-engine'
 import { resolveNextFocusIndex } from '../dom/focus-list'
-import { translate } from '../i18n/i18n-browser'
+import { subscribeLangChange, translate } from '../i18n/i18n-browser'
+
+type Unsubscribe = () => void
 
 /**
  * 別ページのコメントカードをクリックされた際に呼ばれる navigate ハンドラ。
@@ -162,12 +165,34 @@ const updateOutputButtonsDisabled = (empty: boolean, dirty: boolean): void => {
 }
 
 const updateCommentsHeader = (total: number): void => {
-  qs('#cmt-count').textContent = String(total)
+  qs('#cmt-count').textContent = commentCountLabel(total)
   updateOutputButtonsDisabled(total === 0, isFeedbackDirty())
+}
+
+// mark.cmt.active は #doc 配下にあり list 再生成では破壊されないので、active 状態の
+// source of truth として読んで rebuild 後に card 側へ復元する。これがないと lang toggle や
+// 個別カード変更時に選択中カードの highlight が一瞬剥がれて見える。
+const readActiveCommentId = (): string | null => {
+  const activeMark = document.querySelector<HTMLElement>('mark.cmt.active')
+  if (activeMark === null) {
+    return null
+  }
+  return activeMark.dataset.commentId ?? null
+}
+
+const restoreActiveCardClass = (list: HTMLElement, activeCommentId: string | null): void => {
+  if (activeCommentId === null) {
+    return
+  }
+  const card = list.querySelector(`.cmt-card[data-id="${activeCommentId}"]`)
+  if (card !== null) {
+    card.classList.add('active')
+  }
 }
 
 export const renderComments = (): void => {
   const list = qs('#cmt-list')
+  const activeCommentId = readActiveCommentId()
   updateCommentsHeader(state.comments.length)
   if (state.comments.length === 0) {
     showEmptyComments(list)
@@ -176,6 +201,35 @@ export const renderComments = (): void => {
   list.innerHTML = ''
   for (const comment of orderedComments(state.comments)) {
     list.appendChild(createCommentCard(comment, renderComments))
+  }
+  restoreActiveCardClass(list, activeCommentId)
+}
+
+// lang toggle 時はカウントラベル (commentCountLabel) と各カードの edit / delete ボタン文言
+// (translate('comments.action_*')) の両方を貼り直す必要があるため、renderComments を丸ごと呼ぶ。
+// search-dom の setupSearchI18n と対称の subscribeLangChange / unsubscribe 構造に揃える。
+let langSubscription: Unsubscribe | null = null
+
+/**
+ * bootstrap で 1 回だけ呼ぶ。`subscribeLangChange` で lang toggle に追従 (idempotent)。
+ * 初回呼び出しで `renderComments()` も走らせ、static HTML 側に英語ハードコードした
+ * `#cmt-count` 初期値を現在ロケールの空状態ラベルで上書きする (i18n FOUC 対策)。
+ */
+export const setupCommentsI18n = (): void => {
+  if (langSubscription !== null) {
+    return
+  }
+  langSubscription = subscribeLangChange((): void => {
+    renderComments()
+  })
+  renderComments()
+}
+
+/** test fixture / HMR で listener leak を防ぐ。2 回連続で呼んでも例外を投げない。 */
+export const teardownCommentsI18n = (): void => {
+  if (langSubscription !== null) {
+    langSubscription()
+    langSubscription = null
   }
 }
 

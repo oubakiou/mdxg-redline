@@ -9,6 +9,7 @@ import {
   activateCommentsMark,
   setOnCommentEdit,
   setOnCommentNavigate,
+  setupCommentsI18n,
   wireCommentsKeyboardNav,
 } from './comments/comments'
 import { changeOutputFolder, writeFeedback } from './workspace/workspace'
@@ -140,6 +141,7 @@ const setupModalsAndPanels = (deps: ResolvedBootstrapDeps): void => {
   wireCoreModals()
   setupOnlineEditionUi(deps)
   setupPageNavI18n()
+  setupCommentsI18n()
   setOnCommentNavigate(navigateToComment)
   setOnCommentEdit(openEditCommentModal)
   // page scroll-spy が activePageIndex を更新した直後の TOC active 表示更新。

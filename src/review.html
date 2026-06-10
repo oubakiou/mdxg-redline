@@ -604,16 +604,17 @@
             </div>
           </div>
           <div class="menu-wrap">
-            <!-- cmt-count の textContent は comments.ts が動的に更新する (translatePlural)。
+            <!-- cmt-count の textContent は comments.ts が translatePlural 経由で動的に更新する。
                  caret span は子要素として保持する必要があるため leaf span 化していない。
-                 Step 6 で subscribeLangChange + dataset.i18n / i18nParams 連動を組み込む。 -->
+                 初期値を空にして bootstrap の setupCommentsI18n に塗らせる (英語ハードコードによる
+                 i18n FOUC 回避)。 -->
             <button
               class="btn btn-ghost"
               id="btn-comments-menu"
               aria-haspopup="true"
               aria-expanded="false"
             >
-              <span id="cmt-count">0 comments</span>
+              <span id="cmt-count"></span>
               <span class="menu-caret" aria-hidden="true">▾</span>
             </button>
             <div class="menu" id="menu-comments" role="menu">
