@@ -2062,7 +2062,12 @@ html:not([data-mdxg-online='1']) .online-edition-only {
   .page-nav-resize-handle,
   [data-block-id]:hover::before,
   .tooltipped::after,
-  .tooltipped::before {
+  .tooltipped::before,
+  /* タッチ端末ではタップ後に sticky hover が残り、
+     詳細度の高い :hover / :focus-visible ルールが上の display:none を上書きして
+     ツールチップが消えなくなる。同詳細度で打ち消す。 */
+  .tooltipped:hover::after,
+  .tooltipped:focus-visible::after {
     display: none;
   }
   :root:not(.has-pages) #btn-mobile-toc {
