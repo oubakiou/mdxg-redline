@@ -676,7 +676,9 @@ in-source test：
 
 成果物：mobile 完成形が UI 上で確認できる。 DESIGN.md §4 にモバイルレイアウト節が追加される。
 
-### Step 7: (未着手) README_ja.md / README.md にモバイル操作節を追加
+### Step 7: (完了済み) README_ja.md / README.md にモバイル操作節を追加
+
+**状態**: **完了済み** — commit `ee0f170`（日英両 README に「モバイル操作」節を追加。スクリーンショットは任意のため未追加）
 
 - 「キーボードショートカット」節の隣に「モバイル操作」節を 1 段落で追加：「Open / Settings は header / TOC / Comment / Search は footer から操作」「drawer は backdrop / Esc / 同ボタン再押下で閉じる」「mobile では Help は BlueTooth キーボード `h` キーからのみ開ける」
 - スクリーンショット 1 枚を `docs/` 配下に置く（任意、画像規約に従う）
