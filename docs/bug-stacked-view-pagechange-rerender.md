@@ -2,6 +2,8 @@
 
 [![MKDN](https://img.shields.io/badge/MKDN-review-red?style=for-the-badge)](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2Fdocs%2Fbug-stacked-view-pagechange-rerender.md#p:bug-1)
 
+> **状態**: **修正済み** — `navigateToTarget` のページ切替経路を `renderAll()`（全再 mount）から軽量 `refreshActivePageView()`（`renderPageNavigation` のみ）へ変更。`renderDoc` による再 mount + 全 Shiki/Mermaid/KaTeX 再 upgrade を回避。in-source test（sentinel 生存 / cmt mark・search-hl 残存 / TOC 追従 / 同一ページ no-op）を追加。`§4 修正方針` の「採用案」を実装し、`§4 要検証の不変条件`（drift / mark 維持 / scroll-spy 維持 / comments active 同期）はサブエージェントによるソースレベル検証で確認済み。CPU 体感の実機 / DevTools 確認は別途推奨。
+
 Stacked View は全ページを常時 DOM に保持する設計だが、TOC / Sequential / hashchange による**別ページ（大セクション）遷移**では `navigateToTarget` が `renderAll()` → `renderDoc()` → `mountRenderedDoc()` を呼び、`#doc` の `innerHTML` を全消去して全ページ section を再構築し、さらに全 `<pre>` / mermaid / math に対して Shiki / Mermaid / KaTeX upgrade を再 schedule する。全ページがすでに DOM 上にある Stacked View ではこの再 mount は本来不要で、ページ切替に必要なのは active 状態の更新とスクロールのみ。結果として、code block を多く含む長文や低速 CPU（スマートフォン）では別ページ遷移が体感で重くなる。同一ページ内の小セクション（heading outline）遷移は `pageChanged === false` で `renderAll` を完全にスキップするため軽快で、この非対称が問題を顕在化させる。
 
 ## 1. 問題の構造

@@ -3,6 +3,7 @@
 // 1 つの API (navigateToTarget) に集約し、Stacked View の不変条件を維持する。
 
 import type { Comment } from '../../core/types'
+import type { Page } from '../../core/page-split'
 import {
   type NavigateTarget,
   resolveTargetFromHash,
@@ -23,8 +24,9 @@ import { setupPageScrollSpy } from './page-scroll-spy'
 import { state } from '../state/app-state'
 
 /**
- * loadFromMarkdown / navigateToTarget 双方で使う「現状の state を全 view に流す」共通処理。
- * scroll-spy も DOM が新しくなった直後に組み直す (古い observer はリーク防止のため teardown)。
+ * 文書 mount を伴う full render。loadFromMarkdown (初期ロード / markdown 差し替え) で `#doc` を
+ * 作り直すときに使う。renderDoc が DOM を再 mount するため、scroll-spy も新 DOM 上に組み直す
+ * (古い observer はリーク防止のため teardown される)。
  */
 export const renderAll = (): void => {
   renderDoc()
@@ -32,6 +34,17 @@ export const renderAll = (): void => {
   renderComments()
   setupScrollSpy()
   setupPageScrollSpy()
+}
+
+/**
+ * ページ切替時の軽量 refresh。Stacked View は全ページを 1 度に描画して常駐させ、`#doc` の DOM は
+ * activePageIndex に依存しない (doc-mount は全ページを描画する) ため、renderDoc による再 mount +
+ * 全 Shiki / Mermaid / KaTeX 再 upgrade は不要 — active page の TOC highlight 更新だけで足りる。
+ * cmt / search mark は再 mount しない限り破壊されず、scroll-spy observer も DOM 不変なら有効なまま。
+ * (詳細・性能 bug の経緯は docs/bug-stacked-view-pagechange-rerender.md)
+ */
+const refreshActivePageView = (): void => {
+  renderPageNavigation()
 }
 
 /** activePage に対応する `<section.virtual-page>` を DOM から取り出す。 */
@@ -129,7 +142,9 @@ export const scrollToTargetAfterRender = (
  * - scroll 動作は `scrollToTargetAfterRender` に集約 (heading 指定 / page section / 同一 page 内
  *   no-op の 3 分岐) し、instant (`auto`) で位置遷移する
  *
- * 再描画は必ず `renderAll()` 経由にする。view 追加時の drift を構造的に防ぐ単一の真の源。
+ * ページ切替は `refreshActivePageView` (軽量 = TOC highlight 更新のみ) を使い、renderDoc による
+ * 全再 mount は行わない。`#doc` は全ページ常駐で activePageIndex に依存しないため
+ * (docs/bug-stacked-view-pagechange-rerender.md)。文書 mount は loadFromMarkdown 側の renderAll。
  */
 export const navigateToTarget = (
   target: NavigateTarget,
@@ -138,7 +153,7 @@ export const navigateToTarget = (
 ): void => {
   const pageChanged = setActivePageIndex(target.pageIndex)
   if (pageChanged) {
-    renderAll()
+    refreshActivePageView()
   }
   if (pushHash) {
     syncHashFromActivePage(target.headingSlug)
@@ -183,16 +198,16 @@ export const onCompositeSlugClick = (compositeSlug: string, keyboardActivated: b
 
 /**
  * サイドバーに表示された別ページのコメントカードがクリックされた時の遷移 orchestrator。
- * navigateToTarget で activePageIndex を切り替えると renderAll が走り、mark-engine が
- * 新ページの comments を mark 化する。同じ tick で focusCommentMarkAfterNavigate を呼べば
- * 描画済みの mark を見つけてハイライト + smoothScroll できる。
+ * Stacked View では全ページの comment mark が常時 #doc 上に存在するため、navigateToTarget で
+ * activePageIndex を切り替えた直後に focusCommentMarkAfterNavigate を呼べば、対象 mark を
+ * 見つけてハイライト + smoothScroll できる。
  */
 export const navigateToComment = (comment: Comment): void => {
   navigateToTarget({ headingSlug: null, pageIndex: comment.pageIndex }, true)
   focusCommentMarkAfterNavigate(comment.id)
-  // navigateToTarget → renderAll で #cmt-list が再構築され、Enter/click 時に focus を持っていた
-  // 旧カードは破棄される。新カードを comment id で引き直して focus を戻すことで、TOC 側の
-  // focusNavigatedLink (§13 [SHOULD]) と同等の「navigate 後にフォーカスが残る」挙動を実現する。
+  // cmt-list は全 comment を常時描画し activePageIndex に依存しないため、ページ切替で再構築されない。
+  // 同 id の card に focus を当て直すことで、TOC 側の focusNavigatedLink (§13 [SHOULD]) と同等の
+  // 「navigate 後にフォーカスが残る」挙動を実現する。
   const newCard = document.querySelector<HTMLElement>(`.cmt-card[data-id="${comment.id}"]`)
   if (newCard) {
     newCard.focus()
@@ -207,6 +222,38 @@ const setupNavFixtureForTest = (): void => {
   `
   // pages 空 + activePageIndex 0 で setActivePageIndex(0) は範囲外 false となり renderAll を回避する。
   state.pages = []
+  state.activePageIndex = 0
+}
+
+const buildNavTestPage = (index: number, slug: string): Page => ({
+  ancestorHeadingPath: [],
+  depth: 1,
+  headings: [],
+  index,
+  markdown: '',
+  slug,
+  sourceLineEnd: index * 2 + 2,
+  sourceLineStart: index * 2 + 1,
+  title: `Page ${index}`,
+})
+
+// 2 ページ分の <section.virtual-page> を #doc に mount 済みにし、再 mount 検出用の sentinel を仕込む。
+const setupTwoPageFixtureForTest = (): void => {
+  document.documentElement.className = ''
+  document.body.innerHTML = `
+    <section class="doc-pane" tabindex="-1">
+      <div id="doc">
+        <span id="doc-sentinel"></span>
+        <section class="virtual-page" data-page-index="0" data-page-slug="p0">
+          <mark class="cmt" data-comment-id="c-on-p0"></mark>
+          <mark class="search-hl" data-search-index="0"></mark>
+        </section>
+        <section class="virtual-page" data-page-index="1" data-page-slug="p1"></section>
+      </div>
+    </section>
+    <aside class="page-nav" id="page-nav"><div id="page-nav-list"></div></aside>
+  `
+  state.pages = [buildNavTestPage(0, 'p0'), buildNavTestPage(1, 'p1')]
   state.activePageIndex = 0
 }
 
@@ -233,6 +280,48 @@ if (import.meta.vitest) {
       onCompositeSlugClick('missing-slug', true)
       const focusedDocPane = document.activeElement === document.querySelector('.doc-pane')
       expect([isMobilePageNavOpen(), focusedDocPane]).toEqual([false, false])
+    })
+  })
+
+  describe('navigateToTarget ページ切替は #doc を再 mount しない (bug-stacked-view-pagechange-rerender)', () => {
+    beforeEach(setupTwoPageFixtureForTest)
+
+    it('別ページ遷移で #doc 内の sentinel が破壊されない (renderDoc 非呼出)', () => {
+      const sentinelBefore = document.getElementById('doc-sentinel')
+      const sectionBefore = document.querySelector('section.virtual-page[data-page-slug="p0"]')
+      navigateToTarget({ headingSlug: null, pageIndex: 1 }, false)
+      // 再 mount (doc.innerHTML = '') が走れば sentinel / section の identity は失われる。
+      expect([
+        document.getElementById('doc-sentinel') === sentinelBefore,
+        document.querySelector('section.virtual-page[data-page-slug="p0"]') === sectionBefore,
+        state.activePageIndex,
+      ]).toEqual([true, true, 1])
+    })
+
+    it('別ページ遷移で別ページ上の cmt mark / search-hl が破壊されず残る', () => {
+      navigateToTarget({ headingSlug: null, pageIndex: 1 }, false)
+      // 再 mount すれば p0 上の mark は消える。残存 = highlight / アンカリングがページ切替で保たれる。
+      expect([
+        document.querySelector('mark.cmt[data-comment-id="c-on-p0"]') !== null,
+        document.querySelector('mark.search-hl[data-search-index="0"]') !== null,
+      ]).toEqual([true, true])
+    })
+
+    it('別ページ遷移で TOC (page-nav-list) は active page に追従して再描画される', () => {
+      navigateToTarget({ headingSlug: null, pageIndex: 1 }, false)
+      const list = document.getElementById('page-nav-list')
+      // renderPageNavigation が走り、TOC 本文が描画されている (active=page1)。
+      expect(list instanceof HTMLElement && list.innerHTML.length > 0).toBe(true)
+    })
+
+    it('同一ページ遷移 (pageChanged false) では refresh も走らず TOC は空のまま', () => {
+      navigateToTarget({ headingSlug: null, pageIndex: 0 }, false)
+      const list = document.getElementById('page-nav-list')
+      expect([
+        document.getElementById('doc-sentinel') !== null,
+        state.activePageIndex,
+        list instanceof HTMLElement && list.innerHTML,
+      ]).toEqual([true, 0, ''])
     })
   })
 }

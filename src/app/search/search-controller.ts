@@ -25,8 +25,9 @@ let navigateToPageHook: ((pageIndex: number) => void) | null = null
 
 /**
  * current match の page が activePage と違えば navigate。
- * navigate は内部で renderAll を呼び、その流れで reapplyAllMarks → onMarksReapplied 経由で
- * search ハイライトが新ページの DOM 上に再貼付される。
+ * Stacked View は全ページ常駐で、search ハイライトは setSearchQuery 時に全ページの DOM へ貼付済み。
+ * ページ切替は #doc を再 mount しないため (navigation-orchestrator の refreshActivePageView)、
+ * navigate 後も対象ページの search-hl は残っており、markCurrentSearchMark で current を引ける。
  */
 const navigateToCurrentMatch = (): void => {
   if (searchState.currentIndex === null) {
