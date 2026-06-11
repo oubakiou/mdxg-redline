@@ -126,6 +126,15 @@ let tooltipEl: HTMLElement | null = null
 let showTimer: ReturnType<typeof setTimeout> | null = null
 let hideTimer: ReturnType<typeof setTimeout> | null = null
 let activeRef: HTMLAnchorElement | null = null
+// 直前の入力が keyboard(Tab) かどうか。backref クリック等の pointer 由来 programmatic focus と
+// キーボード移動を区別し、前者では tooltip を出さないための focus-visible 相当の自前判定
+// (happy-dom が :focus-visible をプログラム focus でも true 扱いするため自前で持つ)。
+let lastFocusFromKeyboard = false
+
+// タッチ主体 (coarse pointer) 環境では tooltip を出さない。タップは hash navigation で脚注本文へ
+// ジャンプするのが本来の導線で、hover tooltip はポインタ専用補助に過ぎず synthetic mouseover /
+// sticky hover で出っぱなしになる事故の温床になるため。
+const isCoarsePointer = (): boolean => globalThis.matchMedia('(pointer: coarse)').matches
 
 const clearShowTimer = (): void => {
   if (showTimer !== null) {
@@ -242,7 +251,13 @@ const isFootnoteRef = (node: EventTarget | null): HTMLAnchorElement | null => {
 }
 
 export const wireFootnoteTooltip = (): void => {
+  document.addEventListener('pointerdown', (): void => {
+    lastFocusFromKeyboard = false
+  })
   document.addEventListener('mouseover', (event: MouseEvent): void => {
+    if (isCoarsePointer()) {
+      return
+    }
     const ref = isFootnoteRef(event.target)
     if (ref !== null) {
       scheduleShow(ref)
@@ -260,6 +275,10 @@ export const wireFootnoteTooltip = (): void => {
     scheduleHide()
   })
   document.addEventListener('focusin', (event: FocusEvent): void => {
+    // backref クリック由来の programmatic focus では出さず、キーボード Tab 由来のみ表示する。
+    if (isCoarsePointer() || !lastFocusFromKeyboard) {
+      return
+    }
     const ref = isFootnoteRef(event.target)
     if (ref !== null) {
       clearHideTimer()
@@ -273,6 +292,9 @@ export const wireFootnoteTooltip = (): void => {
     }
   })
   document.addEventListener('keydown', (event: KeyboardEvent): void => {
+    if (event.key === 'Tab') {
+      lastFocusFromKeyboard = true
+    }
     if (event.key === 'Escape' && activeRef !== null) {
       hide()
     }
@@ -280,7 +302,7 @@ export const wireFootnoteTooltip = (): void => {
 }
 
 if (import.meta.vitest) {
-  const { afterEach, beforeEach, describe, expect, it } = import.meta.vitest
+  const { afterEach, beforeEach, describe, expect, it, vi } = import.meta.vitest
 
   // test helper を module top-level に出すと本番 bundle に乗ってしまう (`if (import.meta.vitest)`
   // ブロックは build 時に dead-code 除去されるが、module 直下の helper は除去されない)。
@@ -424,10 +446,25 @@ if (import.meta.vitest) {
   })
 
   describe('wireFootnoteTooltip (DOM 統合)', () => {
+    // keyboard Tab 由来の focus を模す。focusin は lastFocusFromKeyboard が true のときのみ表示する。
+    // eslint-disable-next-line unicorn/consistent-function-scoping
+    const pressTab = (): void => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }))
+    }
+    // eslint-disable-next-line unicorn/consistent-function-scoping
+    const requireTooltip = (): HTMLElement => {
+      const tooltip = document.getElementById(TOOLTIP_ID)
+      if (tooltip === null) {
+        throw new Error('tooltip element missing')
+      }
+      return tooltip
+    }
+
     beforeEach(() => {
       document.body.innerHTML = ''
       tooltipEl = null
       activeRef = null
+      lastFocusFromKeyboard = false
       clearShowTimer()
       clearHideTimer()
     })
@@ -435,32 +472,47 @@ if (import.meta.vitest) {
     afterEach(() => {
       clearShowTimer()
       clearHideTimer()
+      vi.unstubAllGlobals()
     })
 
-    it('focusin で即座に tooltip 本文を表示する', () => {
+    it('keyboard 由来の focusin で即座に tooltip 本文を表示する', () => {
       wireFootnoteTooltip()
       const { ref } = buildTestDom()
+      pressTab()
       ref.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
-      const tooltip = document.getElementById(TOOLTIP_ID)
-      expect(tooltip).not.toBeNull()
-      if (tooltip === null) {
-        return
-      }
+      const tooltip = requireTooltip()
       expect(tooltip.innerHTML).toContain('tooltip 本文')
       expect(tooltip.getAttribute('aria-hidden')).toBe('false')
       expect(tooltip.classList.contains('is-visible')).toBe(true)
     })
 
+    it('pointer 由来 (backref クリック相当) の focusin では表示しない', () => {
+      wireFootnoteTooltip()
+      const { ref } = buildTestDom()
+      // 一旦 keyboard で true にしてから pointerdown が false へ戻すことを検証する
+      // (初期値 false 依存だと pointerdown listener の効果を確認できない)。
+      pressTab()
+      document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+      ref.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+      expect(document.getElementById(TOOLTIP_ID)).toBeNull()
+    })
+
+    it('coarse pointer 環境では keyboard focus でも表示しない', () => {
+      vi.stubGlobal('matchMedia', (): { matches: boolean } => ({ matches: true }))
+      wireFootnoteTooltip()
+      const { ref } = buildTestDom()
+      pressTab()
+      ref.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+      expect(document.getElementById(TOOLTIP_ID)).toBeNull()
+    })
+
     it('Esc で hide される', () => {
       wireFootnoteTooltip()
       const { ref } = buildTestDom()
+      pressTab()
       ref.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
-      const tooltip = document.getElementById(TOOLTIP_ID)
-      expect(tooltip).not.toBeNull()
-      if (tooltip === null) {
-        return
-      }
+      const tooltip = requireTooltip()
       expect(tooltip.getAttribute('aria-hidden')).toBe('true')
       expect(tooltip.classList.contains('is-visible')).toBe(false)
     })
@@ -473,6 +525,7 @@ if (import.meta.vitest) {
       ref.setAttribute('href', '#user-content-fn-missing')
       sup.append(ref)
       document.body.append(sup)
+      pressTab()
       ref.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
       expect(document.getElementById(TOOLTIP_ID)).toBeNull()
     })
