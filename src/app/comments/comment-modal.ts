@@ -27,6 +27,122 @@ type ModalState =
 // (let を使うと prefer-const と衝突するため)。
 const modalState: { current: ModalState } = { current: { kind: 'closed' } }
 
+// modal open 直前の active 要素 (Edit ボタン / floater 起動時は <body> 等)。close 時の focus 復元に使う。
+let lastTrigger: HTMLElement | null = null
+// showModalWithBody が予約する 50ms 後の input focus timer。close 時に cancel しないと、footer に
+// focus 復元した後で発火して非表示 input へ焦点を奪う (§4 Step 5b / Step 5c の search-controller と同 pattern)。
+let pendingFocusTimer: ReturnType<typeof setTimeout> | null = null
+
+// FOCUSABLE_SELECTOR は static-modal.ts:133-140 と統一。happy-dom はレイアウトを計算しないため
+// size 依存判定は使わず、selector match + 祖先の display/visibility/inert で focusable を判定する。
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',')
+
+const captureLastTrigger = (): void => {
+  const active = document.activeElement
+  if (active instanceof HTMLElement) {
+    lastTrigger = active
+    return
+  }
+  lastTrigger = null
+}
+
+const cancelModalFocusTimer = (): void => {
+  if (pendingFocusTimer !== null) {
+    clearTimeout(pendingFocusTimer)
+    pendingFocusTimer = null
+  }
+}
+
+const isHiddenByStyle = (el: HTMLElement): boolean => {
+  if (el.hasAttribute('inert')) {
+    return true
+  }
+  const style = globalThis.getComputedStyle(el)
+  if (style.display === 'none') {
+    return true
+  }
+  return style.visibility === 'hidden' || style.visibility === 'collapse'
+}
+
+const isHiddenByAncestors = (el: HTMLElement): boolean => {
+  let current: HTMLElement | null = el
+  while (current) {
+    if (isHiddenByStyle(current)) {
+      return true
+    }
+    current = current.parentElement
+  }
+  return false
+}
+
+// `#floater` の mousedown が preventDefault するため (comment-modal.ts の wireCommentModal)、新規追加
+// 経路では lastTrigger が <body> 等の非 focusable になりうる。要素自身が selector に match するかを
+// 最初に確認することで <body> / tabindex なし <div> を除外する (§5.s)。
+const isFocusable = (el: HTMLElement | null): boolean => {
+  if (!el || !el.isConnected) {
+    return false
+  }
+  if (!el.matches(FOCUSABLE_SELECTOR)) {
+    return false
+  }
+  return !isHiddenByAncestors(el)
+}
+
+// saveEditedComment は renderComments() で cmt-list を再描画してから本関数経由で close するため、
+// lastTrigger (= 旧 Edit ボタン) が detach される。同一 comment id の新 Edit ボタンを引き直す (§5.s)。
+const findReplacementEditButton = (trigger: HTMLElement | null): HTMLElement | null => {
+  if (!trigger) {
+    return null
+  }
+  const card = trigger.closest('.cmt-card')
+  if (!card) {
+    return null
+  }
+  const commentId = card.getAttribute('data-id')
+  if (!commentId) {
+    return null
+  }
+  return document.querySelector<HTMLElement>(`.cmt-card[data-id="${commentId}"] .cmt-edit`)
+}
+
+// 最終フォールバック: mobile なら footer Comment button、desktop なら .doc-pane。CSS display:none の
+// footer 配下 button を hidden 属性 selector では弾けないため matchMedia で明示分岐する (§5.s)。
+const resolveFallbackTarget = (): HTMLElement | null => {
+  const isMobile = globalThis.matchMedia('(max-width: 768px)').matches
+  if (isMobile) {
+    const footerBtn = document.getElementById('btn-mobile-comments')
+    if (footerBtn instanceof HTMLElement) {
+      return footerBtn
+    }
+  }
+  return document.querySelector<HTMLElement>('.doc-pane')
+}
+
+// (a) trigger が isFocusable → 戻す、(b) 同一 comment id の新 Edit ボタン、(c) mobile footer / .doc-pane
+// の 3 段階フォールバックで focus を復元する (§5.s)。
+const restoreFocusAfterClose = (trigger: HTMLElement | null): void => {
+  if (trigger && isFocusable(trigger)) {
+    trigger.focus({ preventScroll: true })
+    return
+  }
+  const newEditBtn = findReplacementEditButton(trigger)
+  if (newEditBtn && isFocusable(newEditBtn)) {
+    newEditBtn.focus({ preventScroll: true })
+    return
+  }
+  const fallback = resolveFallbackTarget()
+  if (fallback) {
+    fallback.focus({ preventScroll: true })
+  }
+}
+
 const setModalChrome = (mode: 'add' | 'edit'): void => {
   if (mode === 'edit') {
     qs('#modal-input-label').textContent = translate('comments.edit_label')
@@ -41,10 +157,14 @@ const showModalWithBody = (quote: string, body: string): void => {
   if (isSearchOpen()) {
     closeSearch()
   }
+  captureLastTrigger()
   qs('#modal-quote').textContent = `“${quote}”`
   qsInput('#modal-input').value = body
   qs('#modal').classList.add('open')
-  setTimeout((): void => qsInput('#modal-input').focus(), 50)
+  pendingFocusTimer = setTimeout((): void => {
+    qsInput('#modal-input').focus()
+    pendingFocusTimer = null
+  }, 50)
 }
 
 /**
@@ -70,8 +190,18 @@ export const openEditCommentModal = (comment: Comment): void => {
 
 /** モーダルを閉じ、保留状態をクリアして次回開閉時の漏洩を防ぐ */
 export const closeCommentModal = (): void => {
+  // drawer / search / menu の Escape 経路は global-keyboard.ts が modal の開閉に関係なく
+  // closeCommentModal() を呼ぶため、closed のときは restoreFocusAfterClose まで進めず early return し、
+  // drawer 操作中の Escape で focus が .doc-pane / footer に奪われる回帰を構造的に防ぐ (§5.s)。
+  if (modalState.current.kind === 'closed') {
+    return
+  }
+  cancelModalFocusTimer()
   qs('#modal').classList.remove('open')
   modalState.current = { kind: 'closed' }
+  const trigger = lastTrigger
+  lastTrigger = null
+  restoreFocusAfterClose(trigger)
 }
 
 interface CommentContext {
@@ -230,8 +360,39 @@ const dummyComment = (overrides: Partial<Comment> = {}): Comment => ({
   ...overrides,
 })
 
+const setupModalFixtureForTest = (): void => {
+  document.body.innerHTML = `
+    <div id="modal-quote"></div>
+    <input id="modal-input" />
+    <div id="modal-input-label"></div>
+    <button id="modal-save"></button>
+    <div id="modal"></div>
+    <section class="doc-pane" tabindex="-1"></section>
+    <button id="btn-mobile-comments"></button>
+    <div class="cmt-card" data-id="c1"><button class="cmt-edit" data-edit="c1">edit</button></div>
+  `
+}
+
+const queryElForTest = (selector: string): HTMLElement => {
+  const el = document.querySelector<HTMLElement>(selector)
+  if (!el) {
+    throw new Error(`fixture missing ${selector}`)
+  }
+  return el
+}
+
+// saveEditedComment 経路 (renderComments で旧カードが detach され同 id の新カードが描画される) を模倣。
+const appendReplacementEditCardForTest = (commentId: string): HTMLElement => {
+  const card = document.createElement('div')
+  card.className = 'cmt-card'
+  card.dataset.id = commentId
+  card.innerHTML = `<button class="cmt-edit" data-edit="${commentId}">edit</button>`
+  document.body.appendChild(card)
+  return card
+}
+
 if (import.meta.vitest) {
-  const { describe, it, expect } = import.meta.vitest
+  const { afterEach, beforeEach, describe, it, expect, vi } = import.meta.vitest
 
   describe('commentFromSelection', () => {
     it('選択範囲と本文から正しいコメントを組み立てる', () => {
@@ -316,6 +477,67 @@ if (import.meta.vitest) {
       applyEditedBody([first, second], 'c2', 'edited')
       expect(first.comment).toBe('a')
       expect(second.comment).toBe('edited')
+    })
+  })
+
+  describe('focus 復元契約 (§5.s / §4 Step 5c)', () => {
+    beforeEach((): void => {
+      setupModalFixtureForTest()
+      vi.stubGlobal('matchMedia', (): { matches: boolean } => ({ matches: false }))
+    })
+    afterEach((): void => {
+      closeCommentModal()
+      vi.useRealTimers()
+      vi.unstubAllGlobals()
+      document.body.innerHTML = ''
+    })
+
+    it('Edit modal の close で focus が trigger (.cmt-edit) に戻る', () => {
+      const editBtn = queryElForTest('.cmt-card[data-id="c1"] .cmt-edit')
+      editBtn.focus()
+      openEditCommentModal(dummyComment({ id: 'c1' }))
+      closeCommentModal()
+      expect(document.activeElement).toBe(editBtn)
+    })
+
+    it('modal closed 状態の closeCommentModal は no-op で focus を動かさない (Escape 連打 guard)', () => {
+      const editBtn = queryElForTest('.cmt-card[data-id="c1"] .cmt-edit')
+      editBtn.focus()
+      closeCommentModal()
+      expect(document.activeElement).toBe(editBtn)
+    })
+
+    it('open 直後の close で 50ms focus timer が cancel され input に focus が奪われない', () => {
+      vi.useFakeTimers()
+      const editBtn = queryElForTest('.cmt-card[data-id="c1"] .cmt-edit')
+      editBtn.focus()
+      openEditCommentModal(dummyComment({ id: 'c1' }))
+      closeCommentModal()
+      vi.advanceTimersByTime(100)
+      expect(document.activeElement).toBe(editBtn)
+    })
+
+    it('trigger detach 時は同一 comment id の新 Edit ボタンに focus が戻る (saveEditedComment 経路)', () => {
+      const oldCard = queryElForTest('.cmt-card[data-id="c1"]')
+      queryElForTest('.cmt-card[data-id="c1"] .cmt-edit').focus()
+      openEditCommentModal(dummyComment({ id: 'c1' }))
+      oldCard.remove()
+      const newCard = appendReplacementEditCardForTest('c1')
+      closeCommentModal()
+      expect(document.activeElement).toBe(newCard.querySelector('.cmt-edit'))
+    })
+
+    it('trigger が <body> 等の非 focusable のとき desktop では .doc-pane に退避する', () => {
+      openEditCommentModal(dummyComment({ id: 'nope' }))
+      closeCommentModal()
+      expect(document.activeElement).toBe(queryElForTest('.doc-pane'))
+    })
+
+    it('trigger 非 focusable + mobile では footer Comment button に退避する', () => {
+      vi.stubGlobal('matchMedia', (): { matches: boolean } => ({ matches: true }))
+      openEditCommentModal(dummyComment({ id: 'nope' }))
+      closeCommentModal()
+      expect(document.activeElement).toBe(queryElForTest('#btn-mobile-comments'))
     })
   })
 }

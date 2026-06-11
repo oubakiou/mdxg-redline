@@ -5,6 +5,8 @@
 // 直交させる (§5.e)。背面 scroll lock は <body> の mobile-drawer-open + CSS が担う (§5.h)。
 // 「開いた drawer 以外は常に inert」invariant は applyMobileInertState() に一元化する (§5.j-4)。
 
+import { addOnCommentActivate } from '../comments/comments'
+
 const MOBILE_MEDIA = '(max-width: 768px)'
 
 // happy-dom はレイアウト計算をしないため、focusable 判定は static-modal.ts:133-140 と同じ
@@ -434,6 +436,35 @@ const wireBreakpointListener = (): void => {
   })
 }
 
+const focusDocPane = (): void => {
+  const docPane = getDocPane()
+  if (docPane) {
+    docPane.focus({ preventScroll: true })
+  }
+}
+
+// comment activation (同一/別ページ問わず) で comments drawer を自動 close し本文側へ focus を退避する
+// (§5.r)。desktop / drawer 閉時は no-op。register は idempotent な wireMobileFooter 内で 1 回だけ走る。
+const registerMobileCommentActivate = (): void => {
+  addOnCommentActivate((): void => {
+    if (!isMobileCommentsOpen()) {
+      return
+    }
+    closeMobileComments({ restoreFocus: false })
+    focusDocPane()
+  })
+}
+
+const attachMobileFooterListeners = (): void => {
+  wireFooterButtons()
+  addClick(getBackdrop(), () => closeMobileDrawers())
+  observeSearchBar()
+  wireDrawerEditModalAutoClose()
+  registerMobileCommentActivate()
+  wireBreakpointListener()
+  applyMobileInertState()
+}
+
 // idempotent gate は footer の dataset.wired で持つ。module-level boolean にすると in-source test が
 // fixture を作り直すたびに再 wire できなくなるため、DOM ノード単位で判定する (§4 Step 3)。
 export const wireMobileFooter = (): void => {
@@ -442,12 +473,7 @@ export const wireMobileFooter = (): void => {
     return
   }
   footer.dataset.wired = 'true'
-  wireFooterButtons()
-  addClick(getBackdrop(), () => closeMobileDrawers())
-  observeSearchBar()
-  wireDrawerEditModalAutoClose()
-  wireBreakpointListener()
-  applyMobileInertState()
+  attachMobileFooterListeners()
 }
 
 // in-source test 専用の純粋 helper 群。import.meta.vitest が false 評価される本番ビルドでは

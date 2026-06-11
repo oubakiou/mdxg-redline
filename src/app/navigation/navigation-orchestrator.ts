@@ -9,6 +9,7 @@ import {
   setActivePageIndex,
   syncHashFromActivePage,
 } from '../document/pages'
+import { closeMobilePageNav, isMobilePageNavOpen } from '../chrome/mobile-footer'
 import { focusCommentMarkAfterNavigate, renderComments } from '../comments/comments'
 import { focusNavigatedLink } from './page-navigation-keyboard'
 import { renderPageNavigation } from './page-navigation-render'
@@ -163,7 +164,21 @@ export const navigateToTarget = (
  * ままでフォーカスを動かさず、本文側に居るユーザーの邪魔をしない。
  */
 export const onCompositeSlugClick = (compositeSlug: string, keyboardActivated: boolean): void => {
-  navigateToTarget(resolveTargetFromHash(`#${compositeSlug}`), true, keyboardActivated)
+  const mobileDrawerOpen = isMobilePageNavOpen()
+  // mobile drawer 経路では navigateToTarget 第 3 引数 (focusTOC) を false 強制し、close 後に inert に
+  // なる TOC link への focusNavigatedLink 競合を構造的に回避する (§5.r)。desktop は無変更。
+  navigateToTarget(
+    resolveTargetFromHash(`#${compositeSlug}`),
+    true,
+    !mobileDrawerOpen && keyboardActivated
+  )
+  if (mobileDrawerOpen) {
+    closeMobilePageNav({ restoreFocus: false })
+    const docPane = document.querySelector<HTMLElement>('.doc-pane')
+    if (docPane) {
+      docPane.focus({ preventScroll: true })
+    }
+  }
 }
 
 /**
@@ -182,4 +197,42 @@ export const navigateToComment = (comment: Comment): void => {
   if (newCard) {
     newCard.focus()
   }
+}
+
+const setupNavFixtureForTest = (): void => {
+  document.documentElement.className = ''
+  document.body.innerHTML = `
+    <section class="doc-pane" tabindex="-1"></section>
+    <aside class="page-nav" id="page-nav"></aside>
+  `
+  // pages 空 + activePageIndex 0 で setActivePageIndex(0) は範囲外 false となり renderAll を回避する。
+  state.pages = []
+  state.activePageIndex = 0
+}
+
+if (import.meta.vitest) {
+  const { afterEach, beforeEach, describe, expect, it } = import.meta.vitest
+
+  beforeEach(setupNavFixtureForTest)
+  afterEach((): void => {
+    document.documentElement.className = ''
+    document.body.innerHTML = ''
+  })
+
+  describe('onCompositeSlugClick mobile 分岐 (§5.r)', () => {
+    it('mobile drawer open 時は drawer を閉じ .doc-pane に focus を退避する', () => {
+      document.documentElement.classList.add('mobile-page-nav-open')
+      onCompositeSlugClick('missing-slug', true)
+      expect([isMobilePageNavOpen(), document.activeElement]).toEqual([
+        false,
+        document.querySelector('.doc-pane'),
+      ])
+    })
+
+    it('desktop (drawer 閉) では drawer を閉じず .doc-pane に focus を移さない', () => {
+      onCompositeSlugClick('missing-slug', true)
+      const focusedDocPane = document.activeElement === document.querySelector('.doc-pane')
+      expect([isMobilePageNavOpen(), focusedDocPane]).toEqual([false, false])
+    })
+  })
 }

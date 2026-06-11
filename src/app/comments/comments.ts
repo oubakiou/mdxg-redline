@@ -45,19 +45,47 @@ const requestNavigateToCommentPage = (comment: Comment): void => {
   }
 }
 
-const focusCommentCard = (card: HTMLElement, comment: Comment): void => {
-  if (comment.pageIndex !== state.activePageIndex) {
-    requestNavigateToCommentPage(comment)
-    return
+// comment カードの activation (click / Enter) を同一/別ページ問わず購読する registry。
+// 既存 setOnCommentNavigate (単一代入 + 別ページ判定時のみ発火) では mobile drawer の自動 close を
+// 全経路で拾えないため、chain 対応の Set として別に持つ (§5.r)。
+const onCommentActivateHandlers = new Set<(comment: Comment) => void>()
+
+export const addOnCommentActivate = (handler: (comment: Comment) => void): (() => void) => {
+  onCommentActivateHandlers.add(handler)
+  return (): void => {
+    onCommentActivateHandlers.delete(handler)
   }
+}
+
+const fireCommentActivate = (comment: Comment): void => {
+  for (const handler of onCommentActivateHandlers) {
+    handler(comment)
+  }
+}
+
+const activateSamePageMark = (card: HTMLElement, comment: Comment): void => {
   const mark = document.querySelector(`mark.cmt[data-comment-id="${comment.id}"]`)
   if (!mark) {
+    // mark 不在 (アンカリング失敗の孤立 comment) でも drawer 自動 close の通知は必要 (§5.r)。
+    fireCommentActivate(comment)
     return
   }
   clearActiveComments()
   mark.classList.add('active')
   card.classList.add('active')
   instantScrollToCenter(mark)
+  fireCommentActivate(comment)
+}
+
+// fire は各分岐の return 前に置く。別ページ経路では navigateToComment が末尾で newCard.focus() を
+// 呼ぶため、冒頭で fire すると mobile handler の .doc-pane.focus() が上書きされてしまう (§5.r)。
+const focusCommentCard = (card: HTMLElement, comment: Comment): void => {
+  if (comment.pageIndex !== state.activePageIndex) {
+    requestNavigateToCommentPage(comment)
+    fireCommentActivate(comment)
+    return
+  }
+  activateSamePageMark(card, comment)
 }
 
 /**
@@ -391,6 +419,54 @@ const queryActiveIds = (selector: string): string[] => {
   return results
 }
 
+// renderComments が依存する chrome (count / 出力ボタン / cmt-list) + #doc + comments aside を最小構成で
+// 用意する。focusCommentCard を card click 経由で起動するための fixture (§5.r registry テスト用)。
+const setupCommentsChromeForTest = (): void => {
+  document.body.innerHTML = `
+    <span id="cmt-count"></span>
+    <button id="btn-send"></button>
+    <button id="btn-copy"></button>
+    <button id="btn-export"></button>
+    <button id="btn-clear"></button>
+    <div id="doc"></div>
+    <aside class="comments"><div id="cmt-list"></div></aside>
+  `
+}
+
+const makeCommentForTest = (id: string, pageIndex: number): Comment => ({
+  blockId: 'b1',
+  comment: 'body',
+  created: '2026-01-01T00:00:00.000Z',
+  endOffset: 1,
+  id,
+  pageIndex,
+  quote: 'q',
+  sourceLine: 1,
+  startOffset: 0,
+})
+
+const appendCmtMarkForTest = (commentId: string): void => {
+  const doc = document.getElementById('doc')
+  if (!doc) {
+    return
+  }
+  const mark = document.createElement('mark')
+  mark.className = 'cmt'
+  mark.dataset.commentId = commentId
+  doc.appendChild(mark)
+}
+
+const renderSingleCommentCardForTest = (comment: Comment): HTMLElement => {
+  replaceComments([comment])
+  state.activePageIndex = 0
+  renderComments()
+  const card = document.querySelector<HTMLElement>(`.cmt-card[data-id="${comment.id}"]`)
+  if (!card) {
+    throw new Error('fixture: cmt-card missing')
+  }
+  return card
+}
+
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
 
@@ -453,6 +529,63 @@ if (import.meta.vitest) {
       }
       focusCommentMarkAfterNavigate('nonexistent')
       expect(queryActiveIds('mark.cmt')).toEqual(['x']) // 以前の active が剥がれない
+    })
+  })
+
+  describe('addOnCommentActivate registry (§5.r)', () => {
+    it('同一ページ + mark 経路の card click で register 済み handler が発火する', () => {
+      setupCommentsChromeForTest()
+      appendCmtMarkForTest('x')
+      let fired: string | null = null
+      const off = addOnCommentActivate((comment): void => {
+        fired = comment.id
+      })
+      renderSingleCommentCardForTest(makeCommentForTest('x', 0)).click()
+      off()
+      expect(fired).toBe('x')
+    })
+
+    it('mark 不在の孤立 comment (同一ページ) でも handler が発火する (branch 2)', () => {
+      setupCommentsChromeForTest()
+      let fired = false
+      const off = addOnCommentActivate((): void => {
+        fired = true
+      })
+      renderSingleCommentCardForTest(makeCommentForTest('y', 0)).click()
+      off()
+      expect(fired).toBe(true)
+    })
+
+    it('別ページ comment は requestNavigateToCommentPage 後に handler が発火する (branch 1)', () => {
+      setupCommentsChromeForTest()
+      let navigated = false
+      setOnCommentNavigate((): void => {
+        navigated = true
+      })
+      let fired = false
+      const off = addOnCommentActivate((): void => {
+        fired = true
+      })
+      renderSingleCommentCardForTest(makeCommentForTest('z', 1)).click()
+      off()
+      setOnCommentNavigate(null)
+      expect([navigated, fired]).toEqual([true, true])
+    })
+
+    it('unsubscribe した handler は発火せず、chain で複数 register できる', () => {
+      setupCommentsChromeForTest()
+      appendCmtMarkForTest('m')
+      let count = 0
+      const off1 = addOnCommentActivate((): void => {
+        count += 1
+      })
+      const off2 = addOnCommentActivate((): void => {
+        count += 1
+      })
+      off1()
+      renderSingleCommentCardForTest(makeCommentForTest('m', 0)).click()
+      off2()
+      expect(count).toBe(1)
     })
   })
 }
