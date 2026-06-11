@@ -2061,6 +2061,8 @@ html:not([data-mdxg-online='1']) .online-edition-only {
   .comments-resize-handle,
   .page-nav-resize-handle,
   [data-block-id]:hover::before,
+  /* モバイルはホイールが無く pinch ズームに切り替わるため、マウス前提の zoom hint は隠す。 */
+  .modal-zoom-hint,
   .tooltipped::after,
   .tooltipped::before,
   /* タッチ端末ではタップ後に sticky hover が残り、

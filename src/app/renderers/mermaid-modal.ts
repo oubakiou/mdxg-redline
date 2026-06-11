@@ -5,7 +5,8 @@
 //
 // modal body には clicked SVG の outerHTML を複製挿入する (元 SVG は不変)。初期表示は CSS で
 // モーダルいっぱいに meet フィットし、その上に CSS transform (translate + scale) による
-// ホイールズーム (カーソル基点) とドラッグ pan を載せる。ダブルクリック / 再オープンで初期表示に戻る。
+// ホイールズーム (カーソル基点) / タッチの pinch ズーム / ドラッグ・1 本指 pan を載せる。
+// ダブルクリック / 再オープンで初期表示に戻る。
 
 import { createStaticModalController } from '../dom/static-modal'
 
@@ -45,6 +46,10 @@ let view: ViewTransform = { scale: 1, translateX: 0, translateY: 0 }
 let dragging = false
 let dragLastX = 0
 let dragLastY = 0
+// タッチの pinch zoom 用に現在 body に触れている全ポインタを client 座標で保持する。
+// 2 本以上で pinch、1 本で pan に振り分ける (Pointer Events で mouse/pen/touch を一元処理)。
+const activePointers = new Map<number, { clientX: number; clientY: number }>()
+let pinchPrevFrame: PinchFrame | null = null
 
 export const clampScale = (value: number): number => Math.min(SCALE_MAX, Math.max(SCALE_MIN, value))
 
@@ -59,6 +64,38 @@ export const computeZoomTransform = (
   translateX: cursor.cursorX - ((cursor.cursorX - current.translateX) / current.scale) * nextScale,
   translateY: cursor.cursorY - ((cursor.cursorY - current.translateY) / current.scale) * nextScale,
 })
+
+interface PinchFrame {
+  dist: number
+  midX: number
+  midY: number
+}
+
+// 2 本指の距離比で拡縮しつつ、midpoint 下の content 点を固定して midpoint の移動分だけ pan する (pure)。
+// scale は dist 比で更新し midpoint 基点ズーム → midpoint のフレーム間移動を translate に加える。
+export const computePinchTransform = (
+  current: ViewTransform,
+  prev: PinchFrame,
+  next: PinchFrame
+): ViewTransform => {
+  // prev.dist が 0 (2 指がほぼ同一座標) だと比が Infinity/NaN 化し scale が破綻するため、
+  // その frame は拡縮せず midpoint 移動分の pan のみ反映する。
+  let ratio = 1
+  if (prev.dist > 0) {
+    ratio = next.dist / prev.dist
+  }
+  const nextScale = clampScale(current.scale * ratio)
+  const zoomed = computeZoomTransform(
+    current,
+    { cursorX: next.midX, cursorY: next.midY },
+    nextScale
+  )
+  return {
+    scale: zoomed.scale,
+    translateX: zoomed.translateX + (next.midX - prev.midX),
+    translateY: zoomed.translateY + (next.midY - prev.midY),
+  }
+}
 
 const getModalSvg = (): SVGElement | null => {
   const body = document.getElementById(MERMAID_MODAL_BODY_ID)
@@ -86,9 +123,11 @@ const resetView = (): void => {
   applyView()
 }
 
-// pointerup を経由しない閉じ方 (Esc 等) で drag 中に閉じても状態が残らないよう明示リセットする。
+// pointerup を経由しない閉じ方 (Esc 等) で drag / pinch 中に閉じても状態が残らないよう明示リセットする。
 const resetDragAndBody = (): void => {
   dragging = false
+  activePointers.clear()
+  pinchPrevFrame = null
   const body = document.getElementById(MERMAID_MODAL_BODY_ID)
   if (body instanceof HTMLElement) {
     body.innerHTML = ''
@@ -120,22 +159,75 @@ const handleWheel = (event: WheelEvent): void => {
   applyView()
 }
 
-const handlePointerDown = (event: PointerEvent): void => {
-  // 主ボタン (左) のみ pan を開始する。右 / 中ボタンや contextmenu では pan しない。
-  if (event.button !== 0 || !isMermaidModalOpen() || getModalSvg() === null) {
-    return
-  }
-  dragging = true
-  dragLastX = event.clientX
-  dragLastY = event.clientY
+const getModalBody = (): HTMLElement | null => {
   const body = document.getElementById(MERMAID_MODAL_BODY_ID)
-  if (body instanceof HTMLElement) {
-    body.setPointerCapture(event.pointerId)
-    body.classList.add('dragging')
+  if (!(body instanceof HTMLElement)) {
+    return null
+  }
+  return body
+}
+
+// 現在 active な 2 本指から pinch のフレーム (距離 / body 基準 midpoint) を作る。
+const readPinchFrame = (body: HTMLElement): PinchFrame | null => {
+  const pts = [...activePointers.values()]
+  if (pts.length < 2) {
+    return null
+  }
+  const rect = body.getBoundingClientRect()
+  const [first, second] = pts
+  return {
+    dist: Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY),
+    midX: (first.clientX + second.clientX) / 2 - rect.left,
+    midY: (first.clientY + second.clientY) / 2 - rect.top,
   }
 }
 
-const handlePointerMove = (event: PointerEvent): void => {
+const beginPan = (event: PointerEvent, body: HTMLElement): void => {
+  dragging = true
+  dragLastX = event.clientX
+  dragLastY = event.clientY
+  body.classList.add('dragging')
+}
+
+// 2 本目が触れたら pan を止め pinch へ切り替える。baseline を今のフレームで初期化する。
+const beginPinch = (body: HTMLElement): void => {
+  dragging = false
+  body.classList.remove('dragging')
+  pinchPrevFrame = readPinchFrame(body)
+}
+
+const handlePointerDown = (event: PointerEvent): void => {
+  // 主ボタン (左) のみ受け付ける。右 / 中ボタンや contextmenu では pan / pinch しない。
+  if (event.button !== 0 || !isMermaidModalOpen() || getModalSvg() === null) {
+    return
+  }
+  const body = getModalBody()
+  if (body === null) {
+    return
+  }
+  body.setPointerCapture(event.pointerId)
+  activePointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY })
+  if (activePointers.size >= 2) {
+    beginPinch(body)
+  } else {
+    beginPan(event, body)
+  }
+}
+
+const handlePinchMove = (body: HTMLElement): void => {
+  const frame = readPinchFrame(body)
+  if (frame === null) {
+    return
+  }
+  // pinchPrevFrame があれば baseline 初期化済み。null だと前フレームが無く比を取れない。
+  if (pinchPrevFrame !== null) {
+    view = computePinchTransform(view, pinchPrevFrame, frame)
+    applyView()
+  }
+  pinchPrevFrame = frame
+}
+
+const handlePanMove = (event: PointerEvent): void => {
   if (!dragging) {
     return
   }
@@ -149,18 +241,80 @@ const handlePointerMove = (event: PointerEvent): void => {
   applyView()
 }
 
-const endDrag = (event: PointerEvent): void => {
-  if (!dragging) {
+const handlePointerMove = (event: PointerEvent): void => {
+  if (activePointers.has(event.pointerId)) {
+    activePointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY })
+  }
+  const body = getModalBody()
+  if (activePointers.size >= 2 && body !== null) {
+    handlePinchMove(body)
     return
   }
+  handlePanMove(event)
+}
+
+// pinch 継続中にペア構成ポインタ (先頭 2 件) のどれかが抜けると、prev frame が別ペア基準のまま残り
+// 次フレームで dist 比・midpoint 差分がジャンプする。残ったポインタで baseline を貼り直して防ぐ。
+const rebasePinch = (body: HTMLElement | null): void => {
+  if (body === null) {
+    pinchPrevFrame = null
+    return
+  }
+  pinchPrevFrame = readPinchFrame(body)
+}
+
+// 1 本指へ戻る: 残る指を起点に pan を継ぎ目なく再開する (translate のジャンプ防止)。
+const resumePanAfterPinch = (body: HTMLElement | null): void => {
+  const [remaining] = [...activePointers.values()]
+  dragging = true
+  dragLastX = remaining.clientX
+  dragLastY = remaining.clientY
+  pinchPrevFrame = null
+  if (body !== null) {
+    body.classList.add('dragging')
+  }
+}
+
+const endAllPointers = (body: HTMLElement | null): void => {
   dragging = false
-  const body = document.getElementById(MERMAID_MODAL_BODY_ID)
-  if (body instanceof HTMLElement) {
-    if (body.hasPointerCapture(event.pointerId)) {
-      body.releasePointerCapture(event.pointerId)
-    }
+  pinchPrevFrame = null
+  if (body !== null) {
     body.classList.remove('dragging')
   }
+}
+
+const handlePointerUp = (event: PointerEvent): void => {
+  activePointers.delete(event.pointerId)
+  const body = getModalBody()
+  if (body !== null && body.hasPointerCapture(event.pointerId)) {
+    body.releasePointerCapture(event.pointerId)
+  }
+  if (activePointers.size >= 2) {
+    rebasePinch(body)
+  } else if (activePointers.size === 1) {
+    resumePanAfterPinch(body)
+  } else {
+    endAllPointers(body)
+  }
+}
+
+const releaseAllCaptures = (body: HTMLElement): void => {
+  for (const pointerId of activePointers.keys()) {
+    if (body.hasPointerCapture(pointerId)) {
+      body.releasePointerCapture(pointerId)
+    }
+  }
+}
+
+// pointercancel はシステムジェスチャ横取り時に複数ポインタの一部しか発火しないことがあり (実機 Safari)、
+// 1 件ずつ delete すると残ったポインタで状態が宙に浮く。安全側に全ポインタを破棄して pan/pinch を終える。
+const handlePointerCancel = (): void => {
+  const body = getModalBody()
+  if (body !== null) {
+    releaseAllCaptures(body)
+  }
+  activePointers.clear()
+  endAllPointers(body)
 }
 
 const wirePanZoom = (): void => {
@@ -171,8 +325,8 @@ const wirePanZoom = (): void => {
   body.addEventListener('wheel', handleWheel, { passive: false })
   body.addEventListener('pointerdown', handlePointerDown)
   body.addEventListener('pointermove', handlePointerMove)
-  body.addEventListener('pointerup', endDrag)
-  body.addEventListener('pointercancel', endDrag)
+  body.addEventListener('pointerup', handlePointerUp)
+  body.addEventListener('pointercancel', handlePointerCancel)
   body.addEventListener('dblclick', resetView)
 }
 
@@ -264,6 +418,53 @@ if (import.meta.vitest) {
       const contentY = (cursorY - current.translateY) / current.scale
       expect(next.translateX + contentX * next.scale).toBeCloseTo(cursorX)
       expect(next.translateY + contentY * next.scale).toBeCloseTo(cursorY)
+    })
+  })
+
+  describe('computePinchTransform (2 本指 pinch)', () => {
+    it('指間距離が 2 倍になると scale も 2 倍になる', () => {
+      const next = computePinchTransform(
+        { scale: 1, translateX: 0, translateY: 0 },
+        { dist: 100, midX: 200, midY: 150 },
+        { dist: 200, midX: 200, midY: 150 }
+      )
+      expect(next.scale).toBe(2)
+    })
+
+    it('midpoint が動くと content がそれに追従する (拡縮なし時は純粋 pan)', () => {
+      const next = computePinchTransform(
+        { scale: 2, translateX: 10, translateY: 20 },
+        { dist: 100, midX: 100, midY: 100 },
+        { dist: 100, midX: 130, midY: 90 }
+      )
+      expect(next.scale).toBe(2)
+      expect(next.translateX).toBeCloseTo(40)
+      expect(next.translateY).toBeCloseTo(10)
+    })
+
+    it('midpoint 下の content 点は拡縮後も midpoint に留まる (不変条件)', () => {
+      const current = { scale: 2, translateX: 30, translateY: -10 }
+      const next = computePinchTransform(
+        current,
+        { dist: 100, midX: 120, midY: 80 },
+        { dist: 250, midX: 120, midY: 80 }
+      )
+      const contentX = (120 - current.translateX) / current.scale
+      const contentY = (80 - current.translateY) / current.scale
+      expect(next.translateX + contentX * next.scale).toBeCloseTo(120)
+      expect(next.translateY + contentY * next.scale).toBeCloseTo(80)
+    })
+
+    it('prev.dist が 0 でも NaN にならず scale を維持し pan のみ反映する', () => {
+      const next = computePinchTransform(
+        { scale: 3, translateX: 5, translateY: 7 },
+        { dist: 0, midX: 50, midY: 50 },
+        { dist: 120, midX: 60, midY: 40 }
+      )
+      expect(next.scale).toBe(3)
+      expect(Number.isNaN(next.translateX)).toBe(false)
+      expect(next.translateX).toBeCloseTo(15)
+      expect(next.translateY).toBeCloseTo(-3)
     })
   })
 }
