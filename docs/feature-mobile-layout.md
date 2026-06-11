@@ -219,7 +219,9 @@ landscape 時の左右 inset (`env(safe-area-inset-left/right)`) は notch / Dyn
 
 **公開仕様の同期は各 Step に分散する**：本タスクは CLI オプションや配布物ファイル名規約には影響しないが、 `viewport-fit=cover` の追加は HTML 配布物の公開仕様 (embed / online いずれも継承) に該当する。 Step 2 で `viewport-fit=cover` 追加と同 commit で DESIGN.md §10 を 1 行更新、 Step 6 で CSS 完了と同 commit で DESIGN.md §4 にモバイルレイアウト節を追記、 Step 7 で README_ja.md / README.md にモバイル操作節を追加する。 Step 8 はテンプレ通り最終整理（§12 表行の差分確認と archive 化のユーザー確認）に縮める。
 
-### Step 1: i18n キーの追加
+### Step 1: (完了済み) i18n キーの追加
+
+**状態**: **完了済み** — commit `94f2c2d`
 
 - `src/app/i18n/messages.en.ts` / `messages.ja.ts` に `mobile.*` namespace を新設
 - 追加キー：
@@ -230,7 +232,9 @@ landscape 時の左右 inset (`env(safe-area-inset-left/right)`) は notch / Dyn
 
 成果物：`src/app/i18n/messages.en.ts` / `messages.ja.ts` の 2 ファイル更新、 既存 i18n in-source test が pass、 新規 Set 一致 test が pass
 
-### Step 2: review.html への footer / backdrop / viewport meta 追加 + footer hide skeleton CSS
+### Step 2: (完了済み) review.html への footer / backdrop / viewport meta 追加 + footer hide skeleton CSS
+
+**状態**: **完了済み** — commit `c2c7aa4`
 
 - `<main class="layout">` の直後に `<footer class="mobile-footer">`（3 ボタン + Octicons SVG inline）
 - `<div id="toast">` 近辺に `<div class="mobile-drawer-backdrop" id="mobile-drawer-backdrop">` (**`hidden` 属性は付けない**、 表示制御は author CSS に集約、§3.2 / §5.l)
@@ -241,7 +245,9 @@ landscape 時の左右 inset (`env(safe-area-inset-left/right)`) は notch / Dyn
 
 成果物：`src/review.html` / `src/styles/review.css` (hide skeleton のみ) / `docs/DESIGN.md` の更新。 desktop / 既存 900px タブレット域に視覚回帰なし。
 
-### Step 3: `src/app/chrome/mobile-footer.ts` 新規 + in-source test
+### Step 3: (完了済み) `src/app/chrome/mobile-footer.ts` 新規 + in-source test
+
+**状態**: **完了済み** — commit `8fc0e0d`
 
 純粋ロジックと DOM 操作を 1 ファイルで持つ薄いモジュール。 export 関数（**trigger は引数で受け取り、 close は focus 復元をオプション化** して切替時の lastTrigger 取り違えを防ぐ、§5.j-2）：
 
@@ -352,7 +358,9 @@ in-source vitest ケース：
 
 成果物：`src/app/chrome/mobile-footer.ts` + in-source test。 まだ wire は呼ばれないので runtime には影響しない。
 
-### Step 4: `app-wiring.ts` で wire + 手動視覚チェック
+### Step 4: (完了済み) `app-wiring.ts` で wire + 手動視覚チェック
+
+**状態**: **完了済み** — commit `6557b93`（wire 配線 + `vp check` / `vp test` 通過。Chrome DevTools mobile preset の手動視覚チェックは実行環境の都合で未実施のため、CSS が揃う Step 6 の手動チェックにまとめて回す）
 
 - `src/app/app-wiring.ts` の chrome 初期化フェーズで `wireMobileFooter()` を呼ぶ（`wireToolbar` の隣）
 - Step 2 で footer hide skeleton CSS を入れているため、 desktop preset では footer / backdrop は引き続き hide される
@@ -360,7 +368,7 @@ in-source vitest ケース：
 
 成果物：mobile-footer が runtime に組み込まれる。 desktop に視覚回帰なし、 mobile はまだ未完成だが Step 6 で完成する。
 
-### Step 5: `global-keyboard.ts` の Esc / affordance キー抑制
+### Step 5: (未着手) `global-keyboard.ts` の Esc / affordance キー抑制
 
 - `src/app/chrome/global-keyboard.ts` の Escape handler 分岐に `closeMobileDrawers()` を追加（modal close より先に呼ぶ）
 - affordance キー (`a` / `w` / `s` / `d` / `e` / `f` / `h`) の抑制条件に `isMobileDrawerOpen()` を OR で追加 — drawer open 中は背面操作を suppress
@@ -369,7 +377,7 @@ in-source vitest ケース：
 
 成果物：キーボード接続時のスマホ / タブレットで drawer が Esc で閉じる。 affordance キーが drawer 背面で意図せず発火しない。
 
-### Step 5b: `search-controller.ts` の focus timer 管理修正
+### Step 5b: (未着手) `search-controller.ts` の focus timer 管理修正
 
 `src/app/search/search-controller.ts` の focus 予約は `openSearch()` (`l.98`) が呼ぶ `resetSearchInput()` (`l.89`) 内の `setTimeout(() => input.focus(), 0)` (`l.94`) で行われる。 一方 `closeSearch()` (`l.114`) は `cancelPendingSearch()` (`l.106` の debounce timer cancel) を呼ぶが **focus timer は別管理で cancel されない**。 §5.m の mobile overlay 相互排他 (Search → drawer 切替) でこの timer 競合が顕在化する：
 
@@ -389,7 +397,7 @@ in-source vitest ケース：
 
 成果物：`src/app/search/search-controller.ts` 更新 + in-source test。 mobile overlay 相互排他 (§5.m) で focus 競合が発生しない。 desktop 経路 (`f` キー → Esc → 別 button focus) も同じ修正で安全になる。
 
-### Step 5c: `navigation-orchestrator.ts` mobile 分岐 + `comments.ts` activation registry 追加 + `comment-modal.ts` の focus 復元契約 + 50ms timer 管理
+### Step 5c: (未着手) `navigation-orchestrator.ts` mobile 分岐 + `comments.ts` activation registry 追加 + `comment-modal.ts` の focus 復元契約 + 50ms timer 管理
 
 TOC 側の `src/app/navigation/navigation-orchestrator.ts` の `onCompositeSlugClick` (`l.165`) は **TOC 全経路 (`.page-nav-link` / `.page-outline-link` / `.page-nav-sequential-link` の click + Enter キー) の単一 entry point** なので、 内部に mobile 分岐 + `focusTOC` gate を追加する。
 
@@ -582,7 +590,7 @@ in-source test：
 
 成果物：`src/app/navigation/navigation-orchestrator.ts` / `src/app/comments/comments.ts` (`addOnCommentActivate` 追加、 `focusCommentCard` 内発火) / `src/app/comments/comment-modal.ts` (`showModalWithBody` に lastTrigger 保存 + timer 管理、 `closeCommentModal` に focus 復元 + timer cancel) 更新 + in-source test。 全 comment activation 経路 (同一/別ページ問わず) で mobile drawer 自動 close + focus 退避、 Edit/新規追加 modal Cancel で footer に focus 復元、 50ms timer 競合も解消される。
 
-### Step 6: `review.css` に `@media (max-width: 768px)` ブロック追加 + 手動視覚チェック + DESIGN.md §4 更新
+### Step 6: (未着手) `review.css` に `@media (max-width: 768px)` ブロック追加 + 手動視覚チェック + DESIGN.md §4 更新
 
 - Step 2 で追加した hide skeleton はそのまま残し、 既存 900px ブロックの直後（l.1920 直後）に 768px ブロックを追加
 - まず `:root` に CSS custom property を定義 (§3.4)：
@@ -650,14 +658,14 @@ in-source test：
 
 成果物：mobile 完成形が UI 上で確認できる。 DESIGN.md §4 にモバイルレイアウト節が追加される。
 
-### Step 7: README_ja.md / README.md にモバイル操作節を追加
+### Step 7: (未着手) README_ja.md / README.md にモバイル操作節を追加
 
 - 「キーボードショートカット」節の隣に「モバイル操作」節を 1 段落で追加：「Open / Settings は header / TOC / Comment / Search は footer から操作」「drawer は backdrop / Esc / 同ボタン再押下で閉じる」「mobile では Help は BlueTooth キーボード `h` キーからのみ開ける」
 - スクリーンショット 1 枚を `docs/` 配下に置く（任意、画像規約に従う）
 
 成果物：公開仕様 (README) が現実装と整合。
 
-### Step 8: DESIGN.md 反映と本ドキュメントの role 切替
+### Step 8: (未着手) DESIGN.md 反映と本ドキュメントの role 切替
 
 Step 2 / Step 6 で DESIGN.md §10 / §4 を都度更新済みなので、 本 Step は最終整理に縮める：
 
