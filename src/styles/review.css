@@ -1926,3 +1926,197 @@ html:not([data-mdxg-online='1']) .online-edition-only {
     display: block;
   }
 }
+
+/* スマホ (≤768px) 専用の fixed header + fixed footer + drawer モデル。900px ブロック (vertical-stack)
+   の直後に置き、後勝ち cascade で上書きする。900px が子結合子つき高 specificity で書いた規則
+   (body > main.layout / > section / > aside.*) は同等以上の specificity で打ち消す (§3.1 / §5.h)。
+   safe-area / 動的 viewport の各オフセットは custom property に集約する (§3.4 / §5.k)。 */
+:root {
+  --mobile-header-height: calc(65px + env(safe-area-inset-top));
+  --mobile-footer-height: calc(56px + env(safe-area-inset-bottom));
+  --mobile-safe-left: env(safe-area-inset-left);
+  --mobile-safe-right: env(safe-area-inset-right);
+}
+
+@media (max-width: 768px) {
+  body {
+    display: flex;
+    overflow: hidden;
+    height: 100vh;
+    height: 100dvh;
+    overscroll-behavior: contain;
+  }
+  body.mobile-drawer-open {
+    overflow: hidden;
+  }
+  /* 背面の .doc-pane のみ touch / wheel を抑止。touch-action は touch pan/zoom 用、overflow-y:hidden は
+     wheel 用の defence in depth。drawer 自身の overflow-y は触らないので内部スクロールは保持される (§5.h)。 */
+  body.mobile-drawer-open > main.layout > section.doc-pane {
+    touch-action: none;
+    overflow-y: hidden;
+  }
+  /* main を 100dvh 内に収め doc-pane の shrink scroll を許す。900px の flex:none / overflow-y:visible を
+     子結合子つき同等以上 specificity で打ち消す (flat な .layout / .doc-pane では負ける、§5.h)。 */
+  body > main.layout {
+    flex: 1;
+    min-height: 0;
+  }
+  body > main.layout > section.doc-pane {
+    overflow-y: auto;
+    min-height: 0;
+  }
+  body > main.layout > aside.page-nav,
+  body > main.layout > aside.comments {
+    overflow-y: auto;
+  }
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    padding-bottom: var(--mobile-footer-height);
+  }
+  .app-header {
+    box-sizing: border-box;
+    height: var(--mobile-header-height);
+    padding: calc(16px + env(safe-area-inset-top)) calc(24px + var(--mobile-safe-right)) 16px
+      calc(24px + var(--mobile-safe-left));
+  }
+  .app-header #status,
+  .app-header #online-source,
+  .app-header #btn-search,
+  .app-header #btn-help {
+    display: none;
+  }
+  /* sidebar を drawer 化。900px の display:none / border-top / *-closed (grid 列幅 0) を後勝ちで打ち消す。 */
+  .page-nav,
+  .comments {
+    position: fixed;
+    top: var(--mobile-header-height);
+    bottom: var(--mobile-footer-height);
+    width: min(86vw, 360px);
+    z-index: 60;
+    transition: transform 0.2s ease;
+    display: block;
+    border-top: none;
+  }
+  .page-nav {
+    left: 0;
+    transform: translateX(-100%);
+    border-right: 1px solid var(--rule);
+    padding-left: calc(16px + var(--mobile-safe-left));
+  }
+  .comments {
+    right: 0;
+    transform: translateX(100%);
+    border-left: 1px solid var(--rule);
+    padding-right: calc(24px + var(--mobile-safe-right));
+  }
+  :root.mobile-page-nav-open .page-nav {
+    transform: translateX(0);
+  }
+  :root.mobile-comments-open .comments {
+    transform: translateX(0);
+  }
+  :root.comments-closed .comments,
+  :root.page-nav-closed .page-nav {
+    display: block;
+  }
+  .mobile-drawer-backdrop {
+    position: fixed;
+    top: var(--mobile-header-height);
+    bottom: var(--mobile-footer-height);
+    left: 0;
+    right: 0;
+    background: rgba(31, 35, 40, 0.5);
+    z-index: 55;
+  }
+  :root.mobile-page-nav-open .mobile-drawer-backdrop,
+  :root.mobile-comments-open .mobile-drawer-backdrop {
+    display: block;
+  }
+  .mobile-footer {
+    box-sizing: border-box;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: var(--mobile-footer-height);
+    padding: 0 var(--mobile-safe-right) env(safe-area-inset-bottom) var(--mobile-safe-left);
+    z-index: 70;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    background: var(--paper-edge);
+    border-top: 1px solid var(--rule);
+  }
+  .page-nav-toggle-tab,
+  .comments-toggle-tab,
+  .comments-resize-handle,
+  .page-nav-resize-handle,
+  [data-block-id]:hover::before,
+  .tooltipped::after,
+  .tooltipped::before {
+    display: none;
+  }
+  :root:not(.has-pages) #btn-mobile-toc {
+    display: none;
+  }
+  .search-bar.open {
+    z-index: 80;
+  }
+  /* search-bar の内部要素を compact 化して iPhone SE (375px) 幅に収める (§5.p)。input は flex:1 で残り
+     領域を伸縮、count / 3 ボタンは flex-shrink:0。tap target は 44×44 を確保し、input は font-size 16px で
+     iOS Safari の focus 時 auto-zoom を抑止する。 */
+  .search-bar {
+    padding: 8px 12px;
+    gap: 6px;
+  }
+  .search-input {
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .search-count {
+    min-width: 0;
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+  .search-action {
+    box-sizing: border-box;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 4px 6px;
+    flex-shrink: 0;
+  }
+  /* footer 3 ボタン (§5.o)。border-box + line-height:1 で既存 .btn の content-box / line-height:20px を
+     抑え outer 44×44 を確定。hover / aria 状態 / focus-visible は mobile 専用に上書き。 */
+  .mobile-footer .btn {
+    box-sizing: border-box;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 12px;
+    line-height: 1;
+  }
+  .mobile-footer .btn-ghost:hover {
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+  .mobile-footer .btn-ghost[aria-pressed='true'],
+  .mobile-footer .btn-ghost[aria-expanded='true'] {
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  .mobile-footer .btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+/* 既存 reduced-motion ブロック (上方) は 768px ブロックより前にあり、768px の transition:transform .2s が
+   transition-duration:0s を後勝ち上書きしてしまう。mobile 用は合成 media query を 768px ブロックの後に
+   置いて確実に override する (§5.i)。 */
+@media (max-width: 768px) and (prefers-reduced-motion: reduce) {
+  .page-nav,
+  .comments {
+    transition-duration: 0s;
+  }
+}
