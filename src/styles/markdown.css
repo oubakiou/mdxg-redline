@@ -438,3 +438,17 @@
   /* dark の box-shadow は黒の影だと暗背景上で消えるので落として border に頼る */
   --doc-page-shadow: 0 0 0 transparent;
 }
+
+/* スマホ (≤768px) ではマークダウン本文の横スクロールを防ぐ。
+   - 紙シートの左右 padding 64px は狭幅では content 領域を ~199px まで潰すため 20px に詰める
+     (実機で「右側に余白があり横スクロール」と報告された主因)。
+   - 折り返し機会の無い長い token (URL / 識別子 / inline code) は overflow-wrap で強制改行し、
+     pane の overflow-x: hidden (review.css) で clip される前に本文内で折り返す。 */
+@media (max-width: 768px) {
+  #doc {
+    overflow-wrap: break-word;
+  }
+  .virtual-page {
+    padding: 28px 20px;
+  }
+}

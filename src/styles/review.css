@@ -1963,11 +1963,20 @@ html:not([data-mdxg-online='1']) .online-edition-only {
   }
   body > main.layout > section.doc-pane {
     overflow-y: auto;
+    /* overflow-y: auto は overflow-x の computed 値も visible→auto に変える。狭い mobile 幅で
+       折り返せない長い token (URL / inline code) や wide block が溢れると pane が横スクロールするため、
+       明示的に hidden で clip する。pre / .table-wrap は各自 overflow-x: auto で内部スクロールするので
+       本文の横スクロールだけを抑止できる (実機での横スクロール報告への対処)。 */
+    overflow-x: hidden;
     min-height: 0;
   }
   body > main.layout > aside.page-nav,
   body > main.layout > aside.comments {
     overflow-y: auto;
+  }
+  /* 紙シートの「机面」余白を mobile では詰める (desktop の 32px 24px は狭幅で余白過多になる)。 */
+  .doc-pane {
+    padding: 20px 12px;
   }
   .layout {
     grid-template-columns: minmax(0, 1fr);
