@@ -6,18 +6,18 @@ Stacked View は全ページを常時 DOM に保持する設計だが、TOC / Se
 
 ## 1. 問題の構造
 
-Stacked View（MDXG §6–§9 Virtual Pages）は markdown 読み込み時に全 page を `<section class="virtual-page">` として 1 度に描画し、以降はマウスホイール / スクロールで全文を読み進める設計（DESIGN.md §11 Virtual Pages 実装詳細、`docs/archive/mdxg-virtual-pages.archive.md`）。つまり**ページ切替で DOM 構造は変化しない**（全ページが常駐）。にもかかわらず、`navigateToTarget` は `pageChanged` が真のとき無条件に `renderAll()` を呼び、その中の `renderDoc()` が `mountRenderedDoc()` で `#doc` 全体を再構築する。これは「全ページ常駐」という Stacked View の不変条件と、「ページ切替で全再 mount」という実装の食い違いである。
+Stacked View（MDXG §6–§9 Virtual Pages）は markdown 読み込み時に全 page を `<section class="virtual-page">` として 1 度に描画し、以降はマウスホイール / スクロールで全文を読み進める設計（DESIGN.md §12「§7 Page Navigation（準拠）」実装詳細、`docs/archive/mdxg-virtual-pages.archive.md`）。つまり**ページ切替で DOM 構造は変化しない**（全ページが常駐）。にもかかわらず、`navigateToTarget` は `pageChanged` が真のとき無条件に `renderAll()` を呼び、その中の `renderDoc()` が `mountRenderedDoc()` で `#doc` 全体を再構築する。これは「全ページ常駐」という Stacked View の不変条件と、「ページ切替で全再 mount」という実装の食い違いである。
 
-| 場所                                                                          | 状態                                                                                                                          |
-| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Stacked View の設計（DESIGN.md §11 / `mdxg-virtual-pages.archive.md`）        | 全ページを 1 度に描画し常駐させる。ページ切替は active 状態 + スクロール位置の更新で足り、DOM 再構築は不要                    |
-| `src/app/navigation/navigation-orchestrator.ts:138-141`（`navigateToTarget`） | `setActivePageIndex` が `pageChanged` を返すと `renderAll()` を無条件に呼ぶ                                                   |
-| `src/app/navigation/navigation-orchestrator.ts:28-34`（`renderAll`）          | `renderDoc` + `renderPageNavigation` + `renderComments` + `setupScrollSpy` + `setupPageScrollSpy` をまとめて実行              |
-| `src/app/document/doc-renderer.ts:27-39`（`renderDoc`）                       | `mountRenderedDoc` + `reapplyAllMarks` + `schedulePostPaintUpgrades`（Shiki / Mermaid / KaTeX を全 `#doc` に再 schedule）     |
-| `src/app/document/doc-mount.ts:184-194`（`mountRenderedDoc`）                 | `doc.innerHTML = ''` → 全 page section を `state.markdown` から再 render → `cacheBlocksAndBuildAnchors` → `injectCopyButtons` |
-| runtime 観測（別ページ TOC 遷移）                                             | `#doc` 全体が再 parse / 再 mount され、全 code block が再ハイライトされる。低速 CPU + 長文で体感ラグが発生                    |
+| 場所                                                                                        | 状態                                                                                                                          |
+| ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Stacked View の設計（DESIGN.md §12「§7 Page Navigation」/ `mdxg-virtual-pages.archive.md`） | 全ページを 1 度に描画し常駐させる。ページ切替は active 状態 + スクロール位置の更新で足り、DOM 再構築は不要                    |
+| `src/app/navigation/navigation-orchestrator.ts:138-141`（`navigateToTarget`）               | `setActivePageIndex` が `pageChanged` を返すと `renderAll()` を無条件に呼ぶ                                                   |
+| `src/app/navigation/navigation-orchestrator.ts:29-35`（`renderAll`）                        | `renderDoc` + `renderPageNavigation` + `renderComments` + `setupScrollSpy` + `setupPageScrollSpy` をまとめて実行              |
+| `src/app/document/doc-renderer.ts:27-39`（`renderDoc`）                                     | `mountRenderedDoc` + `reapplyAllMarks` + `schedulePostPaintUpgrades`（Shiki / Mermaid / KaTeX を全 `#doc` に再 schedule）     |
+| `src/app/document/doc-mount.ts:184-194`（`mountRenderedDoc`）                               | `doc.innerHTML = ''` → 全 page section を `state.markdown` から再 render → `cacheBlocksAndBuildAnchors` → `injectCopyButtons` |
+| runtime 観測（別ページ TOC 遷移）                                                           | `#doc` 全体が再 parse / 再 mount され、全 code block が再ハイライトされる。低速 CPU + 長文で体感ラグが発生                    |
 
-`navigateToTarget` には次の設計コメントがあり、再 mount は「drift（view 追加時のズレ）を防ぐ単一の真の源」として意図的に renderAll 経由に集約されている（`navigation-orchestrator.ts:131-132`）：
+`navigateToTarget` には次の設計コメントがあり、再 mount は「drift（view 追加時のズレ）を防ぐ単一の真の源」として意図的に renderAll 経由に集約されている（`navigation-orchestrator.ts:132`）：
 
 > 再描画は必ず `renderAll()` 経由にする。view 追加時の drift を構造的に防ぐ単一の真の源。
 
@@ -129,7 +129,7 @@ export const navigateToTarget = (
 
 **要検証の不変条件（この修正の核心）**:
 
-- **drift 防止**: `navigateToTarget:131-132` のコメントが警告する「view 追加時の drift」が、再 mount を省いても発生しないこと。全ページ常駐前提（loadFromMarkdown 後に view が動的追加されない）が成立しているかを確認する。
+- **drift 防止**: `navigateToTarget` 直前の設計コメント（`navigation-orchestrator.ts:132`）が警告する「view 追加時の drift」が、再 mount を省いても発生しないこと。全ページ常駐前提（loadFromMarkdown 後に view が動的追加されない）が成立しているかを確認する。
 - **mark の維持**: ページ切替で `reapplyAllMarks` を省いても、別ページの cmt mark / search-hl が正しい状態を保つこと（mark は #doc 配下にあり再 mount しなければ破壊されないはず）。
 - **scroll-spy の維持**: `setupScrollSpy` / `setupPageScrollSpy` の再 setup を省いても、既存の IntersectionObserver が有効なままページ追従すること。
 - **comments の active 同期**: `renderComments` を省くか軽量化しても、別ページの comment カード active 表示が追従すること。
@@ -158,7 +158,7 @@ export const navigateToTarget = (
 
 ## 7. 関連
 
-- [DESIGN.md §11 ナビゲーション（Virtual Pages 実装詳細）](./DESIGN.md) — Stacked View の「全ページ常駐 / navigate orchestrator」設計。本 bug の期待動作（ページ切替で DOM 不変）の出典
+- [DESIGN.md §12「§7 Page Navigation（準拠）」実装詳細](./DESIGN.md#12-mdxg-準拠ロードマップ今後の拡張) — Stacked View の「全ページ常駐 / navigate orchestrator」設計（DESIGN.md の章 §7「永続化レイヤー」ではなく、§12 内 MDXG §7 準拠サブ節）。本 bug の期待動作（ページ切替で DOM 不変）の出典
 - [docs/archive/mdxg-virtual-pages.archive.md](./archive/mdxg-virtual-pages.archive.md) — Stacked View / navigate orchestrator / scroll-spy の導入経緯と drift 対策の議論
 - [docs/feature-mobile-layout.md](./feature-mobile-layout.md) — 本 bug を顕在化させたモバイルレイアウト（TOC drawer からの別ページ遷移が日常操作になった）。本 bug はモバイル実装の regression ではなく既存コストである旨をここに記録
 - `src/app/navigation/navigation-orchestrator.ts`（`renderAll` / `navigateToTarget` / `onCompositeSlugClick`） — 修正対象の中心
