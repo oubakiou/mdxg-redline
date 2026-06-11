@@ -403,7 +403,9 @@ in-source vitest ケース：
 
 成果物：`src/app/search/search-controller.ts` 更新 + in-source test。 mobile overlay 相互排他 (§5.m) で focus 競合が発生しない。 desktop 経路 (`f` キー → Esc → 別 button focus) も同じ修正で安全になる。
 
-### Step 5c: (未着手) `navigation-orchestrator.ts` mobile 分岐 + `comments.ts` activation registry 追加 + `comment-modal.ts` の focus 復元契約 + 50ms timer 管理
+### Step 5c: (完了済み) `navigation-orchestrator.ts` mobile 分岐 + `comments.ts` activation registry 追加 + `comment-modal.ts` の focus 復元契約 + 50ms timer 管理
+
+**状態**: **完了済み** — commit `f51eb73`
 
 TOC 側の `src/app/navigation/navigation-orchestrator.ts` の `onCompositeSlugClick` (`l.165`) は **TOC 全経路 (`.page-nav-link` / `.page-outline-link` / `.page-nav-sequential-link` の click + Enter キー) の単一 entry point** なので、 内部に mobile 分岐 + `focusTOC` gate を追加する。
 
@@ -595,6 +597,14 @@ in-source test：
 - desktop の Edit modal open → save / cancel で trigger button に focus が戻る regression test
 
 成果物：`src/app/navigation/navigation-orchestrator.ts` / `src/app/comments/comments.ts` (`addOnCommentActivate` 追加、 `focusCommentCard` 内発火) / `src/app/comments/comment-modal.ts` (`showModalWithBody` に lastTrigger 保存 + timer 管理、 `closeCommentModal` に focus 復元 + timer cancel) 更新 + in-source test。 全 comment activation 経路 (同一/別ページ問わず) で mobile drawer 自動 close + focus 退避、 Edit/新規追加 modal Cancel で footer に focus 復元、 50ms timer 競合も解消される。
+
+**実装時の補足**：
+
+- `onCompositeSlugClick` の `navigateToTarget` 第 3 引数は no-ternary lint 制約のため `mobileDrawerOpen ? false : keyboardActivated` ではなく `!mobileDrawerOpen && keyboardActivated` の boolean 式で表現した（結果は同値）。
+- `mobile handler の register` は `mobile-footer.ts` の `wireMobileFooter()` 内 (`attachMobileFooterListeners` 経由) で `addOnCommentActivate` を呼ぶ形にした。`isMobileCommentsOpen` / `closeMobileComments` は同モジュール内のため composition root を介さず直接利用できる。
+- `isFocusable` は max-statements (10) 制約のため `isHiddenByStyle` / `isHiddenByAncestors` に分割した（ロジックは計画と同値）。`isFocusable` は private のため、§6 の boundary 列挙を個別 unit test にはせず、`closeCommentModal` の観測可能な復元挙動 (trigger focusable → 戻る / detach → 同 id 新 Edit ボタン / `<body>` → desktop は `.doc-pane` / mobile は footer Comment button) で網羅検証した。
+- `onCompositeSlugClick` の in-source test は `navigateToTarget` が同一モジュール内のため spy で第 3 引数を直接 assert する代わりに、`state.pages` 空 (= `setActivePageIndex(0)` が範囲外 false で renderAll を回避) の fixture で「mobile 時に drawer close + `.doc-pane` focus / desktop 時に no-op」の観測可能挙動を検証した。
+- comment activation registry のテスト (`comments.ts`) は `renderComments` + card click 経由で private `focusCommentCard` を起動し、同一ページ + mark / mark 不在 / 別ページの 3 分岐すべてで handler 発火を検証した。別ページテストは `setOnCommentNavigate` をスタブ化するため、実 `navigateToComment` の `newCard.focus()` を mobile handler の `.doc-pane.focus()` が上書きする **fire 順序 invariant** は自動テストでは守られない（comments.ts に orchestrator を import すると comments↔orchestrator の循環 import を招くため）。この順序検証は §6 手動チェックリスト「別ページ comment → drawer 自動 close → `.doc-pane` 退避」に委ねる。
 
 ### Step 6: (未着手) `review.css` に `@media (max-width: 768px)` ブロック追加 + 手動視覚チェック + DESIGN.md §4 更新
 
