@@ -73,6 +73,7 @@ import { setupOnlineSourceI18n } from './online/source-display'
 import { setupOnlineErrorI18n, wireOnlineErrorRetry } from './online/error-display'
 import { wireOpenUrlModal } from './online/open-url-modal'
 import { wireToolbar } from './chrome/toolbar'
+import { wireMobileFooter } from './chrome/mobile-footer'
 
 interface BootstrapDeps {
   buildExportPayload: () => ExportPayload
@@ -187,6 +188,7 @@ const setupDropdownsAndKeyboard = (deps: ResolvedBootstrapDeps): DropdownLike =>
     commentCountLabel: deps.commentCountLabel,
     documentLoader: deps.documentLoader,
   })
+  wireMobileFooter()
   wirePasteMarkdownModal({ documentLoader: deps.documentLoader })
   // setup の bootstrap 順序は他 4 モジュール (setupOnlineSourceI18n / setupOnlineErrorI18n /
   // setupPageNavI18n / setupSearchI18n) と同じく app-wiring.ts 側で直接呼び、grep 可読性を揃える。
