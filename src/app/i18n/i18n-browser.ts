@@ -318,6 +318,16 @@ if (import.meta.vitest) {
   beforeEach(resetState)
   afterEach(resetState)
 
+  describe('messagesEn / messagesJa のキー対称性', () => {
+    it('両言語のキー集合が一致する (片側追加漏れを検出)', () => {
+      const enKeys = new Set(Object.keys(messagesEn))
+      const jaKeys = new Set(Object.keys(messagesJa))
+      const onlyInEn = [...enKeys].filter((key) => !jaKeys.has(key))
+      const onlyInJa = [...jaKeys].filter((key) => !enKeys.has(key))
+      expect({ onlyInEn, onlyInJa }).toEqual({ onlyInEn: [], onlyInJa: [] })
+    })
+  })
+
   describe('readStoredLang / writeStoredLang', () => {
     it('en/ja を read-after-write できる', () => {
       writeStoredLang('ja')
