@@ -3,6 +3,7 @@
 // floater クリック → モーダルへの遷移は comment-modal.ts 側で配線する。
 
 import { getSelectionInfo } from './selection'
+import { isCommentModalOpen } from './comment-modal'
 import { qs } from '../dom/dom-utils'
 
 /**
@@ -53,6 +54,11 @@ const positionFloater = (floater: FloaterTarget, rect: FloaterAnchorRect): void 
 
 /** 選択状態に応じてフローターの表示/非表示と位置を更新する。selectionchange ハンドラから呼び出される */
 const updateFloaterFromSelection = (): void => {
+  // modal 表示中は selection 変化で floater を出し直さない。coarse 環境では floater tap 後も
+  // selectionchange が発火し、選択が残ったままだと modal の背後に floater が再出現するため。
+  if (isCommentModalOpen()) {
+    return
+  }
   const info = getSelectionInfo()
   const floater = qs('#floater')
   if (!info) {
@@ -76,10 +82,16 @@ const onSelChange = (): void => {
 export const wireFloater = (): void => {
   document.addEventListener('mouseup', onSelChange)
   document.addEventListener('keyup', onSelChange)
+  // タッチでの範囲選択は mouseup を発火させないため floater が出ない。selectionchange で拾う。
+  // desktop は「離した瞬間に出す」mouseup の方が安定する (selectionchange は選択中も連続発火し
+  // floater が追従して出続ける) ので、coarse pointer 環境のときだけ併用する。
+  if (globalThis.matchMedia('(pointer: coarse)').matches) {
+    document.addEventListener('selectionchange', onSelChange)
+  }
 }
 
 if (import.meta.vitest) {
-  const { describe, expect, it } = import.meta.vitest
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest
 
   describe('selectionFloaterPayload', () => {
     it('blockId / endOffset / pageIndex / quote / startOffset の JSON 文字列を返す (rect は含めない)', () => {
@@ -124,6 +136,34 @@ if (import.meta.vitest) {
       // 800 + 30 - 20 = 810
       positionFloater(floater, { left: 800, top: 0, width: 60 })
       expect(floater.style.left).toBe('810px')
+    })
+  })
+
+  describe('wireFloater (selectionchange の pointer 別配線)', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+      vi.unstubAllGlobals()
+    })
+
+    it('coarse pointer 環境では selectionchange も購読する', () => {
+      vi.stubGlobal('matchMedia', (): { matches: boolean } => ({ matches: true }))
+      const spy = vi.spyOn(document, 'addEventListener').mockImplementation((): void => {
+        // no-op: 実登録を抑止し、呼び出し時の event 名だけ記録する
+      })
+      wireFloater()
+      const events = spy.mock.calls.map((call) => call[0])
+      expect(events).toContain('selectionchange')
+    })
+
+    it('fine pointer 環境では selectionchange を購読せず mouseup のみ', () => {
+      vi.stubGlobal('matchMedia', (): { matches: boolean } => ({ matches: false }))
+      const spy = vi.spyOn(document, 'addEventListener').mockImplementation((): void => {
+        // no-op: 実登録を抑止し、呼び出し時の event 名だけ記録する
+      })
+      wireFloater()
+      const events = spy.mock.calls.map((call) => call[0])
+      expect(events).not.toContain('selectionchange')
+      expect(events).toContain('mouseup')
     })
   })
 }

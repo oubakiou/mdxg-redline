@@ -27,6 +27,8 @@ type ModalState =
 // (let を使うと prefer-const と衝突するため)。
 const modalState: { current: ModalState } = { current: { kind: 'closed' } }
 
+export const isCommentModalOpen = (): boolean => modalState.current.kind !== 'closed'
+
 // modal open 直前の active 要素 (Edit ボタン / floater 起動時は <body> 等)。close 時の focus 復元に使う。
 let lastTrigger: HTMLElement | null = null
 // showModalWithBody が予約する 50ms 後の input focus timer。close 時に cancel しないと、footer に
@@ -305,21 +307,28 @@ const saveModalComment = async (): Promise<void> => {
   }
 }
 
+// floater 起動の共通ハンドラ。preventDefault で選択解除を防ぎ、touchstart では後続の
+// synthetic mousedown を抑止する (二重発火しても openModal は冪等なので実害は無いが、無駄を省く)。
+// payload は floater が出た時点で dataset に確定済みなので、tap で選択が崩れても参照できる。
+const activateFloater = (event: Event): void => {
+  event.preventDefault()
+  const floater = qs('#floater')
+  const { payload } = floater.dataset
+  if (!payload) {
+    return
+  }
+  const parsed = parsePendingSelection(payload)
+  if (!parsed) {
+    return
+  }
+  openModal(parsed)
+  floater.style.display = 'none'
+}
+
 export const wireCommentModal = (): void => {
-  qs('#floater').addEventListener('mousedown', (event): void => {
-    event.preventDefault()
-    const floater = qs('#floater')
-    const { payload } = floater.dataset
-    if (!payload) {
-      return
-    }
-    const parsed = parsePendingSelection(payload)
-    if (!parsed) {
-      return
-    }
-    openModal(parsed)
-    floater.style.display = 'none'
-  })
+  const floater = qs('#floater')
+  floater.addEventListener('mousedown', activateFloater)
+  floater.addEventListener('touchstart', activateFloater, { passive: false })
   qs('#modal-cancel').addEventListener('click', closeCommentModal)
   qs('#modal').addEventListener('click', (event): void => {
     const { target } = event
@@ -370,6 +379,18 @@ const setupModalFixtureForTest = (): void => {
     <section class="doc-pane" tabindex="-1"></section>
     <button id="btn-mobile-comments"></button>
     <div class="cmt-card" data-id="c1"><button class="cmt-edit" data-edit="c1">edit</button></div>
+  `
+}
+
+const setupFloaterFixtureForTest = (): void => {
+  document.body.innerHTML = `
+    <div id="floater"></div>
+    <div id="modal-quote"></div>
+    <input id="modal-input" />
+    <div id="modal-input-label"></div>
+    <button id="modal-save"></button>
+    <button id="modal-cancel"></button>
+    <div id="modal"></div>
   `
 }
 
@@ -538,6 +559,42 @@ if (import.meta.vitest) {
       openEditCommentModal(dummyComment({ id: 'nope' }))
       closeCommentModal()
       expect(document.activeElement).toBe(queryElForTest('#btn-mobile-comments'))
+    })
+  })
+
+  describe('wireCommentModal: floater の touchstart 起動', () => {
+    const validPayload = JSON.stringify({
+      blockId: 'b001',
+      endOffset: 4,
+      pageIndex: 0,
+      quote: 'anchor',
+      startOffset: 0,
+    })
+
+    beforeEach((): void => {
+      setupFloaterFixtureForTest()
+      vi.stubGlobal('matchMedia', (): { matches: boolean } => ({ matches: false }))
+    })
+    afterEach((): void => {
+      closeCommentModal()
+      vi.unstubAllGlobals()
+      document.body.innerHTML = ''
+    })
+
+    it('touchstart で dataset.payload から modal が open し floater は hide する', () => {
+      wireCommentModal()
+      const floater = queryElForTest('#floater')
+      floater.dataset.payload = validPayload
+      floater.dispatchEvent(new Event('touchstart', { bubbles: true, cancelable: true }))
+      expect(queryElForTest('#modal').classList.contains('open')).toBe(true)
+      expect(floater.style.display).toBe('none')
+    })
+
+    it('payload が無い touchstart は no-op (modal は開かない)', () => {
+      wireCommentModal()
+      const floater = queryElForTest('#floater')
+      floater.dispatchEvent(new Event('touchstart', { bubbles: true, cancelable: true }))
+      expect(queryElForTest('#modal').classList.contains('open')).toBe(false)
     })
   })
 }
