@@ -86,12 +86,27 @@ const cancelPendingSearch = (): void => {
   }
 }
 
+// debounce timer とは別系統の focus 予約 timer。mobile overlay 相互排他 (§5.m) で Search → drawer
+// 即切替したとき、close 後に発火した input.focus() が drawer 開後の非表示 input へ焦点を奪う競合を
+// 防ぐため、closeSearch で確実に cancel する (§4 Step 5b)。
+let pendingFocusTimer: ReturnType<typeof setTimeout> | null = null
+
+const cancelPendingFocus = (): void => {
+  if (pendingFocusTimer !== null) {
+    clearTimeout(pendingFocusTimer)
+    pendingFocusTimer = null
+  }
+}
+
 const resetSearchInput = (): void => {
   const input = qsInput(`#${SEARCH_INPUT_ID}`)
   input.value = ''
   resetSearchState()
   updateCountDisplay()
-  setTimeout((): void => input.focus(), 0)
+  pendingFocusTimer = setTimeout((): void => {
+    input.focus()
+    pendingFocusTimer = null
+  }, 0)
 }
 
 /** 検索バーを開く。前回の query は維持しない (空欄から始める) */
@@ -112,6 +127,8 @@ export const openSearch = (): void => {
 
 /** 検索バーを閉じる。state をクリアし、cmt mark のみの状態に戻す (reapplyAllMarks 経由) */
 export const closeSearch = (): void => {
+  // bar 不在でも focus 予約は cancel する (mobile 即切替で input.focus 競合を残さない、§4 Step 5b)。
+  cancelPendingFocus()
   const bar = document.getElementById(SEARCH_BAR_ID)
   if (!(bar instanceof HTMLElement)) {
     return
@@ -200,4 +217,60 @@ export const setOnSearchNavigate = (navigateToPage: (pageIndex: number) => void)
 /** mark-engine の `registerPostMarksReapplied` で register する callback */
 export const reapplySearchHighlights = (): void => {
   applySearchHighlights()
+}
+
+const setupSearchFixtureForTest = (): void => {
+  document.body.innerHTML = `
+    <div id="doc"></div>
+    <button id="btn-search"></button>
+    <div class="search-bar" id="search-bar">
+      <input id="search-input" />
+      <span id="search-count"></span>
+    </div>
+    <button id="other-btn"></button>
+  `
+}
+
+if (import.meta.vitest) {
+  const { afterEach, beforeEach, describe, expect, it, vi } = import.meta.vitest
+
+  beforeEach((): void => {
+    setupSearchFixtureForTest()
+    searchState.open = false
+  })
+  afterEach((): void => {
+    vi.useRealTimers()
+    document.body.innerHTML = ''
+    searchState.open = false
+  })
+
+  describe('focus timer 管理 (§4 Step 5b)', () => {
+    it('openSearch 直後に closeSearch を呼ぶと focus 予約 timer が clearTimeout される', () => {
+      vi.useFakeTimers()
+      const clearSpy = vi.spyOn(globalThis, 'clearTimeout')
+      openSearch()
+      const before = clearSpy.mock.calls.length
+      closeSearch()
+      expect(clearSpy.mock.calls.length).toBeGreaterThan(before)
+    })
+
+    it('openSearch → closeSearch 後に timer を進めても input に focus が戻らない', () => {
+      vi.useFakeTimers()
+      openSearch()
+      closeSearch()
+      const other = document.getElementById('other-btn')
+      if (other instanceof HTMLElement) {
+        other.focus()
+      }
+      vi.advanceTimersByTime(10)
+      expect(document.activeElement).toBe(other)
+    })
+
+    it('openSearch 単体では timer 発火で input に focus が当たる (回帰防止)', () => {
+      vi.useFakeTimers()
+      openSearch()
+      vi.advanceTimersByTime(10)
+      expect(document.activeElement).toBe(document.getElementById('search-input'))
+    })
+  })
 }
