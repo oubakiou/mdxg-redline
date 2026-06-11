@@ -606,7 +606,9 @@ in-source test：
 - `onCompositeSlugClick` の in-source test は `navigateToTarget` が同一モジュール内のため spy で第 3 引数を直接 assert する代わりに、`state.pages` 空 (= `setActivePageIndex(0)` が範囲外 false で renderAll を回避) の fixture で「mobile 時に drawer close + `.doc-pane` focus / desktop 時に no-op」の観測可能挙動を検証した。
 - comment activation registry のテスト (`comments.ts`) は `renderComments` + card click 経由で private `focusCommentCard` を起動し、同一ページ + mark / mark 不在 / 別ページの 3 分岐すべてで handler 発火を検証した。別ページテストは `setOnCommentNavigate` をスタブ化するため、実 `navigateToComment` の `newCard.focus()` を mobile handler の `.doc-pane.focus()` が上書きする **fire 順序 invariant** は自動テストでは守られない（comments.ts に orchestrator を import すると comments↔orchestrator の循環 import を招くため）。この順序検証は §6 手動チェックリスト「別ページ comment → drawer 自動 close → `.doc-pane` 退避」に委ねる。
 
-### Step 6: (未着手) `review.css` に `@media (max-width: 768px)` ブロック追加 + 手動視覚チェック + DESIGN.md §4 更新
+### Step 6: (完了済み) `review.css` に `@media (max-width: 768px)` ブロック追加 + 手動視覚チェック + DESIGN.md §4 更新
+
+**状態**: **完了済み** — commit `8352b0e`（768px ブロック + reduced-motion 合成クエリ実装、DESIGN.md §4 追記、gzip 増分 +3.72KB を実測で確認 (受け入れ基準 +5KB 以内)、`vp check` / `vp test` 通過。**Chrome DevTools mobile preset / iOS Safari 実機の手動視覚チェック (本文 §6 のチェックリスト全項目) は headless 実行環境の都合で未実施**。CSS specificity / 既存値維持 / selector 整合 / source 順 / 回帰防止はサブエージェントで静的検証済みだが、`.doc-pane` の縦スクロール成立・safe-area inset 反映・drawer slide-in・横スクロール非発生などの視覚挙動は実機 / DevTools での確認が別途必要)
 
 - Step 2 で追加した hide skeleton はそのまま残し、 既存 900px ブロックの直後（l.1920 直後）に 768px ブロックを追加
 - まず `:root` に CSS custom property を定義 (§3.4)：
