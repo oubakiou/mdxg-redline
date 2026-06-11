@@ -381,7 +381,9 @@ in-source vitest ケース：
 
 成果物：キーボード接続時のスマホ / タブレットで drawer が Esc で閉じる。 affordance キーが drawer 背面で意図せず発火しない。
 
-### Step 5b: (未着手) `search-controller.ts` の focus timer 管理修正
+### Step 5b: (完了済み) `search-controller.ts` の focus timer 管理修正
+
+**状態**: **完了済み** — commit `ccfce89`
 
 `src/app/search/search-controller.ts` の focus 予約は `openSearch()` (`l.98`) が呼ぶ `resetSearchInput()` (`l.89`) 内の `setTimeout(() => input.focus(), 0)` (`l.94`) で行われる。 一方 `closeSearch()` (`l.114`) は `cancelPendingSearch()` (`l.106` の debounce timer cancel) を呼ぶが **focus timer は別管理で cancel されない**。 §5.m の mobile overlay 相互排他 (Search → drawer 切替) でこの timer 競合が顕在化する：
 
