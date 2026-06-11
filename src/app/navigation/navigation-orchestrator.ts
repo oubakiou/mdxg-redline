@@ -41,7 +41,7 @@ export const renderAll = (): void => {
  * activePageIndex に依存しない (doc-mount は全ページを描画する) ため、renderDoc による再 mount +
  * 全 Shiki / Mermaid / KaTeX 再 upgrade は不要 — active page の TOC highlight 更新だけで足りる。
  * cmt / search mark は再 mount しない限り破壊されず、scroll-spy observer も DOM 不変なら有効なまま。
- * (詳細・性能 bug の経緯は docs/bug-stacked-view-pagechange-rerender.md)
+ * (詳細・性能 bug の経緯は docs/archive/bug-stacked-view-pagechange-rerender.archive.md)
  */
 const refreshActivePageView = (): void => {
   renderPageNavigation()
@@ -144,7 +144,7 @@ export const scrollToTargetAfterRender = (
  *
  * ページ切替は `refreshActivePageView` (軽量 = TOC highlight 更新のみ) を使い、renderDoc による
  * 全再 mount は行わない。`#doc` は全ページ常駐で activePageIndex に依存しないため
- * (docs/bug-stacked-view-pagechange-rerender.md)。文書 mount は loadFromMarkdown 側の renderAll。
+ * (docs/archive/bug-stacked-view-pagechange-rerender.archive.md)。文書 mount は loadFromMarkdown 側の renderAll。
  */
 export const navigateToTarget = (
   target: NavigateTarget,
