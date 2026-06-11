@@ -8,6 +8,7 @@ import { closeHelpModal, openHelpModal } from './help-modal'
 import { closeMermaidModal } from '../renderers/mermaid-modal'
 import { closeOpenUrlModal } from '../online/open-url-modal'
 import { closePasteMarkdownModal } from './paste-markdown-modal'
+import { closeMobileDrawers, isMobileDrawerOpen } from './mobile-footer'
 import { closeSearch, isSearchOpen, openSearch } from '../search/search'
 import { closeSettingsModal } from './settings-modal'
 import { qs } from '../dom/dom-utils'
@@ -67,6 +68,8 @@ export const setupKeyboardHandlers = (
     openMenu.close()
   }
   const handleEscapeKey = (): void => {
+    // mobile drawer は modal-backdrop を持たない別経路のため、modal close より先に閉じる (§5.j)。
+    closeMobileDrawers()
     closeAllModalsForEscape()
     closeAllMenusForEscape()
     if (isSearchOpen()) {
@@ -117,7 +120,13 @@ export const setupKeyboardHandlers = (
     //   - editable target 上 / 押しっぱなし (shouldSkipAffordanceKey)
     //   - modifier 付き (hasNoModifier 否定)
     //   - modal open 中 (aria-modal="true" semantic で背面 pane / 別 modal を保護)
-    if (shouldSkipAffordanceKey(event) || !hasNoModifier(event) || isAnyModalOpen()) {
+    //   - mobile drawer open 中 (modal-backdrop を持たない別経路のため isAnyModalOpen と並列に OR、§5.j)
+    if (
+      shouldSkipAffordanceKey(event) ||
+      !hasNoModifier(event) ||
+      isAnyModalOpen() ||
+      isMobileDrawerOpen()
+    ) {
       return
     }
     const handler = AFFORDANCE_KEY_HANDLERS[event.code]
@@ -279,6 +288,32 @@ if (import.meta.vitest) {
       dispatchKeyForTest('Tab', 'Tab')
       const active = document.activeElement
       expect(active instanceof HTMLElement && active.id).toBe('inner-a')
+    })
+  })
+
+  describe('mobile drawer 連動 (§4 Step 5)', () => {
+    beforeEach((): void => {
+      // closeCommentModal が qs('#modal') を要求するため Esc 経路用に最小 DOM を用意する。
+      document.body.innerHTML = '<div id="modal"></div>'
+    })
+    afterEach((): void => {
+      document.documentElement.className = ''
+      document.body.innerHTML = ''
+    })
+
+    it('drawer open 中の Escape で closeMobileDrawers が走り open class が外れる', () => {
+      document.documentElement.classList.add('mobile-page-nav-open')
+      dispatchKeyForTest('Escape', 'Escape')
+      expect(document.documentElement.classList.contains('mobile-page-nav-open')).toBe(false)
+    })
+
+    it('drawer 閉のとき affordance キー "d" は preventDefault される (handler が走る)', () => {
+      expect(dispatchKeyForTest('d', 'KeyD').defaultPrevented).toBe(true)
+    })
+
+    it('drawer open 中は affordance キー "d" が suppress され preventDefault されない', () => {
+      document.documentElement.classList.add('mobile-comments-open')
+      expect(dispatchKeyForTest('d', 'KeyD').defaultPrevented).toBe(false)
     })
   })
 }
