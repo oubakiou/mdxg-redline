@@ -161,6 +161,10 @@ A WASD-based global keymap lets you drive the entire UI with the left hand only.
 | `Esc`                                | Close any open modal, menu, or search                                              |
 | `↑` / `↓` / `Home` / `End` / `Enter` | Work in parallel for MDXG §13 compliance (in-pane movement / activate)             |
 
+### Mobile interaction
+
+On smartphones (iOS Safari / Android Chrome, width ≤ 768px) the three-column layout switches to a top header + bottom footer bar + left/right drawer model. `Open ▾` / `⚙ Settings` stay in the header, while the three footer buttons (`TOC` / `Comment` / `Search`) drive the rest from the bottom of the screen. The TOC / Comment buttons toggle the left / right drawers, and the Search button opens the search bar. A drawer closes via the backdrop tap, `Esc`, or pressing the same footer button again. Help (the keyboard shortcuts list) cannot be opened by touch; it is reachable only via the `h` key on a connected Bluetooth keyboard (because `#btn-help` is hidden on mobile).
+
 ## MDXG compliance status
 
 The [Markdown Experience Guidelines (MDXG)](https://github.com/vercel-labs/mdxg) are currently a preview specification and may change. MDXG Redline embeds an **MDXG Viewer** (the read-only rendering conformance level) and layers inline commenting and structured feedback JSON export on top of it as review-specific features. Viewer features are being adopted incrementally.
