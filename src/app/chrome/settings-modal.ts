@@ -176,7 +176,7 @@ export const wireSettingsModal = (): void => {
 }
 
 if (import.meta.vitest) {
-  const { afterEach, beforeEach, describe, expect, it } = import.meta.vitest
+  const { afterEach, beforeEach, describe, expect, it, vi } = import.meta.vitest
 
   // テスト間で session state / localStorage / DOM をリセットする。settings-modal は module
   // 単一インスタンスの session を持つため、明示 reset しないと cross-test mutation が起きる。
@@ -220,7 +220,10 @@ if (import.meta.vitest) {
     setupFixture()
   })
 
-  afterEach(resetState)
+  afterEach((): void => {
+    resetState()
+    vi.unstubAllGlobals()
+  })
 
   describe('syncControlsToState', () => {
     it('open 時に select 値を session / 現在の lang に合わせる', () => {
@@ -309,6 +312,9 @@ if (import.meta.vitest) {
 
   describe('open 時の初期 focus', () => {
     it('open 直後の focus は theme select (Tab で lang / close まで modal 内を辿れる起点)', () => {
+      // fine pointer を明示 stub する。static-modal の focusInitial は coarse pointer 時に
+      // select focus を close button へ退避するため、happy-dom 既定値への暗黙依存を断つ。
+      vi.stubGlobal('matchMedia', (): { matches: boolean } => ({ matches: false }))
       controller.wire()
       controller.open()
       const themeSelect = findThemeSelect()

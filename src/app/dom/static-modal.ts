@@ -64,9 +64,20 @@ export const createStaticModalController = (config: StaticModalConfig): StaticMo
   const focusInitial = (): void => {
     const targetId = config.initialFocusId ?? config.closeButtonId
     const target = document.getElementById(targetId)
-    if (target instanceof HTMLElement) {
-      target.focus()
+    if (!(target instanceof HTMLElement)) {
+      return
     }
+    // iOS Safari は <select> への programmatic focus でネイティブピッカーを即座に展開する。
+    // タッチ主体 (coarse pointer) 環境では初期 focus を select に当てず close button へ退避し、
+    // 開いただけでピッカーが勝手に開くのを防ぐ (キーボード操作主体の環境は従来どおり select)。
+    if (target instanceof HTMLSelectElement && globalThis.matchMedia('(pointer: coarse)').matches) {
+      const fallback = document.getElementById(config.closeButtonId)
+      if (fallback instanceof HTMLElement) {
+        fallback.focus()
+      }
+      return
+    }
+    target.focus()
   }
 
   const restoreTrigger = (): void => {
@@ -280,10 +291,11 @@ const setupEmptyBackdropAndOutsiderForTest = (): {
 }
 
 if (import.meta.vitest) {
-  const { afterEach, describe, expect, it } = import.meta.vitest
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest
 
   afterEach((): void => {
     document.body.innerHTML = ''
+    vi.unstubAllGlobals()
   })
 
   describe('createStaticModalController', () => {
@@ -301,28 +313,60 @@ if (import.meta.vitest) {
       expect(backdrop.classList.contains('open')).toBe(false)
     })
 
-    it('open 後は close button に focus する (initialFocusId 未指定時の既定)', () => {
-      const { closeBtn } = setupModalFixtureForTest()
-      const ctl = createStaticModalController({
-        backdropId: 'test-modal-backdrop',
-        closeButtonId: 'test-modal-close',
+    describe('初期 focus', () => {
+      it('open 後は close button に focus する (initialFocusId 未指定時の既定)', () => {
+        const { closeBtn } = setupModalFixtureForTest()
+        const ctl = createStaticModalController({
+          backdropId: 'test-modal-backdrop',
+          closeButtonId: 'test-modal-close',
+        })
+        ctl.open()
+        expect(document.activeElement).toBe(closeBtn)
       })
-      ctl.open()
-      expect(document.activeElement).toBe(closeBtn)
-    })
 
-    it('initialFocusId を指定すると close button ではなく指定要素に focus する', () => {
-      const { backdrop } = setupModalFixtureForTest()
-      const input = document.createElement('input')
-      input.id = 'test-modal-input'
-      backdrop.appendChild(input)
-      const ctl = createStaticModalController({
-        backdropId: 'test-modal-backdrop',
-        closeButtonId: 'test-modal-close',
-        initialFocusId: 'test-modal-input',
+      it('initialFocusId を指定すると close button ではなく指定要素に focus する', () => {
+        const { backdrop } = setupModalFixtureForTest()
+        const input = document.createElement('input')
+        input.id = 'test-modal-input'
+        backdrop.appendChild(input)
+        const ctl = createStaticModalController({
+          backdropId: 'test-modal-backdrop',
+          closeButtonId: 'test-modal-close',
+          initialFocusId: 'test-modal-input',
+        })
+        ctl.open()
+        expect(document.activeElement).toBe(input)
       })
-      ctl.open()
-      expect(document.activeElement).toBe(input)
+
+      it('coarse pointer 環境では select の initialFocusId を close button に退避する', () => {
+        const { backdrop, closeBtn } = setupModalFixtureForTest()
+        const select = document.createElement('select')
+        select.id = 'test-modal-select'
+        backdrop.appendChild(select)
+        vi.stubGlobal('matchMedia', (): { matches: boolean } => ({ matches: true }))
+        const ctl = createStaticModalController({
+          backdropId: 'test-modal-backdrop',
+          closeButtonId: 'test-modal-close',
+          initialFocusId: 'test-modal-select',
+        })
+        ctl.open()
+        expect(document.activeElement).toBe(closeBtn)
+      })
+
+      it('fine pointer 環境では select の initialFocusId にそのまま focus する', () => {
+        const { backdrop } = setupModalFixtureForTest()
+        const select = document.createElement('select')
+        select.id = 'test-modal-select'
+        backdrop.appendChild(select)
+        vi.stubGlobal('matchMedia', (): { matches: boolean } => ({ matches: false }))
+        const ctl = createStaticModalController({
+          backdropId: 'test-modal-backdrop',
+          closeButtonId: 'test-modal-close',
+          initialFocusId: 'test-modal-select',
+        })
+        ctl.open()
+        expect(document.activeElement).toBe(select)
+      })
     })
 
     it('close で open 前にフォーカスしていた trigger 要素に focus を戻す', () => {
