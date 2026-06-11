@@ -1871,6 +1871,14 @@ html:not([data-mdxg-online='1']) .online-edition-only {
   opacity: 1;
 }
 
+/* mobile (≤768px) 専用 chrome。既定では全 viewport で hide し、@media (max-width: 768px) ブロック
+   (Step 6) で footer を display:flex、backdrop を drawer 開時のみ display:block に切替える。
+   グローバルで hide することで desktop / 既存 900px タブレット域に視覚回帰を出さない。 */
+.mobile-footer,
+.mobile-drawer-backdrop {
+  display: none;
+}
+
 @media (max-width: 900px) {
   /* Fall back to normal page scroll on narrow screens (vertical stack). */
   body {

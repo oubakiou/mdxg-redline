@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <!-- ⚠️ online build (src/build/online-html.ts の rewriteCspConnectSrc) は
          この CSP meta タグを以下の形式の regex で固定 match する:
            <meta\s+http-equiv="Content-Security-Policy"\s+content="...connect-src 'none'..."\s*/?>
@@ -657,6 +657,86 @@
       </aside>
     </main>
 
+    <!-- スマホ (≤768px) 専用の操作バー。desktop / タブレットでは review.css で display:none。
+         role="group" で implicit contentinfo を上書きする (操作コマンド群であり文書情報 landmark
+         ではないため、詳細は docs/feature-mobile-layout.md §5.n)。3 ボタンは既存 #btn-search の
+         click を委譲 / page-nav / comments drawer の開閉 trigger になる (mobile-footer.ts)。 -->
+    <footer
+      class="mobile-footer"
+      role="group"
+      aria-label="Mobile actions"
+      data-i18n-aria-label="mobile.footer_label"
+    >
+      <button
+        type="button"
+        class="btn btn-ghost"
+        id="btn-mobile-toc"
+        aria-label="Show table of contents"
+        aria-expanded="false"
+        aria-controls="page-nav-list"
+        data-i18n-aria-label="mobile.toc_aria"
+      >
+        <svg
+          class="btn-toolbar-icon"
+          aria-hidden="true"
+          focusable="false"
+          viewBox="0 0 16 16"
+          width="16"
+          height="16"
+          fill="currentColor"
+        >
+          <path
+            d="M2 4a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 4Zm0 4a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 8Zm0 4a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 12Z"
+          />
+        </svg>
+      </button>
+      <button
+        type="button"
+        class="btn btn-ghost"
+        id="btn-mobile-search"
+        aria-label="Search the document"
+        aria-pressed="false"
+        data-i18n-aria-label="mobile.search_aria"
+      >
+        <svg
+          class="btn-toolbar-icon"
+          aria-hidden="true"
+          focusable="false"
+          viewBox="0 0 16 16"
+          width="16"
+          height="16"
+          fill="currentColor"
+        >
+          <path
+            d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"
+          />
+        </svg>
+      </button>
+      <button
+        type="button"
+        class="btn btn-ghost"
+        id="btn-mobile-comments"
+        aria-label="Show review comments"
+        aria-expanded="false"
+        aria-controls="cmt-list"
+        data-i18n-aria-label="mobile.comments_aria"
+      >
+        <svg
+          class="btn-toolbar-icon"
+          aria-hidden="true"
+          focusable="false"
+          viewBox="0 0 16 16"
+          width="16"
+          height="16"
+          fill="currentColor"
+        >
+          <path
+            d="M1.75 1h8.5c.966 0 1.75.784 1.75 1.75v5.5A1.75 1.75 0 0 1 10.25 10H7.061l-2.574 2.573A1.458 1.458 0 0 1 2 11.543V10h-.25A1.75 1.75 0 0 1 0 8.25v-5.5C0 1.784.784 1 1.75 1ZM1.5 2.75v5.5c0 .138.112.25.25.25h1a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h3.5a.25.25 0 0 0 .25-.25v-5.5a.25.25 0 0 0-.25-.25h-8.5a.25.25 0 0 0-.25.25Zm13 2a.25.25 0 0 0-.25-.25h-.5a.75.75 0 0 1 0-1.5h.5c.966 0 1.75.784 1.75 1.75v5.5A1.75 1.75 0 0 1 14.25 12H14v1.543a1.458 1.458 0 0 1-2.487 1.03L9.22 12.28a.749.749 0 0 1 .326-1.275.749.749 0 0 1 .734.215l2.22 2.22v-2.19a.75.75 0 0 1 .75-.75h1a.25.25 0 0 0 .25-.25Z"
+          />
+        </svg>
+      </button>
+    </footer>
+
     <!-- closed 状態のときだけ画面右端の toolbar 直下に出現する開閉タブ。クリックで前回幅復元、
          左へドラッグで連続的に幅を広げられる。doc-pane の scrollbar / comments panel 幅に応じて
          右オフセットが動的に変わる仕組みは comments-resize.ts の resolveScrollbarOffset +
@@ -722,6 +802,11 @@
         </div>
       </div>
     </div>
+
+    <!-- mobile drawer 背面の暗幕。表示制御は author CSS に完全集約し hidden 属性は付けない
+         (UA stylesheet の [hidden] は specificity が低く author CSS と二重管理になるため、
+         docs/feature-mobile-layout.md §5.l)。JS は <html> の mobile-*-open class のみ操作する。 -->
+    <div class="mobile-drawer-backdrop" id="mobile-drawer-backdrop"></div>
 
     <div id="toast"></div>
 

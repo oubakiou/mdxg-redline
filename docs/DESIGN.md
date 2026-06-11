@@ -587,8 +587,11 @@ review-request CLI は配布先ディレクトリに同じ `<mdFileName>-<docHas
 | IndexedDB                                           | 推奨                       | すべてのモダンブラウザ                         |
 | `navigator.clipboard.writeText`                     | 推奨                       | すべてのモダンブラウザ（HTTPS または file://） |
 | `showDirectoryPicker` + `FileSystemDirectoryHandle` | Write feedback.json 時のみ | Chromium 系（Chrome, Edge, Arc, Brave, Opera） |
+| モバイルレイアウト（fixed footer バー + drawer）    | 推奨                       | iOS Safari / Android Chrome（幅 ≤ 768px）      |
 
 Safari と Firefox はファイル選択・埋め込み・コピー / エクスポートのフローは使えるが、**Write feedback.json は利用不可**（Export as JSON / Copy as JSON で代替）。
+
+幅 ≤ 768px のスマートフォンでは、3 列 grid の代わりに fixed ヘッダ + 画面下端の fixed フッターバー + 左右 drawer モデルに切り替わる（`viewport-fit=cover` で iOS safe-area inset を尊重）。769–900px は既存タブレット（vertical-stack）、901px 以上は desktop モデル。
 
 ---
 
