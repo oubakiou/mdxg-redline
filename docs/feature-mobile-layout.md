@@ -368,12 +368,16 @@ in-source vitest ケース：
 
 成果物：mobile-footer が runtime に組み込まれる。 desktop に視覚回帰なし、 mobile はまだ未完成だが Step 6 で完成する。
 
-### Step 5: (未着手) `global-keyboard.ts` の Esc / affordance キー抑制
+### Step 5: (完了済み) `global-keyboard.ts` の Esc / affordance キー抑制
+
+**状態**: **完了済み** — commit `d21da6d`
 
 - `src/app/chrome/global-keyboard.ts` の Escape handler 分岐に `closeMobileDrawers()` を追加（modal close より先に呼ぶ）
 - affordance キー (`a` / `w` / `s` / `d` / `e` / `f` / `h`) の抑制条件に `isMobileDrawerOpen()` を OR で追加 — drawer open 中は背面操作を suppress
-- `keyboard-shortcuts.ts` の `shouldSkipAffordanceKey()` で集約されている既存抑制条件 (`isAnyModalOpen()` 等) と並列に `isMobileDrawerOpen()` を OR で追加（mobile drawer は modal-backdrop class を持たないので `isAnyModalOpen` に拾われない、§5.j 参照）
+- 既存抑制条件 (`isAnyModalOpen()` 等) と並列に `isMobileDrawerOpen()` を OR で追加（mobile drawer は modal-backdrop class を持たないので `isAnyModalOpen` に拾われない、§5.j 参照）
 - in-source test で `Escape` keydown が `closeMobileDrawers` を呼ぶことを確認、 affordance キーが drawer open 中に suppress されることを確認
+
+**実装時の乖離**：計画では `isMobileDrawerOpen()` を `keyboard-shortcuts.ts` の `shouldSkipAffordanceKey()` に追加すると記述していたが、実コードでは `isAnyModalOpen()` は `shouldSkipAffordanceKey` ではなく `global-keyboard.ts` の `handleAffordanceKeys` の suppress 条件（`shouldSkipAffordanceKey(event) || !hasNoModifier(event) || isAnyModalOpen()`）に存在する。そのため「`isAnyModalOpen()` と並列に OR」という意図に忠実に、`global-keyboard.ts:handleAffordanceKeys` の同条件へ `|| isMobileDrawerOpen()` を追加した（`shouldSkipAffordanceKey` は editable target / repeat ガード専用のまま据え置き）。`keyboard-shortcuts.ts` は無変更。
 
 成果物：キーボード接続時のスマホ / タブレットで drawer が Esc で閉じる。 affordance キーが drawer 背面で意図せず発火しない。
 
