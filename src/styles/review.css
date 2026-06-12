@@ -817,7 +817,7 @@ body.comments-resizing * {
 }
 /* CLI 経路 (review-request) が <html data-toolbar-open-file="off"> を注入した時に
    Open file menu-item を paint 直後から隠す。toolbar.ts も後段で remove() するが、
-   CSS でまず非表示にしてから DOM 削除する 2 段構えで FOUC を防ぐ。DESIGN.md §5.g。 */
+   CSS でまず非表示にしてから DOM 削除する 2 段構えで FOUC を防ぐ。DESIGN.md §3 入力 1。 */
 html[data-toolbar-open-file='off'] .toolbar-open-file,
 html.toolbar-open-file-off .toolbar-open-file {
   display: none;

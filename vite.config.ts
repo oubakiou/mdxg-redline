@@ -798,7 +798,7 @@ const inlineGrammarsIntoHtml = (html: string, grammars: Record<string, unknown>)
   return html.slice(0, match.index) + replaced + html.slice(match.index + fullMatch.length)
 }
 
-// vite build 出力 (`dist/review.html`) を 2 ファイルに分岐させる plugin (DESIGN.md §5.a)。
+// vite build 出力 (`dist/review.html`) を 2 ファイルに分岐させる plugin (build-pipeline.md §13)。
 //   1. dist/embed-template.html  : review-request CLI が読み込んでテンプレートとして rewrite する
 //                                  (grammar 注入なしの最小サイズ、現行 review.html 相当)
 //   2. dist/standalone.html      : 単独 Open file 用、27 言語の grammar を事前 inline 済み

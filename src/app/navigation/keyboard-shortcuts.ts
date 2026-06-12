@@ -1,5 +1,5 @@
 // review.ts から WASD ベースのキーマップと、affordance キー (focus / activate / arrow scroll) /
-// 入力編集中ガードを切り出した module (DESIGN.md §13)。
+// 入力編集中ガードを切り出した module (DESIGN.md §12 §13 Keyboard Navigation)。
 //
 // 公開シンボル:
 // - shouldSkipAffordanceKey / hasNoModifier: keydown listener が affordance スキップ判定に使う

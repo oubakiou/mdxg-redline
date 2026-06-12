@@ -98,7 +98,7 @@ const applyPageNavWidthHint = (html: string, pageNavWidth: RunArgs['pageNavWidth
 
 // --show-open-file 未指定時は <html data-toolbar-open-file="off"> を注入し、
 // ブラウザ側 toolbar.ts が #btn-load / #file-md を起動時に DOM から削除する。
-// CLI 経路で別 MD を誤読み込みする事故 (state.comments 初期化) を構造的に塞ぐ (DESIGN.md §5.g)。
+// CLI 経路で別 MD を誤読み込みする事故 (state.comments 初期化) を構造的に塞ぐ (DESIGN.md §3 入力 1)。
 const applyToolbarOpenFileHint = (html: string, showOpenFile: RunArgs['showOpenFile']): string => {
   if (showOpenFile === true) {
     return html

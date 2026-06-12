@@ -100,7 +100,7 @@ const clearAllComments = (): void => {
 }
 
 // CLI 経路 (review-request) が <html data-toolbar-open-file="off"> を注入した時、
-// 「特定 MD のレビュー固定文脈」フットガン (DESIGN.md §3 入力 1, §5.g) を構造的に塞ぐため
+// 「特定 MD のレビュー固定文脈」フットガン (DESIGN.md §3 入力 1) を構造的に塞ぐため
 // Open file ボタンと隠し file input を tab order / DOM クエリから完全に外す。
 // display:none での視覚抑制は CSS 側で並行して効くが、DOM 削除も併せて行う方が
 // 信頼境界として強い (--show-open-file 未指定時に keyboard 経路で偶発的に叩かれないため)。

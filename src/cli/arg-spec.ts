@@ -228,7 +228,7 @@ export interface RunArgs {
   /**
    * --show-open-file が明示指定された場合のみ true。CLI 既定は不在 (= hidden 扱い)。
    * 不在 / false の時に <html data-toolbar-open-file="off"> が注入され、ブラウザ側 toolbar.ts が
-   * #btn-load / #file-md を DOM から削除する (DESIGN.md §5.g)。
+   * #btn-load / #file-md を DOM から削除する (DESIGN.md §3 入力 1)。
    */
   showOpenFile?: boolean
   /**

@@ -204,8 +204,11 @@ vp test         # in-source tests を実行
 - [10. ブラウザ互換性](docs/DESIGN.md#10-ブラウザ互換性)
 - [11. セキュリティとプライバシー](docs/DESIGN.md#11-セキュリティとプライバシー)
 - [12. MDXG 準拠状況と設計判断](docs/DESIGN.md#12-mdxg-準拠状況と設計判断)
-- [13. ビルドパイプライン](docs/DESIGN.md#13-ビルドパイプライン)
-- [14. UI 国際化](docs/DESIGN.md#14-ui-国際化)
+
+ビルドパイプライン（旧 §13）と UI 国際化（旧 §14）は独立ドキュメントに分離した:
+
+- [ビルドパイプライン](docs/build-pipeline.md) — vp build / split-outputs / 配布物 / ソース構成の責務境界
+- [UI 国際化](docs/i18n.md) — 言語決定の優先順位 / 翻訳辞書とランタイム / DOM 連携
 
 ## ライセンス
 

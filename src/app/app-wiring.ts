@@ -86,7 +86,7 @@ interface BootstrapDeps {
  * `loadFromMarkdown` (online decorator 適用済み) を `createDocumentLoader` で wrap した
  * `documentLoader` を伴う deps。各 callsite (boot / paste / Open file) は
  * `documentLoader.loadDocument({kind, ...})` 経由で文書をロードし、`registerOnDocumentLoad`
- * 経由で登録された hook (source 表示の切替等) が自動発火する (DESIGN.md §14.6 文書ライフサイクル hook)。
+ * 経由で登録された hook (source 表示の切替等) が自動発火する (i18n.md §14.6 文書ライフサイクル hook)。
  */
 export interface ResolvedBootstrapDeps extends BootstrapDeps {
   documentLoader: DocumentLoader
@@ -301,7 +301,7 @@ const snapshotOnlineListenersForTest = (): OnlineListenerSnapshot => ({
 })
 
 /**
- * i18n の paint 後 bootstrap (DESIGN.md §14.6)。
+ * i18n の paint 後 bootstrap (i18n.md §14.6)。
  *   1. head inline script で立てた lang / `<html lang>` を module-local state に再同期する
  *      (initLangFromBrowser)。head 側は <html lang> しか触らないため、ここで currentLang を確定。
  *   2. applyI18nDataset(document) で静的 markup の textContent / 属性 / CSS custom property を翻訳。

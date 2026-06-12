@@ -204,8 +204,11 @@ Design intent, structure, and trade-offs are documented in the design document [
 - [10. Browser compatibility](docs/DESIGN.md#10-ブラウザ互換性)
 - [11. Security and privacy](docs/DESIGN.md#11-セキュリティとプライバシー)
 - [12. MDXG compliance status and design decisions](docs/DESIGN.md#12-mdxg-準拠状況と設計判断)
-- [13. Build pipeline](docs/DESIGN.md#13-ビルドパイプライン)
-- [14. UI internationalization](docs/DESIGN.md#14-ui-国際化)
+
+The build pipeline (formerly §13) and UI internationalization (formerly §14) have been split into standalone documents:
+
+- [Build pipeline](docs/build-pipeline.md) — vp build / split-outputs / distribution artifacts / source responsibility boundaries
+- [UI internationalization](docs/i18n.md) — language resolution priority / translation dictionaries and runtime / DOM integration
 
 ## License
 

@@ -77,7 +77,7 @@ const rewriteCspConnectSrc = (html: string, allowlist: readonly string[]): strin
 }
 
 // JSON payload の `<` を `<` (6 文字 literal: backslash + u003C) に escape して
-// `</script>` 誤検出を防ぐ。vite.config.ts の inlineGrammarsIntoHtml と同じ規約 (DESIGN.md §13)。
+// `</script>` 誤検出を防ぐ。vite.config.ts の inlineGrammarsIntoHtml と同じ規約 (build-pipeline.md §13)。
 //
 // ⚠️ 落とし穴: `String.raw\`<\`` 形式は TypeScript lexer が `<` を `<` (1 文字) に
 // 先に解決してしまい、`String.raw` が raw 形式を保持する余地が無くなって replace が no-op になる

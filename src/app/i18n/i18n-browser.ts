@@ -1,6 +1,6 @@
 // i18n のブラウザ副作用層。<html lang> / localStorage / DOM 反映を扱う。
 // 純粋ロジックは core/i18n/i18n-core.ts に分離されており、本ファイルは Node では import できない
-// (document / localStorage / navigator への依存)。設計判断は DESIGN.md §14.2 / §14.6 を参照。
+// (document / localStorage / navigator への依存)。設計判断は i18n.md §14.2 / §14.6 を参照。
 
 import {
   type Lang,

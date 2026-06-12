@@ -12,7 +12,7 @@
 // (DESIGN.md §11) を守るため。
 //
 // 文書切替・言語切替の追従は 4 関数パターン (`setup` / `show` / `clear` / `teardown`、
-// DESIGN.md §14.6) で行う。`setup*` は bootstrap で 1 度だけ呼ばれ `subscribeLangChange`
+// i18n.md §14.6) で行う。`setup*` は bootstrap で 1 度だけ呼ばれ `subscribeLangChange`
 // (lang toggle) と `registerOnDocumentLoad` (文書切替) の 2 経路を購読する。
 
 import type { DocumentLoader, Unsubscribe } from '../document/load-document'
