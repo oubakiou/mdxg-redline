@@ -1981,6 +1981,16 @@ html:not([data-mdxg-online='1']) .online-edition-only {
   /* 紙シートの「机面」余白を mobile では詰める (desktop の 32px 24px は狭幅で余白過多になる)。 */
   .doc-pane {
     padding: 20px 12px;
+    /* 上下フリックで指を離したときページ単位に吸着させる。proximity なので画面より長い
+       virtual-page も自由にスクロールでき、境界付近で止めたときだけ先頭にスナップする
+       (mandatory だとページ途中で止まれず長文が読めない)。scroll-padding-top の 5% は
+       navigation-orchestrator の SECTION_TOP_RATIO と揃え、フリック吸着とプログラム移動
+       (scrollToActivePageSection) の着地点を一致させる。 */
+    scroll-snap-type: y proximity;
+    scroll-padding-top: 5%;
+  }
+  .virtual-page {
+    scroll-snap-align: start;
   }
   .layout {
     grid-template-columns: minmax(0, 1fr);
