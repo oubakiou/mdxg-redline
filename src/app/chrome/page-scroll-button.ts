@@ -118,9 +118,6 @@ const onTouchStart = (event: TouchEvent): void => {
   }
   if (fabEl) {
     fabEl.classList.add('is-dragging')
-    // 触れた時点で出現バウンス (操作前の誘い) は役目を終えるので止め、指追従 (操作中の確認) と
-    // 二重に揺れないようにする。
-    fabEl.classList.remove('is-hinting')
   }
 }
 
@@ -185,16 +182,6 @@ const registerTouchHandlers = (btn: HTMLElement): void => {
   btn.addEventListener('touchcancel', onTouchCancel, { passive: true })
 }
 
-// 出現時に一度だけ上下バウンスのヒントを再生する。display トグルでの再生を避けるため、
-// wire 時に .is-hinting を付与し合計再生時間後に外す一発方式 (localStorage は使わない)。
-const HINT_TOTAL_MS = 3500
-const playFlickHint = (btn: HTMLElement): void => {
-  btn.classList.add('is-hinting')
-  globalThis.setTimeout((): void => {
-    btn.classList.remove('is-hinting')
-  }, HINT_TOTAL_MS)
-}
-
 export const wirePageScrollButton = (): void => {
   const btn = document.getElementById('btn-page-scroll')
   if (!btn || btn.dataset.wired === 'true') {
@@ -205,7 +192,6 @@ export const wirePageScrollButton = (): void => {
   iconEl = btn.querySelector<HTMLElement>('.btn-toolbar-icon')
   registerTouchHandlers(btn)
   btn.addEventListener('click', onClick)
-  playFlickHint(btn)
 }
 
 // in-source test 専用 fixture helper。production ビルドでは参照側 (if ブロック) ごと dead code として
@@ -271,7 +257,6 @@ if (import.meta.vitest) {
   describe('wirePageScrollButton', () => {
     afterEach(() => {
       vi.unstubAllGlobals()
-      vi.useRealTimers()
       document.body.innerHTML = ''
     })
 
@@ -300,23 +285,6 @@ if (import.meta.vitest) {
       wirePageScrollButton()
       btn.click()
       expect(scrollBy).toHaveBeenCalledTimes(1)
-    })
-
-    it('wire 時に出現ヒント class を付与し、一定時間後に外す', () => {
-      vi.useFakeTimers()
-      const { btn } = setup()
-      expect(btn.classList.contains('is-hinting')).toBe(true)
-      vi.advanceTimersByTime(HINT_TOTAL_MS + 100)
-      expect(btn.classList.contains('is-hinting')).toBe(false)
-    })
-
-    it('touchstart で出現ヒントを止める (誘い→確認の切替で二重モーションを防ぐ)', () => {
-      vi.useFakeTimers()
-      const { btn } = setup()
-      const event = new Event('touchstart', { bubbles: true })
-      Object.defineProperty(event, 'touches', { value: [{ clientY: 100 }] })
-      btn.dispatchEvent(event)
-      expect(btn.classList.contains('is-hinting')).toBe(false)
     })
   })
 }
