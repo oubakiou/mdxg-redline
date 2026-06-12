@@ -2193,6 +2193,37 @@ html:not([data-mdxg-online='1']) .online-edition-only {
   :root.floater-active .page-scroll-fab {
     display: none;
   }
+  @keyframes page-scroll-fab-hint {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    25% {
+      transform: translateY(-7px);
+    }
+    50% {
+      transform: translateY(0);
+    }
+    75% {
+      transform: translateY(7px);
+    }
+  }
+  /* 出現時に一度だけ上下へ往復し「縦両方向に動く=フリックできる」ことを示す
+     (page-scroll-button.ts が wire 時に .is-hinting を一定時間だけ付与する)。 */
+  .page-scroll-fab.is-hinting {
+    animation: page-scroll-fab-hint 1.4s ease-in-out 0.6s 2;
+  }
+  /* ドラッグ中はアイコンが指に追従 (page-scroll-button.ts が inline translate / rotate を更新)。
+     指を離すと位置 (translate) のみ transition で中立へ戻し、向き (rotate) は transition 対象外に
+     することで「戻り時にクルッと回るスピン」を避ける。is-dragging 中は 1:1 追従のため transition 無し。
+     rotate を中心で行うため transform-origin: center を明示する。 */
+  .page-scroll-fab .btn-toolbar-icon {
+    transition: translate 0.18s ease;
+    transform-origin: center;
+  }
+  .page-scroll-fab.is-dragging .btn-toolbar-icon {
+    transition: none;
+  }
 }
 
 /* 既存 reduced-motion ブロック (上方) は 768px ブロックより前にあり、768px の transition:transform .2s が
@@ -2201,6 +2232,14 @@ html:not([data-mdxg-online='1']) .online-edition-only {
 @media (max-width: 768px) and (prefers-reduced-motion: reduce) {
   .page-nav,
   .comments {
+    transition-duration: 0s;
+  }
+  /* 出現時バウンスは装飾モーションなので無効化。指追従は 1:1 の直接操作なので残すが、
+     離した後のスナップバック (transition) は即時にする。 */
+  .page-scroll-fab.is-hinting {
+    animation: none;
+  }
+  .page-scroll-fab .btn-toolbar-icon {
     transition-duration: 0s;
   }
 }
