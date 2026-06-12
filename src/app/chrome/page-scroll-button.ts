@@ -67,8 +67,11 @@ const directionSign = (dir: ScrollDir): number => {
   return 1
 }
 
+const prefersReducedMotion = (): boolean =>
+  globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches
+
 const scrollBehavior = (): ScrollBehavior => {
-  if (globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (prefersReducedMotion()) {
     return 'auto'
   }
   return 'smooth'
@@ -169,10 +172,25 @@ const onTouchCancel = (): void => {
   resetIcon()
 }
 
+// タップ (= 下 1 画面送り) のフィードバックとして矢印を下へ軽く突いて戻す。指追従の inline
+// translate / rotate とは別系統の一発再生にするため Web Animations API を使う (CSS class の
+// 付け外し + reflow による再生し直しが不要で、連打でも素直に再生される)。
+const playTapNudge = (): void => {
+  if (!iconEl || prefersReducedMotion()) {
+    return
+  }
+  iconEl.animate(
+    [{ translate: '0 0' }, { offset: 0.45, translate: '0 6px' }, { translate: '0 0' }],
+    { duration: 240, easing: 'ease' }
+  )
+}
+
 // tap / mouse click / keyboard (Enter / Space) の共通経路。flick の touchend は preventDefault で
 // click を抑止するため、ここに到達するのは tap とポインタ非タッチ操作のみ。
+// コア機能 (スクロール) を先に実行し、装飾のナッジは後。万一 animate が投げてもスクロールは動く。
 const onClick = (): void => {
   scrollByScreen('down')
+  playTapNudge()
 }
 
 const registerTouchHandlers = (btn: HTMLElement): void => {
@@ -196,6 +214,9 @@ export const wirePageScrollButton = (): void => {
 
 // in-source test 専用 fixture helper。production ビルドでは参照側 (if ブロック) ごと dead code として
 // tree-shake される (mobile-footer.ts と同規約で module scope に置く)。
+// button にアイコン (.btn-toolbar-icon) を入れないのは意図的：入れると iconEl が非 null になり、
+// click テストが playTapNudge 経由で iconEl.animate を呼ぶが happy-dom は Element.animate 未実装で
+// 落ちる。アイコン有りの経路を検証する場合は animate を vi.fn() でスタブすること。
 const buildPaneFixture = (): HTMLElement => {
   document.body.innerHTML = `
     <main class="layout"><section class="doc-pane"></section></main>
