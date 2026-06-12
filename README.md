@@ -175,7 +175,7 @@ The [Markdown Experience Guidelines (MDXG)](https://github.com/vercel-labs/mdxg)
 | §15 Diagram Rendering    | SHOULD (Ext.)  | Compliant      |
 | §16 Footnotes            | SHOULD (Ext.)  | Compliant      |
 
-For the roadmap ahead (extension candidates), see [docs/roadmap.md](docs/roadmap.md). For MDXG per-section compliance status and design decisions, see [docs/DESIGN.md §12](docs/DESIGN.md#12-mdxg-準拠状況と設計判断).
+For the roadmap ahead (extension candidates), see [docs/design/roadmap.md](docs/design/roadmap.md). For MDXG per-section compliance status and design decisions, see [docs/design/DESIGN.md §12](docs/design/DESIGN.md#12-mdxg-準拠状況と設計判断).
 
 ## Development
 
@@ -190,25 +190,25 @@ vp check --fix  # Runs format / lint / type checks together (--fix auto-fixes)
 vp test         # Runs in-source tests
 ```
 
-Design intent, structure, and trade-offs are documented in the design document [docs/DESIGN.md](docs/DESIGN.md). Table of contents:
+Design intent, structure, and trade-offs are documented in the design document [docs/design/DESIGN.md](docs/design/DESIGN.md). Table of contents:
 
-- [1. Overview](docs/DESIGN.md#1-概要)
-- [2. Constraints](docs/DESIGN.md#2-制約)
-- [3. User flow](docs/DESIGN.md#3-ユーザーフロー)
-- [4. Architecture](docs/DESIGN.md#4-アーキテクチャ)
-- [5. Data model](docs/DESIGN.md#5-データモデル)
-- [6. Comment anchoring](docs/DESIGN.md#6-コメントのアンカリング)
-- [7. Persistence layer](docs/DESIGN.md#7-永続化レイヤー)
-- [8. Workspace protocol](docs/DESIGN.md#8-ワークスペースプロトコル)
-- [9. Boot sequence](docs/DESIGN.md#9-起動シーケンス)
-- [10. Browser compatibility](docs/DESIGN.md#10-ブラウザ互換性)
-- [11. Security and privacy](docs/DESIGN.md#11-セキュリティとプライバシー)
-- [12. MDXG compliance status and design decisions](docs/DESIGN.md#12-mdxg-準拠状況と設計判断)
+- [1. Overview](docs/design/DESIGN.md#1-概要)
+- [2. Constraints](docs/design/DESIGN.md#2-制約)
+- [3. User flow](docs/design/DESIGN.md#3-ユーザーフロー)
+- [4. Architecture](docs/design/DESIGN.md#4-アーキテクチャ)
+- [5. Data model](docs/design/DESIGN.md#5-データモデル)
+- [6. Comment anchoring](docs/design/DESIGN.md#6-コメントのアンカリング)
+- [7. Persistence layer](docs/design/DESIGN.md#7-永続化レイヤー)
+- [8. Workspace protocol](docs/design/DESIGN.md#8-ワークスペースプロトコル)
+- [9. Boot sequence](docs/design/DESIGN.md#9-起動シーケンス)
+- [10. Browser compatibility](docs/design/DESIGN.md#10-ブラウザ互換性)
+- [11. Security and privacy](docs/design/DESIGN.md#11-セキュリティとプライバシー)
+- [12. MDXG compliance status and design decisions](docs/design/DESIGN.md#12-mdxg-準拠状況と設計判断)
 
 The build pipeline (formerly §13) and UI internationalization (formerly §14) have been split into standalone documents:
 
-- [Build pipeline](docs/build-pipeline.md) — vp build / split-outputs / distribution artifacts / source responsibility boundaries
-- [UI internationalization](docs/i18n.md) — language resolution priority / translation dictionaries and runtime / DOM integration
+- [Build pipeline](docs/design/build-pipeline.md) — vp build / split-outputs / distribution artifacts / source responsibility boundaries
+- [UI internationalization](docs/design/i18n.md) — language resolution priority / translation dictionaries and runtime / DOM integration
 
 ## License
 

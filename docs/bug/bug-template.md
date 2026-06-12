@@ -1,10 +1,10 @@
 # [BUG] {問題を 1 行で要約 — 重大さ / 影響範囲が伝わる粒度で}
 
-[![MKDN](https://img.shields.io/badge/MKDN-review-red?style=for-the-badge)](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2Fdocs%2Fbug-template.md#p:bug-1)
+[![MKDN](https://img.shields.io/badge/MKDN-review-red?style=for-the-badge)](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2Fdocs%2Fbug%2Fbug-template.md#p:bug-1)
 
 > **このファイルはバグ修正プランのテンプレートです**。新しいバグを起票する際は本ファイルをコピーして `docs/bug-<topic>.md` として配置し、`{プレースホルダ}` を埋める / 引用ブロック内のガイドを削除する形で使う。完了したバグ修正は `docs/archive/bug-<topic>.archive.md` にリネームしてアーカイブする（例: `docs/archive/bug-csp-font-src-missing.archive.md`）。
 >
-> 設計プラン用テンプレートは `docs/feature-plan-template.md`、リファクタリング用テンプレートは `docs/refactoring-plan-template.md` を参照。本テンプレートは「既知の不具合 / 設計と実装の乖離 / spec violation / regression」を起票して fix プランを引くための骨格を提供する。
+> 設計プラン用テンプレートは `docs/feature/feature-plan-template.md`、リファクタリング用テンプレートは `docs/refactoring/refactoring-plan-template.md` を参照。本テンプレートは「既知の不具合 / 設計と実装の乖離 / spec violation / regression」を起票して fix プランを引くための骨格を提供する。
 
 > **書き方の原則**：
 >
@@ -136,7 +136,7 @@
 
 > **書く内容**: bug の根拠 / 修正後の影響範囲 / 関連プラン へのリンクを列挙する。設計ドキュメントの章 / 関連 archive plan / 関連 feature plan / 関連 PR が候補。後日読み返すときの出発点。
 
-- [DESIGN.md §{X} {章タイトル}](./DESIGN.md#{anchor}) — {bug の根拠 / 期待動作の出典}
-- [docs/archive/{関連完了プラン}.archive.md](./archive/{関連完了プラン}.archive.md) — {関連設計判断 / 過去の議論}
-- [docs/feature-{影響を受けるプラン}.md](./feature-{topic}.md) — {本 bug 修正後の整合性 / 依存関係}
+- [DESIGN.md §{X} {章タイトル}](../design/DESIGN.md#{anchor}) — {bug の根拠 / 期待動作の出典}
+- [docs/archive/{関連完了プラン}.archive.md](../archive/{関連完了プラン}.archive.md) — {関連設計判断 / 過去の議論}
+- [docs/feature-{影響を受けるプラン}.md](../feature/feature-{topic}.md) — {本 bug 修正後の整合性 / 依存関係}
 - {外部仕様 / RFC / W3C / MDN 等の参照、必要なら}

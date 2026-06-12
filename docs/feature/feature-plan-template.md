@@ -1,6 +1,6 @@
 # {タスク名} 設計・実装計画
 
-[![MKDN](https://img.shields.io/badge/MKDN-review-red?style=for-the-badge)](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2Fdocs%2Ffeature-plan-template.md#p:page-1)
+[![MKDN](https://img.shields.io/badge/MKDN-review-red?style=for-the-badge)](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2Fdocs%2Ffeature%2Ffeature-plan-template.md#p:page-1)
 
 > **このファイルは設計ドキュメントのテンプレートです**。新しい設計プランを起こす際は本ファイルをコピーし、`{プレースホルダ}` を埋める / 引用ブロック内のガイドを削除する形で使う。完了したプランは `docs/<topic>.archive.md` にリネームしてアーカイブする（例: `docs/archive/mdxg-rendering-code-block.archive.md`）。
 
@@ -321,6 +321,6 @@ export function {pureFn}(input: {InputType}): {OutputType}
 - [{外部規格}]({リンク}) — {引用元}
 - [{リファレンス実装}]({リンク})
 - [{ライブラリドキュメント}]({リンク}) — {採用 API}
-- [DESIGN.md §{X} {章タイトル}](./DESIGN.md#{anchor})
-- [DESIGN.md §{Y} {既存不変条件の根拠}](./DESIGN.md#{anchor})
-- [docs/archive/{完了済みプラン}.archive.md](./archive/{完了済みプラン}.archive.md) — {同等パターンのプラン参考}
+- [DESIGN.md §{X} {章タイトル}](../design/DESIGN.md#{anchor})
+- [DESIGN.md §{Y} {既存不変条件の根拠}](../design/DESIGN.md#{anchor})
+- [docs/archive/{完了済みプラン}.archive.md](../archive/{完了済みプラン}.archive.md) — {同等パターンのプラン参考}

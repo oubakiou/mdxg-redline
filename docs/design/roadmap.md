@@ -1,10 +1,10 @@
 # MDXG Redline 拡張候補ロードマップ
 
-本ドキュメントは MDXG Redline の **今後の拡張候補** を整理する。現状設計の記述は [docs/DESIGN.md](./DESIGN.md) に置き、本書はまだ実装していない将来機能の検討メモに限定する（DESIGN.md を「現状」、本書を「未来」として分離する方針）。
+本ドキュメントは MDXG Redline の **今後の拡張候補** を整理する。現状設計の記述は [docs/design/DESIGN.md](./DESIGN.md) に置き、本書はまだ実装していない将来機能の検討メモに限定する（DESIGN.md を「現状」、本書を「未来」として分離する方針）。
 
 各候補は実装に着手した時点で、確定した設計を DESIGN.md 本体へ移し、本書からは削除する。着手・見送りの履歴は `git log` で辿れる。
 
-> コードベースの保守性向上を目的とした「挙動不変のリファクタリング候補」は別途 [docs/refactoring-plan.md](./refactoring-plan.md) に分ける。本書は新機能・新挙動の追加候補を扱う。
+> コードベースの保守性向上を目的とした「挙動不変のリファクタリング候補」は別途 [docs/refactoring/refactoring-plan.md](../refactoring/refactoring-plan.md) に分ける。本書は新機能・新挙動の追加候補を扱う。
 
 ## 相対画像パスの対応（Safe モードの無効化）
 

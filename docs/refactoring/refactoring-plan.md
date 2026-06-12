@@ -147,11 +147,11 @@ sequenceDiagram
 **対象**:
 
 - `dist/embed-template.html` / `dist/standalone.html`（成果物）
-- `docs/DESIGN.md:1039-1043` (HTML minify 無効維持 / CI スモークテスト指針)
+- `docs/design/build-pipeline.md`「HTML minify 無効維持と CI スモークテスト指針」
 - `vite.config.ts` (`mdxg-split-outputs` plugin, 配布契約の生成側)
 - 新規テスト配置先: `src/build/` 配下に `inline-markdown-css.ts` の前例があるため、本件も `src/build/dist-smoke.ts` (in-source test 形式) として置く
 
-**現状**: DESIGN.md §13 で「ビルド後の `dist/embed-template.html` と `dist/standalone.html` の両方に `id="embedded-md"` + `type="text/markdown"` を併せ持つ `<script>` が含まれていること」「`dist/standalone.html` に `<script id="embedded-shiki-langs">` が空でないこと」をスモークテストで検査するのが望ましい、と明言されているが未実装。`core/embed.ts` の `EMBEDDED_MD_RE` は synthetic HTML 上の in-source test では検証されているものの、`dist/` 実体を直接走査していないため、Vite plugin の改修や HTML minify の意図せぬ有効化で配布契約が静かに壊れる経路が残っている。
+**現状**: build-pipeline.md §13 で「ビルド後の `dist/embed-template.html` と `dist/standalone.html` の両方に `id="embedded-md"` + `type="text/markdown"` を併せ持つ `<script>` が含まれていること」「`dist/standalone.html` に `<script id="embedded-shiki-langs">` が空でないこと」をスモークテストで検査するのが望ましい、と明言されているが未実装。`core/embed.ts` の `EMBEDDED_MD_RE` は synthetic HTML 上の in-source test では検証されているものの、`dist/` 実体を直接走査していないため、Vite plugin の改修や HTML minify の意図せぬ有効化で配布契約が静かに壊れる経路が残っている。
 
 **分割案**:
 

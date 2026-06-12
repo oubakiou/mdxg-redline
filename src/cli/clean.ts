@@ -1,6 +1,6 @@
 // `--clean [dir]` サブコマンドの facade (dir 省略時はカレントディレクトリを対象)。
 // `<dir>` 直下の `*-<docHash>-review.html` / `*-<docHash>-feedback.json` を
-// docs/DESIGN.md §8 ファイル命名規約に従って機械的に一括削除する。
+// docs/design/DESIGN.md §8 ファイル命名規約に従って機械的に一括削除する。
 // `--recursive` (`-r`) 指定時は readdir({ recursive: true }) でサブディレクトリ配下も対象にする。
 //
 // 責務分割: pure 分類 (本ファイル `classifyEntries`) / stdout フォーマッタ (`clean-format.ts`)

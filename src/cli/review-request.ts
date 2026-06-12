@@ -3,7 +3,7 @@
 // embed-core の純粋な埋め込みロジックに、Node 側の I/O (引数パース / ファイル読み書き /
 // ブラウザ起動) だけを付ける薄い CLI。ビルド後は dist/review-request.mjs として配布される。
 // dist/embed-template.html を同ディレクトリから読み込む。
-// 出力ファイル名は docs/DESIGN.md §8 のファイル命名規約に従い、入力 MD の basename と
+// 出力ファイル名は docs/design/DESIGN.md §8 のファイル命名規約に従い、入力 MD の basename と
 // 本文 SHA-256 から自動決定する。利用者は output ファイル名ではなくディレクトリだけ指定できる。
 // 既定では生成した HTML を OS の標準ブラウザで開く。`--no-open` で抑止できる。
 // VS Code Remote Containers / Codespaces のように $BROWSER が file:// を扱えない環境を
