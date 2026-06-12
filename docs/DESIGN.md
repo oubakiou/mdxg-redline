@@ -821,7 +821,7 @@ MDXG Redline は **MDXG Viewer**（[Markdown Experience Guidelines (MDXG)](https
 
 **実装詳細**
 
-- **Stacked View**: doc-renderer は markdown 読み込み時に全 page を `<section class="virtual-page" data-page-index data-page-slug>` で 1 度に描画する。マウスホイールだけで全文を読み進められる Word 風レイアウト (docs/archive/mdxg-virtual-pages.archive.md §14)。blockId は document スコープ連番に戻り (§7.1 撤回)、mark-engine は全 comments を活性 mark として保持する。mobile (≤768px) では `.doc-pane` に `scroll-snap-type: y proximity` + `.virtual-page` に `scroll-snap-align: start` を当て、上下フリックで指を離した位置がページ境界近傍のとき先頭へ吸着する (連続通読を壊さないため `proximity`、`scroll-padding-top: 5%` は §6-7 の TOC / hash ジャンプの着地点と揃える。詳細と「1 フリック=1 ページ」要望への達成度ギャップは `docs/feature-mobile-layout.md` §5.u)
+- **Stacked View**: doc-renderer は markdown 読み込み時に全 page を `<section class="virtual-page" data-page-index data-page-slug>` で 1 度に描画する。マウスホイールだけで全文を読み進められる Word 風レイアウト (docs/archive/mdxg-virtual-pages.archive.md §14)。blockId は document スコープ連番に戻り (§7.1 撤回)、mark-engine は全 comments を活性 mark として保持する
 - **page scroll-spy**: `app/navigation/page-scroll-spy.ts` の `setupPageScrollSpy` が `IntersectionObserver` (`rootMargin: '-5% 0px -95% 0px'`) で section を観測。viewport の上から 5% の線にいる section の `pageIndex` を `state.activePageIndex` に push し、`syncHashFromActivePage` で `location.hash` を更新。`setOnPageActivated(renderPageNavigation)` で TOC active 表示も追従する。判定基準を viewport 上 5% に置くのは TOC クリック時に section top を同じ位置に揃える `alignSectionTopInPane` と整合させ、navigate 直後に上半分の前ページが topmost と誤判定されないようにするため
 - **URL 同期**: `location.hash = '#<page-slug>'` の代入だけで履歴を管理。History API 不使用 (docs/archive/mdxg-virtual-pages.archive.md §7.4)。ブラウザ戻る / 進むで前後ページに遷移できる
 - **hash 復元**: 初期ロード時 / hashchange で `resolveTargetFromHash` が page slug + heading slug を分解。hash が空 / 不正 / 不一致なら先頭ページ (index 0) にフォールバックする (§7.4)
