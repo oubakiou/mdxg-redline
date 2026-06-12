@@ -15,6 +15,7 @@ export const messagesJa = {
   'comments.empty': 'コメントを追加するには、ファイル内のテキストを選択してください。',
   'comments.export': 'JSON としてエクスポート',
   'comments.floater_label': 'コメント',
+  'comments.floater_label_mobile': '選択範囲にコメントを追加',
   'comments.resize_aria': 'コメントパネルのサイズを変更',
   'comments.save_button': '保存',
   'comments.toggle_panel_aria': 'コメントパネルを表示',

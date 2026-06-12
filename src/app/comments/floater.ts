@@ -52,6 +52,22 @@ const positionFloater = (floater: FloaterTarget, rect: FloaterAnchorRect): void 
   floater.style.left = `${Math.max(8, left)}px`
 }
 
+// mobile では floater を選択 rect 追従のポップオーバーではなく footer 直上の固定バーに化けさせる
+// (review.css の同 media query)。ブラウザネイティブの選択メニューが選択範囲に張り付くのと衝突しないよう
+// 画面下端へ逃がす意図。CSS が bottom/left で位置を持つので、inline 座標は載せてはいけない (後勝ちで上書きされる)。
+const MOBILE_MEDIA = '(max-width: 768px)'
+const isMobileViewport = (): boolean => globalThis.matchMedia(MOBILE_MEDIA).matches
+
+/** viewport に応じて floater を配置する。mobile は inline 座標を消して CSS の固定バー配置に委ねる */
+const placeFloater = (floater: HTMLElement, rect: FloaterAnchorRect): void => {
+  if (isMobileViewport()) {
+    floater.style.top = ''
+    floater.style.left = ''
+    return
+  }
+  positionFloater(floater, rect)
+}
+
 /** 選択状態に応じてフローターの表示/非表示と位置を更新する。selectionchange ハンドラから呼び出される */
 const updateFloaterFromSelection = (): void => {
   // modal 表示中は selection 変化で floater を出し直さない。coarse 環境では floater tap 後も
@@ -66,7 +82,7 @@ const updateFloaterFromSelection = (): void => {
     return
   }
   floater.style.display = 'block'
-  positionFloater(floater, info.rect)
+  placeFloater(floater, info.rect)
   floater.dataset.payload = selectionFloaterPayload(info)
 }
 
@@ -88,6 +104,10 @@ export const wireFloater = (): void => {
   if (globalThis.matchMedia('(pointer: coarse)').matches) {
     document.addEventListener('selectionchange', onSelChange)
   }
+  // breakpoint をまたぐ resize (landscape↔portrait の端末回転で 768px 境界を越える等) で再配置する。
+  // desktop で付いた inline 座標は mobile CSS の固定バー配置に specificity で勝つため、跨いだ時点で
+  // 現在の選択から placeFloater を引き直さないと旧座標の浮きバーが残る。
+  globalThis.matchMedia(MOBILE_MEDIA).addEventListener('change', updateFloaterFromSelection)
 }
 
 if (import.meta.vitest) {
@@ -139,14 +159,54 @@ if (import.meta.vitest) {
     })
   })
 
+  describe('placeFloater (viewport 別の配置)', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    it('desktop では rect 追従で inline 座標を載せる', () => {
+      vi.stubGlobal('matchMedia', (): { matches: boolean } => ({ matches: false }))
+      const floater = document.createElement('div')
+      // happy-dom はレイアウトしないため offsetWidth は 0 (left = 200 + 40 - 0 = 240)
+      placeFloater(floater, { left: 200, top: 240, width: 80 })
+      expect([floater.style.top, floater.style.left]).toEqual(['198px', '240px'])
+    })
+
+    it('mobile では inline 座標を空にして CSS の固定バー配置に委ねる', () => {
+      vi.stubGlobal('matchMedia', (): { matches: boolean } => ({ matches: true }))
+      const floater = document.createElement('div')
+      // desktop で付いた残骸を再現してからクリアされることを確認する
+      floater.style.top = '198px'
+      floater.style.left = '190px'
+      placeFloater(floater, { left: 200, top: 240, width: 80 })
+      expect([floater.style.top, floater.style.left]).toEqual(['', ''])
+    })
+  })
+
   describe('wireFloater (selectionchange の pointer 別配線)', () => {
+    // matchMedia は wireFloater 内で MOBILE_MEDIA の change も購読するため、addEventListener を持つ
+    // MQL もどきを返す。stub は query を見ず matches 固定なので pointer / breakpoint は同値になる。
+    const stubMatchMedia = (matches: boolean): { mqlChangeListeners: (() => void)[] } => {
+      const mqlChangeListeners: (() => void)[] = []
+      vi.stubGlobal(
+        'matchMedia',
+        (): { addEventListener: (type: string, cb: () => void) => void; matches: boolean } => ({
+          addEventListener: (_type: string, cb: () => void): void => {
+            mqlChangeListeners.push(cb)
+          },
+          matches,
+        })
+      )
+      return { mqlChangeListeners }
+    }
+
     afterEach(() => {
       vi.restoreAllMocks()
       vi.unstubAllGlobals()
     })
 
     it('coarse pointer 環境では selectionchange も購読する', () => {
-      vi.stubGlobal('matchMedia', (): { matches: boolean } => ({ matches: true }))
+      stubMatchMedia(true)
       const spy = vi.spyOn(document, 'addEventListener').mockImplementation((): void => {
         // no-op: 実登録を抑止し、呼び出し時の event 名だけ記録する
       })
@@ -156,7 +216,7 @@ if (import.meta.vitest) {
     })
 
     it('fine pointer 環境では selectionchange を購読せず mouseup のみ', () => {
-      vi.stubGlobal('matchMedia', (): { matches: boolean } => ({ matches: false }))
+      stubMatchMedia(false)
       const spy = vi.spyOn(document, 'addEventListener').mockImplementation((): void => {
         // no-op: 実登録を抑止し、呼び出し時の event 名だけ記録する
       })
@@ -164,6 +224,15 @@ if (import.meta.vitest) {
       const events = spy.mock.calls.map((call) => call[0])
       expect(events).not.toContain('selectionchange')
       expect(events).toContain('mouseup')
+    })
+
+    it('breakpoint MQL の change を購読する (端末回転での再配置用)', () => {
+      const { mqlChangeListeners } = stubMatchMedia(false)
+      vi.spyOn(document, 'addEventListener').mockImplementation((): void => {
+        // no-op: document への実登録を抑止 (MQL の change 購読のみ検証する)
+      })
+      wireFloater()
+      expect(mqlChangeListeners.length).toBe(1)
     })
   })
 }

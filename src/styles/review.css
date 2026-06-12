@@ -1255,6 +1255,10 @@ mark.search-hl.search-hl-current {
   border-right: 5px solid transparent;
   border-top: 5px solid var(--floater-bg);
 }
+/* mobile 専用ラベル。desktop / タブレットでは隠し、mobile media query で default ラベルと入れ替える。 */
+.floater-label-mobile {
+  display: none;
+}
 
 /* Comments panel cards (GitHub PR review card style) */
 .cmt-card {
@@ -2124,6 +2128,34 @@ html:not([data-mdxg-online='1']) .online-edition-only {
   .mobile-footer .btn:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+  }
+  /* 範囲選択時の「＋ コメント」起動口を、選択範囲に張り付くポップオーバー (desktop) ではなく
+     footer 直上のフル幅バーに化けさせる。ブラウザネイティブの選択メニューは選択範囲 (画面中段) へ
+     張り付くため、画面下端のこのバーとは構造的に重ならない。inline 座標は floater.ts の mobile guard が
+     載せないので bottom/left を固定できる。z-index 50 は drawer/backdrop (60/55) より下なので
+     drawer 展開時はその背後に退く。 */
+  #floater {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: var(--mobile-footer-height);
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 48px;
+    padding: 14px calc(16px + var(--mobile-safe-right)) 14px calc(16px + var(--mobile-safe-left));
+    border-radius: 0;
+    font-size: 15px;
+    text-align: center;
+    box-shadow: 0 -2px 8px rgb(0 0 0 / 18%);
+  }
+  #floater::after {
+    display: none;
+  }
+  #floater .floater-label-default {
+    display: none;
+  }
+  #floater .floater-label-mobile {
+    display: inline;
   }
 }
 

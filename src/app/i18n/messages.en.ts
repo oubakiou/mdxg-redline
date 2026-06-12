@@ -13,6 +13,7 @@ export const messagesEn = {
   'comments.empty': 'Select text in the file to add a review comment.',
   'comments.export': 'Export as JSON',
   'comments.floater_label': 'Comment',
+  'comments.floater_label_mobile': 'Add a comment on the selection',
   'comments.resize_aria': 'Resize comments panel',
   'comments.save_button': 'Save',
   'comments.toggle_panel_aria': 'Show comments panel',

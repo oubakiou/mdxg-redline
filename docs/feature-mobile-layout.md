@@ -37,7 +37,8 @@ DESIGN.md §12 「その他の拡張候補」の「スマートフォン向け U
 
 スコープ外（別タスクで扱う）：
 
-- **floater (`#floater`) の位置調整 / 選択ハンドル制御**：DESIGN.md §12 の同項目に列挙されているが、 fixed footer / drawer の合意ができた段階で別 Step / 別タスクで扱う
+- **floater (`#floater`) の位置調整**：本タスクでは扱わず後続タスクで対応済み。 mobile では floater を選択 rect 追従のポップオーバーではなく footer 直上のフル幅固定バーに化けさせ、 ブラウザネイティブの選択メニューとの重なりを構造的に回避する（§5.t）
+- **選択ハンドル制御**：DESIGN.md §12 の同項目に列挙されているが、 fixed footer / drawer の合意ができた段階で別 Step / 別タスクで扱う
 - **モバイル特化の TOC 折りたたみ・コメントカード密度調整**：本タスクは「主要 chrome の配置」までを射程にし、 drawer 内部 UI のスマホ向け密度最適化は次フェーズに回す
 - **landscape orientation 専用レイアウト**：portrait と同一規則 (`max-width: 768px`) で扱い、 landscape 特化のメディアクエリは作らない。 iPhone SE / iPhone 6/7/8 landscape (667×375) のように **幅が 768px 以下に収まる** 機種は landscape でも drawer モデルになる。 一方 iPhone 12 mini landscape (812×375) / iPhone 13 mini landscape (812×375) / iPhone 14 Pro Max landscape (932×430) のような **landscape 幅が 769-900px に収まる** 機種は **既存タブレット (vertical-stack) モデル** (TOC 非表示・comments 縦積み、 既存 `@media (max-width: 900px)` 適用域、§3.1 表) になる。 iPad mini landscape (1024×768) / iPad landscape (1180×820) のように **901px 以上の機種** は desktop モデルに戻る
 - **mobile での Help モーダル動線**：toolbar の `#btn-help` を CSS で hide するため、 mobile でタッチ操作だけでは Help (キーボードショートカット一覧) を開けない。 BlueTooth キーボード接続時の `h` キーは引き続き動作する。 mobile 向け Help は本質的に「キーボード操作の説明」なので、 タッチ専用環境では存在しなくても害は少ないと判断 (専用 footer overflow メニューは将来検討)
@@ -1577,6 +1578,24 @@ const restoreFocusAfterClose = (trigger: HTMLElement | null): void => {
 - **capture phase 登録 + `stopPropagation` しない**：bubble phase で既存 modal handler が click を受け modal open する経路を破壊しないため
 - **modal close 後の drawer 再 open は行わない**：minimum 実装では footer Comment 再押下に任せる
 - **desktop 既存挙動への副作用**：Edit modal を閉じた後 trigger button (drawer 内 `.cmt-edit`) に focus が戻る点は desktop でも改善 (規約準拠) で副作用なし。 新規追加 modal も `lastTrigger` (例えば floater の Comment ボタン) に focus 復元される
+
+### t. 範囲選択時の floater を mobile では footer 直上の固定バー化
+
+desktop の `#floater` は選択 rect の真上 (`positionFloater`: `rect.top - 42px`) に出すポップオーバーだが、 mobile ではブラウザネイティブの選択メニュー (iOS の Copy / 調べる、 Android の Copy / Web 検索 ツールバー) も選択範囲に張り付いて上側優先で出るため、 同じ位置を奪い合って重なる。 MDXG Viewer 準拠の閲覧ツールである以上テキスト選択 (= ネイティブメニュー) は殺せないので、 floater 側を画面下端へ逃がす。
+
+| 候補                                                  | 採用 | 理由                                                                                                                                |
+| ----------------------------------------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| A. floater を選択 rect の下 (`rect.bottom`) に出す    | ✗    | ネイティブメニューも上側に余白が無いと下へ回り込むため OS / 選択位置依存で再衝突する                                                |
+| B. 縦オフセットを増やしてネイティブメニューの上に積む | ✗    | ネイティブメニュー高は OS / ロケールで不定、 画面上端付近では積む余地が無く破綻                                                     |
+| **C. mobile では footer 直上のフル幅固定バー化**      | ✓    | ネイティブメニューは選択範囲 (画面中段) に張り付くため、 画面下端の固定バーとは構造的に絶対重ならない。 既存 mobile chrome とも一貫 |
+
+採用案 C の論点：
+
+- **`#floater` を使い回し、 別要素は新設しない**：payload 確定 (`floater.dataset.payload`) と activation (`#floater` の `mousedown` / `touchstart` → `comment-modal.ts` の `activateFloater` → modal open) の経路は座標非依存なので、 desktop / mobile で共有できる。 別バー要素を新設すると activation 経路が二重化し、 coarse pointer の touchstart 起動・modal open 中の再表示抑止 (`isCommentModalOpen()` ガード) と divergence するリスクがある
+- **位置は CSS の media query に持たせ、 JS は inline 座標を載せない**：`@media (max-width: 768px)` で `#floater { top: auto; left: 0; right: 0; bottom: var(--mobile-footer-height); width: 100% }` と固定配置する。 `positionFloater` が書く inline `top` / `left` は CSS に specificity で勝つため、 mobile では `placeFloater` が `isMobileViewport()` を見て `positionFloater` を呼ばず inline 座標を空文字でクリアする (`floater.ts`)。 z-index は既存 `50` を継承し、 backdrop (55) / drawer (60) より下なので drawer 展開時はその背後に退く
+- **breakpoint 切替時の inline 座標リセット (§5.j-3 と同種の invariant)**：landscape の phone は landscape 幅が 769px 以上で desktop 扱いになり得る (§5.a)。 desktop 幅で範囲選択して floater に inline 座標が付いた状態のまま portrait (mobile) へ回転すると、 inline 座標が CSS の固定バー配置に勝ってバーが旧座標に浮く。 `wireFloater` で `matchMedia('(max-width: 768px)')` の `change` を購読し、 跨いだ時点で現在の選択から `updateFloaterFromSelection` を引き直すことで CSS バー配置 (mobile) / rect 追従 (desktop) に正しく再配置する
+- **ラベルの出し分け**：desktop は「＋ Comment」、 mobile は「＋ 選択範囲にコメントを追加」(`comments.floater_label_mobile`)。 引用文 (`quote`) はバーに埋め込まず、 ワンタップ後の modal の `#modal-quote` で表示する (引用文を mobile バーのラベルに truncate して埋め込むと ja / en で語順の異なる i18n になり rot しやすいため)。 default / mobile の 2 ラベル span を CSS の media query で `display` 切替する (JS は触らない)
+- **safe-area**：左右 padding は `calc(16px + var(--mobile-safe-left/right))`、 縦アンカーは `bottom: var(--mobile-footer-height)` で、 既存 footer / drawer の inset 規約 (§5.k) と一貫させる
 
 ## 6. テスト方針
 
