@@ -637,7 +637,7 @@ A 案の追加考慮：
 - [KaTeX 公式ドキュメント](https://katex.org/) — `renderToString` / `trust` / `strict` / `throwOnError`
 - [KaTeX Security Considerations](https://katex.org/docs/security.html) — `trust: false` 既定と外部リソース系コマンドの扱い
 - [KaTeX Supported Functions](https://katex.org/docs/supported.html) — LaTeX カバレッジ範囲
-- [DESIGN.md §12 MDXG 準拠ロードマップ・今後の拡張](./DESIGN.md#12-mdxg-準拠ロードマップ今後の拡張)
+- [DESIGN.md §12 MDXG 準拠状況と設計判断](./DESIGN.md#12-mdxg-準拠状況と設計判断)
 - [DESIGN.md §1 Theming](./DESIGN.md#1-theming準拠) — CSS variables 経由のテーマ追従
 - [DESIGN.md §6 コメントのアンカリング](./DESIGN.md#6-コメントのアンカリング)
 - [DESIGN.md §10 Search](./DESIGN.md#10-search準拠)

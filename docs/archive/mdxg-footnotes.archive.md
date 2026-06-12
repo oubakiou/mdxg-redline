@@ -599,7 +599,7 @@ A 案の追加考慮：
 - [MDXG §16 Footnotes（日本語訳）](./mdxg/05-extensions.md#16-footnotes脚注)
 - [marked-footnote リポジトリ](https://github.com/bent10/marked-extensions/tree/main/packages/footnote) — GFM 互換の marked 拡張
 - [GitHub Flavored Markdown footnote 仕様](https://github.blog/changelog/2021-09-30-footnotes-now-supported-in-markdown-fields/) — 参照と定義のフォーマット
-- [DESIGN.md §12 MDXG 準拠ロードマップ・今後の拡張](./DESIGN.md#12-mdxg-準拠ロードマップ今後の拡張)
+- [DESIGN.md §12 MDXG 準拠状況と設計判断](./DESIGN.md#12-mdxg-準拠状況と設計判断)
 - [DESIGN.md §12 §1 Theming](./DESIGN.md#1-theming準拠)
 - [DESIGN.md §6 コメントのアンカリング](./DESIGN.md#6-コメントのアンカリング)
 - [DESIGN.md §12 §7 Page Navigation](./DESIGN.md#7-page-navigation準拠)

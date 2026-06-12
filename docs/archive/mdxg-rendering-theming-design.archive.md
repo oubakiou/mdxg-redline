@@ -413,6 +413,6 @@ inline script は次の順で effective theme を決定する：
 - [vercel-labs/mdxg リファレンス実装](https://github.com/vercel-labs/mdxg)
 - [digital-go-jp/design-tokens](https://github.com/digital-go-jp/design-tokens) — primitive カラーパレット
 - [digital-go-jp/tailwind-theme-plugin](https://github.com/digital-go-jp/tailwind-theme-plugin) — DADS の Tailwind 統合例（dark semantic は未定義）
-- [DESIGN.md §12 MDXG 準拠ロードマップ](./DESIGN.md#12-mdxg-準拠ロードマップ今後の拡張)
+- [DESIGN.md §12 MDXG 準拠状況と設計判断](./DESIGN.md#12-mdxg-準拠状況と設計判断)
 - [DESIGN.md §7 永続化レイヤー](./DESIGN.md#7-永続化レイヤー)
 - [DESIGN.md §11 セキュリティとプライバシー](./DESIGN.md#11-セキュリティとプライバシー)

@@ -1850,7 +1850,7 @@ desktop の `#floater` は選択 rect の真上 (`positionFloater`: `rect.top - 
 
 - [DESIGN.md §4 アーキテクチャ](./DESIGN.md#4-アーキテクチャ) — chrome / レイアウト / 永続化の 3 層構成
 - [DESIGN.md §10 ブラウザ互換性](./DESIGN.md#10-ブラウザ互換性) — モバイルブラウザの File System Access API 制約
-- [DESIGN.md §12 MDXG 準拠ロードマップ・今後の拡張](./DESIGN.md#12-mdxg-準拠ロードマップ今後の拡張) — 「その他の拡張候補」の「スマートフォン向け UI の最適化」項目
+- [DESIGN.md §12 MDXG 準拠状況と設計判断](./DESIGN.md#12-mdxg-準拠状況と設計判断) — 「その他の拡張候補」の「スマートフォン向け UI の最適化」項目
 - [DESIGN.md §13 ビルドパイプライン](./DESIGN.md#13-ビルドパイプライン) — `vp build` / `npm run build` の出口と inline 化、 online edition rewrite
 - [DESIGN.md §14 UI 国際化](./DESIGN.md#14-ui-国際化) — i18n キー命名規約と `data-i18n-*` 属性経由の DOM 更新
 - [docs/archive/mdxg-virtual-pages.archive.md](./archive/mdxg-virtual-pages.archive.md) — 既存 `@media (max-width: 900px)` ブロック（vertical-stack 化）の導入経緯、 `.doc-pane` の `overflow-y: visible` 設定

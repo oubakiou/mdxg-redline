@@ -540,7 +540,7 @@ A 案の追加考慮：
 - [MDXG §15 Diagram Rendering（日本語訳）](./mdxg/05-extensions.md#15-diagram-renderingダイアグラム描画)
 - [Mermaid 公式ドキュメント](https://mermaid.js.org/) — `mermaid.render` / `themeVariables` / `securityLevel`
 - [Mermaid Security and Sanitization](https://mermaid.js.org/config/usage.html#securitylevel) — `'strict'` / `'sandbox'` / `'antiscript'` の挙動差
-- [DESIGN.md §12 MDXG 準拠ロードマップ・今後の拡張](./DESIGN.md#12-mdxg-準拠ロードマップ今後の拡張)
+- [DESIGN.md §12 MDXG 準拠状況と設計判断](./DESIGN.md#12-mdxg-準拠状況と設計判断)
 - [DESIGN.md §1 Theming](./DESIGN.md#1-theming準拠) — CSS variables 経由のテーマ写像
 - [DESIGN.md §6 コメントのアンカリング](./DESIGN.md#6-コメントのアンカリング)
 - [DESIGN.md §10 Search](./DESIGN.md#10-search準拠)

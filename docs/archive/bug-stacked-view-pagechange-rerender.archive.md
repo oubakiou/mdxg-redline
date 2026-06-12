@@ -160,7 +160,7 @@ export const navigateToTarget = (
 
 ## 7. 関連
 
-- [DESIGN.md §12「§7 Page Navigation（準拠）」実装詳細](./DESIGN.md#12-mdxg-準拠ロードマップ今後の拡張) — Stacked View の「全ページ常駐 / navigate orchestrator」設計（DESIGN.md の章 §7「永続化レイヤー」ではなく、§12 内 MDXG §7 準拠サブ節）。本 bug の期待動作（ページ切替で DOM 不変）の出典
+- [DESIGN.md §12「§7 Page Navigation（準拠）」実装詳細](./DESIGN.md#12-mdxg-準拠状況と設計判断) — Stacked View の「全ページ常駐 / navigate orchestrator」設計（DESIGN.md の章 §7「永続化レイヤー」ではなく、§12 内 MDXG §7 準拠サブ節）。本 bug の期待動作（ページ切替で DOM 不変）の出典
 - [docs/archive/mdxg-virtual-pages.archive.md](./archive/mdxg-virtual-pages.archive.md) — Stacked View / navigate orchestrator / scroll-spy の導入経緯と drift 対策の議論
 - [docs/feature-mobile-layout.md](./feature-mobile-layout.md) — 本 bug を顕在化させたモバイルレイアウト（TOC drawer からの別ページ遷移が日常操作になった）。本 bug はモバイル実装の regression ではなく既存コストである旨をここに記録
 - `src/app/navigation/navigation-orchestrator.ts`（`renderAll` / `navigateToTarget` / `onCompositeSlugClick`） — 修正対象の中心

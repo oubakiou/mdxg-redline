@@ -427,7 +427,7 @@ A 採用時の論点：
 
 - [DESIGN.md §3 review-request CLI 詳細](./DESIGN.md#3-ユーザーフロー)
 - [DESIGN.md §11 セキュリティとプライバシー](./DESIGN.md#11-セキュリティとプライバシー) — CSP / 信頼境界
-- [DESIGN.md §12 §2 Code Block Rendering](./DESIGN.md#12-mdxg-準拠ロードマップ今後の拡張) — Shiki upgrade パターン / 配布物サイズ実測
+- [DESIGN.md §12 §2 Code Block Rendering](./DESIGN.md#12-mdxg-準拠状況と設計判断) — Shiki upgrade パターン / 配布物サイズ実測
 - [DESIGN.md §13 ビルドパイプライン](./DESIGN.md#13-ビルドパイプライン) — 既存 vite config 構成
 - [DESIGN.md §14 ファイル構成](./DESIGN.md#14-ファイル構成) — 既存 `dist/` 配下の構成
 - [vite-plugin-singlefile](https://github.com/richardtallent/vite-plugin-singlefile) — 採用プラグイン

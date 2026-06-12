@@ -16,16 +16,13 @@ Introduction article: [Accelerating Document Reviews: Introducing MDXG Redline, 
 
 MDXG Redline is a browser tool that lets an LLM agent receive feedback on long-form markdown from a human reviewer as **location-aware structured JSON instead of free-form prose**. Sitting between LLM agents and human reviewers, it replaces the ambiguous "paste markdown, receive prose feedback" loop with a **machine-readable feedback artifact**.
 
-End users only need a **single HTML file** (`standalone.html`). No server, no extra installation, zero outbound traffic from LLM content by default.
-
 ## Features
 
-- **Location-aware inline comments**: Select any text range, leave a comment, and export JSON that pinpoints each comment with `headingPath` and `sourceLine`
-- **Single-file HTML usage (standalone build)**: All dependencies including the syntax highlighter (Shiki) and Diagram Rendering (Mermaid) are inlined — no CDN references
-- **CLI usage (`npx mdxg-redline`)**: Designed for LLM-to-human markdown review workflows (e.g. via agent skills). Unlike the standalone build, only the dependencies the target markdown actually uses get inlined, keeping the artifact size minimal
 - **Read-only**: Rendering conforms to [MDXG Viewer](https://github.com/vercel-labs/mdxg), the read-only renderer profile of the Markdown Experience Guidelines
+- **Location-aware inline comments**: Select any text range, leave a comment, and export JSON that pinpoints each comment with `headingPath` and `sourceLine`
 - **Virtual Pages (Stacked View)**: H1 / H2 boundaries split the document into paper-like sheets stacked vertically; the entire document can be read end-to-end with a single scroll gesture (Word / Pages style)
 - **WASD keyboard navigation**: `a / w / s / d / e / f` cover pane movement, scrolling, activation, and search entirely with the left hand
+- **Smartphone support**: drive `TOC` / `Comment` / `Search` from the footer
 - **Syntax highlighting**: Fenced code blocks render for all Shiki-bundled languages (~235 grammars)
 - **Mermaid support**: ` ```mermaid ` blocks render as SVG
 - **Math rendering**: write math with `$...$` / `$$...$$` syntax like `$i\hbar \frac{\partial}{\partial t}\Psi(\mathbf{r}, t) = \hat{H}\Psi(\mathbf{r}, t)$`, rendered via KaTeX as $i\hbar \frac{\partial}{\partial t}\Psi(\mathbf{r}, t) = \hat{H}\Psi(\mathbf{r}, t)$.
@@ -36,11 +33,7 @@ End users only need a **single HTML file** (`standalone.html`). No server, no ex
 
 ### Online edition
 
-Open [`https://mkdn.review/`](https://mkdn.review/) in your browser and enter the markdown URL via the toolbar `Open ▾ → Open URL…` menu. Alternatively, bootstrap directly with `?url=<encodeURIComponent(markdown URL)>`. Example: [view this README in the online viewer](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME.md#p:mdxg-redline).
-
-Allowed fetch hosts are restricted to `raw.githubusercontent.com` and `gist.githubusercontent.com` (CSP `connect-src` allowlist). If you self-host, extend the allowlist via the `MDXG_ONLINE_CONNECT_SRC` environment variable (see [docs/DESIGN.md §11.b](docs/DESIGN.md#b-content-security-policy二重保険)).
-
-The UI language is auto-detected with the priority **`localStorage('mdxg-redline.lang') > navigator.language > 'en'`** (see [docs/DESIGN.md §14](docs/DESIGN.md#14-ui-国際化)). Japanese-locale browsers see Japanese UI on first launch; others see English. Open the settings modal from the gear button (⚙) in the top-right of the toolbar and switch via the `Language` select; the choice is persisted to `localStorage` and takes top priority on the next launch. The theme (system / light / dark) is switched via the `Theme` select in the same modal.
+Open [`https://mkdn.review/`](https://mkdn.review/) in your browser. Example: [view this README in the online viewer](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME.md#p:mdxg-redline).
 
 ### Standalone build
 
@@ -161,10 +154,6 @@ A WASD-based global keymap lets you drive the entire UI with the left hand only.
 | `Esc`                                | Close any open modal, menu, or search                                              |
 | `↑` / `↓` / `Home` / `End` / `Enter` | Work in parallel for MDXG §13 compliance (in-pane movement / activate)             |
 
-### Mobile interaction
-
-On smartphones (iOS Safari / Android Chrome, width ≤ 768px) the three-column layout switches to a top header + bottom footer bar + left/right drawer model. `Open ▾` / `⚙ Settings` stay in the header, while the three footer buttons (`TOC` / `Comment` / `Search`) drive the rest from the bottom of the screen. The TOC / Comment buttons toggle the left / right drawers, and the Search button opens the search bar. A drawer closes via the backdrop tap, `Esc`, or pressing the same footer button again. Help (the keyboard shortcuts list) cannot be opened by touch; it is reachable only via the `h` key on a connected Bluetooth keyboard (because `#btn-help` is hidden on mobile).
-
 ## MDXG compliance status
 
 The [Markdown Experience Guidelines (MDXG)](https://github.com/vercel-labs/mdxg) are currently a preview specification and may change. MDXG Redline embeds an **MDXG Viewer** (the read-only rendering conformance level) and layers inline commenting and structured feedback JSON export on top of it as review-specific features. Viewer features are being adopted incrementally.
@@ -186,7 +175,7 @@ The [Markdown Experience Guidelines (MDXG)](https://github.com/vercel-labs/mdxg)
 | §15 Diagram Rendering    | SHOULD (Ext.)  | Compliant      |
 | §16 Footnotes            | SHOULD (Ext.)  | Compliant      |
 
-For the roadmap ahead, see [docs/DESIGN.md §12 MDXG compliance roadmap and future extensions](docs/DESIGN.md#12-mdxg-準拠ロードマップ今後の拡張).
+For the roadmap ahead (extension candidates), see [docs/roadmap.md](docs/roadmap.md). For MDXG per-section compliance status and design decisions, see [docs/DESIGN.md §12](docs/DESIGN.md#12-mdxg-準拠状況と設計判断).
 
 ## Development
 
@@ -214,7 +203,7 @@ Design intent, structure, and trade-offs are documented in the design document [
 - [9. Boot sequence](docs/DESIGN.md#9-起動シーケンス)
 - [10. Browser compatibility](docs/DESIGN.md#10-ブラウザ互換性)
 - [11. Security and privacy](docs/DESIGN.md#11-セキュリティとプライバシー)
-- [12. MDXG compliance roadmap and future extensions](docs/DESIGN.md#12-mdxg-準拠ロードマップ今後の拡張)
+- [12. MDXG compliance status and design decisions](docs/DESIGN.md#12-mdxg-準拠状況と設計判断)
 - [13. Build pipeline](docs/DESIGN.md#13-ビルドパイプライン)
 - [14. UI internationalization](docs/DESIGN.md#14-ui-国際化)
 
