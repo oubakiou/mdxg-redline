@@ -68,6 +68,22 @@ const placeFloater = (floater: HTMLElement, rect: FloaterAnchorRect): void => {
   positionFloater(floater, rect)
 }
 
+const floaterDisplayValue = (visible: boolean): string => {
+  if (visible) {
+    return 'block'
+  }
+  return 'none'
+}
+
+/**
+ * floater の表示/非表示を切り替える。あわせて root の `floater-active` class を同期し、
+ * mobile では同じ画面下端で重なる page-scroll FAB (review.css) を退避させる。
+ */
+export const setFloaterVisible = (floater: HTMLElement, visible: boolean): void => {
+  floater.style.display = floaterDisplayValue(visible)
+  document.documentElement.classList.toggle('floater-active', visible)
+}
+
 /** 選択状態に応じてフローターの表示/非表示と位置を更新する。selectionchange ハンドラから呼び出される */
 const updateFloaterFromSelection = (): void => {
   // modal 表示中は selection 変化で floater を出し直さない。coarse 環境では floater tap 後も
@@ -78,10 +94,10 @@ const updateFloaterFromSelection = (): void => {
   const info = getSelectionInfo()
   const floater = qs('#floater')
   if (!info) {
-    floater.style.display = 'none'
+    setFloaterVisible(floater, false)
     return
   }
-  floater.style.display = 'block'
+  setFloaterVisible(floater, true)
   placeFloater(floater, info.rect)
   floater.dataset.payload = selectionFloaterPayload(info)
 }

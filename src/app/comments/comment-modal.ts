@@ -8,6 +8,7 @@ import { qs, qsInput, toast, uid } from '../dom/dom-utils'
 import { parsePendingSelection } from '../../core/feedback'
 import { reapplyAllMarks } from './mark-engine'
 import { renderComments } from './comments'
+import { setFloaterVisible } from './floater'
 import { state } from '../state/app-state'
 import { translate } from '../i18n/i18n-browser'
 
@@ -322,7 +323,7 @@ const activateFloater = (event: Event): void => {
     return
   }
   openModal(parsed)
-  floater.style.display = 'none'
+  setFloaterVisible(floater, false)
 }
 
 export const wireCommentModal = (): void => {

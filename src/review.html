@@ -775,6 +775,31 @@
       >
     </div>
 
+    <!-- スマホ (≤768px) 専用。画面左下に浮かせ、タップで 1 画面下スクロール、上下フリックで
+         その方向に 1 画面スクロールする。読む面 (doc-pane) のネイティブスクロールと操作を分離する
+         ための専用 affordance (page-scroll-button.ts)。desktop / タブレットでは review.css で hide。 -->
+    <button
+      type="button"
+      class="page-scroll-fab"
+      id="btn-page-scroll"
+      aria-label="Scroll down one screen"
+      data-i18n-aria-label="mobile.page_scroll_aria"
+    >
+      <svg
+        class="btn-toolbar-icon"
+        aria-hidden="true"
+        focusable="false"
+        viewBox="0 0 16 16"
+        width="20"
+        height="20"
+        fill="currentColor"
+      >
+        <path
+          d="M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.94l3.72-3.72a.749.749 0 0 1 1.06 0Z"
+        />
+      </svg>
+    </button>
+
     <div class="modal-backdrop" id="modal">
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-input-label">
         <div class="label modal-label" data-i18n="modal.comment_selected_text">Selected text</div>

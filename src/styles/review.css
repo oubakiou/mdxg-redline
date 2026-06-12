@@ -1260,6 +1260,12 @@ mark.search-hl.search-hl-current {
   display: none;
 }
 
+/* page-scroll FAB は mobile (≤768px) でのみ表示する。既定は全 viewport で hide し、
+   media query で display:flex に切り替える (mobile-footer と同じ hide-by-default 方式)。 */
+.page-scroll-fab {
+  display: none;
+}
+
 /* Comments panel cards (GitHub PR review card style) */
 .cmt-card {
   border: 1px solid var(--rule);
@@ -2156,6 +2162,36 @@ html:not([data-mdxg-online='1']) .online-edition-only {
   }
   #floater .floater-label-mobile {
     display: inline;
+  }
+  /* 画面左下の page-scroll FAB。タップ=1画面下、上下フリック=その方向に1画面 (page-scroll-button.ts)。
+     footer の上に浮かせ safe-area-left を尊重する。touch-action:none で縦ドラッグが pull-to-refresh /
+     text 選択を起動しないようにする。z-index 50 は drawer(60)/backdrop(55) より下で、drawer 展開時は
+     その背後に退く (加えて下記で明示 hide)。 */
+  .page-scroll-fab {
+    box-sizing: border-box;
+    position: fixed;
+    left: calc(12px + var(--mobile-safe-left));
+    bottom: calc(var(--mobile-footer-height) + 16px);
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border: 1px solid var(--rule);
+    border-radius: 50%;
+    background: var(--paper);
+    color: var(--ink-soft);
+    box-shadow: var(--shadow-large);
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  /* drawer 展開中・範囲選択のコメントバー表示中 (§floater-active) は同じ左下〜下端で重なるため隠す。 */
+  body.mobile-drawer-open .page-scroll-fab,
+  :root.floater-active .page-scroll-fab {
+    display: none;
   }
 }
 

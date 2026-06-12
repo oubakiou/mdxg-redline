@@ -388,7 +388,9 @@ const willBeHiddenOnMobileEntry = (el: HTMLElement): boolean =>
   el.closest('.page-nav-toggle-tab, .comments-toggle-tab') !== null
 
 const willBeHiddenOnDesktopEntry = (el: HTMLElement): boolean => {
-  if (el.closest('.mobile-footer, .mobile-drawer-backdrop')) {
+  // .page-scroll-fab は mobile 専用で desktop 進入時に display:none になる focusable button。
+  // focus が乗ったまま breakpoint を跨ぐと不可視要素に取り残されるため hide 対象に含める (§5.j-3)。
+  if (el.closest('.mobile-footer, .mobile-drawer-backdrop, .page-scroll-fab')) {
     return true
   }
   const root = document.documentElement
@@ -509,6 +511,7 @@ const TEST_FIXTURE = `
   </footer>
   <button class="page-nav-toggle-tab" id="page-nav-toggle-tab">‹</button>
   <button class="comments-toggle-tab" id="comments-toggle-tab">›</button>
+  <button class="page-scroll-fab" id="btn-page-scroll">v</button>
   <div class="mobile-drawer-backdrop" id="mobile-drawer-backdrop"></div>
 `
 
@@ -789,6 +792,13 @@ if (import.meta.vitest) {
       wireForTest(false)
       elById('btn-search').focus()
       fireBreakpointChange(true)
+      expect(document.activeElement).toBe(elBySel('.doc-pane'))
+    })
+
+    it('desktop で hidden になる page-scroll FAB に focus があると desktop 進入で .doc-pane に退避する', () => {
+      wireForTest(true)
+      elById('btn-page-scroll').focus()
+      fireBreakpointChange(false)
       expect(document.activeElement).toBe(elBySel('.doc-pane'))
     })
   })

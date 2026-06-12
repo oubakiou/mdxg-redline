@@ -49,6 +49,7 @@ export const messagesEn = {
   'footnote.backref_aria': 'Back to reference {label}',
   'mobile.comments_aria': 'Show review comments',
   'mobile.footer_label': 'Mobile actions',
+  'mobile.page_scroll_aria': 'Scroll down one screen (flick up or down to page)',
   'mobile.search_aria': 'Search the document',
   'mobile.toc_aria': 'Show table of contents',
   'modal.code_copied': 'Copied',

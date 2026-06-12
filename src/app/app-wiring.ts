@@ -74,6 +74,7 @@ import { setupOnlineErrorI18n, wireOnlineErrorRetry } from './online/error-displ
 import { wireOpenUrlModal } from './online/open-url-modal'
 import { wireToolbar } from './chrome/toolbar'
 import { wireMobileFooter } from './chrome/mobile-footer'
+import { wirePageScrollButton } from './chrome/page-scroll-button'
 
 interface BootstrapDeps {
   buildExportPayload: () => ExportPayload
@@ -164,6 +165,12 @@ const wireMarkClickDelegate = (): void => {
   })
 }
 
+// mobile (≤768px) 専用 chrome の wiring。footer バーと、画面左下の page-scroll FAB をまとめる。
+const wireMobileChrome = (): void => {
+  wireMobileFooter()
+  wirePageScrollButton()
+}
+
 // dropdown menu 3 個と keyboard / mark-click / toolbar の wiring をまとめる。
 // `commentsMenu` / `openMenu` は setupKeyboardHandlers が Escape で閉じるためだけに参照し、
 // 後段からは触らないので戻り値には含めない。`sendMenu` は setupToolbarButtons が
@@ -188,7 +195,7 @@ const setupDropdownsAndKeyboard = (deps: ResolvedBootstrapDeps): DropdownLike =>
     commentCountLabel: deps.commentCountLabel,
     documentLoader: deps.documentLoader,
   })
-  wireMobileFooter()
+  wireMobileChrome()
   wirePasteMarkdownModal({ documentLoader: deps.documentLoader })
   // setup の bootstrap 順序は他 4 モジュール (setupOnlineSourceI18n / setupOnlineErrorI18n /
   // setupPageNavI18n / setupSearchI18n) と同じく app-wiring.ts 側で直接呼び、grep 可読性を揃える。

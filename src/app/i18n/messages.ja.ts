@@ -51,6 +51,7 @@ export const messagesJa = {
   'footnote.backref_aria': '参照 {label} に戻る',
   'mobile.comments_aria': 'レビューコメントを表示',
   'mobile.footer_label': 'モバイル操作',
+  'mobile.page_scroll_aria': '1 画面下へスクロール（上下フリックでページ送り）',
   'mobile.search_aria': 'ドキュメント内を検索',
   'mobile.toc_aria': '目次を表示',
   'modal.code_copied': 'コピー済み',
