@@ -659,7 +659,7 @@
 
     <!-- スマホ (≤768px) 専用の操作バー。desktop / タブレットでは review.css で display:none。
          role="group" で implicit contentinfo を上書きする (操作コマンド群であり文書情報 landmark
-         ではないため、詳細は docs/feature-mobile-layout.md §5.n)。3 ボタンは既存 #btn-search の
+         ではないため、詳細は docs/archive/feature-mobile-layout.archive.md §5.n)。3 ボタンは既存 #btn-search の
          click を委譲 / page-nav / comments drawer の開閉 trigger になる (mobile-footer.ts)。 -->
     <footer
       class="mobile-footer"
@@ -833,7 +833,7 @@
 
     <!-- mobile drawer 背面の暗幕。表示制御は author CSS に完全集約し hidden 属性は付けない
          (UA stylesheet の [hidden] は specificity が低く author CSS と二重管理になるため、
-         docs/feature-mobile-layout.md §5.l)。JS は <html> の mobile-*-open class のみ操作する。 -->
+         docs/archive/feature-mobile-layout.archive.md §5.l)。JS は <html> の mobile-*-open class のみ操作する。 -->
     <div class="mobile-drawer-backdrop" id="mobile-drawer-backdrop"></div>
 
     <div id="toast"></div>

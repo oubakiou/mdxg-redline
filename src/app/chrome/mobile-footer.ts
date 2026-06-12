@@ -1,5 +1,5 @@
 // スマホ (≤768px) 専用 footer バーと drawer 開閉の wiring。
-// 設計の全体像と各判断は docs/feature-mobile-layout.md §3 / §4 Step 3 / §5.j〜§5.s を参照。
+// 設計の全体像と各判断は docs/archive/feature-mobile-layout.archive.md §3 / §4 Step 3 / §5.j〜§5.s を参照。
 //
 // drawer 開閉状態は <html> の mobile-*-open class で表現し、既存 *-closed (desktop grid 列幅) と
 // 直交させる (§5.e)。背面 scroll lock は <body> の mobile-drawer-open + CSS が担う (§5.h)。
