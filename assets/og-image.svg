@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <!--
+    online edition (mkdn.review) の OGP 用カード画像のソース。assets/og-image.png は本 SVG を
+    KaTeX_SansSerif TTF で rasterize した生成物 (再生成手順: assets/README.md)。
+    テキストは font 欠落時の豆腐を避けるため ASCII のみに保つ。
+    日本語の説明はカード画像ではなく <meta og:description> 側 (online-html.ts) に置く。
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#171a21" />
+      <stop offset="1" stop-color="#0d0f14" />
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)" />
+  <rect x="0" y="0" width="1200" height="8" fill="#e23b3b" />
+
+  <!-- brand badge: 赤角丸 + 白 M + redline 下線 (favicon と同モチーフ) -->
+  <rect x="84" y="80" width="132" height="132" rx="28" fill="#e23b3b" />
+  <text x="150" y="172" font-family="KaTeX_SansSerif" font-weight="bold" font-size="92"
+        fill="#ffffff" text-anchor="middle">M</text>
+  <line x1="112" y1="186" x2="188" y2="186" stroke="#ffffff" stroke-width="9" stroke-linecap="round" />
+
+  <!-- wordmark -->
+  <text x="86" y="332" font-family="KaTeX_SansSerif" font-weight="bold" font-size="80">
+    <tspan fill="#f5f7fa">MDXG </tspan><tspan fill="#ff5b52">Redline</tspan>
+  </text>
+  <line x1="90" y1="358" x2="540" y2="358" stroke="#e23b3b" stroke-width="7" stroke-linecap="round" />
+
+  <!-- tagline (ASCII only) -->
+  <text x="90" y="422" font-family="KaTeX_SansSerif" font-size="32" fill="#99a2b3">Inline markdown review, exported as</text>
+  <text x="90" y="466" font-family="KaTeX_SansSerif" font-size="32" fill="#99a2b3">structured JSON for LLM agents.</text>
+
+  <text x="90" y="558" font-family="KaTeX_SansSerif" font-weight="bold" font-size="32" fill="#ff5b52">mkdn.review</text>
+
+  <!-- faux review card: 選択ハイライト + 余白バー + コメントチップで redline UI を示唆。
+       translate でカードを 630px キャンバスの縦中央へ寄せる (上下マージンを均等化)。 -->
+  <g transform="translate(0,33)">
+    <rect x="744" y="132" width="372" height="300" rx="22" fill="#161b26" stroke="#2b3344" stroke-width="2" />
+    <rect x="780" y="172" width="288" height="14" rx="7" fill="#39414f" />
+    <rect x="780" y="206" width="300" height="14" rx="7" fill="#39414f" />
+    <rect x="764" y="236" width="6" height="30" rx="3" fill="#e23b3b" />
+    <rect x="776" y="234" width="304" height="34" rx="7" fill="#e23b3b" fill-opacity="0.20" />
+    <rect x="788" y="244" width="232" height="14" rx="7" fill="#c95f5a" />
+    <rect x="780" y="290" width="270" height="14" rx="7" fill="#39414f" />
+    <rect x="780" y="324" width="296" height="14" rx="7" fill="#39414f" />
+    <rect x="916" y="362" width="160" height="46" rx="12" fill="#e23b3b" />
+    <rect x="936" y="378" width="92" height="9" rx="4" fill="#ffffff" fill-opacity="0.92" />
+    <rect x="936" y="392" width="64" height="9" rx="4" fill="#ffffff" fill-opacity="0.65" />
+  </g>
+</svg>

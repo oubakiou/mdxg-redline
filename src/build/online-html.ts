@@ -2,7 +2,7 @@ import { upsertHtmlDataAttribute } from '../core/embed/html-attribute-rewriter.t
 
 // standalone.html を素材にして online.html を派生させる pure 関数群。
 // docs/archive/feature-online-runtime-assets.archive.md / docs/archive/feature-online-edition.archive.md §3.1 に従い、
-// 次の 6 つの mutation を行う：
+// 次の 9 つの mutation を行う：
 // 1. `<html>` に `data-mdxg-online="1"` 属性を upsert（boot.ts の経路分岐マーカー）
 // 2. CSP `connect-src 'none'` → `connect-src 'self' <allowlist origins joined by space>`
 //    ('self' は同一オリジン同梱資材 (fingerprinted/* / canonical/*) への runtime fetch 用、§3.4 / §5.g)
@@ -13,6 +13,12 @@ import { upsertHtmlDataAttribute } from '../core/embed/html-attribute-rewriter.t
 //    (grammar は runtime fetch するため build 時 inline を不要にし、~45 MB 削減、§3.1)
 // 6. `<script id="embedded-mermaid">` の textContent を空に上書き
 //    (Mermaid runtime は同一オリジン dynamic import するため build 時 inline を不要にし、~3 MB 削減)
+// 7. `<script id="embedded-katex">` の textContent を空に上書き
+//    (KaTeX runtime も online は同一オリジン dynamic import するため build 時 inline を不要にする)
+// 8. `<style id="embedded-katex-css">` / `<style id="embedded-katex-fonts-extra-css">` の textContent を空に上書き
+//    (素材契約として block 不在は fail-fast、Shiki / Mermaid と対称)
+// 9. `<head>` に OGP / Twitter Card の固定 `<meta>` を inject（mkdn.review の canonical card）
+//    (crawler は JS 非実行で `?url=` 先を読めないため全 URL 共通の固定値。素材には書かない)
 //
 // allowlist は build/online-allowlist.ts の buildOnlineAllowlist() 戻り値 (origin 形式の string[]) を
 // 渡す。CSP / JSON 両方に同じ集合を展開するため drift が構造的に起きない (§3.3)。
@@ -113,6 +119,43 @@ const injectAssetManifestJson = (html: string, manifest: OnlineAssetManifestPayl
   const script = `<script type="application/json" id="online-asset-manifest">${json}</script>`
   const headCloseIdx = findRealHeadCloseIndex(html)
   return `${html.slice(0, headCloseIdx)}    ${script}\n  ${html.slice(headCloseIdx)}`
+}
+
+// online edition (mkdn.review) の canonical origin。og:url / og:image の絶対 URL に使う。
+// standalone / embed-template にこの値を載せると誤った canonical を主張するため、OGP 注入は
+// online 派生 (buildOnlineHtml) でのみ行い、素材 (src/review.html) には書かない。
+const ONLINE_ORIGIN = 'https://mkdn.review'
+const OG_IMAGE_URL = `${ONLINE_ORIGIN}/og-image.png`
+
+// online edition は静的配信 + クライアント側 fetch 描画のため、OGP crawler (X / Slack / Discord /
+// Facebook 等、JS 非実行) には `?url=` 先の中身が見えない。よってカードは全 URL 共通の固定値とする。
+// 画像は同一オリジン同梱の og-image.png (1200x630)。SVG は crawler 非対応のため PNG を使う。
+// og / twitter で description を共有し二重メンテを避ける。HTML attribute escape が要る
+// 文字 (& < > ") は含めないこと (block は raw 文字列のまま注入され escape されない)。
+const OG_DESCRIPTION =
+  'MDXG 準拠の markdown レビューツール。任意のテキスト範囲にコメントを残し、位置情報付きの構造化 JSON として書き出して LLM エージェントに引き渡せる。'
+
+const OGP_META_BLOCK = [
+  '<meta property="og:type" content="website" />',
+  '<meta property="og:site_name" content="MDXG Redline" />',
+  '<meta property="og:title" content="MDXG Redline" />',
+  `<meta property="og:description" content="${OG_DESCRIPTION}" />`,
+  `<meta property="og:url" content="${ONLINE_ORIGIN}/" />`,
+  `<meta property="og:image" content="${OG_IMAGE_URL}" />`,
+  '<meta property="og:image:type" content="image/png" />',
+  '<meta property="og:image:width" content="1200" />',
+  '<meta property="og:image:height" content="630" />',
+  '<meta property="og:image:alt" content="MDXG Redline" />',
+  '<meta name="twitter:card" content="summary_large_image" />',
+  '<meta name="twitter:title" content="MDXG Redline" />',
+  `<meta name="twitter:description" content="${OG_DESCRIPTION}" />`,
+  `<meta name="twitter:image" content="${OG_IMAGE_URL}" />`,
+]
+
+const injectOgpMeta = (html: string): string => {
+  const headCloseIdx = findRealHeadCloseIndex(html)
+  const block = OGP_META_BLOCK.map((tag): string => `    ${tag}`).join('\n')
+  return `${html.slice(0, headCloseIdx)}${block}\n  ${html.slice(headCloseIdx)}`
 }
 
 // `<script id="embedded-shiki-langs">` の textContent を空 `{}` に置換する。standalone (素材) は
@@ -244,7 +287,8 @@ export const buildOnlineHtml = (standaloneHtml: string, opts: BuildOnlineHtmlOpt
   const withEmptyMermaid = emptyMermaidBlock(withEmptyShiki)
   const withEmptyKatex = emptyAllKatexBlocks(withEmptyMermaid)
   const withAllowlist = injectAllowlistJson(withEmptyKatex, opts.allowlist)
-  return injectAssetManifestJson(withAllowlist, opts.manifest)
+  const withManifest = injectAssetManifestJson(withAllowlist, opts.manifest)
+  return injectOgpMeta(withManifest)
 }
 
 if (import.meta.vitest) {
@@ -581,6 +625,61 @@ if (import.meta.vitest) {
       const out = buildOnlineHtml(SAMPLE_HTML, buildOpts())
       expect(out).toMatch(/<style\s[^>]*\bid="embedded-katex-css">/u)
       expect(out).toMatch(/<style\s[^>]*\bid="embedded-katex-fonts-extra-css">/u)
+    })
+  })
+
+  describe('buildOnlineHtml: OGP / Twitter Card meta inject', () => {
+    it('og:title / og:type / og:site_name を inject する', () => {
+      const out = buildOnlineHtml(SAMPLE_HTML, buildOpts())
+      expect(out).toContain('<meta property="og:title" content="MDXG Redline" />')
+      expect(out).toContain('<meta property="og:type" content="website" />')
+      expect(out).toContain('<meta property="og:site_name" content="MDXG Redline" />')
+    })
+
+    it('og:url / og:image は mkdn.review の絶対 URL', () => {
+      const out = buildOnlineHtml(SAMPLE_HTML, buildOpts())
+      expect(out).toContain('<meta property="og:url" content="https://mkdn.review/" />')
+      expect(out).toContain(
+        '<meta property="og:image" content="https://mkdn.review/og-image.png" />'
+      )
+    })
+
+    it('og:image の寸法は生成画像 (1200x630) と一致する', () => {
+      const out = buildOnlineHtml(SAMPLE_HTML, buildOpts())
+      expect(out).toContain('<meta property="og:image:width" content="1200" />')
+      expect(out).toContain('<meta property="og:image:height" content="630" />')
+    })
+
+    it('twitter:card は summary_large_image で image も同じ絶対 URL', () => {
+      const out = buildOnlineHtml(SAMPLE_HTML, buildOpts())
+      expect(out).toContain('<meta name="twitter:card" content="summary_large_image" />')
+      expect(out).toContain(
+        '<meta name="twitter:image" content="https://mkdn.review/og-image.png" />'
+      )
+    })
+
+    it('OGP meta は </head> より前に inject される', () => {
+      const out = buildOnlineHtml(SAMPLE_HTML, buildOpts())
+      const ogIdx = out.indexOf('<meta property="og:title"')
+      const headCloseIdx = out.indexOf('</head>')
+      expect(ogIdx).toBeGreaterThan(-1)
+      expect(headCloseIdx).toBeGreaterThan(ogIdx)
+    })
+
+    it('素材 (standalone) には OGP が無く online 派生でのみ付く (素材汚染の回帰防止)', () => {
+      expect(SAMPLE_HTML).not.toContain('og:title')
+      expect(SAMPLE_HTML).not.toContain('twitter:card')
+    })
+
+    it('og:description と twitter:description は同一文面 (共有定数の drift 防止)', () => {
+      const out = buildOnlineHtml(SAMPLE_HTML, buildOpts())
+      const og = /<meta property="og:description" content="([^"]*)"/u.exec(out)
+      const tw = /<meta name="twitter:description" content="([^"]*)"/u.exec(out)
+      expect(og).not.toBeNull()
+      expect(tw).not.toBeNull()
+      if (og && tw) {
+        expect(og[1]).toBe(tw[1])
+      }
     })
   })
 

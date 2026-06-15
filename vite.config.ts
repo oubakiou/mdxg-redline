@@ -974,13 +974,9 @@ const markdownCssInlinePlugin = (): Plugin => ({
   },
 })
 
-// dist/hosting/index.html は standalone を素材として派生し、 5 mutation を apply する
-// (buildOnlineHtml の comment 参照):
-//   1. <html data-mdxg-online="1">
-//   2. CSP `connect-src 'none'` → `connect-src 'self' <allowlist>`
-//   3. <head> に <script type="application/json" id="online-allowlist">[...]</script>
-//   4. <head> に <script type="application/json" id="online-asset-manifest">{...}</script>
-//   5. <script id="embedded-shiki-langs"> の textContent を {} に上書き
+// dist/hosting/index.html は standalone を素材として派生する。apply する mutation の正典リストは
+// buildOnlineHtml (src/build/online-html.ts) の先頭コメント参照 (html 属性 / CSP / allowlist /
+// manifest / embedded-* 空化 / OGP meta)。ここで列挙を繰り返すと drift するため意図的に書かない。
 // allowlist は MDXG_ONLINE_CONNECT_SRC env (CSV) を DEFAULT に union + 正規化 + 重複排除した結果。
 // manifest は splitOutputsPlugin.closeBundle 内で emit 結果から組み立てたものを引数で受け取る。
 const buildOnlineHtmlFromStandalone = (
@@ -1018,6 +1014,14 @@ const emitHostingHeaders = async (hostingDir: string, onlineHtml: string): Promi
 // から見ると pure 関数の出力を書き出すだけ。
 const emitHosting404 = async (hostingDir: string): Promise<void> => {
   await writeFile(path.resolve(hostingDir, '404.html'), buildOnline404Html(), 'utf8')
+}
+
+// online edition の OGP カード画像を `dist/hosting/og-image.png` に配置する。
+// assets/og-image.png (assets/og-image.svg から事前 rasterize した生成物、手順は assets/README.md) を
+// 読むだけで、配信ビルドは rasterizer に依存しない。online-html.ts の og:image URL (/og-image.png) と配置先が対応する。
+const emitHostingOgImage = async (hostingDir: string): Promise<void> => {
+  const src = path.resolve(ROOT_DIR, 'assets', 'og-image.png')
+  await writeFile(path.resolve(hostingDir, 'og-image.png'), await readFile(src))
 }
 
 interface SplitOutputPaths {
@@ -1080,6 +1084,7 @@ const runSplitOutputs = async (): Promise<void> => {
     writeFile(paths.onlinePath, onlineHtml, 'utf8'),
     emitHostingHeaders(paths.hostingDir, onlineHtml),
     emitHosting404(paths.hostingDir),
+    emitHostingOgImage(paths.hostingDir),
     rename(paths.intermediatePath, paths.embedTemplatePath),
   ])
 }
