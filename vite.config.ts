@@ -6,7 +6,7 @@ import {
 } from './scripts/lib/shiki-meta.ts'
 import { createHash, randomBytes } from 'node:crypto'
 import { dirname, resolve } from 'node:path'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { buildOnlineAllowlist } from './src/build/online-allowlist.ts'
 import { buildOnline404Html } from './src/build/online-404.ts'
 import { buildOnlineHeadersFile } from './src/build/online-headers.ts'
@@ -581,6 +581,37 @@ const readMermaidRuntimeForHosting = async (distDir: string): Promise<string | n
   }
 }
 
+// 同一基底名の旧 fingerprint を掃除する (呼び出し側は新版の write 成功後に呼び、今回生成した名前は
+// match から除外する)。 mermaid / katex の fingerprinted 出力は shiki-langs のようなサブディレクトリ
+// swap 経路を通らず親 `fingerprinted/` に直接置かれるため、 hash が変わると旧版が残り続けて build
+// ごとに数 MB 蓄積する。 build-pipeline.md の「毎 build で fingerprinted を clean」契約を満たすべく、
+// `match` した既存ファイルのみを除去する (サブディレクトリ名 `shiki-langs` / `katex` は match させない
+// ことで他系統を巻き込まない)。
+const readdirOrEmpty = async (dir: string): Promise<string[]> => {
+  try {
+    return await readdir(dir)
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      return []
+    }
+    throw error
+  }
+}
+
+const removeStaleFingerprints = async (
+  dir: string,
+  match: (name: string) => boolean
+): Promise<void> => {
+  const entries = await readdirOrEmpty(dir)
+  await Promise.all(
+    entries
+      .filter(match)
+      .map(async (name): Promise<void> => rm(resolve(dir, name), { force: true }))
+  )
+}
+
+const STALE_MERMAID_FINGERPRINT_RE = /^mermaid\.[0-9a-f]+\.mjs$/
+
 const writeMermaidRuntimePair = async (
   hostingDir: string,
   fingerprintedName: string,
@@ -592,10 +623,16 @@ const writeMermaidRuntimePair = async (
     mkdir(fingerprintedDir, { recursive: true }),
     mkdir(canonicalDir, { recursive: true }),
   ])
+  // 新 fingerprint / canonical の書き込みが成功してから旧版を掃除する。 書き込み前に削除すると
+  // write 失敗時に旧成果物まで失って dist が不完全になるため。 今回生成した名前は除外する。
   await Promise.all([
     writeFile(resolve(fingerprintedDir, fingerprintedName), content, 'utf8'),
     writeFile(resolve(canonicalDir, 'mermaid.mjs'), content, 'utf8'),
   ])
+  await removeStaleFingerprints(
+    fingerprintedDir,
+    (name): boolean => STALE_MERMAID_FINGERPRINT_RE.test(name) && name !== fingerprintedName
+  )
 }
 
 const emitMermaidRuntimeFiles = async (
@@ -650,6 +687,12 @@ const computeKatexFingerprintedNames = (assets: KatexAssets): KatexFingerprinted
   jsName: `katex.${sha256Prefix(assets.js)}.mjs`,
 })
 
+// katex.<hash>.mjs / katex.<hash>.css / katex-fonts-extra.<hash>.css の旧 fingerprint を捕捉する。
+// `katex.<hash>.css` の正規表現は基底名直後に `.` を要求するため `katex-fonts-extra.<hash>.css` を
+// 誤って巻き込まない (前者は `katex.` 直後が hex、後者は `katex-` で始まる)。
+const STALE_KATEX_FINGERPRINT_RE =
+  /^(?:katex\.[0-9a-f]+\.(?:mjs|css)|katex-fonts-extra\.[0-9a-f]+\.css)$/
+
 const writeKatexAssetTriple = async (
   hostingDir: string,
   names: KatexFingerprintedNames,
@@ -661,6 +704,8 @@ const writeKatexAssetTriple = async (
     mkdir(fingerprintedDir, { recursive: true }),
     mkdir(canonicalDir, { recursive: true }),
   ])
+  // mermaid と同じく write 成功後に旧版を掃除する (write 前削除だと失敗時に dist が不完全になる)。
+  // 今回生成した 3 ファイル名は除外する。
   await Promise.all([
     writeFile(resolve(fingerprintedDir, names.jsName), assets.js, 'utf8'),
     writeFile(resolve(fingerprintedDir, names.cssName), assets.minimalCss, 'utf8'),
@@ -669,6 +714,11 @@ const writeKatexAssetTriple = async (
     writeFile(resolve(canonicalDir, 'katex.css'), assets.minimalCss, 'utf8'),
     writeFile(resolve(canonicalDir, 'katex-fonts-extra.css'), assets.fontsExtraCss, 'utf8'),
   ])
+  const keepNames = new Set([names.jsName, names.cssName, names.fontsExtraCssName])
+  await removeStaleFingerprints(
+    fingerprintedDir,
+    (name): boolean => STALE_KATEX_FINGERPRINT_RE.test(name) && !keepNames.has(name)
+  )
 }
 
 const emitKatexAssetFiles = async (

@@ -1720,7 +1720,7 @@ var upsertHtmlDataToolbarOpenFile = (reviewHtml, value) => upsertHtmlDataAttribu
 var upsertHtmlDataToolbarPasteMarkdown = (reviewHtml, value) => upsertHtmlDataAttribute(reviewHtml, "data-toolbar-paste-markdown", value);
 /**
 * `<title>` の中身を書き換える (idempotent)。ブラウザタブ・ファイル共有先で配布物を識別できるよう、
-* CLI 経路では `"MDXG Redline — <docName>"` 形式で上書きする (DESIGN.md §5.e)。
+* CLI 経路では `"MDXG Redline — <docName>"` 形式で上書きする (DESIGN.md §3)。
 * <title> タグが見つからない場合は no-op (フェイタルではなく warning 相当)。
 * <title> 中の特殊文字は HTML escape される (信頼境界、DESIGN.md §11)。
 */

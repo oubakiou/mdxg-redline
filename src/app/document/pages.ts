@@ -3,7 +3,11 @@
 // 本モジュールは state.activePageIndex の mutation と hash <-> slug の解決のみを行う。
 //
 // 設計判断:
-// - History API は使わず `location.hash` への代入だけで履歴を管理する (DESIGN.md §12 §7 Page Navigation)
+// - ナビゲーション (ページ移動) の履歴管理は History API を使わず `location.hash` への代入だけで行う
+//   (DESIGN.md §12 §7 Page Navigation)。例外は deep-link 補正中の受動的 hash 同期のみ:
+//   `replaceHashFromActivePage` / `passiveHashMode='replace'` の経路では「ユーザー操作ではない
+//   URL 修復」のため履歴を *増やさない* `history.replaceState` を使う (URL = 表示状態 の不変条件は
+//   保つので方針と整合する)
 // - hash が空 / 不正なら先頭ページ (index 0) にフォールバックする (DESIGN.md §12 §7 Page Navigation:
 //   「hash が空 / 不正な場合は activePageIndex = 0」)。これにより初期ロードとブラウザ戻る /
 //   進むで観測される挙動が一致する (URL = 表示状態の正準)。
@@ -222,6 +226,46 @@ export const syncHashFromActivePage = (headingSlug: string | null = null): void 
     return
   }
   globalThis.location.hash = desiredHash
+}
+
+/**
+ * `syncHashFromActivePage` の replace 版。`location.hash =` (新規 history entry を push) ではなく
+ * `history.replaceState` で現在の履歴エントリを置換する。deep-link 補正のように「ユーザー操作では
+ * ない URL 修復」で hash を書き戻すとき、補正のたびに戻れない drift エントリ (scroll-spy が
+ * `syncHashFromActivePage` で push した `#p:<page>`) を履歴に積み増さないために使う。current が
+ * その drift エントリならまとめて上書きされる。replaceState は hashchange / popstate を発火しない。
+ */
+export const replaceHashFromActivePage = (headingSlug: string | null = null): void => {
+  const page = state.pages[state.activePageIndex]
+  if (!page) {
+    return
+  }
+  const desiredHash = buildHash(buildPageHash(page.slug, headingSlug))
+  if (globalThis.location.hash === desiredHash) {
+    return
+  }
+  // 第 1 引数に現在の history.state を渡すことで、置換時に既存の state を破棄しない。
+  globalThis.history.replaceState(globalThis.history.state, '', desiredHash)
+}
+
+// scroll-spy が topmost ページ変化時に hash を同期する経路 (page-scroll-spy.ts) のモード。
+// 通常 (`push`) は `location.hash =` で履歴に積み、戻る/進むで前後ページに遷移できる設計を保つ。
+// deep-link 補正中 (armDeepLinkRescroll) は `replace` に切り替え、シフト由来の topmost 変化が
+// 補正のたびに戻れない drift エントリを履歴へ積み増さないようにする。ユーザー操作 (TOC クリック /
+// Sequential 等) のナビゲーションは passive 経路を通らず `syncHashFromActivePage` (push) を直接使う。
+let passiveHashMode: 'push' | 'replace' = 'push'
+
+export const setPassiveHashMode = (mode: 'push' | 'replace'): void => {
+  passiveHashMode = mode
+}
+
+/** scroll-spy 由来の受動的 hash 同期。現在の `passiveHashMode` に従って push / replace を選ぶ。 */
+export const syncPassiveHashFromActivePage = (): void => {
+  if (passiveHashMode === 'replace') {
+    replaceHashFromActivePage(null)
+    return
+  }
+  syncHashFromActivePage(null)
 }
 
 // テスト用のダミー Page 生成 (overrides で必要なフィールドだけ上書きできる)。
@@ -459,6 +503,35 @@ if (import.meta.vitest) {
       expect(setActivePageIndex(-1)).toBe(false)
       expect(setActivePageIndex(2)).toBe(false)
       expect(state.activePageIndex).toBe(0)
+    })
+  })
+
+  describe('syncPassiveHashFromActivePage', () => {
+    afterEach(() => {
+      setPassiveHashMode('push')
+      globalThis.location.hash = ''
+    })
+
+    it('push モード: location.hash 代入で history を積む', () => {
+      state.pages = [dummyPage({ index: 0, slug: 'a' }), dummyPage({ index: 1, slug: 'b' })]
+      state.activePageIndex = 1
+      globalThis.location.hash = '#p:a'
+      setPassiveHashMode('push')
+      const len0 = globalThis.history.length
+      syncPassiveHashFromActivePage()
+      expect(globalThis.location.hash).toBe('#p:b')
+      expect(globalThis.history.length).toBe(len0 + 1)
+    })
+
+    it('replace モード: replaceState で history を積まない', () => {
+      state.pages = [dummyPage({ index: 0, slug: 'a' }), dummyPage({ index: 1, slug: 'b' })]
+      state.activePageIndex = 1
+      globalThis.location.hash = '#p:a'
+      setPassiveHashMode('replace')
+      const len0 = globalThis.history.length
+      syncPassiveHashFromActivePage()
+      expect(globalThis.location.hash).toBe('#p:b')
+      expect(globalThis.history.length).toBe(len0)
     })
   })
 }

@@ -10,11 +10,12 @@
 //   TOC クリック時に section top を同じ 5% の位置に揃える `alignSectionTopInPane` の挙動と
 //   整合させ、navigate 直後に上半分に残った前ページが topmost と誤判定されないようにする
 // - state.activePageIndex 変更時のみ TOC active 表示と hash を更新する (no-op の再描画を避ける)
-// - hash 更新は `syncHashFromActivePage` 経由で、既に同じ hash なら no-op (無限 hashchange 防止)
+// - hash 更新は `syncPassiveHashFromActivePage` 経由で、既に同じ hash なら no-op (無限 hashchange 防止)。
+//   通常は push だが deep-link 補正中は replace に切り替わり、シフト由来の topmost 変化が履歴を積まない
 // - 観測 → state 更新 → hashchange イベント発火 → navigateToTarget → setActivePageIndex で
 //   「既に active なので no-op」となり、ループは構造的に閉じる
 
-import { setActivePageIndex, syncHashFromActivePage } from '../document/pages'
+import { setActivePageIndex, syncPassiveHashFromActivePage } from '../document/pages'
 
 const PAGE_SECTION_SELECTOR = 'section.virtual-page'
 const DOC_PANE_SELECTOR = '.doc-pane'
@@ -105,7 +106,7 @@ const syncStateToTopmost = (topmostIndex: number): void => {
   if (!changed) {
     return
   }
-  syncHashFromActivePage(null)
+  syncPassiveHashFromActivePage()
   notifyPageActivated(topmostIndex)
 }
 

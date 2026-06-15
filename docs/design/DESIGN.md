@@ -774,7 +774,7 @@ H1 / H2 境界（ATX / setext 両形式）で仮想ページに分割する。�
 設計判断:
 
 - **scroll-spy の 5% ライン**: `IntersectionObserver` で viewport 上から 5% の線にいる section を active とする。TOC クリック時に section top を同じ位置（`SECTION_TOP_RATIO = 0.05`）へ揃える navigate 経路と判定線を一致させ、navigate 直後に前ページが topmost と誤判定されないようにする
-- **URL 同期は `location.hash` 代入のみ**（History API 不使用）。戻る / 進むで前後ページに遷移でき、hash が空 / 不正なら先頭ページに fallback
+- **URL 同期は `location.hash` 代入のみ**（History API 不使用）。戻る / 進むで前後ページに遷移でき、hash が空 / 不正なら先頭ページに fallback。唯一の例外が **deep-link 補正中の受動的 hash 同期**で、online edition の後追い描画によるレイアウトシフト時、scroll-spy の hash 同期を `passiveHashMode='replace'` に切り替え、補正の hash 書き戻し（`replaceHashFromActivePage`）と合わせて `history.replaceState` で現在の履歴エントリを**置換**する。これによりシフト由来の topmost 変化が「戻れない drift エントリ」を履歴に積むのを根本で防ぎつつ、`URL = 表示状態` の不変条件は保つ（ユーザー操作のナビゲーションは従来どおり push）
 - **navigate orchestrator**: TOC / outline / 統合 Sequential / hashchange / 初期ロードすべてが単一の `navigateToTarget` に集約される
 - **footnotes synthetic page**: `[^id]:` 定義が ≥1 個あると末尾に Footnotes synthetic page を追加。`#footnote-<id>` deep link は page slug hash とは別経路で active 化する
 

@@ -7,6 +7,7 @@
 // AbortError で reject される。
 
 import { loadOnlineAssets, type OnlineAssetCache } from './asset-loader'
+import { armDeepLinkRescroll } from '../navigation/deep-link-rescroll'
 
 export type LoadFromMarkdown = (name: string, text: string) => Promise<void>
 
@@ -36,9 +37,10 @@ const bumpGeneration = (cache: OnlineAssetCache): void => {
 }
 
 /**
- * `loadFromMarkdown(name, text)` を装飾して asset-loader を発火させる。base の Promise<void>
- * はそのまま return することで await chain を壊さない。asset-loader は fire-and-forget で、
- * 大きな runtime の load 中も plain 描画を block しない。
+ * `loadFromMarkdown(name, text)` を装飾して asset-loader を発火させる。base を await して
+ * await chain を保つ (戻り Promise は base 描画 + arm 完了後に resolve)。asset-loader は
+ * fire-and-forget で、大きな runtime の load 中も plain 描画を block しない。base 解決後に
+ * `armDeepLinkRescroll` で deep-link 再スクロール補正を arm する (後追い描画のレイアウトシフト対策)。
  *
  * decorator 自体は pure 関数で、base を mutate せず新規関数を返す。
  */
@@ -51,7 +53,10 @@ export const decorateLoadFromMarkdownForOnline =
     loadOnlineAssets(text, getOnlineBaseUrl(), cache).catch((error: unknown): void => {
       Reflect.set(globalThis, '__mdxgOnlineAssetLoaderRejection', error)
     })
-    return base(name, text)
+    await base(name, text)
+    // base の renderAll 完了後に arm する。以降の後追い描画 (Shiki / Mermaid / KaTeX / 画像) で
+    // ターゲット上方がシフトしても deep-link 位置を取り直す (ユーザー未操作の間だけ)。
+    armDeepLinkRescroll()
   }
 
 // === in-source test helpers (module scope) ===
