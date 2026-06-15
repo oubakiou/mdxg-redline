@@ -1,6 +1,6 @@
 // stdin / file 入力の両対応で、markdown 本文と docName・既定の出力先を組み立てる薄い層。
 
-import { basename, dirname } from 'node:path'
+import path from 'node:path'
 import process from 'node:process'
 import { readFile } from 'node:fs/promises'
 
@@ -48,8 +48,8 @@ export const resolveInput = async (
   }
   const markdown = await readFile(inputPath, 'utf8')
   return {
-    defaultOutputDir: dirname(inputPath),
-    docName: documentName ?? basename(inputPath),
+    defaultOutputDir: path.dirname(inputPath),
+    docName: documentName ?? path.basename(inputPath),
     markdown,
   }
 }
@@ -86,7 +86,6 @@ if (import.meta.vitest) {
   ): Promise<{ cleanup: () => Promise<void>; dir: string; filePath: string }> => {
     const fs = await import('node:fs/promises')
     const os = await import('node:os')
-    const path = await import('node:path')
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdxg-resolveInput-'))
     const filePath = path.join(dir, fileName)
     await fs.writeFile(filePath, contents, 'utf8')

@@ -6,7 +6,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 
 /** Codex / Claude 互換 hook payload のうち、このフックが参照する最小フィールド */
@@ -114,7 +114,7 @@ export const existingFiles = (cwd: string, files: string[]): string[] => {
   const existing: string[] = []
 
   for (const file of files) {
-    if (existsSync(resolve(cwd, file))) {
+    if (existsSync(path.resolve(cwd, file))) {
       existing.push(file)
     }
   }

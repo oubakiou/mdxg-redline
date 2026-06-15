@@ -41,6 +41,21 @@ const handleTabKey = (event: KeyboardEvent): void => {
   }
 }
 
+// statements 数を 10 以下に抑えるため modal / menu / search の 3 グループに分解する
+const closeAllModalsForEscape = (): void => {
+  closeCommentModal()
+  closeHelpModal()
+  closeMermaidModal()
+  closeOpenUrlModal()
+  closePasteMarkdownModal()
+  closeSettingsModal()
+}
+const handleModalSaveKey = (): void => {
+  if (qs('#modal').classList.contains('open')) {
+    qs('#modal-save').click()
+  }
+}
+
 /**
  * グローバル keydown を 1 経路に集約する。Escape (modal/menu 閉じ) → Cmd/Ctrl+Enter
  * (modal save) → WASD affordance の 3 段で dispatch する。
@@ -53,15 +68,6 @@ export const setupKeyboardHandlers = (
   sendMenu: DropdownLike,
   openMenu: DropdownLike
 ): void => {
-  // statements 数を 10 以下に抑えるため modal / menu / search の 3 グループに分解する
-  const closeAllModalsForEscape = (): void => {
-    closeCommentModal()
-    closeHelpModal()
-    closeMermaidModal()
-    closeOpenUrlModal()
-    closePasteMarkdownModal()
-    closeSettingsModal()
-  }
   const closeAllMenusForEscape = (): void => {
     commentsMenu.close()
     sendMenu.close()
@@ -74,11 +80,6 @@ export const setupKeyboardHandlers = (
     closeAllMenusForEscape()
     if (isSearchOpen()) {
       closeSearch()
-    }
-  }
-  const handleModalSaveKey = (): void => {
-    if (qs('#modal').classList.contains('open')) {
-      qs('#modal-save').click()
     }
   }
   // WASD ベースのキーマップ (§13)。dispatch table で event.code → handler に振り分ける。

@@ -23,7 +23,7 @@ import {
   upsertHtmlDataToolbarOpenFile,
   upsertHtmlDataToolbarPasteMarkdown,
 } from '../core/embed'
-import { dirname, resolve } from 'node:path'
+import path from 'node:path'
 import type { EmbedContext } from './embed-context'
 import { applyKatex } from './assets/katex'
 import { applyMermaid } from './assets/mermaid'
@@ -37,13 +37,16 @@ import { translateCli } from './i18n'
 // embed-template.html は CLI から見て暗黙的な前提依存のため、未生成時は Node 既定の ENOENT より
 // 親切な案内に差し替える。input.md は利用者が指定したパスなので、
 // 元の ENOENT メッセージのまま返した方が原因が分かりやすい。
-const readReviewHtml = async (path: string): Promise<string> => {
+const readReviewHtml = async (templatePath: string): Promise<string> => {
   try {
-    return await readFile(path, 'utf8')
+    return await readFile(templatePath, 'utf8')
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       throw new Error(
-        translateCli('cli.error.asset_missing', { path, target: 'dist/embed-template.html' }),
+        translateCli('cli.error.asset_missing', {
+          path: templatePath,
+          target: 'dist/embed-template.html',
+        }),
         { cause: error }
       )
     }
@@ -52,15 +55,15 @@ const readReviewHtml = async (path: string): Promise<string> => {
 }
 
 export const prepareEmbed = async (args: RunArgs): Promise<EmbedContext> => {
-  const scriptDir = dirname(fileURLToPath(import.meta.url))
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url))
   const [input, reviewHtml] = await Promise.all([
     resolveInput(args.inputPath, args.documentName),
-    readReviewHtml(resolve(scriptDir, 'embed-template.html')),
+    readReviewHtml(path.resolve(scriptDir, 'embed-template.html')),
   ])
   const docHash = await computeDocHash(input.markdown)
   const mdFileName = sanitizeMdFileName(stripMarkdownExt(input.docName))
   const targetDir = args.outputDir ?? input.defaultOutputDir
-  const outputPath = resolve(targetDir, deriveReviewHtmlName(mdFileName, docHash))
+  const outputPath = path.resolve(targetDir, deriveReviewHtmlName(mdFileName, docHash))
   return {
     docHash,
     docName: input.docName,

@@ -342,6 +342,21 @@ export const bootstrapReviewApp = (deps: BootstrapDeps): void => {
   launchBoot(effectiveDeps.documentLoader)
 }
 
+// bootstrapI18n は i18n-browser.ts の module-local currentLang と document の lang / class /
+// style / body innerHTML を mutate する。test 間で state がリークしないよう before/after で
+// 明示 reset する (vitest の file isolation は cross-test mutation を防がないため)。
+const resetBootstrapI18nState = (): void => {
+  try {
+    localStorage.removeItem('mdxg-redline.lang')
+  } catch {
+    // ignore (private mode 等)
+  }
+  document.documentElement.classList.remove(I18N_PENDING_CLASS)
+  document.documentElement.removeAttribute('lang')
+  document.documentElement.style.removeProperty('--ui-loading-text')
+  document.body.innerHTML = ''
+}
+
 if (import.meta.vitest) {
   const { afterEach, beforeEach, describe, expect, it, vi } = import.meta.vitest
 
@@ -357,21 +372,6 @@ if (import.meta.vitest) {
     // bootstrapI18n は launchBoot より先に同期完了する必要がある (paint 後 FOUC 解除の責任を持つ)。
     // 本 test は (1) i18n-pending class が必ず外れる (2) data-i18n 要素が翻訳される
     // (3) 連続呼び出しで例外を投げない (idempotent) の 3 不変条件を固定する。
-    // bootstrapI18n は i18n-browser.ts の module-local currentLang と document の lang / class /
-    // style / body innerHTML を mutate する。test 間で state がリークしないよう before/after で
-    // 明示 reset する (vitest の file isolation は cross-test mutation を防がないため)。
-    const resetBootstrapI18nState = (): void => {
-      try {
-        localStorage.removeItem('mdxg-redline.lang')
-      } catch {
-        // ignore (private mode 等)
-      }
-      document.documentElement.classList.remove(I18N_PENDING_CLASS)
-      document.documentElement.removeAttribute('lang')
-      document.documentElement.style.removeProperty('--ui-loading-text')
-      document.body.innerHTML = ''
-    }
-
     beforeEach(resetBootstrapI18nState)
     afterEach(resetBootstrapI18nState)
 

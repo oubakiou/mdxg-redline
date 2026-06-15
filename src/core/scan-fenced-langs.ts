@@ -207,12 +207,12 @@ if (import.meta.vitest) {
   // 動くため、build を挟まず再生成内容と commit 済みファイルの一致を検証する。
   describe('shiki-aliases.generated.ts freshness (生成物鮮度)', () => {
     it('インストール済み shiki / SPEC_LANGS から再生成した内容が commit 済みファイルと一致', async () => {
-      const [fs, meta, url, path] = await Promise.all([
+      const [fs, meta, url] = await Promise.all([
         import('node:fs'),
         import('../../scripts/lib/shiki-meta.ts'),
         import('node:url'),
-        import('node:path'),
       ])
+      const { default: path } = await import('node:path')
       const here = path.dirname(url.fileURLToPath(import.meta.url))
       const pkgText = fs.readFileSync(
         path.resolve(here, '..', '..', 'node_modules', 'shiki', 'package.json'),

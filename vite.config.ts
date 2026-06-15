@@ -5,7 +5,7 @@ import {
   loadGrammar,
 } from './scripts/lib/shiki-meta.ts'
 import { createHash, randomBytes } from 'node:crypto'
-import { dirname, resolve } from 'node:path'
+import path from 'node:path'
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { buildOnlineAllowlist } from './src/build/online-allowlist.ts'
 import { buildOnline404Html } from './src/build/online-404.ts'
@@ -22,10 +22,10 @@ import { type Plugin, defineConfig } from 'vite-plus'
 import { fileURLToPath } from 'node:url'
 import { viteSingleFile } from 'vite-plugin-singlefile'
 
-const ROOT_DIR = dirname(fileURLToPath(import.meta.url))
+const ROOT_DIR = path.dirname(fileURLToPath(import.meta.url))
 
 const readShikiVersion = async (): Promise<string> => {
-  const pkgPath = resolve(ROOT_DIR, 'node_modules', 'shiki', 'package.json')
+  const pkgPath = path.resolve(ROOT_DIR, 'node_modules', 'shiki', 'package.json')
   const pkgJson = await readFile(pkgPath, 'utf8')
   const parsed: unknown = JSON.parse(pkgJson)
   if (typeof parsed !== 'object' || parsed === null || !('version' in parsed)) {
@@ -43,7 +43,7 @@ const regenerateAliasesTs = async (): Promise<void> => {
   const canonicals = canonicalizeSpec()
   const aliasMap = buildAliasMap(canonicals)
   const ts = formatAliasesTs({ aliasMap, canonicals, shikiVersion })
-  const outPath = resolve(ROOT_DIR, 'src', 'core', 'shiki-aliases.generated.ts')
+  const outPath = path.resolve(ROOT_DIR, 'src', 'core', 'shiki-aliases.generated.ts')
   await writeFile(outPath, ts, 'utf8')
 }
 
@@ -84,12 +84,12 @@ const TMP_DIR_RANDOM_BYTES = 6
 
 const makeTmpGrammarDirs = (): { dirs: GrammarOutputDirs; root: string } => {
   const suffix = randomBytes(TMP_DIR_RANDOM_BYTES).toString('hex')
-  const root = resolve(ROOT_DIR, 'dist', `.tmp-shiki-${suffix}`)
+  const root = path.resolve(ROOT_DIR, 'dist', `.tmp-shiki-${suffix}`)
   return {
     dirs: {
-      canonicalDir: resolve(root, 'canonical', 'shiki-langs'),
-      cliDir: resolve(root, 'shiki-langs'),
-      fingerprintedDir: resolve(root, 'fingerprinted', 'shiki-langs'),
+      canonicalDir: path.resolve(root, 'canonical', 'shiki-langs'),
+      cliDir: path.resolve(root, 'shiki-langs'),
+      fingerprintedDir: path.resolve(root, 'fingerprinted', 'shiki-langs'),
     },
     root,
   }
@@ -108,9 +108,9 @@ const prepareTmpDirs = async (dirs: GrammarOutputDirs): Promise<void> => {
 // CLI 用 `dist/shiki-langs/` は dist 直下のまま (review-request CLI が markdown scan 結果に応じて
 // inject する素材)。
 const resolveFinalGrammarDirs = (): GrammarOutputDirs => ({
-  canonicalDir: resolve(ROOT_DIR, 'dist', 'hosting', 'canonical', 'shiki-langs'),
-  cliDir: resolve(ROOT_DIR, 'dist', 'shiki-langs'),
-  fingerprintedDir: resolve(ROOT_DIR, 'dist', 'hosting', 'fingerprinted', 'shiki-langs'),
+  canonicalDir: path.resolve(ROOT_DIR, 'dist', 'hosting', 'canonical', 'shiki-langs'),
+  cliDir: path.resolve(ROOT_DIR, 'dist', 'shiki-langs'),
+  fingerprintedDir: path.resolve(ROOT_DIR, 'dist', 'hosting', 'fingerprinted', 'shiki-langs'),
 })
 
 // rename 1 件分の三角関係 (tmp → final → bak)。 sequential rename の進捗を記録するため
@@ -126,12 +126,12 @@ const BAK_DIR_RANDOM_BYTES = 6
 
 const makeBakDirs = (): { dirs: GrammarOutputDirs; root: string } => {
   const suffix = randomBytes(BAK_DIR_RANDOM_BYTES).toString('hex')
-  const root = resolve(ROOT_DIR, 'dist', `.bak-shiki-${suffix}`)
+  const root = path.resolve(ROOT_DIR, 'dist', `.bak-shiki-${suffix}`)
   return {
     dirs: {
-      canonicalDir: resolve(root, 'canonical', 'shiki-langs'),
-      cliDir: resolve(root, 'shiki-langs'),
-      fingerprintedDir: resolve(root, 'fingerprinted', 'shiki-langs'),
+      canonicalDir: path.resolve(root, 'canonical', 'shiki-langs'),
+      cliDir: path.resolve(root, 'shiki-langs'),
+      fingerprintedDir: path.resolve(root, 'fingerprinted', 'shiki-langs'),
     },
     root,
   }
@@ -273,15 +273,15 @@ const promoteTmpToFinalTracking = async (
 
 const prepareBakRoot = async (bakRoot: string): Promise<void> => {
   await Promise.all([
-    mkdir(resolve(bakRoot, 'canonical'), { recursive: true }),
-    mkdir(resolve(bakRoot, 'fingerprinted'), { recursive: true }),
+    mkdir(path.resolve(bakRoot, 'canonical'), { recursive: true }),
+    mkdir(path.resolve(bakRoot, 'fingerprinted'), { recursive: true }),
   ])
 }
 
 const prepareFinalParents = async (): Promise<void> => {
   await Promise.all([
-    mkdir(resolve(ROOT_DIR, 'dist', 'hosting', 'canonical'), { recursive: true }),
-    mkdir(resolve(ROOT_DIR, 'dist', 'hosting', 'fingerprinted'), { recursive: true }),
+    mkdir(path.resolve(ROOT_DIR, 'dist', 'hosting', 'canonical'), { recursive: true }),
+    mkdir(path.resolve(ROOT_DIR, 'dist', 'hosting', 'fingerprinted'), { recursive: true }),
   ])
 }
 
@@ -376,7 +376,7 @@ const swapTmpIntoDist = async (tmpDirs: GrammarOutputDirs): Promise<void> => {
 //   通常運用での誤削除 (例: 自分の lock が他 process に手動削除されて新規に他 process が取得した
 //   状態で、 自分が finally で解放) を防ぐ。 read → 比較 → rm 間の理論上の TOCTOU は残るが、
 //   manual 介入が同時発生する稀ケースに限られる。
-const LOCK_PATH = resolve(ROOT_DIR, 'dist', '.shiki-build.lock')
+const LOCK_PATH = path.resolve(ROOT_DIR, 'dist', '.shiki-build.lock')
 const LOCK_TOKEN_BYTES = 16
 
 interface LockContent {
@@ -470,7 +470,7 @@ const failOnExistingLock = async (): Promise<never> => {
 // 取得時は token を生成して `PID\nTOKEN\n` を `wx` で書き、 token を呼び出し側に返す。
 // 既存 lock の処理は failOnExistingLock に委譲 (3 分岐すべて throw)。
 const acquireGrammarBuildLock = async (): Promise<string> => {
-  await mkdir(resolve(ROOT_DIR, 'dist'), { recursive: true })
+  await mkdir(path.resolve(ROOT_DIR, 'dist'), { recursive: true })
   const token = randomBytes(LOCK_TOKEN_BYTES).toString('hex')
   const content = formatLockContent({ pid: process.pid, token })
   if (await tryCreateLock(content)) {
@@ -517,9 +517,9 @@ const writeGrammarToTmp = async (
       const hash = sha256Prefix(json)
       const fingerprintedName = `${lang}.${hash}.json`
       await Promise.all([
-        writeFile(resolve(tmpDirs.cliDir, `${lang}.json`), json, 'utf8'),
-        writeFile(resolve(tmpDirs.canonicalDir, `${lang}.json`), json, 'utf8'),
-        writeFile(resolve(tmpDirs.fingerprintedDir, fingerprintedName), json, 'utf8'),
+        writeFile(path.resolve(tmpDirs.cliDir, `${lang}.json`), json, 'utf8'),
+        writeFile(path.resolve(tmpDirs.canonicalDir, `${lang}.json`), json, 'utf8'),
+        writeFile(path.resolve(tmpDirs.fingerprintedDir, fingerprintedName), json, 'utf8'),
       ])
       return [lang, { fingerprintedPath: `fingerprinted/shiki-langs/${fingerprintedName}` }]
     })
@@ -569,7 +569,7 @@ const emitGrammarJsonFiles = async (): Promise<ShikiGrammarEmission> => {
 // `mermaid-import-reject` を failures に集約する。 standalone は Mermaid inline 維持なので影響なし)。
 const readMermaidRuntimeForHosting = async (distDir: string): Promise<string | null> => {
   try {
-    return await readFile(resolve(distDir, 'mermaid.mjs'), 'utf8')
+    return await readFile(path.resolve(distDir, 'mermaid.mjs'), 'utf8')
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       console.warn(
@@ -606,7 +606,7 @@ const removeStaleFingerprints = async (
   await Promise.all(
     entries
       .filter(match)
-      .map(async (name): Promise<void> => rm(resolve(dir, name), { force: true }))
+      .map(async (name): Promise<void> => rm(path.resolve(dir, name), { force: true }))
   )
 }
 
@@ -617,8 +617,8 @@ const writeMermaidRuntimePair = async (
   fingerprintedName: string,
   content: string
 ): Promise<void> => {
-  const fingerprintedDir = resolve(hostingDir, 'fingerprinted')
-  const canonicalDir = resolve(hostingDir, 'canonical')
+  const fingerprintedDir = path.resolve(hostingDir, 'fingerprinted')
+  const canonicalDir = path.resolve(hostingDir, 'canonical')
   await Promise.all([
     mkdir(fingerprintedDir, { recursive: true }),
     mkdir(canonicalDir, { recursive: true }),
@@ -626,8 +626,8 @@ const writeMermaidRuntimePair = async (
   // 新 fingerprint / canonical の書き込みが成功してから旧版を掃除する。 書き込み前に削除すると
   // write 失敗時に旧成果物まで失って dist が不完全になるため。 今回生成した名前は除外する。
   await Promise.all([
-    writeFile(resolve(fingerprintedDir, fingerprintedName), content, 'utf8'),
-    writeFile(resolve(canonicalDir, 'mermaid.mjs'), content, 'utf8'),
+    writeFile(path.resolve(fingerprintedDir, fingerprintedName), content, 'utf8'),
+    writeFile(path.resolve(canonicalDir, 'mermaid.mjs'), content, 'utf8'),
   ])
   await removeStaleFingerprints(
     fingerprintedDir,
@@ -659,9 +659,9 @@ const emitMermaidRuntimeFiles = async (
 const readKatexAssetsForHosting = async (distDir: string): Promise<KatexAssets | null> => {
   try {
     const [js, minimalCss, fontsExtraCss] = await Promise.all([
-      readFile(resolve(distDir, 'katex', 'katex.mjs'), 'utf8'),
-      readFile(resolve(distDir, 'katex', 'katex.css'), 'utf8'),
-      readFile(resolve(distDir, 'katex', 'katex-fonts-extra.css'), 'utf8'),
+      readFile(path.resolve(distDir, 'katex', 'katex.mjs'), 'utf8'),
+      readFile(path.resolve(distDir, 'katex', 'katex.css'), 'utf8'),
+      readFile(path.resolve(distDir, 'katex', 'katex-fonts-extra.css'), 'utf8'),
     ])
     return { fontsExtraCss, js, minimalCss }
   } catch (error) {
@@ -698,8 +698,8 @@ const writeKatexAssetTriple = async (
   names: KatexFingerprintedNames,
   assets: KatexAssets
 ): Promise<void> => {
-  const fingerprintedDir = resolve(hostingDir, 'fingerprinted', 'katex')
-  const canonicalDir = resolve(hostingDir, 'canonical', 'katex')
+  const fingerprintedDir = path.resolve(hostingDir, 'fingerprinted', 'katex')
+  const canonicalDir = path.resolve(hostingDir, 'canonical', 'katex')
   await Promise.all([
     mkdir(fingerprintedDir, { recursive: true }),
     mkdir(canonicalDir, { recursive: true }),
@@ -707,12 +707,16 @@ const writeKatexAssetTriple = async (
   // mermaid と同じく write 成功後に旧版を掃除する (write 前削除だと失敗時に dist が不完全になる)。
   // 今回生成した 3 ファイル名は除外する。
   await Promise.all([
-    writeFile(resolve(fingerprintedDir, names.jsName), assets.js, 'utf8'),
-    writeFile(resolve(fingerprintedDir, names.cssName), assets.minimalCss, 'utf8'),
-    writeFile(resolve(fingerprintedDir, names.fontsExtraCssName), assets.fontsExtraCss, 'utf8'),
-    writeFile(resolve(canonicalDir, 'katex.mjs'), assets.js, 'utf8'),
-    writeFile(resolve(canonicalDir, 'katex.css'), assets.minimalCss, 'utf8'),
-    writeFile(resolve(canonicalDir, 'katex-fonts-extra.css'), assets.fontsExtraCss, 'utf8'),
+    writeFile(path.resolve(fingerprintedDir, names.jsName), assets.js, 'utf8'),
+    writeFile(path.resolve(fingerprintedDir, names.cssName), assets.minimalCss, 'utf8'),
+    writeFile(
+      path.resolve(fingerprintedDir, names.fontsExtraCssName),
+      assets.fontsExtraCss,
+      'utf8'
+    ),
+    writeFile(path.resolve(canonicalDir, 'katex.mjs'), assets.js, 'utf8'),
+    writeFile(path.resolve(canonicalDir, 'katex.css'), assets.minimalCss, 'utf8'),
+    writeFile(path.resolve(canonicalDir, 'katex-fonts-extra.css'), assets.fontsExtraCss, 'utf8'),
   ])
   const keepNames = new Set([names.jsName, names.cssName, names.fontsExtraCssName])
   await removeStaleFingerprints(
@@ -861,7 +865,7 @@ const inlineGrammarsIntoHtml = (html: string, grammars: Record<string, unknown>)
 // standalone.html は Shiki ハイライト fallback で動作する形にする (build を fail させない)。
 const readMermaidRuntimeIfPresent = async (distDir: string): Promise<string | null> => {
   try {
-    return await readFile(resolve(distDir, 'mermaid.mjs'), 'utf8')
+    return await readFile(path.resolve(distDir, 'mermaid.mjs'), 'utf8')
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       console.warn(
@@ -887,9 +891,9 @@ interface KatexAssets {
 const readKatexAssetsIfPresent = async (distDir: string): Promise<KatexAssets | null> => {
   try {
     const [js, minimalCss, fontsExtraCss] = await Promise.all([
-      readFile(resolve(distDir, 'katex', 'katex.mjs'), 'utf8'),
-      readFile(resolve(distDir, 'katex', 'katex.css'), 'utf8'),
-      readFile(resolve(distDir, 'katex', 'katex-fonts-extra.css'), 'utf8'),
+      readFile(path.resolve(distDir, 'katex', 'katex.mjs'), 'utf8'),
+      readFile(path.resolve(distDir, 'katex', 'katex.css'), 'utf8'),
+      readFile(path.resolve(distDir, 'katex', 'katex-fonts-extra.css'), 'utf8'),
     ])
     return { fontsExtraCss, js, minimalCss }
   } catch (error) {
@@ -911,7 +915,10 @@ const loadShikiGrammars = async (distDir: string): Promise<Record<string, unknow
   // standalone.html が非決定的になる。
   const entries = await Promise.all(
     canonicals.map(async (lang: string): Promise<readonly [string, unknown]> => {
-      const grammarJson = await readFile(resolve(distDir, 'shiki-langs', `${lang}.json`), 'utf8')
+      const grammarJson = await readFile(
+        path.resolve(distDir, 'shiki-langs', `${lang}.json`),
+        'utf8'
+      )
       return [lang, JSON.parse(grammarJson) as unknown]
     })
   )
@@ -960,7 +967,7 @@ const markdownCssInlinePlugin = (): Plugin => ({
   name: 'mdxg-markdown-css-inline',
   transformIndexHtml: {
     handler: async (html: string): Promise<string> => {
-      const css = await readFile(resolve(ROOT_DIR, 'src', 'styles', 'markdown.css'), 'utf8')
+      const css = await readFile(path.resolve(ROOT_DIR, 'src', 'styles', 'markdown.css'), 'utf8')
       return inlineMarkdownCssIntoHtml(html, css)
     },
     order: 'pre',
@@ -1001,7 +1008,7 @@ const buildOnlineHtmlFromStandalone = (
 // `_redirects` は配置しない: Pages 慣習で `/` request は自動的に `index.html` を返すため、
 // `/ /online.html 200` rewrite は不要 (build 出力名を online.html ではなく index.html に揃える設計)。
 const emitHostingHeaders = async (hostingDir: string, onlineHtml: string): Promise<void> => {
-  await writeFile(resolve(hostingDir, '_headers'), buildOnlineHeadersFile(onlineHtml), 'utf8')
+  await writeFile(path.resolve(hostingDir, '_headers'), buildOnlineHeadersFile(onlineHtml), 'utf8')
 }
 
 // Cloudflare Pages の SPA fallback (存在しないパス → index.html を 200 で返す) を抑制する
@@ -1010,7 +1017,7 @@ const emitHostingHeaders = async (hostingDir: string, onlineHtml: string): Promi
 // https://developers.cloudflare.com/pages/configuration/serving-pages/)。 build pipeline
 // から見ると pure 関数の出力を書き出すだけ。
 const emitHosting404 = async (hostingDir: string): Promise<void> => {
-  await writeFile(resolve(hostingDir, '404.html'), buildOnline404Html(), 'utf8')
+  await writeFile(path.resolve(hostingDir, '404.html'), buildOnline404Html(), 'utf8')
 }
 
 interface SplitOutputPaths {
@@ -1023,15 +1030,15 @@ interface SplitOutputPaths {
 }
 
 const resolveSplitOutputPaths = (): SplitOutputPaths => {
-  const distDir = resolve(ROOT_DIR, 'dist')
-  const hostingDir = resolve(distDir, 'hosting')
+  const distDir = path.resolve(ROOT_DIR, 'dist')
+  const hostingDir = path.resolve(distDir, 'hosting')
   return {
     distDir,
-    embedTemplatePath: resolve(distDir, 'embed-template.html'),
+    embedTemplatePath: path.resolve(distDir, 'embed-template.html'),
     hostingDir,
-    intermediatePath: resolve(distDir, 'review.html'),
-    onlinePath: resolve(hostingDir, 'index.html'),
-    standalonePath: resolve(distDir, 'standalone.html'),
+    intermediatePath: path.resolve(distDir, 'review.html'),
+    onlinePath: path.resolve(hostingDir, 'index.html'),
+    standalonePath: path.resolve(distDir, 'standalone.html'),
   }
 }
 

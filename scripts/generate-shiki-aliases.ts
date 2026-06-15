@@ -8,12 +8,12 @@
 // 共通ロジックは scripts/lib/shiki-meta.ts に集約。
 
 import { buildAliasMap, canonicalizeSpec, formatAliasesTs } from './lib/shiki-meta.ts'
-import { dirname, resolve } from 'node:path'
+import path from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
 const readShikiVersion = async (scriptDir: string): Promise<string> => {
-  const pkgPath = resolve(scriptDir, '..', 'node_modules', 'shiki', 'package.json')
+  const pkgPath = path.resolve(scriptDir, '..', 'node_modules', 'shiki', 'package.json')
   const pkgJson = await readFile(pkgPath, 'utf8')
   const parsed: unknown = JSON.parse(pkgJson)
   if (typeof parsed !== 'object' || parsed === null || !('version' in parsed)) {
@@ -27,14 +27,14 @@ const readShikiVersion = async (scriptDir: string): Promise<string> => {
 }
 
 const main = async (): Promise<void> => {
-  const scriptDir = dirname(fileURLToPath(import.meta.url))
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url))
   const shikiVersion = await readShikiVersion(scriptDir)
 
   const canonicals = canonicalizeSpec()
   const aliasMap = buildAliasMap(canonicals)
   const ts = formatAliasesTs({ aliasMap, canonicals, shikiVersion })
 
-  const outPath = resolve(scriptDir, '..', 'src', 'core', 'shiki-aliases.generated.ts')
+  const outPath = path.resolve(scriptDir, '..', 'src', 'core', 'shiki-aliases.generated.ts')
   await writeFile(outPath, ts, 'utf8')
   process.stdout.write(
     `Wrote ${outPath} (${canonicals.length} canonical langs, ${Object.keys(aliasMap).length} alias entries)\n`

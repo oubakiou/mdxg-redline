@@ -63,7 +63,7 @@ const extractHelpSectionText = (match: RegExpExecArray | null): string => {
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
   const fs = await import('node:fs')
-  const path = await import('node:path')
+  const { default: path } = await import('node:path')
   const url = await import('node:url')
 
   // help modal の HTML 文言 (src/review.html) と review.ts 側のキーバインド実装が

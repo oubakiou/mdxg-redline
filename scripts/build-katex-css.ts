@@ -22,14 +22,14 @@
 // scripts/lib/shiki-meta.ts と同じ「version pin + dist 構造 assert」パターン
 // (docs/mdxg-math-rendering.archive.md §5.j)。
 
-import { dirname, resolve } from 'node:path'
+import path from 'node:path'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
-const ROOT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const KATEX_DIST = resolve(ROOT_DIR, 'node_modules', 'katex', 'dist')
-const FONTS_DIR = resolve(KATEX_DIST, 'fonts')
-const OUT_DIR = resolve(ROOT_DIR, 'dist', 'katex')
+const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const KATEX_DIST = path.resolve(ROOT_DIR, 'node_modules', 'katex', 'dist')
+const FONTS_DIR = path.resolve(KATEX_DIST, 'fonts')
+const OUT_DIR = path.resolve(ROOT_DIR, 'dist', 'katex')
 
 // 挙動を実証した上で pin している KaTeX バージョン。major / minor / patch まで pin し、
 // 版が動いた瞬間に build を fail させて下記チェックリストの再評価を強制する。
@@ -90,7 +90,7 @@ interface Classification {
 }
 
 const assertKatexVersion = async (): Promise<void> => {
-  const pkgPath = resolve(KATEX_DIST, '..', 'package.json')
+  const pkgPath = path.resolve(KATEX_DIST, '..', 'package.json')
   const raw = await readFile(pkgPath, 'utf8')
   const parsed: unknown = JSON.parse(raw)
   if (typeof parsed !== 'object' || parsed === null || !('version' in parsed)) {
@@ -125,7 +125,7 @@ const buildUrlReplacement = async (
 ): Promise<{ from: string; kind: 'dropped' | 'inlined'; to: string }> => {
   const [original, file] = match
   if (file.endsWith('.woff2')) {
-    const buf = await readFile(resolve(FONTS_DIR, file))
+    const buf = await readFile(path.resolve(FONTS_DIR, file))
     return {
       from: original,
       kind: 'inlined',
@@ -234,14 +234,14 @@ const reportStats = (stats: Stats, minimalCss: string, extraCss: string): void =
 
 const build = async (): Promise<void> => {
   await assertKatexVersion()
-  const css = await readFile(resolve(KATEX_DIST, 'katex.min.css'), 'utf8')
+  const css = await readFile(path.resolve(KATEX_DIST, 'katex.min.css'), 'utf8')
   const blocks = splitFontFaces(css)
   const stats: Stats = { dropped: 0, extra: 0, inlined: 0, minimal: 0 }
   const { extraCss, minimalCss } = await distributeBlocks(blocks, stats)
   await mkdir(OUT_DIR, { recursive: true })
   await Promise.all([
-    writeFile(resolve(OUT_DIR, 'katex.css'), minimalCss),
-    writeFile(resolve(OUT_DIR, 'katex-fonts-extra.css'), extraCss),
+    writeFile(path.resolve(OUT_DIR, 'katex.css'), minimalCss),
+    writeFile(path.resolve(OUT_DIR, 'katex-fonts-extra.css'), extraCss),
   ])
   reportStats(stats, minimalCss, extraCss)
 }

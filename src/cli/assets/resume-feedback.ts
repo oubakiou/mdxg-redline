@@ -3,7 +3,7 @@
 // stdin 入力時は cwd 偶発一致を避けるため skip。docHash 不一致時は stderr 警告 + skip。
 
 import { deriveFeedbackJsonName, rewriteEmbeddedFeedback, stripMarkdownExt } from '../../core/embed'
-import { dirname, resolve } from 'node:path'
+import path from 'node:path'
 import type { EmbedContext } from '../embed-context'
 import type { RunArgs } from '../parse-args'
 import { commentsFromUnknown } from '../../core/feedback'
@@ -52,7 +52,7 @@ const extractDocHash = (payload: unknown): string | null => {
  */
 const resolveFeedbackPath = (docName: string, docHash: string, outputPath: string): string => {
   const mdFileName = sanitizeMdFileName(stripMarkdownExt(docName))
-  return resolve(dirname(outputPath), deriveFeedbackJsonName(mdFileName, docHash))
+  return path.resolve(path.dirname(outputPath), deriveFeedbackJsonName(mdFileName, docHash))
 }
 
 interface FeedbackReadResult {
@@ -186,18 +186,22 @@ if (import.meta.vitest) {
 
   describe('resolveFeedbackPath', () => {
     it('outputPath と同じディレクトリに <mdFileName>-<docHash>-feedback.json を組み立てる', () => {
-      const path = resolveFeedbackPath('spec.md', 'a1b2c3d4e5f6a7b8', '/tmp/reviews/foo.html')
-      expect(path).toBe('/tmp/reviews/spec-a1b2c3d4e5f6a7b8-feedback.json')
+      const feedbackPath = resolveFeedbackPath(
+        'spec.md',
+        'a1b2c3d4e5f6a7b8',
+        '/tmp/reviews/foo.html'
+      )
+      expect(feedbackPath).toBe('/tmp/reviews/spec-a1b2c3d4e5f6a7b8-feedback.json')
     })
 
     it('docName が日本語でもそのまま使う (review HTML と命名規約を揃える)', () => {
-      const path = resolveFeedbackPath('仕様書 v2.md', 'a1b2c3d4e5f6a7b8', '/x/y/out.html')
-      expect(path).toBe('/x/y/仕様書 v2-a1b2c3d4e5f6a7b8-feedback.json')
+      const feedbackPath = resolveFeedbackPath('仕様書 v2.md', 'a1b2c3d4e5f6a7b8', '/x/y/out.html')
+      expect(feedbackPath).toBe('/x/y/仕様書 v2-a1b2c3d4e5f6a7b8-feedback.json')
     })
 
     it('docName 内のパス区切り文字 / は _ に sanitize される (パストラバーサル防止)', () => {
-      const path = resolveFeedbackPath('a/b.md', 'h0123456789abcdef', '/d/out.html')
-      expect(path).toBe('/d/a_b-h0123456789abcdef-feedback.json')
+      const feedbackPath = resolveFeedbackPath('a/b.md', 'h0123456789abcdef', '/d/out.html')
+      expect(feedbackPath).toBe('/d/a_b-h0123456789abcdef-feedback.json')
     })
   })
 

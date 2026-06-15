@@ -6,7 +6,7 @@ import type { EmbedContext } from '../embed-context'
 import { countMath } from '../../core/math'
 import process from 'node:process'
 import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import path from 'node:path'
 import { rewriteEmbeddedKatex } from '../../core/embed'
 import { translateCli } from '../i18n'
 
@@ -28,14 +28,17 @@ export const shouldInjectKatex = (mode: MathMode | undefined, markdown: string):
   return counts.inline + counts.display > 0
 }
 
-const readKatexAsset = async (path: string): Promise<string> => {
+const readKatexAsset = async (assetPath: string): Promise<string> => {
   try {
-    return await readFile(path, 'utf8')
+    return await readFile(assetPath, 'utf8')
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-      throw new Error(translateCli('cli.error.asset_missing', { path, target: 'dist/katex/' }), {
-        cause: error,
-      })
+      throw new Error(
+        translateCli('cli.error.asset_missing', { path: assetPath, target: 'dist/katex/' }),
+        {
+          cause: error,
+        }
+      )
     }
     throw error
   }
@@ -60,14 +63,16 @@ const readKatexAssets = async (
   fontsMode: MathFontsMode
 ): Promise<KatexAssetsPayload> => {
   const [js, minimalCss] = await Promise.all([
-    readKatexAsset(resolve(scriptDir, 'katex', 'katex.mjs')),
-    readKatexAsset(resolve(scriptDir, 'katex', 'katex.css')),
+    readKatexAsset(path.resolve(scriptDir, 'katex', 'katex.mjs')),
+    readKatexAsset(path.resolve(scriptDir, 'katex', 'katex.css')),
   ])
   const sizeHintGzip = MATH_SIZE_HINT[fontsMode]
   if (fontsMode === 'minimal') {
     return { js, minimalCss, sizeHintGzip }
   }
-  const fontsExtraCss = await readKatexAsset(resolve(scriptDir, 'katex', 'katex-fonts-extra.css'))
+  const fontsExtraCss = await readKatexAsset(
+    path.resolve(scriptDir, 'katex', 'katex-fonts-extra.css')
+  )
   return { fontsExtraCss, js, minimalCss, sizeHintGzip }
 }
 

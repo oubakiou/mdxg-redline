@@ -23,7 +23,7 @@ if (import.meta.vitest) {
   const { describe, expect, it } = await import('vitest')
   const { mkdir, mkdtemp, rm, writeFile } = await import('node:fs/promises')
   const { tmpdir } = await import('node:os')
-  const path = await import('node:path')
+  const { default: path } = await import('node:path')
   const resolve = (...args: string[]): string => path.resolve(...args)
   const { runClean } = await import('./clean')
 

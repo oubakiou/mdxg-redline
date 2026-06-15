@@ -5,7 +5,7 @@
 
 import { isHostBrowserUnreachableViaFile, openInBrowser } from './open-command'
 
-import { basename } from 'node:path'
+import path from 'node:path'
 import { createReadStream } from 'node:fs'
 import { createServer } from 'node:http'
 import process from 'node:process'
@@ -166,7 +166,7 @@ const serveOnceAndAutoStop = async (filePath: string): Promise<ServeHandle> => {
   })
   return {
     done,
-    url: `http://localhost:${String(listened.port)}/${encodeURIComponent(basename(filePath))}`,
+    url: `http://localhost:${String(listened.port)}/${encodeURIComponent(path.basename(filePath))}`,
   }
 }
 
@@ -190,32 +190,32 @@ export const openOutput = async (outputPath: string): Promise<void> => {
   await handle.done
 }
 
+// process.stderr.write を関数差し替えで黙らせ、警告経路のテストで標準エラー出力に
+// ノイズを出さないようにする。fn の戻り値と捕捉した stderr 書き込みを {result, written} で返す。
+// chunk → string 変換は if/else で展開している（no-ternary 回避 + 別 helper を
+// 切り出すと unicorn/consistent-function-scoping が「captures nothing」と警告するため）。
+const silenceStderr = <Result>(fn: () => Result): { result: Result; written: string[] } => {
+  const written: string[] = []
+  const original = process.stderr.write.bind(process.stderr)
+  process.stderr.write = ((chunk: string | Uint8Array): boolean => {
+    if (typeof chunk === 'string') {
+      written.push(chunk)
+    } else {
+      written.push(chunk.toString())
+    }
+    return true
+  }) as typeof process.stderr.write
+  try {
+    return { result: fn(), written }
+  } finally {
+    process.stderr.write = original
+  }
+}
+
 if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest
 
   describe('resolvePreferredPort', () => {
-    // process.stderr.write を関数差し替えで黙らせ、警告経路のテストで標準エラー出力に
-    // ノイズを出さないようにする。fn の戻り値と捕捉した stderr 書き込みを {result, written} で返す。
-    // chunk → string 変換は if/else で展開している（no-ternary 回避 + 別 helper を
-    // 切り出すと unicorn/consistent-function-scoping が「captures nothing」と警告するため）。
-    const silenceStderr = <Result>(fn: () => Result): { result: Result; written: string[] } => {
-      const written: string[] = []
-      const original = process.stderr.write.bind(process.stderr)
-      process.stderr.write = ((chunk: string | Uint8Array): boolean => {
-        if (typeof chunk === 'string') {
-          written.push(chunk)
-        } else {
-          written.push(chunk.toString())
-        }
-        return true
-      }) as typeof process.stderr.write
-      try {
-        return { result: fn(), written }
-      } finally {
-        process.stderr.write = original
-      }
-    }
-
     it('環境変数が未設定なら DEFAULT_PORT (51729) を返す', () => {
       expect(resolvePreferredPort({})).toBe(51_729)
     })

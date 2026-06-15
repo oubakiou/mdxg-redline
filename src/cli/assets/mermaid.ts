@@ -4,7 +4,7 @@ import type { MermaidMode, RunArgs } from '../parse-args'
 import type { EmbedContext } from '../embed-context'
 import process from 'node:process'
 import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import path from 'node:path'
 import { rewriteEmbeddedMermaid } from '../../core/embed'
 import { scanMermaidFences } from '../../core/scan-mermaid'
 import { translateCli } from '../i18n'
@@ -26,13 +26,13 @@ export const shouldInjectMermaid = (mode: MermaidMode | undefined, markdown: str
 }
 
 const readMermaidRuntime = async (scriptDir: string): Promise<string> => {
-  const path = resolve(scriptDir, 'mermaid.mjs')
+  const runtimePath = path.resolve(scriptDir, 'mermaid.mjs')
   try {
-    return await readFile(path, 'utf8')
+    return await readFile(runtimePath, 'utf8')
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       throw new Error(
-        translateCli('cli.error.asset_missing', { path, target: 'dist/mermaid.mjs' }),
+        translateCli('cli.error.asset_missing', { path: runtimePath, target: 'dist/mermaid.mjs' }),
         { cause: error }
       )
     }

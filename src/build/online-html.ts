@@ -631,7 +631,7 @@ if (import.meta.vitest) {
 
     const readReviewHtmlCsp = async (): Promise<string> => {
       const fs = await import('node:fs/promises')
-      const path = await import('node:path')
+      const { default: path } = await import('node:path')
       const url = await import('node:url')
       const thisDir = path.dirname(url.fileURLToPath(import.meta.url))
       const reviewHtmlPath = path.resolve(thisDir, '..', 'review.html')

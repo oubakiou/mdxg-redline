@@ -5,7 +5,7 @@ import { SHIKI_SUPPORTED_LANGS, type SupportedLang } from '../../core/shiki-alia
 import type { EmbedContext } from '../embed-context'
 import { errorMessage } from '../error-message'
 import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import path from 'node:path'
 import { rewriteEmbeddedShikiLangs } from '../../core/embed'
 import { scanFencedLangs } from '../../core/scan-fenced-langs'
 import { translateCli } from '../i18n'
@@ -36,14 +36,14 @@ export const resolveShikiLangSet = (
 // `dist/shiki-langs/` は commit 対象だが、partial clone や手動削除で欠けるケースがあるため
 // Node 既定の ENOENT より親切な案内に差し替える。
 const readGrammarJson = async (scriptDir: string, lang: SupportedLang): Promise<unknown> => {
-  const path = resolve(scriptDir, 'shiki-langs', `${lang}.json`)
+  const grammarPath = path.resolve(scriptDir, 'shiki-langs', `${lang}.json`)
   try {
-    const content = await readFile(path, 'utf8')
+    const content = await readFile(grammarPath, 'utf8')
     return JSON.parse(content)
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       throw new Error(
-        translateCli('cli.error.asset_missing', { path, target: 'dist/shiki-langs/' }),
+        translateCli('cli.error.asset_missing', { path: grammarPath, target: 'dist/shiki-langs/' }),
         { cause: error }
       )
     }
@@ -106,7 +106,7 @@ if (import.meta.vitest) {
   })
 
   describe('readGrammarJson', () => {
-    const nonexistentScriptDir = resolve('/this-path-should-not-exist-mdxg-redline-test')
+    const nonexistentScriptDir = path.resolve('/this-path-should-not-exist-mdxg-redline-test')
 
     it('ENOENT のときは "npm run build" 案内付きの Error を投げる', async () => {
       try {

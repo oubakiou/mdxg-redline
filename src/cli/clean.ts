@@ -6,7 +6,7 @@
 // 責務分割: pure 分類 (本ファイル `classifyEntries`) / stdout フォーマッタ (`clean-format.ts`)
 // / 実 fs 統合 (`clean-io.ts` の `defaultCleanIo`) / orchestrator (本ファイル `runClean`)。
 
-import { resolve } from 'node:path'
+import path from 'node:path'
 
 import { formatDeleted, formatDryRun } from './clean-format'
 
@@ -87,7 +87,7 @@ const deleteEntries = async (
 ): Promise<void> => {
   await Promise.all(
     entries.map(
-      async (entry: ClassifiedEntry): Promise<void> => io.unlink(resolve(dir, entry.filename))
+      async (entry: ClassifiedEntry): Promise<void> => io.unlink(path.resolve(dir, entry.filename))
     )
   )
 }
@@ -97,7 +97,7 @@ const deleteEntries = async (
  * 戻り値は process exit code 相当 (0 = success, 1 = failure)。
  */
 export const runClean = async (args: CleanArgs, io: CleanIo): Promise<number> => {
-  const dirAbs = resolve(args.dir)
+  const dirAbs = path.resolve(args.dir)
   const filenames = await io.readdir(dirAbs, { recursive: args.recursive })
   const result = classifyEntries(filenames, args.keep)
   if (!args.yes) {
@@ -280,8 +280,8 @@ if (import.meta.vitest) {
         stdout: (text: string): void => {
           output.push(text)
         },
-        unlink: async (path: string): Promise<void> => {
-          unlinked.push(path)
+        unlink: async (filePath: string): Promise<void> => {
+          unlinked.push(filePath)
         },
       }
       const code = await runClean(
@@ -309,8 +309,8 @@ if (import.meta.vitest) {
         stdout: (): void => {
           // unused
         },
-        unlink: async (path: string): Promise<void> => {
-          unlinked.push(path)
+        unlink: async (filePath: string): Promise<void> => {
+          unlinked.push(filePath)
         },
       }
       await runClean(
@@ -338,8 +338,8 @@ if (import.meta.vitest) {
         stdout: (): void => {
           // unused
         },
-        unlink: async (path: string): Promise<void> => {
-          unlinked.push(path)
+        unlink: async (filePath: string): Promise<void> => {
+          unlinked.push(filePath)
         },
       }
       await runClean({ dir: '/tmp/x', keep: new Set(), recursive: true, yes: true }, io)
