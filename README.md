@@ -1,6 +1,6 @@
 # MDXG Redline
 
-[![MKDN](https://img.shields.io/badge/MKDN-review-red?style=for-the-badge)](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME.md#p:mdxg-redline)
+[![MKDN](https://img.shields.io/badge/MKDN-review-red?style=for-the-badge)](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME.md)
 [![npm](https://img.shields.io/npm/v/mdxg-redline.svg?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/mdxg-redline)
 
 [![English](https://img.shields.io/badge/Language-English-blue?style=for-the-badge)](./README.md)

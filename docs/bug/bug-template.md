@@ -1,6 +1,6 @@
 # [BUG] {問題を 1 行で要約 — 重大さ / 影響範囲が伝わる粒度で}
 
-[![MKDN](https://img.shields.io/badge/MKDN-review-red?style=for-the-badge)](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2Fdocs%2Fbug%2Fbug-template.md#p:bug-1)
+[![MKDN](https://img.shields.io/badge/MKDN-review-red?style=for-the-badge)](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2Fdocs%2Fbug%2Fbug-template.md)
 
 > **このファイルはバグ修正プランのテンプレートです**。新しいバグを起票する際は本ファイルをコピーして `docs/bug-<topic>.md` として配置し、`{プレースホルダ}` を埋める / 引用ブロック内のガイドを削除する形で使う。完了したバグ修正は `docs/archive/bug-<topic>.archive.md` にリネームしてアーカイブする（例: `docs/archive/bug-csp-font-src-missing.archive.md`）。
 >
