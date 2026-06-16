@@ -12,6 +12,8 @@
 
 https://github.com/user-attachments/assets/d40ccab2-c7fd-4321-aefc-3e42cc5df9af
 
+https://github.com/user-attachments/assets/4ae15e65-79b9-4384-aef9-6b88ea198ab5
+
 ### Quick start
 
 - **Try now** (no install): [open this README in mkdn.review](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME.md#p:mdxg-redline) — one click in the online viewer
