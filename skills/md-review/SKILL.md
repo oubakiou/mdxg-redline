@@ -1,7 +1,7 @@
 ---
 name: md-review
 description: |
-  mdxg-redline CLI で人間レビュワーに markdown レビュー依頼を出し、feedback.json を Bash ポーリングで待ち、コメントを取り込んで markdown を改訂する標準レビューループを 1 経路でまわす skill。「この仕様書をレビューに出して」「人間にレビューしてもらってから次に進めたい」「レッドラインを引いてもらおう」のように、markdown を人間レビュワーに見せて構造化 JSON のフィードバックを受け取りたい意図がある発話には必ず使う。ファイル名やツール名への直接言及がなくても、「人間のチェックを挟む」「レビューラウンドを回す」「ヒューマンレビュー」を含む依頼で本 skill を使えるか積極的に検討する。ユーザーが `/md-review <path>` のように slash command で起動した場合も同じワークフローを適用する。
+  Run the standard markdown review loop end-to-end with the mdxg-redline CLI: send a markdown document to a human reviewer, wait (via Bash polling) for the feedback.json they export, then apply their location-aware inline comments back into the markdown and revise it. Always use this skill when the user wants human-in-the-loop review of markdown with structured JSON feedback — e.g. "send this spec out for review", "get a human to review this before we move on", "have someone redline this doc", "leave inline comments on this draft". Even without an explicit file name or tool name, actively consider this skill for any request involving a human review round, human-in-the-loop checking, redlining, or structured reviewer feedback on a document. The same workflow applies when the user launches it as a slash command like `/md-review <path>`.
 argument-hint: <path/to/markdown.md>
 license: MIT
 ---
