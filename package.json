@@ -4,13 +4,17 @@
   "description": "Inline review tool for MDXG markdown — capture highlighted comments and export them as structured JSON for LLM agents.",
   "keywords": [
     "annotations",
+    "document-review",
     "feedback",
     "human-in-the-loop",
     "inline-comments",
     "llm",
+    "llm-agent",
     "markdown",
+    "markdown-annotation",
     "markdown-review",
     "mdxg",
+    "redline",
     "single-html"
   ],
   "homepage": "https://github.com/oubakiou/mdxg-redline#readme",
