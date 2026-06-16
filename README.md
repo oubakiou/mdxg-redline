@@ -179,36 +179,7 @@ For the roadmap ahead (extension candidates), see [docs/design/roadmap.md](docs/
 
 ## Development
 
-The build tool is [Vite+ (vp)](https://viteplus.dev/), installed via npm (`vite-plus`) as a dev dependency. The devcontainer and `local_setup.sh` handle setup, so using those is the fastest path for local development.
-
-`vp build` is the shortest command and only produces the main build artifacts (`dist/standalone.html` / `dist/embed-template.html`). To produce the full distribution set (mermaid runtime, KaTeX runtime, and the review-request CLI as well), run `npm run build`.
-
-```bash
-vp build        # Generates only dist/standalone.html and dist/embed-template.html (shortest)
-npm run build   # Generates the full distribution (mermaid / katex / standalone / embed-template / review-request)
-vp check --fix  # Runs format / lint / type checks together (--fix auto-fixes)
-vp test         # Runs in-source tests
-```
-
-Design intent, structure, and trade-offs are documented in the design document [docs/design/DESIGN.md](docs/design/DESIGN.md). Table of contents:
-
-- [1. Overview](docs/design/DESIGN.md#1-概要)
-- [2. Constraints](docs/design/DESIGN.md#2-制約)
-- [3. User flow](docs/design/DESIGN.md#3-ユーザーフロー)
-- [4. Architecture](docs/design/DESIGN.md#4-アーキテクチャ)
-- [5. Data model](docs/design/DESIGN.md#5-データモデル)
-- [6. Comment anchoring](docs/design/DESIGN.md#6-コメントのアンカリング)
-- [7. Persistence layer](docs/design/DESIGN.md#7-永続化レイヤー)
-- [8. Workspace protocol](docs/design/DESIGN.md#8-ワークスペースプロトコル)
-- [9. Boot sequence](docs/design/DESIGN.md#9-起動シーケンス)
-- [10. Browser compatibility](docs/design/DESIGN.md#10-ブラウザ互換性)
-- [11. Security and privacy](docs/design/DESIGN.md#11-セキュリティとプライバシー)
-- [12. MDXG compliance status and design decisions](docs/design/DESIGN.md#12-mdxg-準拠状況と設計判断)
-
-The build pipeline (formerly §13) and UI internationalization (formerly §14) have been split into standalone documents:
-
-- [Build pipeline](docs/design/build-pipeline.md) — vp build / split-outputs / distribution artifacts / source responsibility boundaries
-- [UI internationalization](docs/design/i18n.md) — language resolution priority / translation dictionaries and runtime / DOM integration
+See [docs/design/development.md](docs/design/development.md) for developer-facing information.
 
 ## License
 

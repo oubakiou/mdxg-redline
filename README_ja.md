@@ -179,36 +179,7 @@ WASD ベースのグローバルキーマップで左手だけで全 UI 操作�
 
 ## 開発
 
-ビルドツールは [Vite+ (vp)](https://viteplus.dev/) を使用し、npm の devDependency（`vite-plus`）として導入しています。devcontainer / `local_setup.sh` がセットアップを担当するので、ローカル開発時はそれらを利用するのが最短です。
-
-`vp build` は本体ビルド（`dist/standalone.html` / `dist/embed-template.html`）のみを行う最短コマンド。配布物一式（mermaid runtime / KaTeX runtime / review-request CLI まで含む）を揃えるには `npm run build` を使う。
-
-```bash
-vp build        # dist/standalone.html と dist/embed-template.html を生成（最短）
-npm run build   # 配布物一式（mermaid / katex / standalone / embed-template / review-request）を生成
-vp check --fix  # format / lint / type-check をまとめて実行（--fix で自動修正）
-vp test         # in-source tests を実行
-```
-
-設計の意図・構成・割り切りは設計ドキュメント [docs/design/DESIGN.md](docs/design/DESIGN.md) にまとめている。目次:
-
-- [1. 概要](docs/design/DESIGN.md#1-概要)
-- [2. 制約](docs/design/DESIGN.md#2-制約)
-- [3. ユーザーフロー](docs/design/DESIGN.md#3-ユーザーフロー)
-- [4. アーキテクチャ](docs/design/DESIGN.md#4-アーキテクチャ)
-- [5. データモデル](docs/design/DESIGN.md#5-データモデル)
-- [6. コメントのアンカリング](docs/design/DESIGN.md#6-コメントのアンカリング)
-- [7. 永続化レイヤー](docs/design/DESIGN.md#7-永続化レイヤー)
-- [8. ワークスペースプロトコル](docs/design/DESIGN.md#8-ワークスペースプロトコル)
-- [9. 起動シーケンス](docs/design/DESIGN.md#9-起動シーケンス)
-- [10. ブラウザ互換性](docs/design/DESIGN.md#10-ブラウザ互換性)
-- [11. セキュリティとプライバシー](docs/design/DESIGN.md#11-セキュリティとプライバシー)
-- [12. MDXG 準拠状況と設計判断](docs/design/DESIGN.md#12-mdxg-準拠状況と設計判断)
-
-ビルドパイプライン（旧 §13）と UI 国際化（旧 §14）は独立ドキュメントに分離した:
-
-- [ビルドパイプライン](docs/design/build-pipeline.md) — vp build / split-outputs / 配布物 / ソース構成の責務境界
-- [UI 国際化](docs/design/i18n.md) — 言語決定の優先順位 / 翻訳辞書とランタイム / DOM 連携
+開発者向けの情報は [docs/design/development.md](docs/design/development.md) を参照。
 
 ## ライセンス
 
