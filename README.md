@@ -6,28 +6,35 @@
 [![English](https://img.shields.io/badge/Language-English-blue?style=for-the-badge)](./README.md)
 [![日本語](https://img.shields.io/badge/言語-日本語-lightgrey?style=for-the-badge)](./README_ja.md)
 
-**MDXG-compliant markdown review tool — runs as a single standalone HTML file, exports review comments as structured JSON for LLM agents.**
+**Select any range in Markdown, leave inline comments, and turn a human's review into structured JSON an LLM can process directly.** A markdown review tool that runs entirely in the browser as a single standalone HTML file.
 
 > Third-party implementation of [vercel-labs/mdxg](https://github.com/vercel-labs/mdxg). Conforms to the MDXG specification, but is not affiliated with Vercel Labs or the upstream repository.
 
 https://github.com/user-attachments/assets/d40ccab2-c7fd-4321-aefc-3e42cc5df9af
 
-Introduction article: [Accelerating Document Reviews: Introducing MDXG Redline, a High-Speed Markdown Review Tool](https://zenn.dev/oubakiou/articles/764d92a5018e94?locale=en)
+### Quick start
 
-MDXG Redline is a browser tool that lets an LLM agent receive feedback on long-form markdown from a human reviewer as **location-aware structured JSON instead of free-form prose**. Sitting between LLM agents and human reviewers, it replaces the ambiguous "paste markdown, receive prose feedback" loop with a **machine-readable feedback artifact**.
+- **Try now** (no install): [open this README in mkdn.review](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME.md#p:mdxg-redline) — one click in the online viewer
+- **Local review**: `npx mdxg-redline draft.md` — generates review.html and opens it in your browser
+- **Agent loop**: install the `md-review` skill and just tell your agent "please request a review"
+- **Privacy**: the standalone / CLI builds never send your pasted body or comments anywhere (fully local). The online build likewise sends nothing outbound — only the `?url=` public raw fetch (allowlisted)
+
+See the [Usage](#usage) section below for details on each path.
+
+Introduction article: [Accelerating Document Reviews: Introducing MDXG Redline, a High-Speed Markdown Review Tool](https://zenn.dev/oubakiou/articles/764d92a5018e94?locale=en)
 
 ## Features
 
-- **Read-only**: Rendering conforms to [MDXG Viewer](https://github.com/vercel-labs/mdxg), the read-only renderer profile of the Markdown Experience Guidelines
-- **Location-aware inline comments**: Select any text range, leave a comment, and export JSON that pinpoints each comment with `headingPath` and `sourceLine`
+- **Smartphone support**: drive `TOC` / `Comment` / `Search` from the footer
 - **Virtual Pages (Stacked View)**: H1 / H2 boundaries split the document into paper-like sheets stacked vertically; the entire document can be read end-to-end with a single scroll gesture (Word / Pages style)
 - **WASD keyboard navigation**: `a / w / s / d / e / f` cover pane movement, scrolling, activation, and search entirely with the left hand
-- **Smartphone support**: drive `TOC` / `Comment` / `Search` from the footer
 - **Syntax highlighting**: Fenced code blocks render for all Shiki-bundled languages (~235 grammars)
 - **Mermaid support**: ` ```mermaid ` blocks render as SVG
 - **Math rendering**: write math with `$...$` / `$$...$$` syntax like `$i\hbar \frac{\partial}{\partial t}\Psi(\mathbf{r}, t) = \hat{H}\Psi(\mathbf{r}, t)$`, rendered via KaTeX as $i\hbar \frac{\partial}{\partial t}\Psi(\mathbf{r}, t) = \hat{H}\Psi(\mathbf{r}, t)$.
 - **Footnotes**: GitHub Flavored Markdown footnote syntax — inline references like `text with reference[^note]` plus definitions like `[^note]: footnote body` at the end of the document. Footnotes embedded in body text[^readme-fn-example] are automatically gathered into a "Footnotes" section at the end of the page.
 - **Swappable markdown preview stylesheet**: Replace the body preview CSS with your own via the CLI `--markdown-css <path>` flag
+- **Read-only**: Rendering conforms to [MDXG Viewer](https://github.com/vercel-labs/mdxg), the read-only renderer profile of the Markdown Experience Guidelines
+- **Location-aware inline comments**: Select any text range, leave a comment, and export JSON that pinpoints each comment with `headingPath` and `sourceLine`
 
 ## Usage
 
@@ -140,19 +147,9 @@ When the output directory (the CLI's `output-dir` or the folder chosen via `Writ
 *-feedback.json
 ```
 
-### Keyboard shortcuts
+## Development
 
-A WASD-based global keymap lets you drive the entire UI with the left hand only. All shortcuts are single keys without modifiers, so no browser-native shortcut (`Cmd/Ctrl+F` etc.) is overridden.
-
-| Key                                  | Action                                                                             |
-| ------------------------------------ | ---------------------------------------------------------------------------------- |
-| `a` / `d`                            | Move focus to the previous / next pane (TOC ↔ doc ↔ comments, cycles at both ends) |
-| `w` / `s`                            | Move focus up / down within the current pane (line scroll in the doc pane)         |
-| `e`                                  | Activate the focused item (same as `Enter` / click)                                |
-| `f`                                  | Open the in-document search                                                        |
-| `h`                                  | Open the keyboard shortcuts help                                                   |
-| `Esc`                                | Close any open modal, menu, or search                                              |
-| `↑` / `↓` / `Home` / `End` / `Enter` | Work in parallel for MDXG §13 compliance (in-pane movement / activate)             |
+See [docs/design/development.md](docs/design/development.md) for developer-facing information.
 
 ## MDXG compliance status
 
@@ -176,10 +173,6 @@ The [Markdown Experience Guidelines (MDXG)](https://github.com/vercel-labs/mdxg)
 | §16 Footnotes            | SHOULD (Ext.)  | Compliant      |
 
 For the roadmap ahead (extension candidates), see [docs/design/roadmap.md](docs/design/roadmap.md). For MDXG per-section compliance status and design decisions, see [docs/design/DESIGN.md §12](docs/design/DESIGN.md#12-mdxg-準拠状況と設計判断).
-
-## Development
-
-See [docs/design/development.md](docs/design/development.md) for developer-facing information.
 
 ## License
 

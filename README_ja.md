@@ -6,28 +6,35 @@
 [![English](https://img.shields.io/badge/Language-English-lightgrey?style=for-the-badge)](./README.md)
 [![日本語](https://img.shields.io/badge/言語-日本語-blue?style=for-the-badge)](./README_ja.md)
 
-**MDXG に準拠した markdown レビューツール — 単一 HTML ファイルだけで動作し、レビューコメントを構造化 JSON として書き出して LLM エージェントに引き渡す。**
+**Markdown を範囲選択してインラインコメントし、人間のレビューを LLM がそのまま処理できる構造化 JSON にする。** ブラウザだけで動く、単一 HTML ファイルの markdown レビューツール。
 
 > [vercel-labs/mdxg](https://github.com/vercel-labs/mdxg) のサードパーティ実装です。規格としての MDXG に準拠しますが、Vercel Labs / 本家リポジトリとは無関係です。
 
 https://github.com/user-attachments/assets/d40ccab2-c7fd-4321-aefc-3e42cc5df9af
 
-紹介記事: [コードの読み書きが減ったら次はドキュメントレビューの高速化が必要になる。高速MDレビューツール MDXG Redlineの紹介](https://zenn.dev/oubakiou/articles/764d92a5018e94)
+### Quick start
 
-MDXG Redline は、LLM エージェントが人間レビュワーから「長文 markdown に対するフィードバック」を **散文の感想ではなく位置情報付きの構造化 JSON** として受け取るためのブラウザツールです。LLM エージェントと人間レビュワーの間に立ち、「markdown を貼って、散文のフィードバックを受け取る」という曖昧なループを、**機械可読なフィードバック成果物** に置き換えます。
+- **Try now**（インストール不要）: [mkdn.review でこの README を開く](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME_ja.md#p:mdxg-redline) — online viewer のワンクリック体験
+- **Local review**: `npx mdxg-redline draft.md` — review.html を生成してブラウザで開く
+- **Agent loop**: `md-review` skill を入れて、エージェントに「レビュー依頼して」と言うだけ
+- **Privacy**: standalone / CLI 版は貼り付けた本文・コメントが一切外に出ない（完全ローカル完結）。online 版も本文・コメントの外部送信は無く、`?url=` の公開 raw 取得のみ（allowlist 限定）
+
+各導線の詳しい使い方は下記「[使い方](#使い方)」節を参照。
+
+紹介記事: [コードの読み書きが減ったら次はドキュメントレビューの高速化が必要になる。高速MDレビューツール MDXG Redlineの紹介](https://zenn.dev/oubakiou/articles/764d92a5018e94)
 
 ## 特徴
 
-- **読み取り専用**: 表示は [MDXG Viewer](https://github.com/vercel-labs/mdxg) (Markdown Experience Guidelines の読み取り専用レンダラ準拠レベル) に準拠
-- **位置情報付きインラインコメント**: 任意のテキスト範囲を選択してコメントを残し、`headingPath` と `sourceLine` で位置を特定できる JSON を出力
+- **スマートフォン対応**: `TOC` / `Comment` / `Search` をフッターから操作
 - **Virtual Pages (Stacked View)**: H1 / H2 で区切られたページを紙シート状に縦に並べ、スクロール操作だけで全ページを通読できる (Word / Pages 風)
 - **WASD ベースのキーボードナビゲーション**: `a / w / s / d / e / f` の左手のみで pane 移動・スクロール・activate・検索が完結
-- **スマートフォン対応**: `TOC` / `Comment` / `Search` をフッターから操作
 - **シンタックスハイライト**: Shiki bundled 全言語 (約 235) のフェンスコードを描画
 - **Mermaid 対応**: ` ```mermaid ` ブロックを SVG に描画
 - **数式描画**: `$i\hbar \frac{\partial}{\partial t}\Psi(\mathbf{r}, t) = \hat{H}\Psi(\mathbf{r}, t)$` のような `$...$` / `$$...$$` 記法で、 $i\hbar \frac{\partial}{\partial t}\Psi(\mathbf{r}, t) = \hat{H}\Psi(\mathbf{r}, t)$ のように数式を描画。
 - **脚注**: `本文中の参照[^note]` と末尾の `[^note]: 脚注の本文` を組み合わせる GitHub Flavored Markdown 互換の記法をサポート。本文に脚注[^readme-fn-example]を埋め込むと、ページ末尾の "Footnotes" セクションに自動で集約される。
 - **マークダウンプレビューのスタイル差し替え**: 本文プレビュー部分の CSS を CLI `--markdown-css <path>` でユーザー定義 CSS に差し替え可能
+- **読み取り専用**: 表示は [MDXG Viewer](https://github.com/vercel-labs/mdxg) (Markdown Experience Guidelines の読み取り専用レンダラ準拠レベル) に準拠
+- **位置情報付きインラインコメント**: 任意のテキスト範囲を選択してコメントを残し、`headingPath` と `sourceLine` で位置を特定できる JSON を出力
 
 ## 使い方
 
@@ -140,19 +147,9 @@ npx mdxg-redline --clean <dir> -r      # サブディレクトリ配下も再帰
 *-feedback.json
 ```
 
-### キーボードショートカット
+## 開発
 
-WASD ベースのグローバルキーマップで左手だけで全 UI 操作が完結する。すべて修飾キーなしの単独キーで、ブラウザ native shortcut (`Cmd/Ctrl+F` 等) は上書きしない。
-
-| キー                                 | 動作                                                         |
-| ------------------------------------ | ------------------------------------------------------------ |
-| `a` / `d`                            | 隣接 pane へ focus 移動（TOC ↔ doc ↔ comments、両端で wrap） |
-| `w` / `s`                            | pane 内アイテムを上下に移動（doc-pane では line scroll）     |
-| `e`                                  | focus 中のアイテムを activate（`Enter` / クリック相当）      |
-| `f`                                  | ドキュメント内検索を開く                                     |
-| `h`                                  | キーボードショートカット help を開く                         |
-| `Esc`                                | 開いている modal / menu / 検索を閉じる                       |
-| `↑` / `↓` / `Home` / `End` / `Enter` | MDXG §13 互換のため並立して動作（pane 内移動・activate）     |
+開発者向けの情報は [docs/design/development.md](docs/design/development.md) を参照。
 
 ## MDXG 準拠状況
 
@@ -176,10 +173,6 @@ WASD ベースのグローバルキーマップで左手だけで全 UI 操作�
 | §16 Footnotes            | SHOULD (拡張) | 準拠     |
 
 今後のロードマップ（拡張候補）は [docs/design/roadmap.md](docs/design/roadmap.md) を参照。MDXG 各セクションの準拠状況と設計判断は [docs/design/DESIGN.md §12](docs/design/DESIGN.md#12-mdxg-準拠状況と設計判断) を参照。
-
-## 開発
-
-開発者向けの情報は [docs/design/development.md](docs/design/development.md) を参照。
 
 ## ライセンス
 
