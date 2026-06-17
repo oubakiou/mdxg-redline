@@ -9,6 +9,7 @@ import { applyI18nDataset } from './i18n/i18n-browser'
 import { buildReviewExportPayload } from '../core/review-export'
 import { commentCountLabel as formatCommentCount } from './comments/comment-count-label'
 import { computeDocHash } from '../core/embed'
+import { transformFrontMatter } from '../core/front-matter'
 import { loadDocumentState, markFeedbackUnsaved, state } from './state/app-state'
 import { renderAll, scrollToTargetAfterRender } from './navigation/navigation-orchestrator'
 import { bootstrapReviewApp } from './app-wiring'
@@ -20,17 +21,18 @@ interface LoadResult {
 }
 
 // loadFromMarkdown を 10 statements 以内に収めるため state 初期化部分を別関数に切り出す。
-// docHash は state.docHash に書き込んだ後 caller でも `formatLoadedStatus` に渡したい一方、
-// state.docHash の型が `string | null` のため TypeScript narrow を維持するには戻り値経由が手早い。
+// docHash は元テキストから計算し CLI 生成時と一致させる。transformFrontMatter は
+// 元 front matter と同じ改行数を維持する行数保存変換のため、本文の sourceLine は元と一致する。
 const initStateFromMarkdown = async (name: string, text: string): Promise<LoadResult> => {
   const docHash = await computeDocHash(text)
-  const pages = appendFootnotesPage(splitIntoPages(text, { docName: name }), text)
+  const rendered = transformFrontMatter(text)
+  const pages = appendFootnotesPage(splitIntoPages(rendered, { docName: name }), rendered)
   const target = resolveTargetFromHash(globalThis.location.hash)
   loadDocumentState({
     activePageIndex: target.pageIndex,
     docHash,
     docName: name,
-    markdown: text,
+    markdown: rendered,
     pages,
   })
   return { docHash, target }

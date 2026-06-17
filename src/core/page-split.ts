@@ -540,4 +540,44 @@ if (import.meta.vitest) {
       expect(reconstructed).toBe(markdown)
     })
   })
+
+  describe('splitIntoPages: front matter 変換との統合 (行数保存)', () => {
+    // transformFrontMatter は行数保存変換を行うため、変換後に splitIntoPages を通しても
+    // 本文 page の sourceLineStart が元 markdown と一致することを確認する回帰テスト。
+    // front-matter.ts 側の単体テストと合わせて sourceLine の contract を守る。
+
+    it('単純 key-value の front matter では本文 page の sourceLineStart が元と一致する', async () => {
+      const { transformFrontMatter } = await import('./front-matter')
+      const md = '---\ntitle: X\ntags: Y\n---\n\n# Chapter\n\nbody\n'
+      const pages = splitIntoPages(transformFrontMatter(md))
+      expect(pages[1].title).toBe('Chapter')
+      expect(pages[1].sourceLineStart).toBe(6)
+    })
+
+    it('コメント・リスト・ブロックスカラー混在でも sourceLineStart が元と一致する', async () => {
+      const { transformFrontMatter } = await import('./front-matter')
+      const md = [
+        '---',
+        '# metadata',
+        'title: X',
+        'description: |',
+        '  Long desc.',
+        '  More desc.',
+        'tags:',
+        '  - ai',
+        '  - llm',
+        '# end',
+        '---',
+        '',
+        '# Chapter',
+        '',
+        'body',
+        '',
+      ].join('\n')
+      const pages = splitIntoPages(transformFrontMatter(md))
+      expect(pages[1].title).toBe('Chapter')
+      // 元 markdown で # Chapter は行13 (1-origin)
+      expect(pages[1].sourceLineStart).toBe(13)
+    })
+  })
 }

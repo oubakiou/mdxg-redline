@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { marked } from "marked";
-import { basename, dirname, resolve } from "node:path";
+import path from "node:path";
 import process$1 from "node:process";
 import { readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -2017,12 +2017,12 @@ var shouldInjectKatex = (mode, markdown) => {
 	const counts = countMath(markdown);
 	return counts.inline + counts.display > 0;
 };
-var readKatexAsset = async (path) => {
+var readKatexAsset = async (assetPath) => {
 	try {
-		return await readFile(path, "utf8");
+		return await readFile(assetPath, "utf8");
 	} catch (error) {
 		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(translateCli("cli.error.asset_missing", {
-			path,
+			path: assetPath,
 			target: "dist/katex/"
 		}), { cause: error });
 		throw error;
@@ -2033,7 +2033,7 @@ var MATH_SIZE_HINT = {
 	minimal: "+~250 KB"
 };
 var readKatexAssets = async (scriptDir, fontsMode) => {
-	const [js, minimalCss] = await Promise.all([readKatexAsset(resolve(scriptDir, "katex", "katex.mjs")), readKatexAsset(resolve(scriptDir, "katex", "katex.css"))]);
+	const [js, minimalCss] = await Promise.all([readKatexAsset(path.resolve(scriptDir, "katex", "katex.mjs")), readKatexAsset(path.resolve(scriptDir, "katex", "katex.css"))]);
 	const sizeHintGzip = MATH_SIZE_HINT[fontsMode];
 	if (fontsMode === "minimal") return {
 		js,
@@ -2041,7 +2041,7 @@ var readKatexAssets = async (scriptDir, fontsMode) => {
 		sizeHintGzip
 	};
 	return {
-		fontsExtraCss: await readKatexAsset(resolve(scriptDir, "katex", "katex-fonts-extra.css")),
+		fontsExtraCss: await readKatexAsset(path.resolve(scriptDir, "katex", "katex-fonts-extra.css")),
 		js,
 		minimalCss,
 		sizeHintGzip
@@ -2122,12 +2122,12 @@ var shouldInjectMermaid = (mode, markdown) => {
 	return scanMermaidFences(markdown) > 0;
 };
 var readMermaidRuntime = async (scriptDir) => {
-	const path = resolve(scriptDir, "mermaid.mjs");
+	const runtimePath = path.resolve(scriptDir, "mermaid.mjs");
 	try {
-		return await readFile(path, "utf8");
+		return await readFile(runtimePath, "utf8");
 	} catch (error) {
 		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(translateCli("cli.error.asset_missing", {
-			path,
+			path: runtimePath,
 			target: "dist/mermaid.mjs"
 		}), { cause: error });
 		throw error;
@@ -2198,7 +2198,7 @@ var extractDocHash = (payload) => {
 */
 var resolveFeedbackPath = (docName, docHash, outputPath) => {
 	const mdFileName = sanitizeMdFileName(stripMarkdownExt(docName));
-	return resolve(dirname(outputPath), deriveFeedbackJsonName(mdFileName, docHash));
+	return path.resolve(path.dirname(outputPath), deriveFeedbackJsonName(mdFileName, docHash));
 };
 var extractErrorCode = (error) => {
 	if (error instanceof Error && "code" in error) return String(error.code);
@@ -2301,13 +2301,13 @@ var resolveShikiLangSet = (mode, markdown) => {
 	return new Set(mode.langs);
 };
 var readGrammarJson = async (scriptDir, lang) => {
-	const path = resolve(scriptDir, "shiki-langs", `${lang}.json`);
+	const grammarPath = path.resolve(scriptDir, "shiki-langs", `${lang}.json`);
 	try {
-		const content = await readFile(path, "utf8");
+		const content = await readFile(grammarPath, "utf8");
 		return JSON.parse(content);
 	} catch (error) {
 		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(translateCli("cli.error.asset_missing", {
-			path,
+			path: grammarPath,
 			target: "dist/shiki-langs/"
 		}), { cause: error });
 		throw error;
@@ -2347,30 +2347,31 @@ var resolveInput = async (inputPath, documentName) => {
 	}
 	const markdown = await readFile(inputPath, "utf8");
 	return {
-		defaultOutputDir: dirname(inputPath),
-		docName: documentName ?? basename(inputPath),
+		defaultOutputDir: path.dirname(inputPath),
+		docName: documentName ?? path.basename(inputPath),
 		markdown
 	};
 };
 //#endregion
 //#region src/cli/compose-review-html.ts
-var readReviewHtml = async (path) => {
+var readReviewHtml = async (templatePath) => {
 	try {
-		return await readFile(path, "utf8");
+		return await readFile(templatePath, "utf8");
 	} catch (error) {
 		if (error instanceof Error && "code" in error && error.code === "ENOENT") throw new Error(translateCli("cli.error.asset_missing", {
-			path,
+			path: templatePath,
 			target: "dist/embed-template.html"
 		}), { cause: error });
 		throw error;
 	}
 };
 var prepareEmbed = async (args) => {
-	const scriptDir = dirname(fileURLToPath(import.meta.url));
-	const [input, reviewHtml] = await Promise.all([resolveInput(args.inputPath, args.documentName), readReviewHtml(resolve(scriptDir, "embed-template.html"))]);
+	const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+	const [input, reviewHtml] = await Promise.all([resolveInput(args.inputPath, args.documentName), readReviewHtml(path.resolve(scriptDir, "embed-template.html"))]);
 	const docHash = await computeDocHash(input.markdown);
 	const mdFileName = sanitizeMdFileName(stripMarkdownExt(input.docName));
-	const outputPath = resolve(args.outputDir ?? input.defaultOutputDir, deriveReviewHtmlName(mdFileName, docHash));
+	const targetDir = args.outputDir ?? input.defaultOutputDir;
+	const outputPath = path.resolve(targetDir, deriveReviewHtmlName(mdFileName, docHash));
 	return {
 		docHash,
 		docName: input.docName,
@@ -2489,14 +2490,14 @@ var classifyEntries = (filenames, keepHashes) => {
 	};
 };
 var deleteEntries = async (dir, entries, io) => {
-	await Promise.all(entries.map(async (entry) => io.unlink(resolve(dir, entry.filename))));
+	await Promise.all(entries.map(async (entry) => io.unlink(path.resolve(dir, entry.filename))));
 };
 /**
 * `--clean` の実行エントリ。CLI 経由でも他テスト経路でも使えるよう、I/O は引数で受け取る。
 * 戻り値は process exit code 相当 (0 = success, 1 = failure)。
 */
 var runClean = async (args, io) => {
-	const dirAbs = resolve(args.dir);
+	const dirAbs = path.resolve(args.dir);
 	const result = classifyEntries(await io.readdir(dirAbs, { recursive: args.recursive }), args.keep);
 	if (!args.yes) {
 		io.stdout(formatDryRun(dirAbs, result));
@@ -2711,7 +2712,7 @@ var serveOnceAndAutoStop = async (filePath) => {
 				setTimeout(stop, SERVE_AUTOSTOP_MS);
 			});
 		}),
-		url: `http://localhost:${String(listened.port)}/${encodeURIComponent(basename(filePath))}`
+		url: `http://localhost:${String(listened.port)}/${encodeURIComponent(path.basename(filePath))}`
 	};
 };
 var openOutput = async (outputPath) => {
