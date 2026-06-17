@@ -23,7 +23,7 @@ https://github.com/user-attachments/assets/4ae15e65-79b9-4384-aef9-6b88ea198ab5
 
 See the [Usage](#usage) section below for details on each path.
 
-Introduction article: [Accelerating Document Reviews: Introducing MDXG Redline, a High-Speed Markdown Review Tool](https://zenn.dev/oubakiou/articles/764d92a5018e94?locale=en)
+Introduction article: [The next bottleneck after AI writes your code is reviewing the docs it writes](https://dev.to/kiou_ouba_afbd120335456f3/the-next-bottleneck-after-ai-writes-your-code-is-reviewing-the-docs-it-writes-3pc7)
 
 ## Features
 
