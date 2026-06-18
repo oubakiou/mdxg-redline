@@ -44,6 +44,16 @@ Introduction article: [The next bottleneck after AI writes your code is reviewin
 
 Open [`https://mkdn.review/`](https://mkdn.review/) in your browser. Example: [view this README in the online viewer](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME.md#p:mdxg-redline).
 
+#### Self-hosting
+
+Deploy the `dist/hosting/` directory from this repository to any static hosting service to run the online edition on your own domain. No server-side code is required — it works with static file serving alone.
+
+**Customizing the URL allowlist**: To change which hosts are allowed for the `?url=` parameter, rebuild with the `MDXG_ONLINE_CONNECT_SRC` environment variable (defaults are `raw.githubusercontent.com` and `gist.githubusercontent.com`). Added hosts must support CORS.
+
+```bash
+MDXG_ONLINE_CONNECT_SRC="https://example.com,https://cdn.example.com" npm run build
+```
+
 ### Standalone build
 
 Download `standalone.html` from [GitHub Releases](https://github.com/oubakiou/mdxg-redline/releases) and open it in your browser.

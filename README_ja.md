@@ -44,6 +44,16 @@ https://github.com/user-attachments/assets/4ae15e65-79b9-4384-aef9-6b88ea198ab5
 
 ブラウザで [`https://mkdn.review/`](https://mkdn.review/) を開く。 例: [本 README を online viewer で開く](https://mkdn.review/?url=https%3A%2F%2Fraw.githubusercontent.com%2Foubakiou%2Fmdxg-redline%2Frefs%2Fheads%2Fmain%2FREADME_ja.md#p:mdxg-redline)。
 
+#### セルフホスティング
+
+リポジトリの `dist/hosting/` ディレクトリを静的ホスティングサービスにデプロイすることで、独自ドメインでオンライン版を運用できる。サーバーサイドのコードは不要で、ファイル配信のみで動作する。
+
+**URL allowlist のカスタマイズ**: `?url=` パラメータで取得可能なホストを変更するには、環境変数 `MDXG_ONLINE_CONNECT_SRC` を設定してビルドし直す（既定は `raw.githubusercontent.com` と `gist.githubusercontent.com`）。追加するホストは CORS に対応している必要がある。
+
+```bash
+MDXG_ONLINE_CONNECT_SRC="https://example.com,https://cdn.example.com" npm run build
+```
+
 ### standalone 版
 
 [GitHub Releases](https://github.com/oubakiou/mdxg-redline/releases) から `standalone.html` をダウンロードし、ブラウザで開いて利用する。
