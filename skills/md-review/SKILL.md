@@ -8,120 +8,120 @@ license: MIT
 
 # md-review
 
-mdxg-redline CLI を使った標準レビューループを Claude が単独で回せるようにする skill。1 ラウンドの内訳は次のとおり：
+A skill that lets Claude run the standard review loop end-to-end using the mdxg-redline CLI. One round consists of the following steps:
 
-1. レビュー対象 markdown を準備する (既存 .md を読む、または Claude が生成する、またはユーザーから指定された `$ARGUMENTS`)
-2. `scripts/request-review.sh <input.md>` で配布 HTML を生成しブラウザを起動、stdout から `REVIEW_HTML` / `FEEDBACK_JSON` の 2 行を取得する
-3. `scripts/wait-feedback.sh <feedback.json>` で feedback.json の出現をポーリング待機する
-4. 検出した feedback.json を読み、コメントを markdown に反映する
-5. 更新された markdown で再レビュー依頼を出す
-6. ユーザーに「次ラウンドへ進む / レビュー生成物をクリーニングして終了 / そのまま終了」のどれにするかを確認する
+1. Prepare the target markdown (read an existing .md, have Claude generate one, or use the path specified by the user via `$ARGUMENTS`)
+2. Run `scripts/request-review.sh <input.md>` to generate the review HTML and launch the browser; capture the `REVIEW_HTML` / `FEEDBACK_JSON` paths from stdout
+3. Run `scripts/wait-feedback.sh <feedback.json>` to poll until the feedback.json appears
+4. Read the detected feedback.json and apply the comments to the markdown
+5. Send the updated markdown out for another review
+6. Ask the user whether to proceed to the next round, clean up review artifacts and finish, or finish as-is
 
-レビュワーがコメントを書く時間 (数分〜数時間) は Claude のターンが空くので、ポーリング期間中に他のタスクをするか sleep して待つ。
+The reviewer needs time to write comments (minutes to hours), so Claude's turn is free during polling — either work on other tasks or sleep.
 
-## 起動パターン
+## Trigger patterns
 
-- **自動 triggering**: ユーザーが「レビュー依頼」「人間レビューを挟みたい」「mdxg-redline」「レッドライン」等を含む発話をしたとき、description に従って Claude が自動的に本 skill を選ぶ
-- **slash command 起動**: ユーザーが `/md-review path/to/markdown.md` のように明示起動した場合、その引数を `INPUT_MD` として使う。引数が空 or 自然言語の場合は、Claude がコンテキストから markdown を特定する
-- **自然言語でパス指定**: ユーザーが「`docs/spec.md` をレビューに出して」のようにパスを含めて発話した場合も、そのパスを `INPUT_MD` として使う
+- **Auto-triggering**: When the user says things like "send this for review", "I want a human review", "mdxg-redline", "redline", etc., Claude automatically selects this skill based on the description
+- **Slash command**: When the user explicitly runs `/md-review path/to/markdown.md`, that argument is used as `INPUT_MD`. If the argument is empty or natural language, Claude identifies the markdown from context
+- **Natural language path**: When the user says something like "send `docs/spec.md` out for review" with an embedded path, that path is used as `INPUT_MD`
 
-## いつ使うか / 使わないか
+## When to use / not use
 
-**使う**
+**Use**
 
-- 「この仕様書を人間にレビューしてほしい」「mdxg-redline でコメント入れてもらって」のように、人間からの構造化フィードバックを **明示的に求めている** とき
-- レビュー → 改訂 → 再レビューのラウンドを **複数回** 回したいとき
-- Claude が markdown を生成した後、自己レビューではなく人間チェックを挟みたいとき
+- When the user explicitly requests structured feedback from a human — e.g. "have someone review this spec", "get comments via mdxg-redline"
+- When the user wants to run multiple rounds of review → revision → re-review
+- When Claude has generated markdown and the user wants a human check rather than self-review
 
-**使わない**
+**Do not use**
 
-- レビュワーが人間ではなく LLM の場合 (本 skill は人間レビュワーが書く構造化 JSON フィードバックを処理する skill であり、LLM-as-judge のような自動評価には使わない)
-- 「この markdown を要約して」「フォーマット直して」のように、人間レビューが介在しない単純な markdown 操作
+- When the reviewer is an LLM, not a human (this skill processes structured JSON feedback written by human reviewers; it is not for LLM-as-judge style automated evaluation)
+- For simple markdown operations that don't involve human review — e.g. "summarize this markdown", "fix the formatting"
 
-## ワークフロー全体図
+## Workflow overview
 
 ```text
-[ユーザー指示]
-   └─ Claude が markdown を準備 (生成 or 既存ファイル読み込み)
+[User instruction]
+   └─ Claude prepares the markdown (generate or read existing file)
         └─ Bash: npx mdxg-redline <input.md> [output-dir]
-             └─ stdout から <name>-<docHash>-review.html のパスを取得
-                  └─ ブラウザがレビュワー側で起動 (環境依存)
-                       └─ Bash: feedback.json の出現をポーリング
-                            └─ feedback.json を読み込み・パース
-                                 └─ comments[] を markdown に反映
-                                      └─ ユーザーに「次ラウンド / クリーニング / そのまま終了」を確認
-                                           └─ Round N+1 or クリーニング or 終了
+             └─ Capture <name>-<docHash>-review.html path from stdout
+                  └─ Browser opens on the reviewer's side (environment-dependent)
+                       └─ Bash: poll for feedback.json
+                            └─ Read and parse feedback.json
+                                 └─ Apply comments[] to the markdown
+                                      └─ Ask user: "next round / clean up / finish as-is"
+                                           └─ Round N+1 or clean up or finish
 ```
 
-## ステップ詳細
+## Step details
 
-### 1. レビュー対象 markdown の準備
+### 1. Prepare the target markdown
 
-レビュー対象 markdown のパスを `INPUT_MD` として確定する。
+Determine the path to the target markdown as `INPUT_MD`.
 
-- ユーザーが既存 .md のパスを示している場合 (slash command 引数 / 自然言語のいずれでも): そのパスを使う
-- Claude がこれから markdown を生成する場合: 適切なディレクトリに Write ツールで保存してパスを確定する。生成物の出力先はユーザーと相談して決めるか、入力 .md と同じディレクトリに合わせる
+- If the user has indicated an existing .md path (via slash command argument or natural language): use that path
+- If Claude is generating the markdown from scratch: save it with the Write tool to an appropriate directory and lock in the path. Decide the output directory in consultation with the user, or default to the same directory as the input .md
 
-### 2. CLI でレビュー依頼 HTML を生成 & ブラウザ起動
+### 2. Generate the review HTML & launch the browser via CLI
 
-`scripts/request-review.sh` ラッパーを呼び出す。内部で `npx mdxg-redline` を起動し、レビュー HTML と対応する feedback.json の絶対パスを stdout に書き出す：
+Call the `scripts/request-review.sh` wrapper. Internally it runs `npx mdxg-redline` and writes the absolute paths of the review HTML and the corresponding feedback.json to stdout:
 
 ```bash
 bash .claude/skills/md-review/scripts/request-review.sh <INPUT_MD> [output-dir]
 ```
 
-ラッパーは `bash` 経由で、かつ **CWD (プロジェクトルート) 相対のパスで** 呼び出す。`gh skill install` は scripts/ 配下のファイルから実行ビットを落としてコピーするため、`./script.sh` 形式の直接実行は `Permission denied` で失敗する。`bash script.sh` ならインストール側の実行ビット有無に依存しない。
+The wrapper must be invoked via `bash` and with a **CWD-relative path** (relative to the project root). `gh skill install` strips the execute bit from files under scripts/, so direct execution via `./script.sh` fails with `Permission denied`. Using `bash script.sh` avoids depending on the execute bit.
 
-加えて、`.claude/settings.local.json` の `Bash(bash .claude/skills/md-review/scripts/...:*)` 許可ルールは文字列 prefix match で評価されるため、`bash /workspaces/<repo>/.claude/skills/...` のような絶対パスで呼ぶと prefix が一致せず承認プロンプトが再発する。Bash tool 全般のデフォルト方針は「絶対パス優先」だが、本ラッパーは prefix 許可と整合させるため例外的に **相対パスで起動する**。CWD をプロジェクトルートに維持したまま `bash .claude/skills/md-review/scripts/request-review.sh ...` のように呼ぶこと。
+Additionally, the `Bash(bash .claude/skills/md-review/scripts/...:*)` permission rules in `.claude/settings.local.json` are evaluated as string prefix matches, so calling the wrapper with an absolute path like `bash /workspaces/<repo>/.claude/skills/...` won't match the prefix and will re-trigger the approval prompt. The general Bash tool convention is "prefer absolute paths", but this wrapper is an exception — **invoke it with a relative path** to align with the prefix permission. Keep CWD at the project root and call `bash .claude/skills/md-review/scripts/request-review.sh ...`.
 
-stdout には以下 2 行が出るので、Claude はこれをパースして以降のステップに渡す：
+stdout will contain the following 2 lines, which Claude parses for subsequent steps:
 
 ```
 REVIEW_HTML=/path/to/spec-a1b2c3d4e5f6a7b8-review.html
 FEEDBACK_JSON=/path/to/spec-a1b2c3d4e5f6a7b8-feedback.json
 ```
 
-`output-dir` を省略すると入力 .md と同じディレクトリに出力される。docHash を別途切り出す必要はなく、ラッパーがファイル名サフィックスの差し替えで対応 feedback パスを決定する。
+If `output-dir` is omitted, output goes to the same directory as the input .md. There is no need to extract the docHash separately — the wrapper determines the corresponding feedback path by replacing the filename suffix.
 
-**ブラウザ起動**
+**Browser launch**
 
-CLI は標準ブラウザの自動起動を試みる。ヘッドレス CI / SSH リモート等で起動できないときは、ラッパーの第 1 引数として `--no-open` を渡して抑止する：
+The CLI attempts to auto-launch the default browser. In headless CI / SSH remote environments where launch fails, pass `--no-open` as the first argument to the wrapper to suppress it:
 
 ```bash
 bash .claude/skills/md-review/scripts/request-review.sh --no-open <INPUT_MD>
 ```
 
-ラッパー内部で `npx mdxg-redline --no-open` に展開されるため、permissions.allow は既存のラッパー prefix 許可のままで済む。
+Internally this expands to `npx mdxg-redline --no-open`, so the existing wrapper prefix permission still applies.
 
-### 3. feedback.json をポーリングで待つ
+### 3. Poll for feedback.json
 
-レビュワーがブラウザで `Write feedback.json` を押すと、`output-dir` に `<mdFileName>-<docHash>-feedback.json` が出現する。これを `scripts/wait-feedback.sh` ラッパー経由で `run_in_background` ポーリング待機する：
+When the reviewer clicks `Write feedback.json` in the browser, `<mdFileName>-<docHash>-feedback.json` appears in `output-dir`. Wait for it via `run_in_background` polling using the `scripts/wait-feedback.sh` wrapper:
 
 ```bash
 bash .claude/skills/md-review/scripts/wait-feedback.sh "$FEEDBACK_JSON"
 ```
 
-第 2 引数でタイムアウト秒を上書きできる (既定 1800 秒 / 30 分)。
+The second argument can override the timeout in seconds (default: 1800 seconds / 30 minutes).
 
-**ブラウザ要件 (重要)**
+**Browser requirements (important)**
 
-`Write feedback.json` ボタンは File System Access API を使うため **Chromium 系ブラウザ (Chrome / Edge / Arc / Brave / Opera) のみ対応**。Safari / Firefox のレビュワーには `Comments ▾ → Export as JSON` (ダウンロード) または `Copy as JSON` (クリップボード) で代替してもらう。ダウンロードした feedback.json のパスをユーザーから受け取り、本 skill のステップ 4 から再開する。
+The `Write feedback.json` button uses the File System Access API, so it is **only supported on Chromium-based browsers (Chrome / Edge / Arc / Brave / Opera)**. Reviewers on Safari / Firefox should use `Comments ▾ → Export as JSON` (download) or `Copy as JSON` (clipboard) as alternatives. Receive the downloaded feedback.json path from the user and resume from step 4 of this skill.
 
-**ポーリングの設計判断**
+**Polling design decisions**
 
-- 間隔は `sleep 5` (5 秒)。レビュワーが書き出してから検出までの最大遅延は 5 秒で許容範囲
-- タイムアウトは 30 分 (`timeout 1800`) を既定。レビューが長引くケースもあるが、Claude のターンが永遠に空くのを避けるため上限を切る。タイムアウト後はユーザーに「もう少し待ちますか？」と確認する
-- `run_in_background: true` を使うことで Claude のメインターンは待たず、他の作業をしたり手放したりできる。完了は通知される
+- Interval is `sleep 5` (5 seconds). Maximum detection delay after the reviewer writes is 5 seconds, which is acceptable
+- Timeout defaults to 30 minutes (`timeout 1800`). Reviews can run long, but an upper bound prevents Claude's turn from staying open indefinitely. After timeout, ask the user "Would you like to wait longer?"
+- Using `run_in_background: true` frees Claude's main turn — it can work on other tasks or yield. Completion is notified automatically
 
-**ユーザーへの案内**
+**Notification to the user**
 
-ポーリングを始めたら、ユーザーに今の状況を 1 文で伝える：
+Once polling starts, inform the user of the current status in one sentence:
 
-> mdxg-redline でブラウザを起動しました。レビュワーがコメントを記入し、「Write feedback.json」ボタンを押すまで待機します (最大 30 分)。完了したら自動で取り込みに進みます。
+> The browser has been launched via mdxg-redline. Waiting for the reviewer to enter comments and click "Write feedback.json" (up to 30 minutes). Processing will continue automatically once complete.
 
-### 4. feedback.json を読み込み、markdown を更新する
+### 4. Read feedback.json and update the markdown
 
-ポーリングが完了したら、Read ツールで feedback.json を読む。スキーマ：
+Once polling completes, read feedback.json with the Read tool. Schema:
 
 ```jsonc
 {
@@ -131,103 +131,103 @@ bash .claude/skills/md-review/scripts/wait-feedback.sh "$FEEDBACK_JSON"
   "comments": [
     {
       "id": "...",
-      "quote": "選択されたテキスト原文",
-      "comment": "レビュワーのコメント",
+      "quote": "The selected text verbatim",
+      "comment": "The reviewer's comment",
       "created": "...",
-      "headingPath": ["## 3. 入力経路と出力経路", "### 3.2 ファイル選択"],
+      "headingPath": ["## 3. Input and output paths", "### 3.2 File selection"],
       "sourceLine": 42,
     },
   ],
 }
 ```
 
-**コメントを markdown に反映する手順**
+**Procedure for applying comments to the markdown**
 
-1. 各コメントの `sourceLine` で markdown の該当行を特定 (`Read` の `offset` 引数が使える)
-2. `quote` をその行付近で grep してフォールバック確認 (markdown 編集中に行ズレが起きていたら quote 検索で再特定)
-3. `comment` の指示を解釈して、Edit ツールで markdown を書き換える
-4. 全コメントを反映し終わったら、書き換え結果のサマリ (どのコメントを反映 / 保留したか) をユーザーに 3-5 行で報告
+1. Locate the relevant line in the markdown using each comment's `sourceLine` (the `offset` argument of `Read` is useful here)
+2. Grep for the `quote` near that line as a fallback check (if the markdown was edited mid-round, line numbers may have shifted — use quote search to re-locate)
+3. Interpret the `comment` instruction and modify the markdown with the Edit tool
+4. After all comments have been applied, report a 3-5 line summary to the user (which comments were applied / deferred)
 
-**sourceLine が信頼できないケース**
+**When sourceLine is unreliable**
 
-`docHash` がレビュー時点のものなので、Claude がラウンド中に手動で markdown を編集していた場合は `sourceLine` がずれる。安全のため、各コメントの位置確定は **`sourceLine` を起点に、`quote` を grep して整合性を確認** する 2 段構えにする。`quote` が見つからない場合は `headingPath` で該当セクションまで絞り込んでから手動マッチング。
+The `docHash` corresponds to the version at the time of review, so if Claude independently edited the markdown during the round, `sourceLine` values may be offset. For safety, position each comment using a **two-step approach: start from `sourceLine`, then grep for `quote` to verify consistency**. If `quote` is not found, narrow down to the relevant section using `headingPath` and then match manually.
 
-**反映ポリシー**
+**Application policy**
 
-レビュワーのコメントは「直してほしい」場合と「ここどうなってるの？」のような質問の場合がある：
+Reviewer comments may be either "please fix this" directives or "what's going on here?" questions:
 
-- 修正指示 → そのまま markdown を書き換える
-- 質問 / 議論喚起 → 即座に書き換えるのは時期尚早。ユーザーに「これは質問のようなので、回答を考えてから反映するか、ここはユーザー判断に任せる」と提示する
-- 矛盾するコメント → 同じ箇所に複数コメントが付いて指示が衝突する場合は、両方を提示してユーザーに判断を仰ぐ
+- Fix instructions → directly modify the markdown
+- Questions / discussion prompts → premature to modify immediately. Present to the user: "This appears to be a question, so it may be better to consider a response before applying, or leave it to the user's judgment"
+- Conflicting comments → when multiple comments on the same passage give contradictory instructions, present both and ask the user for a decision
 
-迷ったら反映前にユーザーに確認するほうが安全。一気に書き換えて diff だけ提示すると、レビュワーの意図とずれていた場合の手戻りが大きい。
+When in doubt, it's safer to confirm with the user before applying. Batch-applying changes and showing only the diff risks significant rework if the interpretation diverges from the reviewer's intent.
 
-### 5. 次ラウンドへ進むか / クリーニングするか / そのまま終了するかをユーザーに確認
+### 5. Ask the user: next round / clean up / finish as-is
 
-markdown 更新が終わったら、更新された markdown で再レビュー依頼を出した後に、ユーザーに以下 3 つの選択肢を提示する：
+After the markdown update is complete, send the updated markdown out for re-review, then present the user with these three options:
 
-- **次ラウンドへ**: 出したばかりの再レビュー依頼の feedback.json 出現をステップ 3 (ポーリング) で待つ
-- **クリーニングして終了**: 古い review.html / feedback.json を削除してから終了 (下記)
-- **そのまま終了**: 古いファイルを残したまま完了報告
+- **Next round**: Wait for the feedback.json from the re-review request just sent, starting from step 3 (polling)
+- **Clean up and finish**: Delete old review.html / feedback.json files, then finish (see below)
+- **Finish as-is**: Complete without deleting old files
 
-ユーザーが「もう 1 ラウンド」と言ったら、**改訂後の markdown は内容が変わったので docHash も変わる**ことに注意する。新しい review.html と feedback.json は別ファイル名になり、古いものとは自動的に分離される。
+If the user says "one more round", note that **the revised markdown has different content, so the docHash also changes**. The new review.html and feedback.json will have different filenames and are automatically separated from the old ones.
 
-**クリーニング**
+**Clean up**
 
-mdxg-redline CLI に `--clean` サブコマンドがある：
+The mdxg-redline CLI has a `--clean` subcommand:
 
 ```bash
-# dry-run で削除候補を表示
+# Dry-run: show deletion candidates
 npx mdxg-redline --clean <output-dir>
 
-# 実削除
+# Actually delete
 npx mdxg-redline --clean <output-dir> --yes
 ```
 
-複数ラウンド回した最終ラウンドの後だけでなく、1 ラウンドで終わる場合でもユーザーに「クリーニングして終了するか」を毎回聞く。
+Ask the user "clean up and finish?" every time — not just after the final round of a multi-round session, but also when finishing after a single round.
 
-## 1 コマンドで通すサンプル
+## End-to-end example
 
-実用上は次のような形になる (パスは例)：
+In practice it looks like this (paths are examples):
 
 ```bash
-# Round 1: 生成 → レビュー HTML 起動 → 出力パス取得
+# Round 1: generate → launch review HTML → capture output paths
 bash .claude/skills/md-review/scripts/request-review.sh path/to/draft.md path/to/output
-# stdout に REVIEW_HTML=... と FEEDBACK_JSON=... の 2 行が出る
+# stdout prints REVIEW_HTML=... and FEEDBACK_JSON=... on 2 lines
 
-# レビュワー作業中はここでポーリング (run_in_background 推奨)
+# While the reviewer is working, poll here (run_in_background recommended)
 bash .claude/skills/md-review/scripts/wait-feedback.sh /path/to/draft-XXXX-feedback.json
 
-# feedback.json を読んで markdown 編集に進む (Read / Edit ツール)
+# Read feedback.json and proceed to markdown editing (Read / Edit tools)
 ```
 
-ユーザーから「もう 1 ラウンド」と言われたら、改訂後の markdown を同じ `output-dir` に置いたまま 1 行目から再実行する。docHash が変わるので、新しい review HTML と feedback.json のペアが別ファイル名で生成され、過去ラウンドとは構造的に分離される。
+If the user says "one more round", re-run from line 1 with the revised markdown in the same `output-dir`. The docHash changes, so a new review HTML and feedback.json pair is generated with a different filename, structurally separated from previous rounds.
 
-## トラブルシューティング
+## Troubleshooting
 
-**ブラウザが起動しない (ヘッドレス / SSH リモート)**
+**Browser doesn't launch (headless / SSH remote)**
 
-CLI が起動失敗しても exit 0 で stdout に絶対パスが出るので、ユーザーに「stdout のパスを手動でブラウザで開いてください」と伝える。VS Code Codespaces / Remote Containers では CLI が自動的に HTTP サーバーモードに切り替わるので、フォワードされた `http://localhost:51729` を開く案内になる。
+Even if the CLI fails to launch, it exits 0 and prints the absolute path to stdout, so tell the user "please open the path from stdout manually in a browser". In VS Code Codespaces / Remote Containers, the CLI automatically switches to HTTP server mode, so guide the user to open the forwarded `http://localhost:51729`.
 
-**ポーリングがタイムアウトした**
+**Polling timed out**
 
-`timeout 1800` で 30 分待っても feedback.json が出てこなかったケース。ユーザーに「レビュー進行中ですか？ もう少し待ちますか？」と確認する。延長する場合は同じパスで再度ポーリングを起動する。レビュワーが Chromium 系以外で書き出せない状況なら、Export as JSON のダウンロードでも代替可能なので、ダウンロードした feedback.json のパスを教えてもらう。
+The `timeout 1800` expired after 30 minutes without feedback.json appearing. Ask the user "Is the review still in progress? Would you like to wait longer?" If extending, re-launch the poll with the same path. If the reviewer can't use `Write feedback.json` because they're not on a Chromium browser, `Export as JSON` (download) is also an option — ask them for the downloaded feedback.json path.
 
-**Safari / Firefox のレビュワー**
+**Reviewers on Safari / Firefox**
 
-`Write feedback.json` は Chromium 系のみ対応。Safari / Firefox のレビュワーには `Comments ▾ → Export as JSON` (ダウンロード) または `Copy as JSON` (クリップボード) で代替してもらう。ダウンロードした feedback.json のパスをユーザーから受け取り、本 skill のステップ 4 から再開する。
+`Write feedback.json` is Chromium-only. Reviewers on Safari / Firefox should use `Comments ▾ → Export as JSON` (download) or `Copy as JSON` (clipboard) as alternatives. Receive the downloaded feedback.json path from the user and resume from step 4 of this skill.
 
-## なぜこの形か (設計の意図)
+## Why this design (rationale)
 
-- **CLI 経路を skill 化するメリット**: mdxg-redline の標準ループを Claude 単独で回すには、CLI 起動 → stdout からの docHash 取得 → ポーリング → feedback 読み込みという複数ステップを毎回手作業で組むのは過剰。これを skill にまとめておくことで、ユーザーは「レビュー依頼出して」と言うだけで一連のループを回せる
-- **stdout からファイル名を取る理由**: docHash は SHA-256(markdown) の先頭 16 桁 hex で、Claude が再計算することもできるが、CLI が確定的に書き出した値を使うほうが命名規約に対する drift が構造的に発生しない
-- **ポーリングを `run_in_background` で回す理由**: feedback 記入は数分〜数時間掛かることがある。前景で sleep ループを回すと Claude のメインターンが完全に止まるが、`run_in_background` ならその間に他のタスクを並行処理したり、ユーザーに手放したりできる
-- **sourceLine と quote の 2 段構え**: `sourceLine` は markdown ソースの行番号で、レビュー時点の docHash と現バージョンの docHash が一致しているときだけ信頼できる。Claude がラウンド中に独自に編集していた場合に備え、`quote` の grep フォールバックを必ず持つ
-- **Bash 操作を scripts/ 配下のラッパーに閉じ込める理由**: `npx mdxg-redline` 直叩きや `timeout 1800 bash -c '...'` を SKILL.md に直接書くと、利用者が `.claude/settings.local.json` の `permissions.allow` に許可ルールを書くときに、可変引数やシェル展開を含む長い prefix を書かざるを得ず prefix match と相性が悪い。`scripts/request-review.sh` / `scripts/wait-feedback.sh` の 2 本に閉じ込めることで、ラッパーのパス prefix だけで 1 ラウンド全工程を許可できる
+- **Why wrap the CLI workflow in a skill**: Running mdxg-redline's standard loop manually each time — CLI invocation → docHash extraction from stdout → polling → feedback ingestion — involves too many steps. Packaging it as a skill lets the user simply say "send this for review" and the entire loop runs automatically
+- **Why read filenames from stdout**: The docHash is the first 16 hex digits of SHA-256(markdown). Claude could recompute it, but using the value definitively written by the CLI structurally prevents drift from the naming convention
+- **Why use `run_in_background` for polling**: Feedback entry can take minutes to hours. Running a sleep loop in the foreground completely blocks Claude's main turn, but `run_in_background` allows parallel work or yielding to the user during that time
+- **Why the two-step approach with sourceLine and quote**: `sourceLine` is the line number in the markdown source, reliable only when the docHash at review time matches the current version. The `quote` grep fallback is essential in case Claude independently edited the markdown during the round
+- **Why confine Bash operations to scripts/ wrappers**: Writing raw `npx mdxg-redline` invocations or `timeout 1800 bash -c '...'` directly in SKILL.md forces users to write long prefix patterns with variable arguments and shell expansion in `.claude/settings.local.json`'s `permissions.allow`, which is fragile with prefix matching. Confining operations to `scripts/request-review.sh` and `scripts/wait-feedback.sh` means the wrapper path prefix alone covers all operations for one full round
 
-## 設定例: permissions.allow
+## Configuration example: permissions.allow
 
-本 skill の Bash 操作を `.claude/settings.local.json` で許可するときは、以下のルールがあれば 1 ラウンド全工程をカバーできる：
+To allow this skill's Bash operations in `.claude/settings.local.json`, the following rules cover one full round:
 
 ```json
 {
@@ -241,4 +241,4 @@ CLI が起動失敗しても exit 0 で stdout に絶対パスが出るので、
 }
 ```
 
-`npx mdxg-redline` 本体の起動は `scripts/` 配下のラッパーに閉じ込めているため、ラッパー単位の prefix 許可で済む。`--clean` だけはクリーンアップ時に CLI を直接叩くため別途許可ルールを追加している。CLI 直接実行を skill 外で併用したい場合は `Bash(npx mdxg-redline:*)` を追加する。
+The `npx mdxg-redline` invocation itself is confined to the scripts/ wrappers, so wrapper-level prefix permissions suffice. `--clean` calls the CLI directly during cleanup, so it needs a separate permission rule. If you also want to use the CLI directly outside this skill, add `Bash(npx mdxg-redline:*)`.
