@@ -1,30 +1,101 @@
 // スマホ (≤768px) 専用の page-scroll FAB (画面左下)。タップで 1 画面下、上下フリックでその方向に
-// 1 画面スクロールする。読む面 (doc-pane) のネイティブスクロールと操作を分離する専用 affordance で、
+// 1 画面 (大きなフリックで 2 画面) スクロールし、左右フリックで TOC drawer / 本文 / Comments drawer
+// の 3 状態を切り替える。読む面 (doc-pane) のネイティブスクロールと操作を分離する専用 affordance で、
 // フリックとスクロールの競合を避けるのが狙い。
+
+import {
+  closeMobileDrawers,
+  isMobileCommentsOpen,
+  isMobilePageNavOpen,
+  openMobileComments,
+  openMobilePageNav,
+} from './mobile-footer'
 
 // 1 画面送りのたびに直前画面の最下部をこの比率ぶん残して文脈を繋ぐ (PageDown の慣行)。
 const OVERLAP_RATIO = 0.12
-// この px 未満の縦移動は tap 扱いにして click 経路 (= 下方向送り) に委ねる。
+// この px 未満の移動は tap 扱いにして click 経路 (= 下方向送り) に委ねる。
 const FLICK_THRESHOLD_PX = 12
+// この px 以上の縦フリックは「大きなフリック」として 2 画面送りに増幅する。
+const BIG_FLICK_THRESHOLD_PX = 64
 // ドラッグ中にアイコンを指へ追従させる量。生の移動量にこの係数を掛け、±ICON_MAX_PX に clamp する。
 const ICON_FOLLOW_FACTOR = 0.5
 const ICON_MAX_PX = 8
 
 type ScrollDir = 'up' | 'down'
+type PanelDir = 'left' | 'right'
+type PanelState = 'toc' | 'main' | 'comments'
+
+type FlickGesture =
+  | { axis: 'vertical'; dir: ScrollDir; screens: number }
+  | { axis: 'horizontal'; dir: PanelDir }
 
 /** 1 画面送り量。`clientHeight * (1 - OVERLAP_RATIO)` を四捨五入する */
 export const screenStep = (clientHeight: number): number =>
   Math.round(clientHeight * (1 - OVERLAP_RATIO))
 
-/** touch の縦移動量 (endY - startY) を flick 方向に判定する。閾値未満は null (= tap) */
-export const flickDirection = (dy: number): ScrollDir | null => {
-  if (dy <= -FLICK_THRESHOLD_PX) {
-    return 'up'
+const horizontalGesture = (dx: number): FlickGesture | null => {
+  if (Math.abs(dx) < FLICK_THRESHOLD_PX) {
+    return null
   }
-  if (dy >= FLICK_THRESHOLD_PX) {
-    return 'down'
+  if (dx < 0) {
+    return { axis: 'horizontal', dir: 'left' }
   }
-  return null
+  return { axis: 'horizontal', dir: 'right' }
+}
+
+const verticalScreens = (dy: number): number => {
+  if (Math.abs(dy) >= BIG_FLICK_THRESHOLD_PX) {
+    return 2
+  }
+  return 1
+}
+
+const verticalGesture = (dy: number): FlickGesture | null => {
+  if (Math.abs(dy) < FLICK_THRESHOLD_PX) {
+    return null
+  }
+  const screens = verticalScreens(dy)
+  if (dy < 0) {
+    return { axis: 'vertical', dir: 'up', screens }
+  }
+  return { axis: 'vertical', dir: 'down', screens }
+}
+
+/**
+ * touch の移動量 (end - start) を flick に判定する。支配軸 (移動量の大きい軸) で縦 / 横を決め、
+ * 閾値未満は null (= tap)。縦は BIG_FLICK_THRESHOLD_PX 以上で 2 画面送りに増幅する。
+ * 同値 (斜め 45°) は従来挙動 (縦スクロール) を優先する。
+ */
+export const resolveFlickGesture = (dx: number, dy: number): FlickGesture | null => {
+  if (Math.abs(dx) > Math.abs(dy)) {
+    return horizontalGesture(dx)
+  }
+  return verticalGesture(dy)
+}
+
+/**
+ * 横フリックによるパネル遷移。[TOC | 本文 | Comments] を横並びカルーセルと見なし、指の移動方向へ
+ * ビューを送る (左フリック = 右隣の Comments へ、右フリック = 左隣の TOC へ)。端では留まる。
+ * TOC が提供されない文書 (`html.has-pages` 無し) では 'toc' に進まず本文へ戻るだけにする。
+ */
+export const nextPanelState = (
+  current: PanelState,
+  dir: PanelDir,
+  tocAvailable: boolean
+): PanelState => {
+  if (dir === 'left') {
+    if (current === 'toc') {
+      return 'main'
+    }
+    return 'comments'
+  }
+  if (current === 'comments') {
+    return 'main'
+  }
+  if (tocAvailable) {
+    return 'toc'
+  }
+  return 'main'
 }
 
 const clampIconOffset = (dy: number): number => {
@@ -44,18 +115,32 @@ interface IconDragStyle {
 }
 
 /**
- * ドラッグ中のアイコン CSS。位置は指へ追従 (`translate`, ±ICON_MAX_PX に clamp) し、向きは上方向に
- * flick 閾値を超えたら 180deg 回転して上向きシェブロンに反転させる (「離せば上に戻る」を正直に示す)。
- * 下方向・閾値未満は下向き (tap=下送りと一致)。translate / rotate を個別プロパティに分けるのは、
- * 指を離した後の戻りで translate のみ transition させ rotate は瞬時に切り替えるため (CSS 側で
- * `transition: translate` のみ指定)。同一 transform 文字列だと戻り時に rotate も補間されてスピンする。
+ * ドラッグ中のアイコン CSS。位置は指へ追従 (`translate`, 各軸 ±ICON_MAX_PX に clamp) し、向きは
+ * flick 閾値を超えた指の移動方向へシェブロンを回す (「離せばこちらへ動く」を正直に示す)。
+ * 上=180deg / 左=90deg / 右=-90deg、下・閾値未満は下向き (tap=下送りと一致)。
+ * translate / rotate を個別プロパティに分けるのは、指を離した後の戻りで translate のみ transition
+ * させ rotate は瞬時に切り替えるため (CSS 側で `transition: translate` のみ指定)。同一 transform
+ * 文字列だと戻り時に rotate も補間されてスピンする。
  */
-export const iconDragStyle = (dy: number): IconDragStyle => {
-  const translate = `0 ${clampIconOffset(dy)}px`
-  if (dy <= -FLICK_THRESHOLD_PX) {
-    return { rotate: '180deg', translate }
+const dragRotate = (gesture: FlickGesture | null): string => {
+  if (!gesture) {
+    return '0deg'
   }
-  return { rotate: '0deg', translate }
+  if (gesture.axis === 'horizontal') {
+    if (gesture.dir === 'left') {
+      return '90deg'
+    }
+    return '-90deg'
+  }
+  if (gesture.dir === 'up') {
+    return '180deg'
+  }
+  return '0deg'
+}
+
+export const iconDragStyle = (dx: number, dy: number): IconDragStyle => {
+  const translate = `${clampIconOffset(dx)}px ${clampIconOffset(dy)}px`
+  return { rotate: dragRotate(resolveFlickGesture(dx, dy)), translate }
 }
 
 const getDocPane = (): HTMLElement | null => document.querySelector<HTMLElement>('.doc-pane')
@@ -77,26 +162,65 @@ const scrollBehavior = (): ScrollBehavior => {
   return 'smooth'
 }
 
-const scrollByScreen = (dir: ScrollDir): void => {
+const scrollByScreen = (dir: ScrollDir, screens = 1): void => {
   const pane = getDocPane()
   if (!pane) {
     return
   }
-  const delta = screenStep(pane.clientHeight) * directionSign(dir)
+  const delta = screenStep(pane.clientHeight) * screens * directionSign(dir)
   pane.scrollBy({ behavior: scrollBehavior(), top: delta })
 }
 
-let touchStartY: number | null = null
+const currentPanelState = (): PanelState => {
+  if (isMobilePageNavOpen()) {
+    return 'toc'
+  }
+  if (isMobileCommentsOpen()) {
+    return 'comments'
+  }
+  return 'main'
+}
+
+const applyPanelState = (state: PanelState, trigger: HTMLElement): void => {
+  if (state === 'toc') {
+    openMobilePageNav(trigger)
+    return
+  }
+  if (state === 'comments') {
+    openMobileComments(trigger)
+    return
+  }
+  closeMobileDrawers()
+}
+
+interface TouchPoint {
+  clientX: number
+  clientY: number
+}
+
+let touchStart: TouchPoint | null = null
 let fabEl: HTMLElement | null = null
 let iconEl: HTMLElement | null = null
 
+const switchPanelByFlick = (dir: PanelDir): void => {
+  if (!fabEl) {
+    return
+  }
+  const current = currentPanelState()
+  const tocAvailable = document.documentElement.classList.contains('has-pages')
+  const next = nextPanelState(current, dir, tocAvailable)
+  if (next !== current) {
+    applyPanelState(next, fabEl)
+  }
+}
+
 // ドラッグ中のアイコン CSS を inline で更新する。translate / rotate を個別に書くことで、
 // 戻り時に translate のみ transition させ rotate は瞬時に切り替える (戻りスピン回避、§5.u)。
-const applyIconDragStyle = (dy: number): void => {
+const applyIconDragStyle = (dx: number, dy: number): void => {
   if (!iconEl) {
     return
   }
-  const style = iconDragStyle(dy)
+  const style = iconDragStyle(dx, dy)
   iconEl.style.translate = style.translate
   iconEl.style.rotate = style.rotate
 }
@@ -115,60 +239,69 @@ const resetIcon = (): void => {
 
 const onTouchStart = (event: TouchEvent): void => {
   const [touch] = event.touches
-  touchStartY = null
+  touchStart = null
   if (touch) {
-    touchStartY = touch.clientY
+    touchStart = { clientX: touch.clientX, clientY: touch.clientY }
   }
   if (fabEl) {
     fabEl.classList.add('is-dragging')
   }
 }
 
-// アイコンを指へ追従させつつ、縦移動が flick 閾値を超えてからネイティブスクロール /
+// アイコンを指へ追従させつつ、移動が flick 閾値を超えてからネイティブスクロール /
 // pull-to-refresh / text 選択を抑止する。閾値未満の微小ジッタ tap では preventDefault せず、
 // 後続の合成 click (= tap 経路) を温存する。
 const onTouchMove = (event: TouchEvent): void => {
-  if (touchStartY === null) {
+  if (!touchStart) {
     return
   }
   const [touch] = event.touches
   if (!touch) {
     return
   }
-  const dy = touch.clientY - touchStartY
-  applyIconDragStyle(dy)
-  if (Math.abs(dy) >= FLICK_THRESHOLD_PX && event.cancelable) {
+  const dx = touch.clientX - touchStart.clientX
+  const dy = touch.clientY - touchStart.clientY
+  applyIconDragStyle(dx, dy)
+  if (Math.max(Math.abs(dx), Math.abs(dy)) >= FLICK_THRESHOLD_PX && event.cancelable) {
     event.preventDefault()
   }
 }
 
-const resolveFlickDir = (event: TouchEvent, startY: number): ScrollDir | null => {
+const resolveFlick = (event: TouchEvent, start: TouchPoint): FlickGesture | null => {
   const [touch] = event.changedTouches
   if (!touch) {
     return null
   }
-  return flickDirection(touch.clientY - startY)
+  return resolveFlickGesture(touch.clientX - start.clientX, touch.clientY - start.clientY)
+}
+
+const performFlick = (gesture: FlickGesture): void => {
+  if (gesture.axis === 'horizontal') {
+    switchPanelByFlick(gesture.dir)
+    return
+  }
+  scrollByScreen(gesture.dir, gesture.screens)
 }
 
 const onTouchEnd = (event: TouchEvent): void => {
-  if (touchStartY === null) {
+  if (!touchStart) {
     return
   }
-  const dir = resolveFlickDir(event, touchStartY)
-  touchStartY = null
+  const gesture = resolveFlick(event, touchStart)
+  touchStart = null
   resetIcon()
-  if (!dir) {
+  if (!gesture) {
     return
   }
   // flick と判定したら後続の合成 click (= tap 経路) を抑止して二重スクロールを防ぐ。
   if (event.cancelable) {
     event.preventDefault()
   }
-  scrollByScreen(dir)
+  performFlick(gesture)
 }
 
 const onTouchCancel = (): void => {
-  touchStartY = null
+  touchStart = null
   resetIcon()
 }
 
@@ -241,37 +374,83 @@ if (import.meta.vitest) {
     })
   })
 
-  describe('flickDirection', () => {
-    it('上方向 (dy <= -12) は up、下方向 (dy >= 12) は down', () => {
-      expect([flickDirection(-12), flickDirection(-40), flickDirection(12)]).toEqual([
-        'up',
-        'up',
-        'down',
+  describe('resolveFlickGesture', () => {
+    it('縦方向 (|dy| >= 12 かつ dy 支配) は up / down の 1 画面送り', () => {
+      expect([resolveFlickGesture(0, -12), resolveFlickGesture(4, 40)]).toEqual([
+        { axis: 'vertical', dir: 'up', screens: 1 },
+        { axis: 'vertical', dir: 'down', screens: 1 },
       ])
     })
 
-    it('閾値未満は null (tap として click 経路に委ねる)', () => {
-      expect([flickDirection(0), flickDirection(-11), flickDirection(11)]).toEqual([
-        null,
-        null,
-        null,
+    it('縦方向 |dy| >= 64 は 2 画面送りに増幅する', () => {
+      expect([resolveFlickGesture(0, -64), resolveFlickGesture(0, 100)]).toEqual([
+        { axis: 'vertical', dir: 'up', screens: 2 },
+        { axis: 'vertical', dir: 'down', screens: 2 },
       ])
+    })
+
+    it('横方向 (|dx| >= 12 かつ dx 支配) は left / right のパネル切替', () => {
+      expect([resolveFlickGesture(-12, 0), resolveFlickGesture(40, 4)]).toEqual([
+        { axis: 'horizontal', dir: 'left' },
+        { axis: 'horizontal', dir: 'right' },
+      ])
+    })
+
+    it('閾値未満は null (tap として click 経路に委ねる)、斜め 45° は縦を優先する', () => {
+      expect([
+        resolveFlickGesture(0, 0),
+        resolveFlickGesture(-11, 0),
+        resolveFlickGesture(0, 11),
+        resolveFlickGesture(20, -20),
+      ]).toEqual([null, null, null, { axis: 'vertical', dir: 'up', screens: 1 }])
+    })
+  })
+
+  describe('nextPanelState', () => {
+    it('左フリックで toc→main→comments、comments では留まる', () => {
+      expect([
+        nextPanelState('toc', 'left', true),
+        nextPanelState('main', 'left', true),
+        nextPanelState('comments', 'left', true),
+      ]).toEqual(['main', 'comments', 'comments'])
+    })
+
+    it('右フリックで comments→main→toc、toc では留まる', () => {
+      expect([
+        nextPanelState('comments', 'right', true),
+        nextPanelState('main', 'right', true),
+        nextPanelState('toc', 'right', true),
+      ]).toEqual(['main', 'toc', 'toc'])
+    })
+
+    it('TOC 未提供 (has-pages 無し) では右フリックで toc に進まない', () => {
+      expect([
+        nextPanelState('main', 'right', false),
+        nextPanelState('comments', 'right', false),
+      ]).toEqual(['main', 'main'])
     })
   })
 
   describe('iconDragStyle', () => {
-    it('上方向に閾値超過で rotate 180deg + ±8px に clamp した translate', () => {
+    it('上方向に閾値超過で rotate 180deg + 各軸 ±8px に clamp した translate', () => {
       // dy=-40 → -40*0.5=-20 → clamp -8 / 上向き反転
-      expect(iconDragStyle(-40)).toEqual({ rotate: '180deg', translate: '0 -8px' })
+      expect(iconDragStyle(0, -40)).toEqual({ rotate: '180deg', translate: '0px -8px' })
     })
 
     it('下方向は rotate 0deg で translate のみ (clamp 適用)', () => {
       // dy=40 → 20 → clamp 8
-      expect(iconDragStyle(40)).toEqual({ rotate: '0deg', translate: '0 8px' })
+      expect(iconDragStyle(0, 40)).toEqual({ rotate: '0deg', translate: '0px 8px' })
     })
 
-    it('閾値未満は rotate 0deg で指へ追従 (offset = dy * 0.5)', () => {
-      expect(iconDragStyle(10)).toEqual({ rotate: '0deg', translate: '0 5px' })
+    it('横方向は左 90deg / 右 -90deg に回す', () => {
+      expect([iconDragStyle(-40, 0), iconDragStyle(40, 0)]).toEqual([
+        { rotate: '90deg', translate: '-8px 0px' },
+        { rotate: '-90deg', translate: '8px 0px' },
+      ])
+    })
+
+    it('閾値未満は rotate 0deg で指へ追従 (offset = d * 0.5)', () => {
+      expect(iconDragStyle(6, 10)).toEqual({ rotate: '0deg', translate: '3px 5px' })
     })
   })
 

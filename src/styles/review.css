@@ -2163,16 +2163,17 @@ html:not([data-mdxg-online='1']) .online-edition-only {
   #floater .floater-label-mobile {
     display: inline;
   }
-  /* 画面左下の page-scroll FAB。タップ=1画面下、上下フリック=その方向に1画面 (page-scroll-button.ts)。
-     footer の上に浮かせ safe-area-left を尊重する。touch-action:none で縦ドラッグが pull-to-refresh /
-     text 選択を起動しないようにする。z-index 50 は drawer(60)/backdrop(55) より下で、drawer 展開時は
-     その背後に退く (加えて下記で明示 hide)。 */
+  /* 画面左下の page-scroll FAB。タップ=1画面下、上下フリック=その方向に1画面 (大フリックで2画面)、
+     左右フリック=TOC drawer / 本文 / Comments drawer の 3 状態切替 (page-scroll-button.ts)。
+     footer の上に浮かせ safe-area-left を尊重する。touch-action:none でドラッグが pull-to-refresh /
+     text 選択を起動しないようにする。z-index 65 は drawer(60)/backdrop(55) より上・footer(70) より
+     下で、drawer 展開中も左右フリックで本文へ戻れるよう手前に残す。 */
   .page-scroll-fab {
     box-sizing: border-box;
     position: fixed;
     left: calc(12px + var(--mobile-safe-left));
     bottom: calc(var(--mobile-footer-height) + 16px);
-    z-index: 50;
+    z-index: 65;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2188,8 +2189,8 @@ html:not([data-mdxg-online='1']) .online-edition-only {
     -webkit-user-select: none;
     user-select: none;
   }
-  /* drawer 展開中・範囲選択のコメントバー表示中 (§floater-active) は同じ左下〜下端で重なるため隠す。 */
-  body.mobile-drawer-open .page-scroll-fab,
+  /* 範囲選択のコメントバー表示中 (§floater-active) は同じ左下〜下端で重なるため隠す。
+     drawer 展開中は隠さない (左右フリックで本文 / 反対側 drawer へ切り替える導線を残すため)。 */
   :root.floater-active .page-scroll-fab {
     display: none;
   }

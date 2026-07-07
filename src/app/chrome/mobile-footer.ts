@@ -40,6 +40,7 @@ const getDocPane = (): HTMLElement | null => document.querySelector<HTMLElement>
 const getFooter = (): HTMLElement | null => document.querySelector<HTMLElement>('.mobile-footer')
 const getBackdrop = (): HTMLElement | null => document.getElementById('mobile-drawer-backdrop')
 const getBtnToc = (): HTMLElement | null => document.getElementById('btn-mobile-toc')
+const getPageScrollFab = (): HTMLElement | null => document.getElementById('btn-page-scroll')
 const getBtnSearch = (): HTMLElement | null => document.getElementById('btn-mobile-search')
 const getBtnComments = (): HTMLElement | null => document.getElementById('btn-mobile-comments')
 
@@ -204,7 +205,18 @@ const wrapTabFocus = (event: KeyboardEvent, focusables: HTMLElement[]): void => 
   }
 }
 
-// DOM 順は drawer → footer。focus を drawer 末尾 ↔ footer 先頭 / footer 末尾 ↔ drawer 先頭で wrap する。
+// FAB は drawer 開中も前面 (z-index 65) に残る操作面なので巡回集合に含める。含めないと
+// 可視・タッチ操作可能なコントロールがキーボードだけ到達不能になる。
+const overlayFocusables = (drawer: HTMLElement, footer: HTMLElement): HTMLElement[] => {
+  const focusables = [...getFocusableElements(drawer), ...getFocusableElements(footer)]
+  const fab = getPageScrollFab()
+  if (fab) {
+    focusables.push(fab)
+  }
+  return focusables
+}
+
+// DOM 順は drawer → footer → page-scroll FAB。集合の末尾 ↔ 先頭で wrap する。
 const handleTabInMobileOverlay = (event: KeyboardEvent): void => {
   if (event.key !== 'Tab' || !isMobileDrawerOpen()) {
     return
@@ -214,7 +226,7 @@ const handleTabInMobileOverlay = (event: KeyboardEvent): void => {
   if (!drawer || !footer) {
     return
   }
-  wrapTabFocus(event, [...getFocusableElements(drawer), ...getFocusableElements(footer)])
+  wrapTabFocus(event, overlayFocusables(drawer, footer))
 }
 
 const registerTabTrap = (): void => {
@@ -836,15 +848,23 @@ if (import.meta.vitest) {
       expect(document.activeElement).toBe(elBySel('.page-nav-link'))
     })
 
-    it('footer 末尾から Tab で drawer 先頭へ wrap する', () => {
+    it('集合末尾 (page-scroll FAB) から Tab で drawer 先頭へ wrap する', () => {
       wireForTest(true)
       elById('btn-mobile-toc').click()
-      elById('btn-mobile-comments').focus()
+      elById('btn-page-scroll').focus()
       const event = dispatchTab()
       expect([event.defaultPrevented, document.activeElement]).toEqual([
         true,
         elBySel('.page-nav-link'),
       ])
+    })
+
+    it('drawer 先頭から Shift+Tab で集合末尾 (page-scroll FAB) へ wrap する', () => {
+      wireForTest(true)
+      elById('btn-mobile-toc').click()
+      elBySel('.page-nav-link').focus()
+      dispatchTab(true)
+      expect(document.activeElement).toBe(elById('btn-page-scroll'))
     })
 
     it('集合外 (.doc-pane) に focus があるとき Tab で drawer 先頭へ救出する', () => {
