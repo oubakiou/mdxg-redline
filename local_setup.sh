@@ -31,12 +31,43 @@ if [ ! -f CLAUDE.local.md ]; then
   echo "CLAUDE.local.md を作成しました"
 fi
 
+# Devin CLIはnpmからインストールできない
+curl -fsSL https://cli.devin.ai/install.sh | bash
+
+# Cursor CLIはnpmからインストールできない
+curl https://cursor.com/install -fsS | bash
+
 echo "デフォルトskillをインストールします"
 gh auth login
-gh skill install . md-review --from-local --agent claude-code --scope project --force
+
 gh skill install anthropics/skills skill-creator --agent claude-code --scope project
-gh skill install oubakiou/skills guarded-webfetch-codex --agent claude-code --scope project
-gh skill install oubakiou/skills guarded-websearch-codex --agent claude-code --scope project
+gh skill install anthropics/skills skill-creator --agent codex --scope project
+
+gh skill install . md-review --from-local --agent claude-code --scope project --force
+gh skill install . md-review --from-local --agent codex --scope project --force
+
+for agent in claude-code codex; do
+  for skill in \
+    delegate-explore \
+    delegate-implement \
+    delegate-chore \
+    delegate-review \
+    delegate-imagegen \
+    delegate-x-research \
+  ; do
+    gh skill install oubakiou/delegate-skills "$skill" --agent "$agent" --scope project --force
+  done
+done
+
+for agent in claude-code codex; do
+  for skill in \
+    guarded-webfetch-codex \
+    guarded-websearch-codex \
+    dataviz-svg \
+  ; do
+    gh skill install oubakiou/skills "$skill" --agent "$agent" --scope project --force
+  done
+done
 
 # python3はskill-creator 同梱の Python スクリプト (eval-viewer 等) を実行するために必要
 # bubblewrapはCodexに必要
