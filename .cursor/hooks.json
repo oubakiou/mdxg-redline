@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "postToolUse": [
+      {
+        "command": ".cursor/hooks/vp-check-fix.sh",
+        "matcher": "Write",
+        "timeout": 120
+      }
+    ]
+  }
+}
