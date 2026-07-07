@@ -2163,8 +2163,8 @@ html:not([data-mdxg-online='1']) .online-edition-only {
   #floater .floater-label-mobile {
     display: inline;
   }
-  /* 画面左下の page-scroll FAB。タップ=1画面下、上下フリック=その方向に1画面 (大フリックで2画面)、
-     左右フリック=TOC drawer / 本文 / Comments drawer の 3 状態切替 (page-scroll-button.ts)。
+  /* 画面左下の page-scroll FAB。タップ=1画面下、上下ドラッグ保持=その方向へ連続1画面送り、
+     左右フリック=TOC (左) / 本文 / Comments (右) の 3 状態切替 (page-scroll-button.ts)。
      footer の上に浮かせ safe-area-left を尊重する。touch-action:none でドラッグが pull-to-refresh /
      text 選択を起動しないようにする。z-index 65 は drawer(60)/backdrop(55) より上・footer(70) より
      下で、drawer 展開中も左右フリックで本文へ戻れるよう手前に残す。 */

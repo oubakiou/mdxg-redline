@@ -50,7 +50,7 @@ export const messagesEn = {
   'mobile.comments_aria': 'Show review comments',
   'mobile.footer_label': 'Mobile actions',
   'mobile.page_scroll_aria':
-    'Scroll down one screen (flick up or down to page, left or right to switch panels)',
+    'Scroll down one screen (hold drag up or down to page continuously, flick left for TOC or right for comments)',
   'mobile.search_aria': 'Search the document',
   'mobile.toc_aria': 'Show table of contents',
   'modal.code_copied': 'Copied',

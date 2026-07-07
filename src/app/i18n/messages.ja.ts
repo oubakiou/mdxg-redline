@@ -52,7 +52,7 @@ export const messagesJa = {
   'mobile.comments_aria': 'レビューコメントを表示',
   'mobile.footer_label': 'モバイル操作',
   'mobile.page_scroll_aria':
-    '1 画面下へスクロール（上下フリックでページ送り・左右フリックでパネル切替）',
+    '1 画面下へスクロール（上下ドラッグ保持で連続ページ送り・左フリックで目次・右フリックでコメント）',
   'mobile.search_aria': 'ドキュメント内を検索',
   'mobile.toc_aria': '目次を表示',
   'modal.code_copied': 'コピー済み',

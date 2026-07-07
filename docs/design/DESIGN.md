@@ -258,7 +258,7 @@ VS Code Remote / Codespaces のように `$BROWSER` 経由で `file://` がホ�
 - **footer**: 3 ボタン (TOC / Search / Comments) が左右 sidebar (`.page-nav` / `.comments`) を `position: fixed` + `transform` で slide-in する drawer の開閉 trigger になる
 - **drawer 状態管理**: 開閉状態は `<html>` の `mobile-page-nav-open` / `mobile-comments-open` class で表現し (`src/app/chrome/mobile-footer.ts`)、既存 desktop の `*-closed` 系 (grid 列幅制御) とは直交させる。背面は `inert` + scroll lock で保護し、Tab focus は drawer + footer 内に循環する
 - **範囲選択時の floater**: `#floater` (＋ Comment) は mobile では選択 rect 追従のポップオーバーではなく `bottom: var(--mobile-footer-height)` で footer 直上に固定したフル幅バーに化け、選択範囲に張り付くブラウザネイティブの選択メニューと構造的に重ならない (`docs/archive/feature-mobile-layout.archive.md` §5.t)
-- **1 画面送り FAB**: 画面左下に専用 FAB (`#btn-page-scroll`) を浮かべ、タップで下 1 画面 / 上下フリックでその方向に 1 画面 (大きなフリックで 2 画面) スクロールする (読む面のネイティブスクロールと操作を分離して競合を避ける、§5.u)。左右フリックは TOC drawer / 本文 / Comments drawer の 3 状態をカルーセル的に切り替えるため、FAB は drawer/backdrop より手前 (z-index 65) に残す
+- **1 画面送り FAB**: 画面左下に専用 FAB (`#btn-page-scroll`) を浮かべ、タップで下 1 画面 / 上下ドラッグ保持でその方向へ 1 画面ずつ連続スクロールする (読む面のネイティブスクロールと操作を分離して競合を避ける、§5.u)。左右フリックは左=TOC drawer / 右=Comments drawer へ送る 3 状態切替のため、FAB は drawer/backdrop より手前 (z-index 65) に残す
 - **safe-area / viewport**: safe-area inset / 動的 viewport は `--mobile-header-height` / `--mobile-footer-height` 等の CSS custom property に集約し、`viewport-fit=cover` で iOS の inset を受け取る
 - **breakpoint**: 769–900px は既存タブレット (vertical-stack)、901px 以上は desktop モデル
 

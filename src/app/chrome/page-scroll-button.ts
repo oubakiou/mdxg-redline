@@ -1,7 +1,7 @@
-// スマホ (≤768px) 専用の page-scroll FAB (画面左下)。タップで 1 画面下、上下フリックでその方向に
-// 1 画面 (大きなフリックで 2 画面) スクロールし、左右フリックで TOC drawer / 本文 / Comments drawer
-// の 3 状態を切り替える。読む面 (doc-pane) のネイティブスクロールと操作を分離する専用 affordance で、
-// フリックとスクロールの競合を避けるのが狙い。
+// スマホ (≤768px) 専用の page-scroll FAB (画面左下)。タップで 1 画面下、上下ドラッグは保持している間
+// その方向へ 1 画面ずつ連続スクロールし、左右フリックで TOC drawer / 本文 / Comments drawer の
+// 3 状態を切り替える (左=左側の TOC、右=右側の Comments)。読む面 (doc-pane) のネイティブスクロールと
+// 操作を分離する専用 affordance で、フリックとスクロールの競合を避けるのが狙い。
 
 import {
   closeMobileDrawers,
@@ -15,8 +15,8 @@ import {
 const OVERLAP_RATIO = 0.12
 // この px 未満の移動は tap 扱いにして click 経路 (= 下方向送り) に委ねる。
 const FLICK_THRESHOLD_PX = 12
-// この px 以上の縦フリックは「大きなフリック」として 2 画面送りに増幅する。
-const BIG_FLICK_THRESHOLD_PX = 64
+// 縦ドラッグ保持中の連続送り間隔。smooth scroll の 1 画面分がおおむね完了してから次を送る。
+const AUTO_SCROLL_INTERVAL_MS = 700
 // ドラッグ中にアイコンを指へ追従させる量。生の移動量にこの係数を掛け、±ICON_MAX_PX に clamp する。
 const ICON_FOLLOW_FACTOR = 0.5
 const ICON_MAX_PX = 8
@@ -25,9 +25,7 @@ type ScrollDir = 'up' | 'down'
 type PanelDir = 'left' | 'right'
 type PanelState = 'toc' | 'main' | 'comments'
 
-type FlickGesture =
-  | { axis: 'vertical'; dir: ScrollDir; screens: number }
-  | { axis: 'horizontal'; dir: PanelDir }
+type FlickGesture = { axis: 'vertical'; dir: ScrollDir } | { axis: 'horizontal'; dir: PanelDir }
 
 /** 1 画面送り量。`clientHeight * (1 - OVERLAP_RATIO)` を四捨五入する */
 export const screenStep = (clientHeight: number): number =>
@@ -43,28 +41,19 @@ const horizontalGesture = (dx: number): FlickGesture | null => {
   return { axis: 'horizontal', dir: 'right' }
 }
 
-const verticalScreens = (dy: number): number => {
-  if (Math.abs(dy) >= BIG_FLICK_THRESHOLD_PX) {
-    return 2
-  }
-  return 1
-}
-
 const verticalGesture = (dy: number): FlickGesture | null => {
   if (Math.abs(dy) < FLICK_THRESHOLD_PX) {
     return null
   }
-  const screens = verticalScreens(dy)
   if (dy < 0) {
-    return { axis: 'vertical', dir: 'up', screens }
+    return { axis: 'vertical', dir: 'up' }
   }
-  return { axis: 'vertical', dir: 'down', screens }
+  return { axis: 'vertical', dir: 'down' }
 }
 
 /**
  * touch の移動量 (end - start) を flick に判定する。支配軸 (移動量の大きい軸) で縦 / 横を決め、
- * 閾値未満は null (= tap)。縦は BIG_FLICK_THRESHOLD_PX 以上で 2 画面送りに増幅する。
- * 同値 (斜め 45°) は従来挙動 (縦スクロール) を優先する。
+ * 閾値未満は null (= tap)。同値 (斜め 45°) は従来挙動 (縦スクロール) を優先する。
  */
 export const resolveFlickGesture = (dx: number, dy: number): FlickGesture | null => {
   if (Math.abs(dx) > Math.abs(dy)) {
@@ -73,9 +62,32 @@ export const resolveFlickGesture = (dx: number, dy: number): FlickGesture | null
   return verticalGesture(dy)
 }
 
+const panelOnLeftFlick = (current: PanelState, tocAvailable: boolean): PanelState => {
+  if (current === 'comments') {
+    return 'main'
+  }
+  if (current === 'main') {
+    if (tocAvailable) {
+      return 'toc'
+    }
+    return 'main'
+  }
+  return 'toc'
+}
+
+const panelOnRightFlick = (current: PanelState): PanelState => {
+  if (current === 'toc') {
+    return 'main'
+  }
+  if (current === 'main') {
+    return 'comments'
+  }
+  return 'comments'
+}
+
 /**
- * 横フリックによるパネル遷移。[TOC | 本文 | Comments] を横並びカルーセルと見なし、指の移動方向へ
- * ビューを送る (左フリック = 右隣の Comments へ、右フリック = 左隣の TOC へ)。端では留まる。
+ * 横フリックによるパネル遷移。[TOC | 本文 | Comments] を横並びと見なし、指の移動方向にある
+ * drawer へ送る (左フリック = 左側の TOC、右フリック = 右側の Comments)。端では留まる。
  * TOC が提供されない文書 (`html.has-pages` 無し) では 'toc' に進まず本文へ戻るだけにする。
  */
 export const nextPanelState = (
@@ -84,18 +96,9 @@ export const nextPanelState = (
   tocAvailable: boolean
 ): PanelState => {
   if (dir === 'left') {
-    if (current === 'toc') {
-      return 'main'
-    }
-    return 'comments'
+    return panelOnLeftFlick(current, tocAvailable)
   }
-  if (current === 'comments') {
-    return 'main'
-  }
-  if (tocAvailable) {
-    return 'toc'
-  }
-  return 'main'
+  return panelOnRightFlick(current)
 }
 
 const clampIconOffset = (dy: number): number => {
@@ -162,12 +165,12 @@ const scrollBehavior = (): ScrollBehavior => {
   return 'smooth'
 }
 
-const scrollByScreen = (dir: ScrollDir, screens = 1): void => {
+const scrollByScreen = (dir: ScrollDir): void => {
   const pane = getDocPane()
   if (!pane) {
     return
   }
-  const delta = screenStep(pane.clientHeight) * screens * directionSign(dir)
+  const delta = screenStep(pane.clientHeight) * directionSign(dir)
   pane.scrollBy({ behavior: scrollBehavior(), top: delta })
 }
 
@@ -201,6 +204,43 @@ interface TouchPoint {
 let touchStart: TouchPoint | null = null
 let fabEl: HTMLElement | null = null
 let iconEl: HTMLElement | null = null
+let autoScrollDir: ScrollDir | null = null
+let autoScrollTimer: ReturnType<typeof setInterval> | null = null
+let autoScrollFired = false
+
+// タイマーだけを止め、autoScrollFired は保持する (タッチセッション途中の一時停止用)。
+// フラグまで消すと、閾値付近のジッタで縦→null→縦と揺れた後の touchend が「未発火の縦フリック」に
+// 見えて 1 画面余分に送ってしまう。
+const stopAutoScrollTimer = (): void => {
+  if (autoScrollTimer) {
+    clearInterval(autoScrollTimer)
+    autoScrollTimer = null
+  }
+  autoScrollDir = null
+}
+
+// セッション終了 (touchstart / touchend / touchcancel) 用の完全停止。
+const stopAutoScroll = (): void => {
+  stopAutoScrollTimer()
+  autoScrollFired = false
+}
+
+// 即時 1 回送るのはセッション初回の縦突入のみ。2 度目以降 (ジッタ再突入・方向転換) は interval
+// からにして、閾値境界の揺れで即時送りが連発しないようにする。
+const startAutoScroll = (dir: ScrollDir): void => {
+  if (autoScrollDir === dir && autoScrollTimer) {
+    return
+  }
+  stopAutoScrollTimer()
+  autoScrollDir = dir
+  if (!autoScrollFired) {
+    autoScrollFired = true
+    scrollByScreen(dir)
+  }
+  autoScrollTimer = setInterval(() => {
+    scrollByScreen(dir)
+  }, AUTO_SCROLL_INTERVAL_MS)
+}
 
 const switchPanelByFlick = (dir: PanelDir): void => {
   if (!fabEl) {
@@ -238,6 +278,7 @@ const resetIcon = (): void => {
 }
 
 const onTouchStart = (event: TouchEvent): void => {
+  stopAutoScroll()
   const [touch] = event.touches
   touchStart = null
   if (touch) {
@@ -248,23 +289,43 @@ const onTouchStart = (event: TouchEvent): void => {
   }
 }
 
+const syncAutoScroll = (gesture: FlickGesture | null): void => {
+  if (gesture && gesture.axis === 'vertical') {
+    startAutoScroll(gesture.dir)
+    return
+  }
+  stopAutoScrollTimer()
+}
+
+interface TouchDelta {
+  dx: number
+  dy: number
+}
+
+const touchDelta = (event: TouchEvent): TouchDelta | null => {
+  if (!touchStart) {
+    return null
+  }
+  const [touch] = event.touches
+  if (!touch) {
+    return null
+  }
+  return { dx: touch.clientX - touchStart.clientX, dy: touch.clientY - touchStart.clientY }
+}
+
 // アイコンを指へ追従させつつ、移動が flick 閾値を超えてからネイティブスクロール /
 // pull-to-refresh / text 選択を抑止する。閾値未満の微小ジッタ tap では preventDefault せず、
 // 後続の合成 click (= tap 経路) を温存する。
 const onTouchMove = (event: TouchEvent): void => {
-  if (!touchStart) {
+  const delta = touchDelta(event)
+  if (!delta) {
     return
   }
-  const [touch] = event.touches
-  if (!touch) {
-    return
-  }
-  const dx = touch.clientX - touchStart.clientX
-  const dy = touch.clientY - touchStart.clientY
-  applyIconDragStyle(dx, dy)
-  if (Math.max(Math.abs(dx), Math.abs(dy)) >= FLICK_THRESHOLD_PX && event.cancelable) {
+  applyIconDragStyle(delta.dx, delta.dy)
+  if (Math.max(Math.abs(delta.dx), Math.abs(delta.dy)) >= FLICK_THRESHOLD_PX && event.cancelable) {
     event.preventDefault()
   }
+  syncAutoScroll(resolveFlickGesture(delta.dx, delta.dy))
 }
 
 const resolveFlick = (event: TouchEvent, start: TouchPoint): FlickGesture | null => {
@@ -275,33 +336,54 @@ const resolveFlick = (event: TouchEvent, start: TouchPoint): FlickGesture | null
   return resolveFlickGesture(touch.clientX - start.clientX, touch.clientY - start.clientY)
 }
 
-const performFlick = (gesture: FlickGesture): void => {
+const finishVerticalFlick = (gesture: FlickGesture, hadAutoScroll: boolean): void => {
+  if (gesture.axis !== 'vertical' || hadAutoScroll) {
+    return
+  }
+  scrollByScreen(gesture.dir)
+}
+
+const preventClickAfterFlick = (event: TouchEvent): void => {
+  if (event.cancelable) {
+    event.preventDefault()
+  }
+}
+
+const handleFlickEnd = (gesture: FlickGesture, hadAutoScroll: boolean): void => {
   if (gesture.axis === 'horizontal') {
     switchPanelByFlick(gesture.dir)
     return
   }
-  scrollByScreen(gesture.dir, gesture.screens)
+  finishVerticalFlick(gesture, hadAutoScroll)
+}
+
+const clearTouchSession = (
+  event: TouchEvent,
+  start: TouchPoint
+): { gesture: FlickGesture | null; hadAutoScroll: boolean } => {
+  const hadAutoScroll = autoScrollFired
+  stopAutoScroll()
+  const gesture = resolveFlick(event, start)
+  touchStart = null
+  resetIcon()
+  return { gesture, hadAutoScroll }
 }
 
 const onTouchEnd = (event: TouchEvent): void => {
   if (!touchStart) {
     return
   }
-  const gesture = resolveFlick(event, touchStart)
-  touchStart = null
-  resetIcon()
+  const { gesture, hadAutoScroll } = clearTouchSession(event, touchStart)
   if (!gesture) {
     return
   }
-  // flick と判定したら後続の合成 click (= tap 経路) を抑止して二重スクロールを防ぐ。
-  if (event.cancelable) {
-    event.preventDefault()
-  }
-  performFlick(gesture)
+  preventClickAfterFlick(event)
+  handleFlickEnd(gesture, hadAutoScroll)
 }
 
 const onTouchCancel = (): void => {
   touchStart = null
+  stopAutoScroll()
   resetIcon()
 }
 
@@ -364,8 +446,73 @@ const buildPaneFixture = (): HTMLElement => {
   return pane
 }
 
+interface TouchDispatch {
+  btn: HTMLElement
+  clientX: number
+  clientY: number
+  type: 'touchstart' | 'touchmove' | 'touchend' | 'touchcancel'
+}
+
+const dispatchTouch = (dispatch: TouchDispatch): void => {
+  const { btn, clientX, clientY, type } = dispatch
+  const touchInit = { clientX, clientY, identifier: 1, target: btn }
+  const touch = new Touch(touchInit)
+  let touches: Touch[] = [touch]
+  if (type === 'touchend' || type === 'touchcancel') {
+    touches = []
+  }
+  btn.dispatchEvent(new TouchEvent(type, { cancelable: true, changedTouches: [touch], touches }))
+}
+
 if (import.meta.vitest) {
   const { afterEach, describe, expect, it, vi } = import.meta.vitest
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+    document.body.innerHTML = ''
+  })
+
+  interface WiredFixture {
+    btn: HTMLElement
+    scrollBy: ReturnType<typeof vi.fn>
+  }
+
+  const setupWiredFab = (): WiredFixture => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false }))
+    const pane = buildPaneFixture()
+    const scrollBy = vi.fn()
+    Object.defineProperty(pane, 'scrollBy', { configurable: true, value: scrollBy })
+    const btn = document.getElementById('btn-page-scroll')
+    if (!btn) {
+      throw new Error('fixture missing #btn-page-scroll')
+    }
+    wirePageScrollButton()
+    return { btn, scrollBy }
+  }
+
+  const assertScrollCount = (scrollBy: ReturnType<typeof vi.fn>, count: number): void => {
+    expect(scrollBy).toHaveBeenCalledTimes(count)
+  }
+
+  const advanceAndAssertScroll = (
+    scrollBy: ReturnType<typeof vi.fn>,
+    ms: number,
+    count: number
+  ): void => {
+    vi.advanceTimersByTime(ms)
+    assertScrollCount(scrollBy, count)
+  }
+
+  // fake timers 有効化 + 縦保持開始 (touchstart → 閾値超え touchmove → 即時 1 回送り確認) の共通形。
+  const startVerticalHold = (): WiredFixture => {
+    vi.useFakeTimers()
+    const fixture = setupWiredFab()
+    dispatchTouch({ btn: fixture.btn, clientX: 0, clientY: 0, type: 'touchstart' })
+    dispatchTouch({ btn: fixture.btn, clientX: 0, clientY: -40, type: 'touchmove' })
+    assertScrollCount(fixture.scrollBy, 1)
+    return fixture
+  }
 
   describe('screenStep', () => {
     it('clientHeight から overlap (12%) を引いた送り量を四捨五入で返す', () => {
@@ -375,17 +522,10 @@ if (import.meta.vitest) {
   })
 
   describe('resolveFlickGesture', () => {
-    it('縦方向 (|dy| >= 12 かつ dy 支配) は up / down の 1 画面送り', () => {
+    it('縦方向 (|dy| >= 12 かつ dy 支配) は up / down', () => {
       expect([resolveFlickGesture(0, -12), resolveFlickGesture(4, 40)]).toEqual([
-        { axis: 'vertical', dir: 'up', screens: 1 },
-        { axis: 'vertical', dir: 'down', screens: 1 },
-      ])
-    })
-
-    it('縦方向 |dy| >= 64 は 2 画面送りに増幅する', () => {
-      expect([resolveFlickGesture(0, -64), resolveFlickGesture(0, 100)]).toEqual([
-        { axis: 'vertical', dir: 'up', screens: 2 },
-        { axis: 'vertical', dir: 'down', screens: 2 },
+        { axis: 'vertical', dir: 'up' },
+        { axis: 'vertical', dir: 'down' },
       ])
     })
 
@@ -402,31 +542,31 @@ if (import.meta.vitest) {
         resolveFlickGesture(-11, 0),
         resolveFlickGesture(0, 11),
         resolveFlickGesture(20, -20),
-      ]).toEqual([null, null, null, { axis: 'vertical', dir: 'up', screens: 1 }])
+      ]).toEqual([null, null, null, { axis: 'vertical', dir: 'up' }])
     })
   })
 
   describe('nextPanelState', () => {
-    it('左フリックで toc→main→comments、comments では留まる', () => {
+    it('左フリックで comments→main→toc、toc では留まる', () => {
       expect([
-        nextPanelState('toc', 'left', true),
-        nextPanelState('main', 'left', true),
         nextPanelState('comments', 'left', true),
-      ]).toEqual(['main', 'comments', 'comments'])
-    })
-
-    it('右フリックで comments→main→toc、toc では留まる', () => {
-      expect([
-        nextPanelState('comments', 'right', true),
-        nextPanelState('main', 'right', true),
-        nextPanelState('toc', 'right', true),
+        nextPanelState('main', 'left', true),
+        nextPanelState('toc', 'left', true),
       ]).toEqual(['main', 'toc', 'toc'])
     })
 
-    it('TOC 未提供 (has-pages 無し) では右フリックで toc に進まない', () => {
+    it('右フリックで toc→main→comments、comments では留まる', () => {
       expect([
-        nextPanelState('main', 'right', false),
-        nextPanelState('comments', 'right', false),
+        nextPanelState('toc', 'right', true),
+        nextPanelState('main', 'right', true),
+        nextPanelState('comments', 'right', true),
+      ]).toEqual(['main', 'comments', 'comments'])
+    })
+
+    it('TOC 未提供 (has-pages 無し) では左フリックで toc に進まない', () => {
+      expect([
+        nextPanelState('main', 'left', false),
+        nextPanelState('comments', 'left', false),
       ]).toEqual(['main', 'main'])
     })
   })
@@ -455,36 +595,57 @@ if (import.meta.vitest) {
   })
 
   describe('wirePageScrollButton', () => {
-    afterEach(() => {
-      vi.unstubAllGlobals()
-      document.body.innerHTML = ''
-    })
-
-    const setup = (): { btn: HTMLElement; scrollBy: ReturnType<typeof vi.fn> } => {
-      vi.stubGlobal('matchMedia', () => ({ matches: false }))
-      const pane = buildPaneFixture()
-      const scrollBy = vi.fn()
-      Object.defineProperty(pane, 'scrollBy', { configurable: true, value: scrollBy })
-      const btn = document.getElementById('btn-page-scroll')
-      if (!btn) {
-        throw new Error('fixture missing #btn-page-scroll')
-      }
-      wirePageScrollButton()
-      return { btn, scrollBy }
-    }
-
     it('click (tap) で 1 画面下へスクロールする (top 正)', () => {
-      const { btn, scrollBy } = setup()
+      const { btn, scrollBy } = setupWiredFab()
       btn.click()
       // 600 * 0.88 = 528
       expect(scrollBy).toHaveBeenCalledWith({ behavior: 'smooth', top: 528 })
     })
 
     it('2 回 wire しても click handler が重複しない (dataset.wired gate)', () => {
-      const { btn, scrollBy } = setup()
+      const { btn, scrollBy } = setupWiredFab()
       wirePageScrollButton()
       btn.click()
       expect(scrollBy).toHaveBeenCalledTimes(1)
+    })
+
+    it('縦ドラッグ保持中は即 1 回送り後、間隔ごとに連続スクロールする', () => {
+      const { btn, scrollBy } = startVerticalHold()
+      expect(scrollBy).toHaveBeenCalledWith({ behavior: 'smooth', top: -528 })
+      advanceAndAssertScroll(scrollBy, 700, 2)
+      advanceAndAssertScroll(scrollBy, 700, 3)
+      dispatchTouch({ btn, clientX: 0, clientY: -40, type: 'touchend' })
+      advanceAndAssertScroll(scrollBy, 1400, 3)
+    })
+
+    it('素早い縦フリック (touchmove 無し) は touchend で 1 画面だけ送る', () => {
+      const { btn, scrollBy } = setupWiredFab()
+      dispatchTouch({ btn, clientX: 0, clientY: 0, type: 'touchstart' })
+      dispatchTouch({ btn, clientX: 0, clientY: -40, type: 'touchend' })
+      expect(scrollBy).toHaveBeenCalledTimes(1)
+      expect(scrollBy).toHaveBeenCalledWith({ behavior: 'smooth', top: -528 })
+    })
+
+    it('閾値ジッタ (縦→未満→縦) でも即時送りは 1 回で touchend の二重送りもない', () => {
+      const { btn, scrollBy } = startVerticalHold()
+      dispatchTouch({ btn, clientX: 0, clientY: -5, type: 'touchmove' })
+      dispatchTouch({ btn, clientX: 0, clientY: -40, type: 'touchmove' })
+      assertScrollCount(scrollBy, 1)
+      advanceAndAssertScroll(scrollBy, 700, 2)
+      dispatchTouch({ btn, clientX: 0, clientY: -40, type: 'touchend' })
+      advanceAndAssertScroll(scrollBy, 1400, 2)
+    })
+
+    it('touchcancel で連続スクロールのタイマーが止まる', () => {
+      const { btn, scrollBy } = startVerticalHold()
+      dispatchTouch({ btn, clientX: 0, clientY: -40, type: 'touchcancel' })
+      advanceAndAssertScroll(scrollBy, 1400, 1)
+    })
+
+    it('縦保持中に横フリックへ変わるとタイマーが止まる', () => {
+      const { btn, scrollBy } = startVerticalHold()
+      dispatchTouch({ btn, clientX: -60, clientY: -10, type: 'touchmove' })
+      advanceAndAssertScroll(scrollBy, 1400, 1)
     })
   })
 }
