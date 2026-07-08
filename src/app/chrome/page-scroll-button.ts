@@ -20,6 +20,7 @@ const AUTO_SCROLL_INTERVAL_MS = 700
 // ドラッグ中にアイコンを指へ追従させる量。生の移動量にこの係数を掛け、±ICON_MAX_PX に clamp する。
 const ICON_FOLLOW_FACTOR = 0.5
 const ICON_MAX_PX = 8
+const MOBILE_MEDIA_QUERY = '(max-width: 768px)'
 
 type ScrollDir = 'up' | 'down'
 type PanelDir = 'left' | 'right'
@@ -165,6 +166,12 @@ const scrollBehavior = (): ScrollBehavior => {
   return 'smooth'
 }
 
+const isMobileViewport = (): boolean => globalThis.matchMedia(MOBILE_MEDIA_QUERY).matches
+
+const focusFab = (btn: HTMLElement): void => {
+  btn.focus({ preventScroll: true })
+}
+
 const scrollByScreen = (dir: ScrollDir): void => {
   const pane = getDocPane()
   if (!pane) {
@@ -285,6 +292,7 @@ const onTouchStart = (event: TouchEvent): void => {
     touchStart = { clientX: touch.clientX, clientY: touch.clientY }
   }
   if (fabEl) {
+    focusFab(fabEl)
     fabEl.classList.add('is-dragging')
   }
 }
@@ -425,6 +433,9 @@ export const wirePageScrollButton = (): void => {
   iconEl = btn.querySelector<HTMLElement>('.btn-toolbar-icon')
   registerTouchHandlers(btn)
   btn.addEventListener('click', onClick)
+  if (isMobileViewport()) {
+    focusFab(btn)
+  }
 }
 
 // in-source test 専用 fixture helper。production ビルドでは参照側 (if ブロック) ごと dead code として
@@ -478,8 +489,10 @@ if (import.meta.vitest) {
     scrollBy: ReturnType<typeof vi.fn>
   }
 
-  const setupWiredFab = (): WiredFixture => {
-    vi.stubGlobal('matchMedia', () => ({ matches: false }))
+  const setupWiredFab = (matchesMobile = false): WiredFixture => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === MOBILE_MEDIA_QUERY && matchesMobile,
+    }))
     const pane = buildPaneFixture()
     const scrollBy = vi.fn()
     Object.defineProperty(pane, 'scrollBy', { configurable: true, value: scrollBy })
@@ -595,6 +608,23 @@ if (import.meta.vitest) {
   })
 
   describe('wirePageScrollButton', () => {
+    it('mobile viewport では wire 直後に FAB へ focus する', () => {
+      const { btn } = setupWiredFab(true)
+      expect(document.activeElement).toBe(btn)
+    })
+
+    it('desktop viewport では wire 直後に FAB へ focus しない', () => {
+      const { btn } = setupWiredFab()
+      expect(document.activeElement).not.toBe(btn)
+    })
+
+    it('touchstart で FAB へ focus する', () => {
+      const { btn } = setupWiredFab()
+      btn.blur()
+      dispatchTouch({ btn, clientX: 0, clientY: 0, type: 'touchstart' })
+      expect(document.activeElement).toBe(btn)
+    })
+
     it('click (tap) で 1 画面下へスクロールする (top 正)', () => {
       const { btn, scrollBy } = setupWiredFab()
       btn.click()

@@ -2189,6 +2189,9 @@ html:not([data-mdxg-online='1']) .online-edition-only {
     -webkit-user-select: none;
     user-select: none;
   }
+  .page-scroll-fab:focus {
+    outline-style: auto;
+  }
   /* 範囲選択のコメントバー表示中 (§floater-active) は同じ左下〜下端で重なるため隠す。
      drawer 展開中は隠さない (左右フリックで本文 / 反対側 drawer へ切り替える導線を残すため)。 */
   :root.floater-active .page-scroll-fab {
