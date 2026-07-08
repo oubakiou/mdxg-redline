@@ -2167,11 +2167,13 @@ html:not([data-mdxg-online='1']) .online-edition-only {
      左右フリック=TOC (左) / 本文 / Comments (右) の 3 状態切替 (page-scroll-button.ts)。
      footer の上に浮かせ safe-area-left を尊重する。touch-action:none でドラッグが pull-to-refresh /
      text 選択を起動しないようにする。z-index 65 は drawer(60)/backdrop(55) より上・footer(70) より
-     下で、drawer 展開中も左右フリックで本文へ戻れるよう手前に残す。 */
+     下で、drawer 展開中も左右フリックで本文へ戻れるよう手前に残す。
+     left 32px は iOS のブラウザ標準の左端スワイプ (戻るジェスチャ、左端 20〜27px 程度の帯) と
+     FAB のタッチ開始が重なって誤発動しないようにするためのオフセット。 */
   .page-scroll-fab {
     box-sizing: border-box;
     position: fixed;
-    left: calc(12px + var(--mobile-safe-left));
+    left: calc(32px + var(--mobile-safe-left));
     bottom: calc(var(--mobile-footer-height) + 16px);
     z-index: 65;
     display: flex;
