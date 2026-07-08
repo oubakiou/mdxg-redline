@@ -148,6 +148,18 @@ export const iconDragStyle = (dx: number, dy: number): IconDragStyle => {
 }
 
 const getDocPane = (): HTMLElement | null => document.querySelector<HTMLElement>('.doc-pane')
+const getPageNav = (): HTMLElement | null => document.getElementById('page-nav')
+const getComments = (): HTMLElement | null => document.querySelector<HTMLElement>('.comments')
+
+const getVerticalScrollTarget = (): HTMLElement | null => {
+  if (isMobilePageNavOpen()) {
+    return getPageNav()
+  }
+  if (isMobileCommentsOpen()) {
+    return getComments()
+  }
+  return getDocPane()
+}
 
 const directionSign = (dir: ScrollDir): number => {
   if (dir === 'up') {
@@ -173,12 +185,12 @@ const focusFab = (btn: HTMLElement): void => {
 }
 
 const scrollByScreen = (dir: ScrollDir): void => {
-  const pane = getDocPane()
-  if (!pane) {
+  const target = getVerticalScrollTarget()
+  if (!target) {
     return
   }
-  const delta = screenStep(pane.clientHeight) * directionSign(dir)
-  pane.scrollBy({ behavior: scrollBehavior(), top: delta })
+  const delta = screenStep(target.clientHeight) * directionSign(dir)
+  target.scrollBy({ behavior: scrollBehavior(), top: delta })
 }
 
 const currentPanelState = (): PanelState => {
@@ -445,7 +457,11 @@ export const wirePageScrollButton = (): void => {
 // 落ちる。アイコン有りの経路を検証する場合は animate を vi.fn() でスタブすること。
 const buildPaneFixture = (): HTMLElement => {
   document.body.innerHTML = `
-    <main class="layout"><section class="doc-pane"></section></main>
+    <main class="layout">
+      <aside class="page-nav" id="page-nav"></aside>
+      <section class="doc-pane"></section>
+      <aside class="comments"></aside>
+    </main>
     <button id="btn-page-scroll"></button>
   `
   const pane = document.querySelector<HTMLElement>('.doc-pane')
@@ -455,6 +471,14 @@ const buildPaneFixture = (): HTMLElement => {
   // happy-dom は clientHeight=0 / scrollBy 未実装のため双方を差し替える。
   Object.defineProperty(pane, 'clientHeight', { configurable: true, value: 600 })
   return pane
+}
+
+const getFixtureButton = (): HTMLElement => {
+  const btn = document.getElementById('btn-page-scroll')
+  if (!btn) {
+    throw new Error('fixture missing #btn-page-scroll')
+  }
+  return btn
 }
 
 interface TouchDispatch {
@@ -482,11 +506,34 @@ if (import.meta.vitest) {
     vi.unstubAllGlobals()
     vi.useRealTimers()
     document.body.innerHTML = ''
+    document.documentElement.classList.remove('mobile-page-nav-open', 'mobile-comments-open')
   })
 
   interface WiredFixture {
     btn: HTMLElement
     scrollBy: ReturnType<typeof vi.fn>
+    commentsScrollBy: ReturnType<typeof vi.fn>
+    pageNavScrollBy: ReturnType<typeof vi.fn>
+  }
+
+  const mockScrollable = (
+    selector: string,
+    clientHeight: number
+  ): { el: HTMLElement; scrollBy: ReturnType<typeof vi.fn> } => {
+    const el = document.querySelector<HTMLElement>(selector)
+    if (!el) {
+      throw new Error(`fixture missing ${selector}`)
+    }
+    const scrollBy = vi.fn()
+    Object.defineProperty(el, 'clientHeight', { configurable: true, value: clientHeight })
+    Object.defineProperty(el, 'scrollBy', { configurable: true, value: scrollBy })
+    return { el, scrollBy }
+  }
+
+  const mockDocPaneScrollBy = (pane: HTMLElement): ReturnType<typeof vi.fn> => {
+    const scrollBy = vi.fn()
+    Object.defineProperty(pane, 'scrollBy', { configurable: true, value: scrollBy })
+    return scrollBy
   }
 
   const setupWiredFab = (matchesMobile = false): WiredFixture => {
@@ -494,14 +541,12 @@ if (import.meta.vitest) {
       matches: query === MOBILE_MEDIA_QUERY && matchesMobile,
     }))
     const pane = buildPaneFixture()
-    const scrollBy = vi.fn()
-    Object.defineProperty(pane, 'scrollBy', { configurable: true, value: scrollBy })
-    const btn = document.getElementById('btn-page-scroll')
-    if (!btn) {
-      throw new Error('fixture missing #btn-page-scroll')
-    }
+    const scrollBy = mockDocPaneScrollBy(pane)
+    const { scrollBy: pageNavScrollBy } = mockScrollable('#page-nav', 400)
+    const { scrollBy: commentsScrollBy } = mockScrollable('.comments', 500)
+    const btn = getFixtureButton()
     wirePageScrollButton()
-    return { btn, scrollBy }
+    return { btn, commentsScrollBy, pageNavScrollBy, scrollBy }
   }
 
   const assertScrollCount = (scrollBy: ReturnType<typeof vi.fn>, count: number): void => {
@@ -638,7 +683,9 @@ if (import.meta.vitest) {
       btn.click()
       expect(scrollBy).toHaveBeenCalledTimes(1)
     })
+  })
 
+  describe('wirePageScrollButton vertical gestures', () => {
     it('縦ドラッグ保持中は即 1 回送り後、間隔ごとに連続スクロールする', () => {
       const { btn, scrollBy } = startVerticalHold()
       expect(scrollBy).toHaveBeenCalledWith({ behavior: 'smooth', top: -528 })
@@ -676,6 +723,64 @@ if (import.meta.vitest) {
       const { btn, scrollBy } = startVerticalHold()
       dispatchTouch({ btn, clientX: -60, clientY: -10, type: 'touchmove' })
       advanceAndAssertScroll(scrollBy, 1400, 1)
+    })
+  })
+
+  describe('wirePageScrollButton drawer scroll target', () => {
+    it('TOC drawer open 中の click は page-nav を 1 画面下へスクロールする', () => {
+      const { btn, pageNavScrollBy, scrollBy } = setupWiredFab()
+      document.documentElement.classList.add('mobile-page-nav-open')
+      btn.click()
+      expect(pageNavScrollBy).toHaveBeenCalledWith({ behavior: 'smooth', top: 352 })
+      expect(scrollBy).not.toHaveBeenCalled()
+    })
+
+    it('TOC drawer open 中の縦ドラッグ保持は page-nav を連続スクロールする', () => {
+      vi.useFakeTimers()
+      const { btn, pageNavScrollBy, scrollBy } = setupWiredFab()
+      document.documentElement.classList.add('mobile-page-nav-open')
+      dispatchTouch({ btn, clientX: 0, clientY: 0, type: 'touchstart' })
+      dispatchTouch({ btn, clientX: 0, clientY: -40, type: 'touchmove' })
+      expect(pageNavScrollBy).toHaveBeenCalledWith({ behavior: 'smooth', top: -352 })
+      expect(scrollBy).not.toHaveBeenCalled()
+      advanceAndAssertScroll(pageNavScrollBy, 700, 2)
+    })
+
+    it('TOC drawer open 中の素早い縦フリックは page-nav を 1 画面送る', () => {
+      const { btn, pageNavScrollBy, scrollBy } = setupWiredFab()
+      document.documentElement.classList.add('mobile-page-nav-open')
+      dispatchTouch({ btn, clientX: 0, clientY: 0, type: 'touchstart' })
+      dispatchTouch({ btn, clientX: 0, clientY: -40, type: 'touchend' })
+      expect(pageNavScrollBy).toHaveBeenCalledWith({ behavior: 'smooth', top: -352 })
+      expect(scrollBy).not.toHaveBeenCalled()
+    })
+
+    it('Comments drawer open 中の click は comments を 1 画面下へスクロールする', () => {
+      const { btn, commentsScrollBy, scrollBy } = setupWiredFab()
+      document.documentElement.classList.add('mobile-comments-open')
+      btn.click()
+      expect(commentsScrollBy).toHaveBeenCalledWith({ behavior: 'smooth', top: 440 })
+      expect(scrollBy).not.toHaveBeenCalled()
+    })
+
+    it('Comments drawer open 中の縦ドラッグ保持は comments を連続スクロールする', () => {
+      vi.useFakeTimers()
+      const { btn, commentsScrollBy, scrollBy } = setupWiredFab()
+      document.documentElement.classList.add('mobile-comments-open')
+      dispatchTouch({ btn, clientX: 0, clientY: 0, type: 'touchstart' })
+      dispatchTouch({ btn, clientX: 0, clientY: -40, type: 'touchmove' })
+      expect(commentsScrollBy).toHaveBeenCalledWith({ behavior: 'smooth', top: -440 })
+      expect(scrollBy).not.toHaveBeenCalled()
+      advanceAndAssertScroll(commentsScrollBy, 700, 2)
+    })
+
+    it('Comments drawer open 中の素早い縦フリックは comments を 1 画面送る', () => {
+      const { btn, commentsScrollBy, scrollBy } = setupWiredFab()
+      document.documentElement.classList.add('mobile-comments-open')
+      dispatchTouch({ btn, clientX: 0, clientY: 0, type: 'touchstart' })
+      dispatchTouch({ btn, clientX: 0, clientY: -40, type: 'touchend' })
+      expect(commentsScrollBy).toHaveBeenCalledWith({ behavior: 'smooth', top: -440 })
+      expect(scrollBy).not.toHaveBeenCalled()
     })
   })
 }
