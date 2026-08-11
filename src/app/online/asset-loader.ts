@@ -1685,7 +1685,8 @@ if (import.meta.vitest) {
 
     it('inFlight Map は task 完了後に entry を削除する (leak しない)', async () => {
       installEmbeddedShikiLangsScript()
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(JSON.parse(TEST_GRAMMAR_TS))))
+      const grammar: unknown = JSON.parse(TEST_GRAMMAR_TS)
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(grammar)))
       const cache = createOnlineAssetCache()
       await loadOnlineAssets('```ts\nx\n```\n', new URL('https://h/'), cache)
       expect(cache.inFlight.size).toBe(0)

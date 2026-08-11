@@ -13,7 +13,7 @@ import { escapeHtml } from './escape'
  * 呼び出し側 (app/renderers/shiki.ts) が adapter を作って渡す。
  */
 export interface CodeHighlighter {
-  highlight(code: string, rawLang: string): string | null
+  highlight: (code: string, rawLang: string) => string | null
 }
 
 interface CodeRenderRequest {

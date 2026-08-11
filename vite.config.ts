@@ -1202,10 +1202,21 @@ export default defineConfig({
       'number-literal-case': 'off',
       'oxc/no-async-await': 'off',
       'oxc/no-rest-spread-properties': 'off',
+      // named group 化は match[1] → match.groups の参照書き換えを伴い、動作中の
+      // HTML rewrite / markdown パース経路に回帰リスクを広く持ち込む。correctness では
+      // なく可読性のルールなので off にする。
+      'prefer-named-capture-group': 'off',
       // import の並びは fmt (oxfmt sortImports) が所有する。lint の sort-imports は
       // member 構文順 (none→all→multiple→single) という別アルゴリズムで衝突するため off。
       'sort-imports': 'off',
+      // vi.fn() (Mock<Constructable | Procedure>) を狭い関数型へ寄せるアサーションまで
+      // unnecessary と判定する誤検出があり、--fix が TS2322 を生む。
+      'typescript/no-unnecessary-type-assertion': 'off',
       'unicorn/no-null': 'off',
+      // 同一モジュールから import した値をファイル内でも使いつつ re-export する形は、
+      // export from に寄せると import と二重記述になる。自ファイルで未使用の re-export
+      // だけを対象にする。
+      'unicorn/prefer-export-from': ['error', { checkUsedVariables: false }],
     },
   },
   plugins: [
