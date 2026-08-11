@@ -300,10 +300,7 @@ placeholder は `{count}` / `{name}` / `{url}` / `{message}` 等の素朴な `{k
 
 ```ts
 export type PluralBaseKey =
-  | 'comments.count_label'
-  | 'toast.render_failed'
-  | 'modal.confirm_delete_comments'
-  | 'search.count'
+  'comments.count_label' | 'toast.render_failed' | 'modal.confirm_delete_comments' | 'search.count'
 
 export interface TranslatePluralOptions {
   baseKey: PluralBaseKey
@@ -664,10 +661,7 @@ UI / DOM / I/O に依存しないロジックを pure 関数で書き、in-sourc
 export type Lang = 'en' | 'ja'
 
 export type PluralBaseKey =
-  | 'comments.count_label'
-  | 'toast.render_failed'
-  | 'modal.confirm_delete_comments'
-  | 'search.count'
+  'comments.count_label' | 'toast.render_failed' | 'modal.confirm_delete_comments' | 'search.count'
 
 // 辞書は MessageDict (= Readonly<Record<string, string>>) で受ける。core 層では generic K を
 // 取らず `as K` unsafe assertion を回避し、型安全性は wrapper (i18n-browser / cli/i18n) 側で

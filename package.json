@@ -48,7 +48,10 @@
     "build:mermaid": "vp build --config vite.mermaid.config.ts",
     "build:review-request": "vp build --config vite.review-request.config.ts",
     "build:watch": "vp build --watch",
+    "check": "vp check",
+    "check:fix": "vp check --fix",
     "dev": "vp dev",
+    "pack:check": "npm run check && npm run test && npm run build && npm pack --dry-run",
     "test": "vp test",
     "test:watch": "vp test --watch"
   },

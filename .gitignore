@@ -10,6 +10,7 @@ coverage/
 .pnpm-store/
 pnpm-lock.yaml
 pnpm-workspace.yaml
+yarn.lock
 
 # 個人設定
 .claude/settings.local.json
@@ -18,7 +19,7 @@ CLAUDE.local.md
 .env.*
 
 .claude/skills/
-.agents/skills
+.agents/skills/
 skills-lock.json
 
 # .tempディレクトリは維持するが中身は管理しない

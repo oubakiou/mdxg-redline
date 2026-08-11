@@ -1217,6 +1217,15 @@ export default defineConfig({
   root: 'src',
   test: {
     environment: 'happy-dom',
-    includeSource: ['**/*.ts'],
+    exclude: ['**/node_modules/**', '**/.git/**', '.temp/**', 'dist/**'],
+    // includeSource は列挙で閉じる。root が repository root なので `**/*.ts` にすると
+    // gitignore 対象の .claude/skills/ (エージェントが install する外部 skill) まで走査する
+    includeSource: ['src/**/*.ts', 'scripts/**/*.ts', '.codex/hooks/*.ts'],
+    // vite の root は index.html のある src/ だが、scripts/ の契約テストと .codex/ の
+    // hook テストは repository root 側にあるため test の root だけ引き上げる
+    root: ROOT_DIR,
+    // scripts/ の契約テストは 1 ケースごとに bash / fake CLI の子プロセスを起動する。
+    // ホストの負荷次第でこの spawn が数秒遅延するため、vitest 既定の 5s では足りない
+    testTimeout: 30_000,
   },
 })

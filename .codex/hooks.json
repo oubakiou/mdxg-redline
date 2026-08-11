@@ -2,12 +2,12 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Edit|Write",
+        "matcher": "Edit|Write|apply_patch|ApplyPatch",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/run-vp-check-fix.ts\"",
-            "statusMessage": "vp check --fix"
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/run-check-file.ts\"",
+            "statusMessage": "check file"
           }
         ]
       }

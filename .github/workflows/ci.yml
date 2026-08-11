@@ -1,0 +1,33 @@
+# PR の必須 gate。clean checkout と .nvmrc で pin した Node で、ローカルの
+# pre-commit hook と同じ品質ゲート (check / test / build) を再実行する。
+# tarball の中身は files / exports / types を変更したときに壊れやすいため、
+# publish 前と同じ npm pack --dry-run まで通す。
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# 既定の GITHUB_TOKEN 権限は repository / organization 設定に依存する。
+# この workflow は読み取りしかしないため、導入先の設定に関わらず最小へ固定する。
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # pull_request の code を実行する job に token を残さない
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - run: npm pack --dry-run

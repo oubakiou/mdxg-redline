@@ -3,7 +3,7 @@
   "hooks": {
     "postToolUse": [
       {
-        "command": ".cursor/hooks/vp-check-fix.sh",
+        "command": ".cursor/hooks/check-file.sh",
         "matcher": "Write",
         "timeout": 120
       }

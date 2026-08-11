@@ -6,13 +6,39 @@
 
 ビルドツールは [Vite+ (vp)](https://viteplus.dev/) を使用し、npm の devDependency（`vite-plus`）として導入している。devcontainer / `local_setup.sh` がセットアップを担当するので、ローカル開発時はそれらを利用するのが最短。
 
-`vp build` は本体ビルド（`dist/standalone.html` / `dist/embed-template.html`）のみを行う最短コマンド。配布物一式（mermaid runtime / KaTeX runtime / review-request CLI まで含む）を揃えるには `npm run build` を使う。
+品質ゲートは npm scripts に集約している。WHY 集約するか: pre-commit hook・CI・エージェント hook が**同一のコマンドを実行する**ことを構造的に保証し、「ローカルでは通るが CI で落ちる」経路を作らないため。`vp` の直接実行は、vp 固有のオプションを試すときに留める。
+
+| コマンド             | 内容                                                                         |
+| -------------------- | ---------------------------------------------------------------------------- |
+| `npm run check`      | format / lint / type-check                                                   |
+| `npm run check:fix`  | 同上（自動修正つき）                                                         |
+| `npm run test`       | in-source tests と `scripts/` の契約テスト                                   |
+| `npm run build`      | 配布物一式（mermaid / katex / standalone / embed-template / review-request） |
+| `npm run pack:check` | check / test / build / `npm pack --dry-run`                                  |
+
+`vp build` 単体なら本体ビルド（`dist/standalone.html` / `dist/embed-template.html`）だけを行う最短経路になる。
+
+## エージェント hook
+
+Claude / Codex / Cursor の PostToolUse hook は `vp` を直接呼ばず、`.agents/scripts/` の wrapper（`check-file.sh` / `check-all.sh` / `self-review.sh`）を経由する。WHY 一段挟むか: プロジェクト固有の検証を追加するときの変更点を wrapper 側 1 箇所に閉じ込め、`.claude/` / `.codex/` / `.cursor/` をテンプレート更新時にそのまま差し替えられる状態に保つため。
+
+CI（`.github/workflows/ci.yml`）は `.nvmrc` で pin した Node の clean checkout で check / test / build / `npm pack --dry-run` を実行する。tarball の中身は `files` / `bin` を変更したときに壊れやすいため、publish 前と同じ `npm pack --dry-run` まで通す。token 権限は導入先の repository 設定に依存させず `contents: read` に固定する。
+
+## devcontainer のディスク掃除
+
+VS Code server / npm / エージェント CLI の cache はコンテナディスク上で再蓄積し、放置すると ENOSPC で Bash ツールを含む全書き込みが停止する。`scripts/clean-devcontainer-disk.sh` が固定 allowlist 内の再生成可能キャッシュだけを冪等に回収する。契約は `scripts/clean-devcontainer-disk.test.ts` が保持しているので、挙動の詳細はそちらを正典とする。
+
+- `local_setup.sh`（初回、`npm ci` より前）と `postStartCommand`（毎起動）が `--threshold 90` で呼ぶ。WHY 依存インストールより前か: 満杯のディスクでは `npm ci` 自体が書き込めなくなるため。掃除の失敗と script 不在は警告に変換し、setup と container 起動をブロックしない
+- 使用中・判定不能・共有 volume 上のリソースは削除しない。`/vscode/vscode-server/bin` の世代は手動確認候補として表示するだけ
+- cursor-agent は最大日付の全世代と `~/.local/bin/agent` symlink の target を retained set として保持し、それ以外の旧世代だけを候補にする。WHY 同日世代を残すか: 世代名の git hash 順と release 順が一致せず、新旧を判定できないため
+- 終了コードは 0 が正常系（no-op / safety skip を含む）、1 が operational failure、2 が引数エラー。`--dry-run` は候補・skip 理由・回収見込みだけを表示する
+
+由来は [typescript-agent-package-template](https://github.com/oubakiou/typescript-agent-package-template)（cursor-agent category は [delegate-skills](https://github.com/oubakiou/delegate-skills) から移植）。取り込み済みのテンプレート version は `.template.json` に記録してあり、次回以降の差分は tag 間で取れる。
 
 ```bash
-vp build        # dist/standalone.html と dist/embed-template.html を生成（最短）
-npm run build   # 配布物一式（mermaid / katex / standalone / embed-template / review-request）を生成
-vp check --fix  # format / lint / type-check をまとめて実行（--fix で自動修正）
-vp test         # in-source tests を実行
+git remote add template https://github.com/oubakiou/typescript-agent-package-template.git
+git fetch template 'refs/tags/*:refs/tags/template-*'
+git diff template-v0.1.0..template-v0.2.0 -- .agents/ .claude/ .codex/ .githooks/ .github/ docs/ scripts/
 ```
 
 ## 設計ドキュメント

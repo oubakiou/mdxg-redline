@@ -15,6 +15,8 @@
   },
   "runArgs": ["--name", "${localEnv:USER}-mdxg-redline"],
   "postCreateCommand": "./local_setup.sh",
+  // VS Code server / npm / agent の cache はコンテナディスク上で再蓄積するため、毎起動で回収する
+  "postStartCommand": "bash -lc 'cleanup_status=0; bash scripts/clean-devcontainer-disk.sh --threshold 90 || cleanup_status=$?; if [ \"$cleanup_status\" -ne 0 ]; then printf \"warning: devcontainer disk cleanup failed (exit %s); continuing startup\\n\" \"$cleanup_status\" >&2; fi'",
   "customizations": {
     "vscode": {
       "extensions": [],

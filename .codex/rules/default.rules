@@ -1,8 +1,10 @@
+# prefix_rule は以降の引数すべてに一致し、allow は sandbox 外実行を無確認で通す。
+# そのため「読み取り用途で使われることが多い」だけのコマンドは載せられない。
+# sed / rg / git diff を意図的に除外している: sed -i はその場書き込み、
+# rg --pre は任意コマンド実行、git diff --output=<file> はファイル書き込みになり、
+# いずれも prefix では除外できない。
 prefix_rule(pattern=["gh", "pr", "diff"], decision="allow")
 prefix_rule(pattern=["gh", "pr", "view"], decision="allow")
-prefix_rule(pattern=["git", "diff"], decision="allow")
 prefix_rule(pattern=["git", "ls-files"], decision="allow")
 prefix_rule(pattern=["git", "status", "--short"], decision="allow")
 prefix_rule(pattern=["nl"], decision="allow")
-prefix_rule(pattern=["rg"], decision="allow")
-prefix_rule(pattern=["sed"], decision="allow")

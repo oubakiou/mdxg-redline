@@ -53,7 +53,7 @@ const OUT_DIR = path.resolve(ROOT_DIR, 'dist', 'katex')
 // 継続検証している (pin 更新時はそのテストを通せば 1-3 の実証になる)。4 は
 // src/core/embed/script-encoding.ts の escapeScriptTagInJs が無条件 escape で担保する。
 // 設計判断の背景は docs/mdxg-math-rendering.archive.md §5.f / §5.g / §5.j / Step 5b。
-const EXPECTED_KATEX_VERSION = '0.17.0'
+const EXPECTED_KATEX_VERSION = '0.18.1'
 
 // minimal セットに含めるフォント family 名 (KaTeX_ prefix 後の root 名)。
 // 数式の支配的記法 (\frac / \sum / \int / ギリシャ文字 / 行列 / 角括弧 / \mathbb) を網羅する。
